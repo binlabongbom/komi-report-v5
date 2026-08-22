@@ -12,7 +12,7 @@ current_phase: Phase 6 customer artifacts assembled and verified as internal HOL
 current_task: preserve the HOLD bundle, publish the private branch, and hand off exact blockers to Control Center
 next_action: migrate deployed Registration schema-v2 allow-list/persistence/Dashboard to serial_number, rerun current-client E2E, then obtain signing and native Windows x64 evidence before release
 problem: RELEASE HOLD — live Registration returns HTTP 422 for serial_number; macOS is ad-hoc/Gatekeeper rejected; Windows is NotSigned ARM64-VM preflight with Tray/Auto-start/LAN UAT not demonstrated
-updated_at: 2026-08-22T20:38:00+07:00
+updated_at: 2026-08-22T20:41:00+07:00
 ---
 
 # Production Phase 6 — Customer Release Packaging
@@ -104,7 +104,7 @@ Failure ใดใน source identity, forbidden-data scan, artifact runtime, Reg
 
 - [x] full Python/Web/security/release-safety regression จาก exact artifact source commit
 - [x] self-review Outcome/Maintainability และตัดสิน RELEASE READY/HOLD
-- [ ] final worktree clean, push private branch, sync canonical/Dashboard และ compact handoff กลับ Control Center
+- [x] final worktree clean, push private branch, sync canonical/Dashboard และ compact handoff กลับ Control Center
 
 ## Problem / Blocker
 
@@ -154,4 +154,4 @@ Failure ใดใน source identity, forbidden-data scan, artifact runtime, Reg
 - [x] smoke/install/restart/uninstall/reinstall/recovery ผ่านตามระดับหลักฐานจริง
 - [x] artifact scan พบ 0 tests/demo/Virtual Printer/forbidden data/secrets/Update runtime/QA fallback
 - [x] signing/native/runtime state ระบุจริงและตัดสิน RELEASE READY หรือ HOLD พร้อม exact blocker
-- [ ] workbook/canonical/Dashboard sync, private branch push และ compact handoffกลับ taskหลักครบ
+- [x] workbook/canonical/Dashboard sync, private branch push และ compact handoffกลับ taskหลักครบ
