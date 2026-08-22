@@ -79,12 +79,27 @@ python -m compileall -q app.py v5_pages.py services
 
 ```bash
 python -m PyInstaller --noconfirm --clean app.spec
-python tools/build_local_release.py
+python -m tools.build_local_release
 ```
 
 On Windows, PyInstaller creates `dist/KOMI Report V5.1.0/` with the launchable
 `KOMI Report V5.1.0.exe` inside it. Keep the folder together when deploying;
 this avoids the long per-launch extraction delay of a one-file executable.
+
+## Windows x64 Release Candidate
+
+Production Phase 4 uses the non-interactive target-native pipeline from the repository root:
+
+```bat
+cd source
+.venv\Scripts\python.exe -m tools.build_windows_rc
+```
+
+For the Windows 11 ARM VM preflight only, add `--virtualized --allow-arm64-vm-preflight`; the resulting manifest remains
+labelled VM/ARM and cannot close the native x64 gate. The RC output contains a per-user installer,
+`CHECKSUMS.sha256`, `FILE_INVENTORY.json`, `SBOM.cdx.json` and `RC_MANIFEST.json`. A dirty tree, missing Inno
+Setup compiler, unsafe payload, Registration policy artefact or Phase 3 Update runtime path fails the build.
+The pipeline verifies Authenticode but does not create/use signing credentials.
 
 บน macOS จะได้ unsigned local bundle ใน `dist/KOMI Report V5.1.0.app`; source ZIP/checksum/manifest
 จะอยู่ใน `../release/`. ขั้นตอนนี้ไม่ publish, sign หรือ notarize ออกภายนอก
