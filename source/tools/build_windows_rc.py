@@ -40,7 +40,7 @@ from tools.release_evidence import (
     require_windows_x64,
     write_release_evidence,
 )
-from tools.release_safety import git_identity
+from tools.release_safety import FORBIDDEN_SUFFIXES, git_identity
 
 SOURCE_ROOT = Path(__file__).resolve().parents[1]
 PROJECT_ROOT = SOURCE_ROOT.parent
@@ -232,6 +232,19 @@ def _node_command(node_root: Path, name: str) -> Path:
     return command
 
 
+def remove_forbidden_dependency_assets(root: Path) -> int:
+    """Remove non-runtime package assets forbidden by the release contract."""
+
+    removed = 0
+    for path in root.rglob("*"):
+        if path.is_file() and any(
+            path.name.casefold().endswith(suffix) for suffix in FORBIDDEN_SUFFIXES
+        ):
+            path.unlink()
+            removed += 1
+    return removed
+
+
 def build_web_runtime_seed(*, payload_root: Path, node_root: Path) -> None:
     web_source = PROJECT_ROOT / "web"
     authored_destination = payload_root / "web"
@@ -306,6 +319,9 @@ def build_payload(output_root: Path) -> tuple[Path, dict[str, str]]:
         download_wheelhouse(wheelhouse)
         wheel_count = sum(1 for path in wheelhouse.glob("*.whl"))
         install_windows_dependencies(wheelhouse, runtime_root / "Lib" / "site-packages")
+    removed_forbidden_assets = remove_forbidden_dependency_assets(
+        runtime_root / "Lib" / "site-packages"
+    )
 
     node_root = payload_root / "node-runtime"
     node_runtime_sha256 = install_node_runtime(node_root)
@@ -327,6 +343,7 @@ def build_payload(output_root: Path) -> tuple[Path, dict[str, str]]:
     return payload_root, {
         "python_runtime_sha256": python_runtime_sha256,
         "node_runtime_sha256": node_runtime_sha256,
+        "removed_forbidden_dependency_assets": str(removed_forbidden_assets),
         "wheel_count": str(wheel_count),
     }
 

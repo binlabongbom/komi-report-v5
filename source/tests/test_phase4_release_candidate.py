@@ -9,6 +9,7 @@ from tools.build_windows_rc import (
     INNO_SCRIPT,
     RUNTIME_TOOL_FILES,
     START_CMD,
+    remove_forbidden_dependency_assets,
     source_identity,
     source_state_is_clean,
 )
@@ -201,3 +202,16 @@ def test_verified_source_archive_is_a_clean_build_input():
     assert source_state_is_clean("clean") is True
     assert source_state_is_clean("archive-clean") is True
     assert source_state_is_clean("dirty") is False
+
+
+def test_forbidden_dependency_assets_are_removed_before_packaging(tmp_path):
+    package = tmp_path / "Lib" / "site-packages" / "synthetic_package"
+    package.mkdir(parents=True)
+    (package / "runtime.py").write_text("VALUE = 1\n", encoding="utf-8")
+    (package / "test-data.csv").write_text("synthetic,data\n", encoding="utf-8")
+    (package / "debug.log").write_text("synthetic\n", encoding="utf-8")
+
+    assert remove_forbidden_dependency_assets(tmp_path) >= 2
+    assert (package / "runtime.py").is_file()
+    assert not (package / "test-data.csv").exists()
+    assert not (package / "debug.log").exists()

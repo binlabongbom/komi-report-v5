@@ -3,6 +3,7 @@
 import sys
 
 from PyInstaller.utils.hooks import collect_submodules
+from tools.release_safety import FORBIDDEN_SUFFIXES
 
 
 a = Analysis(
@@ -30,6 +31,13 @@ a = Analysis(
     noarchive=False,
     optimize=2,
 )
+# Release artifacts must not contain DB/CSV/log/env/credential-style files,
+# including package test data and optional color-map assets collected by hooks.
+a.datas = [
+    item
+    for item in a.datas
+    if not any(str(item[0]).casefold().endswith(suffix) for suffix in FORBIDDEN_SUFFIXES)
+]
 pyz = PYZ(a.pure)
 
 if sys.platform == "darwin":
