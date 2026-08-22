@@ -9,6 +9,7 @@ from typing import Literal
 from .connectors import (
     AuthenticatedWebConnectionCounterConnector,
     ReadOnlyWebConnectionSession,
+    TlsPolicy,
     WebConnectionAuthenticationError,
     WebConnectionError,
     _nested,
@@ -113,19 +114,20 @@ class MeterCountExportConnector:
         self,
         *,
         timeout: float = 8.0,
-        verify_tls: bool = False,
+        tls_policy: TlsPolicy | None = None,
+        verify_tls: bool | None = None,
         max_polls: int = 30,
         session_factory=ReadOnlyWebConnectionSession,
     ) -> None:
         self.timeout = timeout
-        self.verify_tls = verify_tls
+        self.tls_policy = tls_policy or TlsPolicy(mode="system" if verify_tls is not False else "insecure")
         self.max_polls = max_polls
         self.session_factory = session_factory
 
     def collect(self, host: str, credential: AdminCredential, kind: MeterExportKind) -> MeterExportTable:
         if kind not in {"User", "Track"}:
             raise ValueError("Meter export kind ไม่ถูกต้อง")
-        session = self.session_factory(host, timeout=self.timeout, verify_tls=self.verify_tls)
+        session = self.session_factory(host, timeout=self.timeout, tls_policy=self.tls_policy)
         login_attempted = False
         export_started = False
         token = ""

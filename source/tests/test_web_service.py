@@ -57,8 +57,8 @@ def test_status_detects_already_running_external_service(tmp_path, monkeypatch):
     status = web_service.WebServiceManager(tmp_path / "project").status()
 
     assert status.state == "external"
-    assert status.local_url == "http://127.0.0.1:3000"
-    assert status.lan_url == "http://192.0.2.20:3000"
+    assert status.local_url == "https://127.0.0.1:3000"
+    assert status.lan_url == "https://192.0.2.20:3000"
 
 
 def test_manager_restarts_owned_worker(tmp_path, monkeypatch):

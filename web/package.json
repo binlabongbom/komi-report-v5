@@ -3,20 +3,27 @@
   "private": true,
   "version": "5.1.0",
   "scripts": {
-    "dev": "next dev --hostname 0.0.0.0 --port 3000",
+    "dev": "next dev --hostname 127.0.0.1 --port 3000",
     "build": "next build --webpack",
-    "start": "next start --hostname 0.0.0.0 --port 3000",
-    "lint": "tsc --noEmit"
+    "start": "node server.mjs",
+    "lint": "tsc --noEmit",
+    "test:security": "tsx --test tests/security.test.ts"
   },
   "dependencies": {
-    "next": "^16.0.0",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "next": "^16.3.2",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
+  },
+  "overrides": {
+    "nanoid": "3.3.18",
+    "postcss": "8.5.26",
+    "sharp": "0.35.3"
   },
   "devDependencies": {
     "@types/node": "24.13.3",
     "@types/react": "19.2.18",
     "@types/react-dom": "^19.0.0",
+    "tsx": "4.23.12",
     "typescript": "5.9.3"
   }
 }

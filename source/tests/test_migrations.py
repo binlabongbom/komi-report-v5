@@ -29,8 +29,8 @@ def test_migration_records_history_and_reporting_indexes(tmp_path):
         ).fetchall()
         version = connection.execute("PRAGMA user_version").fetchone()[0]
 
-    assert applied == [8, CURRENT_SCHEMA_VERSION]
-    assert versions == [(8,), (CURRENT_SCHEMA_VERSION,)]
+    assert applied == [8, 9, 10, CURRENT_SCHEMA_VERSION]
+    assert versions == [(8,), (9,), (10,), (CURRENT_SCHEMA_VERSION,)]
     assert version == CURRENT_SCHEMA_VERSION
     assert ("idx_daily_meter_period_slot",) in indexes
     assert ("idx_daily_subject_identity",) in indexes

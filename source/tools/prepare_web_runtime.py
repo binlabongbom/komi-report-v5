@@ -4,8 +4,12 @@ import argparse
 import hashlib
 import json
 import shutil
+import socket
 import subprocess
 from pathlib import Path
+
+from services.lan_tls import discover_primary_lan_ip, resolve_lan_tls
+from services.web_access import read_web_runtime_values, update_web_runtime_values
 
 try:
     from .init_web_access import ensure_web_access
@@ -99,9 +103,30 @@ def prepare(web_source: Path, web_runtime: Path, legacy_env: Path | None = None)
         raise FileNotFoundError(f"ไม่พบ Web source กลาง: {web_source}")
 
     sync_web_source(web_source, web_runtime)
-    values = ensure_web_access(web_runtime / ".env.local", migrate_from=legacy_env)
+    env_path = web_runtime / ".env.local"
+    values = ensure_web_access(env_path, migrate_from=legacy_env)
     print(f"Web Login: {values['KOMI_WEB_USER']}")
     print("Access Code: จัดการจาก Desktop Settings (ไม่แสดงรหัสใน Log)")
+    runtime_values = read_web_runtime_values(env_path)
+    customer_mode = runtime_values.get("KOMI_TLS_MODE") == "customer"
+    material = resolve_lan_tls(
+        web_runtime,
+        configured_certificate=runtime_values.get("KOMI_TLS_CERT_FILE", "") if customer_mode else "",
+        configured_private_key=runtime_values.get("KOMI_TLS_KEY_FILE", "") if customer_mode else "",
+        hostname=socket.gethostname(),
+        lan_ips=[discover_primary_lan_ip()],
+    )
+    update_web_runtime_values(
+        env_path,
+        {
+            "KOMI_TLS_MODE": material.source,
+            "KOMI_TLS_CERT_FILE": str(material.certificate_path),
+            "KOMI_TLS_KEY_FILE": str(material.private_key_path),
+            "KOMI_WEB_AUTH_STATE_FILE": str(web_runtime / "security" / "web-auth-state.json"),
+        },
+    )
+    print(f"LAN HTTPS: {material.source}; certificate SHA-256 {material.fingerprint_sha256[:16]}…")
+    print("OS trust store: ไม่ถูกแก้ไขโดยโปรแกรม")
 
     npm = _npm_command()
     dependency_hash = _sha256(web_source / "package-lock.json")

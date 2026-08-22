@@ -37,7 +37,7 @@ def test_session_store_requires_explicit_credential_for_new_hosts() -> None:
     store = SessionCredentialStore()
 
     assert store.load("10.0.0.5") is None
-    assert DEFAULT_ADMIN_USERNAME == "Administrator"
+    assert DEFAULT_ADMIN_USERNAME == "administrator"
 
 
 def test_admin_credential_rejects_a_different_username() -> None:

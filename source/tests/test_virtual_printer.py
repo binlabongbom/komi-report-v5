@@ -1,8 +1,13 @@
 from __future__ import annotations
 
+import hashlib
 import socket
+import ssl
 
-from komi_snmp_profiler.credential_store import AdminCredential, SessionCredentialStore
+import pytest
+
+from komi_snmp_profiler.connectors import TlsPolicy, WebConnectionCounterConnector, WebConnectionError
+from komi_snmp_profiler.credential_store import SessionCredentialStore
 from komi_snmp_profiler.meter import MeterReader
 from services.device_config import DeviceConfig
 from services.snmp_probe import SnmpTotalProbe
@@ -37,8 +42,21 @@ def test_virtual_printer_answers_real_snmp_and_web_connection_clients():
         snmp = SnmpTotalProbe(timeout=1.0, retries=0, port=snmp_port).read("127.0.0.1")
         host = f"127.0.0.1:{https_port}"
         credentials = SessionCredentialStore()
-        credentials.save(host, AdminCredential(password="1234567812345678"))
-        web = MeterReader(credentials).read(host)
+        context = ssl.create_default_context()
+        context.check_hostname = False
+        context.verify_mode = ssl.CERT_NONE
+        with socket.create_connection(("127.0.0.1", https_port), timeout=2) as raw:
+            with context.wrap_socket(raw, server_hostname="127.0.0.1") as secured:
+                fingerprint = hashlib.sha256(secured.getpeercert(binary_form=True)).hexdigest()
+        public_connector = WebConnectionCounterConnector(
+            tls_policy=TlsPolicy(mode="fingerprint", fingerprint_sha256=fingerprint)
+        )
+        web = MeterReader(credentials, public_connector=public_connector).read(host)
+        wrong_pin = WebConnectionCounterConnector(
+            tls_policy=TlsPolicy(mode="fingerprint", fingerprint_sha256="00" * 32)
+        )
+        with pytest.raises(WebConnectionError, match="fingerprint"):
+            wrong_pin.collect_result(host)
         discovered = NetworkDiscoveryWorker(
             ["127.0.0.1"], snmp_port=snmp_port
         )._probe("127.0.0.1")

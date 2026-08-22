@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import hashlib
+import hmac
 import json
 import re
 import ssl
+import warnings
 from dataclasses import dataclass
 from http.cookiejar import Cookie, CookieJar
 from typing import Protocol
@@ -20,6 +23,24 @@ class WebConnectionError(RuntimeError):
 
 class WebConnectionAuthenticationError(WebConnectionError):
     """Raised after one rejected Administrator login attempt; callers must not retry automatically."""
+
+
+@dataclass(frozen=True)
+class TlsPolicy:
+    mode: str = "system"
+    fingerprint_sha256: str = ""
+
+    def __post_init__(self) -> None:
+        if self.mode not in {"system", "fingerprint", "insecure"}:
+            raise ValueError("TLS mode ต้องเป็น system, fingerprint หรือ insecure")
+        normalized = self.fingerprint_sha256.replace(":", "").lower()
+        if self.mode == "fingerprint" and (
+            len(normalized) != 64 or any(char not in "0123456789abcdef" for char in normalized)
+        ):
+            raise ValueError("TLS fingerprint ต้องเป็น SHA-256 hex 64 ตัว")
+        if self.mode != "fingerprint" and normalized:
+            raise ValueError("TLS fingerprint ใช้ได้เฉพาะ fingerprint mode")
+        object.__setattr__(self, "fingerprint_sha256", normalized)
 
 
 class AccountCounterConnector(Protocol):
@@ -87,14 +108,32 @@ class ReadOnlyWebConnectionSession:
     TEMP_PROGRESS_PATHS = {"progress", "result.html"}
     METER_EXPORT_TELEMETRY_PATH = "api/Request/_CommonExecutor"
 
-    def __init__(self, host: str, *, timeout: float = 5.0, verify_tls: bool = False) -> None:
+    def __init__(
+        self,
+        host: str,
+        *,
+        timeout: float = 5.0,
+        tls_policy: TlsPolicy | None = None,
+        verify_tls: bool | None = None,
+    ) -> None:
         self.timeout = timeout
         self.base_url = f"https://{host}/wcd"
         self.cookies = CookieJar()
+        if tls_policy is not None and verify_tls is not None:
+            raise ValueError("ระบุ tls_policy หรือ verify_tls เพียงแบบเดียว")
+        self.tls_policy = tls_policy or TlsPolicy(
+            mode="system" if verify_tls is not False else "insecure"
+        )
         context = ssl.create_default_context()
-        if not verify_tls:
+        if self.tls_policy.mode in {"fingerprint", "insecure"}:
             context.check_hostname = False
             context.verify_mode = ssl.CERT_NONE
+        if self.tls_policy.mode == "insecure":
+            warnings.warn(
+                "Web Connection TLS verification disabled by explicit compatibility setting",
+                RuntimeWarning,
+                stacklevel=2,
+            )
         self.opener = build_opener(HTTPCookieProcessor(self.cookies), HTTPSHandler(context=context))
 
     def get(self, path: str, *, expect_json: bool = True) -> dict[str, object]:
@@ -247,6 +286,16 @@ class ReadOnlyWebConnectionSession:
         request = Request(f"{self.base_url}/{path}", data=data, headers=headers, method=method)
         try:
             with self.opener.open(request, timeout=self.timeout) as response:
+                if self.tls_policy.mode == "fingerprint":
+                    socket_object = getattr(getattr(getattr(response, "fp", None), "raw", None), "_sock", None)
+                    certificate_der = (
+                        socket_object.getpeercert(binary_form=True) if socket_object is not None else None
+                    )
+                    actual = hashlib.sha256(certificate_der or b"").hexdigest()
+                    if not certificate_der or not hmac.compare_digest(
+                        actual, self.tls_policy.fingerprint_sha256
+                    ):
+                        raise WebConnectionError("Web Connection certificate fingerprint ไม่ตรงค่าที่ pin ไว้")
                 return response.read()
         except (HTTPError, URLError, TimeoutError) as err:
             raise WebConnectionError(f"อ่าน Web Connection ไม่สำเร็จ: {type(err).__name__}") from err
@@ -262,11 +311,12 @@ class WebConnectionCounterConnector:
         self,
         *,
         timeout: float = 5.0,
-        verify_tls: bool = False,
+        tls_policy: TlsPolicy | None = None,
+        verify_tls: bool | None = None,
         session_factory=ReadOnlyWebConnectionSession,
     ) -> None:
         self.timeout = timeout
-        self.verify_tls = verify_tls
+        self.tls_policy = tls_policy or TlsPolicy(mode="system" if verify_tls is not False else "insecure")
         self.session_factory = session_factory
 
     def supported(self, model: str) -> bool:
@@ -276,7 +326,7 @@ class WebConnectionCounterConnector:
         return list(self.collect_result(host).counters)
 
     def collect_result(self, host: str) -> WebCounterCollection:
-        session = self.session_factory(host, timeout=self.timeout, verify_tls=self.verify_tls)
+        session = self.session_factory(host, timeout=self.timeout, tls_policy=self.tls_policy)
         try:
             session.get("index.html", expect_json=False)
             common = session.get("api/AppReqGetCustomData/_A-00-00001")
@@ -385,7 +435,7 @@ class AuthenticatedWebConnectionCounterConnector(WebConnectionCounterConnector):
     """Open one Administrator session, read counters, and always log out and clear cookies."""
 
     def collect_with_credential(self, host: str, credential: AdminCredential) -> WebCounterCollection:
-        session = self.session_factory(host, timeout=self.timeout, verify_tls=self.verify_tls)
+        session = self.session_factory(host, timeout=self.timeout, tls_policy=self.tls_policy)
         login_attempted = False
         result: WebCounterCollection | None = None
         failure: Exception | None = None

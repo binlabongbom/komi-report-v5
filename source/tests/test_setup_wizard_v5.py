@@ -1,5 +1,6 @@
 import json
 import os
+import secrets
 import sqlite3
 import threading
 import time
@@ -452,22 +453,24 @@ def test_setup_lab_uses_real_ports_for_user_supplied_lan_range(tmp_path):
         database.set_db_path(original_path)
 
 
-def test_setup_wizard_manual_setup_uses_default_admin_credentials(tmp_path):
+def test_setup_wizard_manual_setup_keeps_explicit_admin_credentials_only_in_memory(tmp_path):
     original_path = _wizard_database(tmp_path)
     app = QApplication.instance() or QApplication([])
     try:
         wizard = SetupWizardV5()
+        first_password = secrets.token_urlsafe(18)
+        second_password = secrets.token_urlsafe(18)
         wizard._add_manual_entries(
             [
-                ("192.0.2.41", "1234567812345678"),
-                ("192.0.2.42", "custom-password"),
-                ("", "1234567812345678"),
+                ("192.0.2.41", first_password),
+                ("192.0.2.42", second_password),
+                ("", secrets.token_urlsafe(18)),
             ]
         )
         devices = wizard._configs()
         assert [device.host for device in devices] == ["192.0.2.41", "192.0.2.42"]
         assert all(device.username == "administrator" for device in devices)
-        assert [device.password for device in devices] == ["1234567812345678", "custom-password"]
+        assert [device.password for device in devices] == [first_password, second_password]
         assert wizard.selection_badge.text() == "เลือกแล้ว 2/3"
         wizard.close()
         app.processEvents()
@@ -661,7 +664,7 @@ def test_setup_wizard_requests_active_threads_to_stop_before_close(tmp_path):
         database.set_db_path(original_path)
 
 
-def test_setup_wizard_selects_scanned_rows_and_applies_default_credentials(tmp_path):
+def test_setup_wizard_selects_scanned_rows_without_a_default_password(tmp_path):
     original_path = _wizard_database(tmp_path)
     app = QApplication.instance() or QApplication([])
     try:
@@ -674,7 +677,7 @@ def test_setup_wizard_selects_scanned_rows_and_applies_default_credentials(tmp_p
         devices = wizard._configs()
         assert [device.host for device in devices] == ["192.0.2.10", "192.0.2.11", "192.0.2.12"]
         assert all(device.username == "administrator" for device in devices)
-        assert all(device.password == "1234567812345678" for device in devices)
+        assert all(device.password == "" for device in devices)
         wizard.close()
         app.processEvents()
     finally:

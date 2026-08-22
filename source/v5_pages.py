@@ -70,7 +70,6 @@ from config import (
     C_TEXT2,
     C_TONER_BORDER,
     C_TONER_TRACK,
-    DEFAULT_ADMIN_PASSWORD,
     DEFAULT_ADMIN_USERNAME,
     DEFAULT_BILLING_DAY,
     DEFAULT_WASTE_PCT,
@@ -93,6 +92,11 @@ from database import (
     set_db_path,
 )
 from i18n import ENGLISH, THAI, apply_language, get_language, set_language, tr, translate_text
+from komi_snmp_profiler.connectors import (
+    AuthenticatedWebConnectionCounterConnector,
+    TlsPolicy,
+    WebConnectionCounterConnector,
+)
 from komi_snmp_profiler.credential_store import AdminCredential, SessionCredentialStore
 from komi_snmp_profiler.meter import MeterReader
 from pages import PageHistory
@@ -285,7 +289,8 @@ class DeviceTestWorker(QObject):
         try:
             web_host = device.host if web_port == 443 else f"{device.host}:{web_port}"
             store = SessionCredentialStore()
-            store.save(web_host, AdminCredential(password=device.password))
+            if device.password:
+                store.save(web_host, AdminCredential(password=device.password))
             pipeline_log.append(
                 stage="WEB",
                 action="Setup Web read request",
@@ -295,7 +300,16 @@ class DeviceTestWorker(QObject):
                 target=f"https://{web_host}/wcd",
                 status="request",
             )
-            reading = MeterReader(store).read(web_host)
+            if web_port != 443 and device.host in {"127.0.0.1", "localhost", "::1"}:
+                lab_tls = TlsPolicy(mode="insecure")
+                reader = MeterReader(
+                    store,
+                    public_connector=WebConnectionCounterConnector(tls_policy=lab_tls),
+                    admin_connector=AuthenticatedWebConnectionCounterConnector(tls_policy=lab_tls),
+                )
+            else:
+                reader = MeterReader(store)
+            reading = reader.read(web_host)
             pipeline_log.append(
                 stage="WEB",
                 action="Setup Web read complete",
@@ -2114,7 +2128,7 @@ class SetupWizardV5(QDialog):
                 "model": payload.get("model") or "—",
                 "serial": payload.get("serial") or "—",
                 "username": payload.get("username") or DEFAULT_ADMIN_USERNAME,
-                "password": payload.get("password") or DEFAULT_ADMIN_PASSWORD,
+                "password": payload.get("password") or "",
                 "result": payload.get("result") or {"online": True, "web_ok": False},
                 "is_virtual": bool(payload.get("is_virtual", False)),
                 "found_in_registration_scan": bool(payload.get("found_in_registration_scan", False)),
@@ -2213,7 +2227,12 @@ class SetupWizardV5(QDialog):
         form.addRow("Username", username)
         form.addRow("Password", password)
         layout.addLayout(form)
-        hint = QLabel(f"ค่าเริ่มต้น: {DEFAULT_ADMIN_USERNAME} / {DEFAULT_ADMIN_PASSWORD}")
+        hint = QLabel(
+            tr(
+                f"Username: {DEFAULT_ADMIN_USERNAME} · กรุณากรอก password ของเครื่อง",
+                f"Username: {DEFAULT_ADMIN_USERNAME} · Enter the printer password",
+            )
+        )
         hint.setStyleSheet(f"color:{C_TEXT2};")
         layout.addWidget(hint)
         actions = QHBoxLayout()
@@ -2228,7 +2247,7 @@ class SetupWizardV5(QDialog):
         def credentials_finished(result: int) -> None:
             if result == int(QDialog.DialogCode.Accepted):
                 entry["username"] = username.text().strip() or DEFAULT_ADMIN_USERNAME
-                entry["password"] = password.text() or DEFAULT_ADMIN_PASSWORD
+                entry["password"] = password.text()
 
         self._open_wizard_child(dialog, credentials_finished)
 
@@ -2303,7 +2322,8 @@ class SetupWizardV5(QDialog):
             host.setPlaceholderText(self._manual_ip_example(index))
             grid.addWidget(host, index + 1, 1)
             grid.addWidget(QLabel(DEFAULT_ADMIN_USERNAME), index + 1, 2)
-            password = QLineEdit(DEFAULT_ADMIN_PASSWORD)
+            password = QLineEdit()
+            password.setPlaceholderText(tr("กรอก Administrator password", "Enter Administrator password"))
             password.setEchoMode(QLineEdit.EchoMode.Password)
             grid.addWidget(password, index + 1, 3)
             rows.append((host, password))
@@ -2326,7 +2346,7 @@ class SetupWizardV5(QDialog):
                     [
                         (
                             host.text().strip(),
-                            password.text() or DEFAULT_ADMIN_PASSWORD,
+                            password.text(),
                         )
                         for host, password in rows
                     ]

@@ -1,25 +1,47 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyWebAccessCode, webAccessConfigured } from "../../../lib/access-credential";
-import { sessionToken, webUser } from "../../../lib/session";
+import { loginDecision, recordLoginFailure, recordLoginSuccess } from "../../../lib/login-guard";
+import { createSessionToken, sessionLifetimeSeconds, webUser } from "../../../lib/session";
 
 export async function POST(request: NextRequest) {
   const body = await request.json().catch(() => ({}));
-  if (!webAccessConfigured() || body.user !== webUser() || !verifyWebAccessCode(body.code)) {
-    return NextResponse.json({ ok: false, message: "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง" }, { status: 401 });
+  const user = typeof body.user === "string" ? body.user : "";
+  const remoteAddress = request.headers.get("x-komi-remote-address") ?? "unknown";
+  const decision = loginDecision(remoteAddress, user);
+  if (!decision.allowed) {
+    return NextResponse.json(
+      { ok: false, message: "ลองเข้าสู่ระบบหลายครั้งเกินไป กรุณารอชั่วคราว" },
+      { status: 429, headers: { "Retry-After": String(decision.retryAfterSeconds) } },
+    );
   }
+  if (!webAccessConfigured() || body.user !== webUser() || !verifyWebAccessCode(body.code)) {
+    const failed = recordLoginFailure(remoteAddress, user);
+    const headers = failed.allowed ? undefined : { "Retry-After": String(failed.retryAfterSeconds) };
+    return NextResponse.json(
+      { ok: false, message: "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง" },
+      { status: failed.allowed ? 401 : 429, headers },
+    );
+  }
+  recordLoginSuccess(remoteAddress, user);
   const response = NextResponse.json({ ok: true });
-  response.cookies.set("komi_session", await sessionToken(), {
+  response.cookies.set("komi_session", createSessionToken(), {
     httpOnly: true,
     sameSite: "strict",
-    secure: request.nextUrl.protocol === "https:",
+    secure: true,
     path: "/",
-    maxAge: 60 * 60 * 12,
+    maxAge: sessionLifetimeSeconds(),
   });
   return response;
 }
 
 export async function DELETE() {
   const response = NextResponse.json({ ok: true });
-  response.cookies.set("komi_session", "", { httpOnly: true, path: "/", maxAge: 0 });
+  response.cookies.set("komi_session", "", {
+    httpOnly: true,
+    sameSite: "strict",
+    secure: true,
+    path: "/",
+    maxAge: 0,
+  });
   return response;
 }

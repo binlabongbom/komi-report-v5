@@ -248,7 +248,10 @@ def init_db():
             name              TEXT NOT NULL,
             host              TEXT NOT NULL UNIQUE,
             username          TEXT NOT NULL DEFAULT 'administrator',
-            password          TEXT NOT NULL,
+            password          TEXT NOT NULL DEFAULT '',
+            credential_ref    TEXT NOT NULL DEFAULT '',
+            tls_mode          TEXT NOT NULL DEFAULT 'system',
+            tls_fingerprint   TEXT NOT NULL DEFAULT '',
             enabled           INTEGER NOT NULL DEFAULT 1,
             model             TEXT NOT NULL DEFAULT '',
             serial            TEXT NOT NULL DEFAULT '',
@@ -474,6 +477,8 @@ def verify_settings_password(entered: str) -> bool:
     """
     from config import DEFAULT_SETTINGS_PASSWORD
     stored = get_cfg("settings_password") or DEFAULT_SETTINGS_PASSWORD
+    if not stored:
+        return False
     # Migration: ถ้า stored ไม่ใช่ SHA-256 hex (64 ตัว) แปลว่าเป็น plaintext เก่า
     if len(stored) != 64 or not all(c in '0123456789abcdef' for c in stored):
         hashed = _hash_pwd(stored)

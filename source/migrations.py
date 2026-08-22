@@ -12,7 +12,7 @@ from contextlib import closing
 from datetime import datetime
 from pathlib import Path
 
-CURRENT_SCHEMA_VERSION = 9
+CURRENT_SCHEMA_VERSION = 11
 
 
 class UnsupportedSchemaVersionError(RuntimeError):
@@ -26,7 +26,9 @@ class SchemaDriftError(RuntimeError):
 _REQUIRED_SCHEMA: dict[str, frozenset[str]] = {
     "readings": frozenset({"id", "slot", "data_json", "read_date_iso", "billing_month"}),
     "settings": frozenset({"key", "value"}),
-    "devices": frozenset({"slot", "host", "password", "connection_status"}),
+    "devices": frozenset(
+        {"slot", "host", "password", "credential_ref", "tls_mode", "tls_fingerprint", "connection_status"}
+    ),
     "daily_meter_records": frozenset({"id", "device_slot", "record_date", "source_json"}),
     "billing_ledger": frozenset({"id", "entry_kind", "source_hash", "idempotency_key"}),
     "daily_subject_records": frozenset({"id", "device_slot", "subject_type", "subject_id"}),
@@ -147,9 +149,29 @@ def _migration_009_legacy_history_import(connection: sqlite3.Connection) -> None
     ensure_legacy_history_import_schema(connection)
 
 
+def _migration_010_credential_reference(connection: sqlite3.Connection) -> None:
+    columns = {str(row[1]) for row in connection.execute("PRAGMA table_info(devices)")}
+    if not columns:
+        return
+    if "credential_ref" not in columns:
+        connection.execute("ALTER TABLE devices ADD COLUMN credential_ref TEXT NOT NULL DEFAULT ''")
+
+
+def _migration_011_printer_tls_policy(connection: sqlite3.Connection) -> None:
+    columns = {str(row[1]) for row in connection.execute("PRAGMA table_info(devices)")}
+    if not columns:
+        return
+    if "tls_mode" not in columns:
+        connection.execute("ALTER TABLE devices ADD COLUMN tls_mode TEXT NOT NULL DEFAULT 'system'")
+    if "tls_fingerprint" not in columns:
+        connection.execute("ALTER TABLE devices ADD COLUMN tls_fingerprint TEXT NOT NULL DEFAULT ''")
+
+
 MIGRATIONS: tuple[tuple[int, str, object], ...] = (
     (8, "record_schema_history_and_reporting_indexes", _migration_008_record_schema_history),
     (9, "add_legacy_usage_history_import_provenance", _migration_009_legacy_history_import),
+    (10, "add_os_vault_credential_reference", _migration_010_credential_reference),
+    (11, "add_verified_or_pinned_printer_tls_policy", _migration_011_printer_tls_policy),
 )
 
 

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { sessionToken } from "./lib/session";
+import { verifySessionToken } from "./lib/session";
 
 export default async function proxy(request: NextRequest) {
   const path = request.nextUrl.pathname;
@@ -7,8 +7,7 @@ export default async function proxy(request: NextRequest) {
     return NextResponse.next();
   }
   const actual = request.cookies.get("komi_session")?.value ?? "";
-  const expected = await sessionToken();
-  if (actual && actual === expected) return NextResponse.next();
+  if (actual && verifySessionToken(actual)) return NextResponse.next();
   if (path.startsWith("/api/")) return NextResponse.json({ detail: "Authentication required" }, { status: 401 });
   const login = request.nextUrl.clone();
   login.pathname = "/login";

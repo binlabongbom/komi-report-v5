@@ -11,7 +11,9 @@ KOMI Report V5 Desktop โดยไม่มี Billing formula ชุดที�
 - Windows: `START_KOMI_REPORT_WEB.cmd`
 - Linux: `Open KOMI Report Web Linux.sh`
 
-จากนั้นเปิด URL ที่แสดงใน Terminal เช่น `http://192.168.1.103:3000` จากเครื่องอื่นใน LAN
+จากนั้นเปิด URL ที่แสดงใน Terminal เช่น `https://192.168.1.103:3000` จากเครื่องอื่นใน LAN
+โปรแกรมสร้าง per-install certificate ที่มี SAN สำหรับ localhost/hostname/LAN IP หรือใช้ certificate ของลูกค้าได้
+โดยไม่ติดตั้ง Root CA หรือแก้ OS trust store เงียบ ๆ
 และใช้ข้อมูลเข้าระบบที่แสดงเฉพาะบนเครื่อง server ตอนเปิดครั้งแรก
 
 ตัว Launcher จะคัดลอกเฉพาะ Web source ไปยัง runtime local และติดตั้ง `node_modules` ที่นั่น
@@ -36,7 +38,7 @@ KOMI Report V5 Desktop โดยไม่มี Billing formula ชุดที�
 - กด User หรือ Printer ในตารางเพื่อ Cross-filter กราฟและรายละเอียด โดย User/Account ไม่ใช้คำนวณค่าใช้จ่าย
 - วันที่ reconciliation ไม่ผ่านถูกพักออกจาก Billing แต่ยังเก็บหลักฐานและแสดงใน Data Quality
 - API เป็น read-only และไม่ส่ง Username/Password เครื่องพิมพ์ออกไป
-- มี Login สำหรับ Trusted LAN; ห้ามเปิด port ออก Public Internet จนกว่าจะวาง HTTPS/reverse proxy
+- มี Login, temporary lockout, expiring/revocable session และ Secure cookie บน HTTPS; ยังห้ามเปิด port ออก Public Internet
 
 ## คำสั่งสำหรับนักพัฒนา
 

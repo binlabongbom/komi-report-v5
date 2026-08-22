@@ -108,7 +108,7 @@ DEFAULT_WASTE_PCT = 2.0
 
 # ─── V5 background meter defaults ────────────────────────
 DEFAULT_ADMIN_USERNAME = "administrator"
-DEFAULT_ADMIN_PASSWORD = "1234567812345678"
+DEFAULT_ADMIN_PASSWORD = ""
 DEFAULT_SNMP_COMMUNITY = "public"
 DEFAULT_SNMP_INTERVAL_MINUTES = 5
 DEFAULT_WEB_INTERVAL_MINUTES = 15
@@ -121,7 +121,7 @@ DEFAULT_PEAK_AFTER_MINUTES = 30
 DEFAULT_BILLING_DAY = 31
 
 # ─── รหัสผ่านสำหรับเปลี่ยนการตั้งค่า ─────────────────────
-DEFAULT_SETTINGS_PASSWORD = "020297000"
+DEFAULT_SETTINGS_PASSWORD = ""
 
 # ─── ราคาต่อแผ่น (ค่า default — ผู้ใช้เปลี่ยนได้ในหน้า ตั้งค่า) ──
 # หน่วย: บาท/แผ่น

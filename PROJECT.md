@@ -6,13 +6,13 @@ thread_title: Komi report V5
 dashboard_visible: true
 department: dev
 status: active
-progress: 43
+progress: 50
 owner: VEGA
-current_phase: Production Phase 0 complete; later Production gates remain closed
-current_task: รักษา release-safety baseline ที่ tag v5.1.0-phase0 และส่งหลักฐานกลับ Production control
-next_action: ปิด signing/native package/upgrade/restore/Registration API gates ใน phase ถัดไปหลังได้รับคำสั่ง; ยังไม่เริ่ม Phase 1
-problem: Phase 0 ผ่าน; product ยังติด API live/DPO/Security, signing และ native install/upgrade/UAT gates
-updated_at: 2026-08-22T08:49:42+07:00
+current_phase: Production Phase 1 Security Baseline active; Phase 0 remains locked
+current_task: review/commit Production Phase 1 หลัง security implementation และ verification ผ่าน
+next_action: fast-forward main, push private origin และยืนยัน clean repository ก่อนปิด Phase 1
+problem: Phase 1 implementation/verification ผ่าน; ยังไม่ done จนกว่า merge/push/clean gate สำเร็จ
+updated_at: 2026-08-22T09:32:30+07:00
 ---
 
 # KOMI Report V5.1
@@ -63,7 +63,7 @@ Release ที่ตรงกับ OS/architecture โดยไม่ส่ง 
 - การ Sync Meter/Billing/Counter/User/Document ขึ้น Cloud หรือ Public Internet
 - Remote command ที่สั่งเครื่องลูกค้าให้ติดตั้ง Update โดยตรง; Update ต้องเป็น client pull จาก manifest ที่ตรวจลายเซ็น
 - Forced update โดยไม่มี release approval, rollback plan และ native UAT
-- macOS Keychain หรือ Windows Credential Manager ตามข้อกำหนดของผู้ใช้
+- Linux production credential vault จนกว่าจะมี native backend ที่ผ่าน UAT; Phase 1 รองรับ Windows/macOS ก่อน
 - การแก้ source ของ V4.6 หรือ KOMI SNMP Profiler โดยตรง
 - การกำหนดตำแหน่ง UI ของ Toner ในรอบ design นี้; เตรียมข้อมูลและ component boundary ไว้ก่อน
 
@@ -106,8 +106,8 @@ Release ที่ตรงกับ OS/architecture โดยไม่ส่ง 
 - แสดงการ์ด `นำเข้าประวัติ V4.6…` เฉพาะเมื่อตรวจพบ Database V4.6 ที่ยืนยัน schema แล้วหรือมีประวัตินำเข้าเดิม;
   เปิดหน้าต่างเลือก Database/Preview/Backup/Import โดยไม่เพิ่มขั้นบังคับใน Wizard;
   หน้าต่างเลื่อนได้และ footer คงอยู่ในจอขั้นต่ำ 720×520
-- Username กำหนดเป็น `administrator`; Password เริ่มต้น `1234567812345678` และแก้แยกรายเครื่องได้
-- Credential ถูกจำไว้ใน local database/config โดยตรงตามข้อกำหนด; ไม่ใช้ Keychain/Credential Manager
+- Username กำหนดเป็น `administrator`; ไม่มี Password เริ่มต้น ผู้ใช้ต้องกรอกค่าที่ผู้ดูแลเครื่องกำหนด
+- Credential อยู่ใน macOS Keychain/Windows Credential Manager ผ่าน OS vault; SQLite เก็บเฉพาะ reference/metadata
 - ทดสอบเครื่องที่เลือกพร้อมกันโดยไม่ block UI และแสดง SNMP/Web Connection แยกสถานะ
 - เมื่อทุกเครื่องที่เลือกผ่านการทดสอบ เปิดหน้าต่างเล็กให้ตั้งชื่อเรียกเครื่อง โดยเสนอชื่อ Model แบบย่อ เช่น `KM bizhub C450i` แล้วจึงไปหน้าราคา
 - SNMP ต้องคืน identity/status และ Web Connection ต้อง Login/อ่าน Device Meter สำเร็จทุกเครื่อง จึงเปิดปุ่มถัดไป
@@ -244,12 +244,13 @@ Release ที่ตรงกับ OS/architecture โดยไม่ส่ง 
 
 - **PyQt6 Desktop** ตาม architecture ที่อนุมัติเดิม
 - **Python FastAPI LAN Server** แบบ read-only ใช้ report services และ SQLite ชุดเดียวกับ Desktop
-- **Next.js Web UI** ที่ `0.0.0.0:3000`; proxy `/api/*` ไป Python ที่ `127.0.0.1:8766`
-- ผู้ใช้ใน LAN เปิด `http://IP-เครื่องหลัก:3000`; Background collector มีเพียง process หลัก ไม่รันซ้ำตามจำนวน browser
-- มี Login แบบ shared Access Code สำหรับ Trusted LAN; เจ้าของตั้ง/เปลี่ยนรหัสได้จาก Desktop Settings เท่านั้น
-  ส่วน Web เป็น read-only และไม่มีหน้า/endpoint เปลี่ยนรหัส. Runtime เก็บเฉพาะ `scrypt` hash แบบ dotenv-safe,
-  ไฟล์สิทธิ์ `0600` และ rotate session version ทุกครั้งที่เปลี่ยนรหัสเพื่อบังคับทุก browser เข้าระบบใหม่
-- Python API bind เฉพาะ loopback และห้าม forward port ออก Public Internet จนกว่าจะมี HTTPS
+- **Next.js Web UI** เป็น HTTPS listener ที่ `0.0.0.0:3000`; proxy `/api/*` ไป Python ที่ `127.0.0.1:8766`
+- ผู้ใช้ใน LAN เปิด `https://IP-เครื่องหลัก:3000`; HTTP production listener ไม่มี และ Background collector มี process หลักเดียว
+- per-install certificate มี SAN สำหรับ localhost/hostname/LAN IP, regenerate เมื่อ identity เปลี่ยน และรองรับ customer certificate;
+  โปรแกรมไม่ติดตั้ง Root CA หรือแก้ OS trust store เงียบ ๆ
+- Login แบบ shared Access Code มี rate limit/temporary lockout, expiring signed session, auth epoch/revocation และ Secure cookie;
+  เจ้าของเปลี่ยนรหัสจาก Desktop Settings เท่านั้น. Runtime เก็บเฉพาะ `scrypt` hash และ keyed lockout subject ในไฟล์ `0600`
+- Python API bind loopback เท่านั้น และยังห้าม forward port ออก Public Internet
 - Main thread รับผิดชอบ UI เท่านั้น; device calls ทำใน bounded worker pool สูงสุด 3 เครื่อง
 - System Tray และ scheduler มี lifecycle เดียวกับ application process
 
@@ -543,6 +544,16 @@ V5.0 foundation เดิมเสร็จตามรายการด้า�
 - [x] สร้าง baseline commit `85e308f`, tag `v5.1.0-phase0` และยืนยัน clean-checkout artifact contents 204 files / forbidden entries 0
 - [x] สร้าง/push private GitHub remote `binlabongbom/komi-report-v5`; main/tag read-back เป็น private และสิทธิ์ ADMIN
 
+### Phase 12 — Production Phase 1 Security Baseline
+
+- [x] สร้าง task workbook/branch และล็อก architecture/Definition of Done โดยไม่ทำให้ Phase 0 gate อ่อนลง
+- [x] ปิด npm/Python production Critical/High พร้อม audit evidence จาก environment จริง
+- [x] บังคับ LAN HTTPS, per-install/customer certificate lifecycle และ direct API loopback-only พร้อม live handshake
+- [x] เพิ่ม Web login throttling/lockout/session expiry/revocation และ secure cookie พร้อม automated/live checks
+- [x] ย้าย printer credential ไป OS vault ผ่าน rollback-safe migration โดยไม่เหลือ plaintext ใน SQLite/log
+- [x] บังคับ trusted/pinned printer TLS และลบ hard-coded/default credential อย่าง backward-compatible
+- [ ] ผ่าน security/full regression, scans, Web build/typecheck, release safety, merge main และ push private origin
+
 ## Problem / Blocker
 
 - Registration API artefact รอบ `komi 1.zip` เป็น `PARTIAL / ยังไม่ผ่าน`: v1 register/heartbeat จริงผ่านแล้ว
@@ -601,6 +612,10 @@ V5.0 foundation เดิมเสร็จตามรายการด้า�
 
 ## Decisions and Changes
 
+- 2026-08-22 — เริ่ม Production Phase 1 Security Baseline ใน task workbook
+  `work/01a02733-fd41-78c3-aa89-e735a595a458/PROJECT.md` บน branch `codex/phase-1-security-baseline`.
+  คง local-first modular monolith; FastAPI loopback-only, LAN Web ต้อง HTTPS, certificate ต่อ installation/customer-provided,
+  credential ไป OS vault และ printer TLS verified/pinned โดย default. ห้ามแตะ Meter/Billing/Registration/Update และห้ามอ่อน Phase 0 gate.
 - 2026-08-21 — Bom เปลี่ยน schema v2 ให้ใช้ `serial_number` แทน random device UUID และให้ Registration ส่ง
   Konica Minolta ทุกเครื่องที่พบจาก IP scan ตอนลงทะเบียน พร้อม Model/Selected/Local Slot. จำนวน discovered ไม่จำกัดที่ 3
   แต่ Desktop ยังคงเลือกอ่าน Report ได้สูงสุด 3 เครื่อง. เป็นข้อมูลหลังบ้านเท่านั้น ไม่เพิ่มคำเตือน/ข้อความขายสินค้า
@@ -862,6 +877,7 @@ V5.0 foundation เดิมเสร็จตามรายการด้า�
 
 | Time | Action | Expected | Actual | Result | Evidence |
 |---|---|---|---|---|---|
+| 2026-08-22 09:39 +07 | Production Phase 1 Security Baseline pre-merge | LAN/auth/vault/printer TLS/dependency gates ต้องผ่านโดยไม่แตะข้อมูลจริงหรือ Meter/Billing semantics | Live TLS 1.3 + LAN SAN/HTTP block/API loopback/auth lifecycle ผ่าน; OS vault migration/pin tests ผ่าน; npm/pip audit 0; Python 410, Web security 2, build/typecheck, focused Ruff, release 8, tracked candidates 230/0 และ releasable set 210/0 ผ่าน | PASS — PRE-MERGE; รอ commit/main/push/clean | `work/01a02733-fd41-78c3-aa89-e735a595a458/PROJECT.md`, `source/tools/security_live_check.py` |
 | 2026-08-22 08:49 +07 | Production Phase 0 clean-checkout/tag/private remote | Artifact ต้อง build จาก clean clone, ชี้กลับ commit, SHA256 ตรง, ไม่มี forbidden content และ private remote ต้องไม่ชนชื่อ | Commit `85e308f`, tag `v5.1.0-phase0`; clean clone source artifact 204 files, source `clean`, SHA256 `a15776f0…`, forbidden entries 0; private GitHub `binlabongbom/komi-report-v5` main/tag push และ read-back สำเร็จ | PASS — PHASE 0 COMPLETE; Phase 1 ยังไม่เริ่ม | `work/01a0271d-8f64-79a2-89f7-5129dc34c6dd/PROJECT.md`, `release/MANIFEST.json` (local ignored artifact), Git/GitHub read-back |
 | 2026-08-22 08:47 +07 | Production Phase 0 pre-commit gate | ห้าม track/package DB/CSV/log/env/credential/output/customer evidence; version ต้องตรงและ behavior ไม่ถอย | Shared gate reject negative CSV/output/token cases; candidate scan 223 files = 0 findings; export จริง 2 จุดอยู่ ignored; focused 8/full 399 tests, scoped Ruff, Web typecheck/Next build ผ่าน | PASS — PRE-COMMIT; รอ commit/clean clone/tag/remote | `.gitignore`, `source/tools/release_safety.py`, `source/tools/build_local_release.py`, `source/tests/test_release_builder.py`, `work/01a0271d-8f64-79a2-89f7-5129dc34c6dd/PROJECT.md` |
 | 2026-08-20 22:32 +07 | Wizard native-control polish + Registration Envelope Preview | Slot dropdown, ราคา, calendar และปุ่ม Review ต้องไม่หลุด Dark Mode/ถูกตัด; Step 4 ต้องแสดงข้อมูลที่จะส่งและสิ่งที่ห้ามส่งก่อนบันทึก | เพิ่ม painted chevron/light popup สำหรับ ComboBox, ซ่อน spin steppers, บังคับ light Calendar, ลดปุ่ม Edit เป็น 78×36 และแทน action ของ Registration ด้วยสถานะ `ยังไม่ส่ง`. เพิ่ม allow-listed envelope: installation ID, company, first started, version, OS/architecture, model+quantity; หลัง Save เก็บ pending envelope ใน local config และไม่มี network call. Regression `368 passed + 1 isolated cancellation passed`, compileall/scoped Ruff ผ่าน; offscreen visual ตรวจ Price/Calendar/Slot popup/Review ผ่าน และ Review ที่ 1120×720 มี scroll maximum `0`. Restart Customer First Run จาก source ล่าสุด PID `44231`, DB integrity `ok`, devices `0` | PASS — SOURCE/PRIVACY UNIT/OFFSCREEN VISUAL + CLEAN REAL PROCESS; รอ Bom ตรวจ interaction บน macOS live, Hosting/API/Privacy ยังไม่ผ่าน | `source/v5_pages.py`, `source/services/registration_envelope.py`, `source/i18n.py`, `source/tests/test_registration_envelope.py`, `source/tests/test_setup_wizard_v5.py`, `/tmp/komi-v51-polish-price.png`, `/tmp/komi-v51-polish-calendar.png`, `/tmp/komi-v51-polish-slots-2.png`, `/tmp/komi-v51-combo-popup.png`, `/tmp/komi-v51-registration-review.png` |
@@ -1477,6 +1493,6 @@ V5.0 foundation เดิมเสร็จตามรายการด้า�
 - [x] Desktop และ Web Reports ใช้ Overview / Users / Printers, ช่วงเวลาเดียว และ Cross-filter โดยไม่เปิดเผย Cache/Ledger เป็นสองยอด
 - [x] Web Edition เปิดผ่าน LAN IP ได้, ใช้ฐานข้อมูลเดียวกับ Desktop และไม่ส่ง credential ผ่าน API
 - [x] Web Edition มี Login, จัดการรหัสจาก Desktop เท่านั้น, เก็บ hash/ตัด session เก่า และปิด Python API ดิบจาก LAN
-- [ ] Web Edition มี HTTPS/reverse proxy ก่อนเปิดใช้นอก Trusted LAN
+- [x] Web Edition ใช้ HTTPS-only LAN listener พร้อม per-install/customer certificate และไม่ expose direct API/HTTP บน LAN
 - [x] Live UAT ผ่านอย่างน้อยหนึ่งเครื่องโดย credential ไม่ปรากฏใน log/export
 - [ ] Bom ทดลอง workflow หลักและยอมรับผลลัพธ์

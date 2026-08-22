@@ -140,6 +140,21 @@ def _write_values(path: Path, values: dict[str, str]) -> None:
     temporary.replace(path)
 
 
+def read_web_runtime_values(env_path: Path) -> dict[str, str]:
+    """Read machine-local runtime metadata; callers must never log secret values."""
+
+    return _read_values(env_path.expanduser().resolve())
+
+
+def update_web_runtime_values(env_path: Path, updates: dict[str, str]) -> None:
+    """Atomically update non-plaintext runtime configuration beside auth secrets."""
+
+    values = _read_values(env_path.expanduser().resolve())
+    values.update(updates)
+    values.pop(LEGACY_ACCESS_CODE_KEY, None)
+    _write_values(env_path, values)
+
+
 def ensure_web_access(env_path: Path, *, migrate_from: Path | None = None) -> dict[str, str]:
     """Create or migrate a credential file without persisting a plaintext access code."""
 

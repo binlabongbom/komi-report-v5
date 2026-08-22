@@ -147,8 +147,8 @@ class WebServiceManager:
                 default_detail = "Web service ปิดอยู่"
             return WebServiceStatus(
                 state=state,
-                local_url="http://127.0.0.1:3000",
-                lan_url=f"http://{_lan_ip()}:3000",
+                local_url="https://127.0.0.1:3000",
+                lan_url=f"https://{_lan_ip()}:3000",
                 detail=detail or default_detail,
                 log_path=self.log_path,
             )

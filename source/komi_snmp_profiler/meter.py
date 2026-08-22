@@ -6,11 +6,18 @@ from typing import Protocol
 
 from .connectors import (
     AuthenticatedWebConnectionCounterConnector,
+    TlsPolicy,
     WebConnectionCounterConnector,
     WebConnectionError,
 )
 from .credential_store import AdminCredential, CredentialStore, CredentialStoreError
-from .meter_export import MeterExportKind, MeterExportReader, MeterExportTable, subject_name_map
+from .meter_export import (
+    MeterCountExportConnector,
+    MeterExportKind,
+    MeterExportReader,
+    MeterExportTable,
+    subject_name_map,
+)
 from .models import MeterReading, WebAuthState
 
 
@@ -30,9 +37,9 @@ class MeterReader:
         export_reader: MeterExportReaderLike | None = None,
     ) -> None:
         self.credential_store = credential_store
-        self.public_connector = public_connector or WebConnectionCounterConnector()
-        self.admin_connector = admin_connector or AuthenticatedWebConnectionCounterConnector()
-        self.export_reader = export_reader or MeterExportReader(credential_store)
+        self.public_connector = public_connector
+        self.admin_connector = admin_connector
+        self.export_reader = export_reader
 
     def save_credential(self, host: str, credential: AdminCredential) -> None:
         self.credential_store.save(self._host(host), credential)
@@ -46,6 +53,17 @@ class MeterReader:
     def read(self, host: str) -> MeterReading:
         host = self._host(host)
         warnings: list[str] = []
+        policy_provider = getattr(self.credential_store, "tls_policy", None)
+        tls_policy = policy_provider(host) if callable(policy_provider) else TlsPolicy()
+        if tls_policy.mode == "insecure":
+            warnings.append(
+                "คำเตือน: ปิดการตรวจสอบ TLS certificate แบบ explicit compatibility; "
+                "ควรเปลี่ยนเป็น trusted certificate หรือ fingerprint pinning"
+            )
+        public_connector = self.public_connector or WebConnectionCounterConnector(tls_policy=tls_policy)
+        admin_connector = self.admin_connector or AuthenticatedWebConnectionCounterConnector(
+            tls_policy=tls_policy
+        )
         credential: AdminCredential | None = None
         try:
             credential = self.credential_store.load(host)
@@ -53,9 +71,9 @@ class MeterReader:
             warnings.append("อ่าน session credential ไม่สำเร็จ จึงใช้ public counter เท่านั้น")
         if credential is not None:
             try:
-                result = self.admin_connector.collect_with_credential(host, credential)
+                result = admin_connector.collect_with_credential(host, credential)
                 counters = list(result.counters)
-                counters, identity_warnings = self._enrich_subject_names(host, counters)
+                counters, identity_warnings = self._enrich_subject_names(host, counters, tls_policy)
                 return MeterReading.create(
                     host,
                     counters,
@@ -67,7 +85,7 @@ class MeterReader:
                 warnings.append(
                     "Administrator session ใช้งานไม่ได้หลังลองเพียงหนึ่งครั้ง; ใช้ public fallback เพื่อหลีกเลี่ยง lockout"
                 )
-        result = self.public_connector.collect_result(host)
+        result = public_connector.collect_result(host)
         auth_state = WebAuthState.PUBLIC_FALLBACK if warnings else WebAuthState.PUBLIC
         return MeterReading.create(
             host,
@@ -81,6 +99,7 @@ class MeterReader:
         self,
         host: str,
         counters: list,
+        tls_policy: TlsPolicy,
     ) -> tuple[list, list[str]]:
         kinds: set[MeterExportKind] = set()
         for counter in counters:
@@ -95,10 +114,14 @@ class MeterReader:
 
         names_by_type: dict[str, dict[str, str]] = {}
         warnings: list[str] = []
+        export_reader = self.export_reader or MeterExportReader(
+            self.credential_store,
+            connector=MeterCountExportConnector(tls_policy=tls_policy),
+        )
         for kind in sorted(kinds):
             subject_type = "user" if kind == "User" else "account"
             try:
-                names = subject_name_map(self.export_reader.read(host, kind))
+                names = subject_name_map(export_reader.read(host, kind))
             except (CredentialStoreError, WebConnectionError, ValueError):
                 warnings.append(f"อ่านชื่อ {kind} จาก RAM Meter export ไม่สำเร็จ; คง subject ID ไว้")
                 continue

@@ -38,9 +38,10 @@ confidence, auth state และ canonical schema `komi.meter.reading.v1` ไว
 
 - ไม่มี SNMP write
 - Web Connection Meter Reader ใช้เฉพาะ read allowlist และ logout/clear session เมื่อจบ
-- Username หน้า Setup กำหนดเป็น `administrator`; Password เริ่มต้นตาม requirement และแก้แยกรายเครื่องได้
+- Username หน้า Setup กำหนดเป็น `administrator`; ไม่มี Password เริ่มต้นและต้องกรอกค่าที่ผู้ดูแลเครื่องกำหนด
 - Credential ถูกจำไว้ใน local database โดยตั้งใจ และไม่ถูกเขียนลง log/export
-- ไม่มี macOS Keychain/Windows Credential Manager ตามข้อกำหนดของผู้ใช้
+- Printer credential อยู่ใน macOS Keychain/Windows Credential Manager ผ่าน OS vault; SQLite เก็บเฉพาะ reference
+- Web Connection ตรวจ trusted TLS หรือ SHA-256 certificate pin โดย default; insecure Lab compatibility ต้องระบุชัด
 - Private OID ที่ไม่มีหลักฐานจะไม่ถูกเดาความหมาย
 
 ## Setup

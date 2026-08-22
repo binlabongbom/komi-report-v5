@@ -5,6 +5,7 @@ import os
 import shutil
 import signal
 import socket
+import ssl
 import subprocess
 import sys
 import time
@@ -23,6 +24,29 @@ def _wait_for_port(host: str, port: int, process: subprocess.Popen[bytes], timeo
         except OSError:
             time.sleep(0.25)
     raise TimeoutError(f"server ที่ {host}:{port} ไม่พร้อมภายใน {timeout:.0f} วินาที")
+
+
+def _https_open(host: str, port: int) -> bool:
+    context = ssl.create_default_context()
+    context.check_hostname = False
+    context.verify_mode = ssl.CERT_NONE
+    try:
+        with socket.create_connection((host, port), timeout=0.5) as connection:
+            with context.wrap_socket(connection, server_hostname=host):
+                return True
+    except OSError:
+        return False
+
+
+def _wait_for_https(host: str, port: int, process: subprocess.Popen[bytes], timeout: float = 30.0) -> None:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if process.poll() is not None:
+            raise RuntimeError(f"HTTPS server หยุดก่อนพร้อมใช้งาน (exit {process.returncode})")
+        if _https_open(host, port):
+            return
+        time.sleep(0.25)
+    raise TimeoutError(f"HTTPS server ที่ {host}:{port} ไม่พร้อมภายใน {timeout:.0f} วินาที")
 
 
 def _lan_ip() -> str:
@@ -71,14 +95,15 @@ def run(
     source_root = source_root.resolve()
     web_runtime = web_runtime.expanduser().resolve()
     api_ready = _port_open("127.0.0.1", 8766)
-    web_ready = _port_open("127.0.0.1", 3000)
+    web_port_open = _port_open("127.0.0.1", 3000)
+    web_ready = _https_open("127.0.0.1", 3000) if web_port_open else False
     if api_ready and web_ready:
-        local_url = "http://127.0.0.1:3000"
+        local_url = "https://127.0.0.1:3000"
         print(f"KOMI Report Web ทำงานอยู่แล้ว: {local_url}", flush=True)
         if open_browser:
             webbrowser.open(local_url)
         return 0
-    if api_ready or web_ready:
+    if api_ready or web_port_open:
         raise RuntimeError(
             "พบ Web service เพียงบางส่วน กรุณาปิด process ที่ใช้ port 3000/8766 แล้วเปิดใหม่"
         )
@@ -110,11 +135,11 @@ def run(
         _wait_for_port("127.0.0.1", 8766, api)
 
         web = subprocess.Popen([npm, "run", "start"], cwd=web_runtime, env=environment)
-        _wait_for_port("127.0.0.1", 3000, web)
+        _wait_for_https("127.0.0.1", 3000, web)
 
-        local_url = "http://127.0.0.1:3000"
+        local_url = "https://127.0.0.1:3000"
         print(f"KOMI Report Web พร้อม: {local_url}", flush=True)
-        print(f"ผู้ใช้ใน Trusted LAN เปิดได้ที่: http://{_lan_ip()}:3000", flush=True)
+        print(f"ผู้ใช้ใน LAN เปิดแบบเข้ารหัสได้ที่: https://{_lan_ip()}:3000", flush=True)
         print("ปิดหน้าต่างนี้เพื่อหยุด Web Server", flush=True)
         if open_browser:
             webbrowser.open(local_url)

@@ -6376,8 +6376,7 @@ class PageManual(QWidget):
 
         lay.addWidget(self._card("ขั้นตอนดาวน์โหลดผ่านเว็บ (Web Connection)", [
             self._step(1, "เปิด Browser แล้วพิมพ์ IP Address ของเครื่องในช่อง URL\nเช่น  http://192.168.1.100"),
-            self._step(2, "ล็อกอินด้วยบัญชี Administrator\n"
-                          "username: admin   |   password: 12345678  หรือ  1234567812345678"),
+            self._step(2, "ล็อกอินด้วยบัญชี Administrator และ password ที่ผู้ดูแลเครื่องกำหนดไว้"),
             self._step(3, "เลือกเมนู  [Maintenance]  ในแถบด้านซ้ายหรือด้านบน"),
             self._step(4, "เลือก  [Import/Export]"),
             self._step(5, "เลือกหัวข้อ  [Meter Count]"),
