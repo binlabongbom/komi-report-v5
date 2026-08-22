@@ -12,7 +12,7 @@ current_phase: Phase 5 complete — PILOT HOLD from live Registration schema mis
 current_task: hold Pilot until the deployed API accepts the current Desktop serial_number contract
 next_action: migrate the deployed schema-v2 allow-list/storage/Dashboard from device_instance_id to serial_number, keep the canonical www endpoint, then rerun current-client E2E
 problem: POST https://www.dmskm.com/api/v1/installations/register returns HTTP 422 VALIDATION_ERROR because device_inventory.devices.0.serial_number is not accepted
-updated_at: 2026-08-22T19:51:06+07:00
+updated_at: 2026-08-22T19:52:00+07:00
 ---
 
 # Production Phase 5 — Pilot Release & Go-Live Readiness
@@ -148,6 +148,7 @@ Data flow: verified integration commit → regression/release-safety → unsigne
 | 2026-08-22 19:47 +07 | Relevant regression | Registration/release/recovery/Billing/Excel/printer gates ต้องไม่ถอย | `126 passed`, มีเพียง 2 warning เดิมจาก virtual-printer compatibility | PASS | focused pytest suite |
 | 2026-08-22 19:48 +07 | Pilot package identity refresh | HOLD reason/hash/source/installer ต้องตรวจย้อนกลับได้ | bundle regenerated with `registration_e2e=hold-live-contract-mismatch`; Pilot SHA256 `cdbc661a86…`; installer SHA256 `39807a0645…`; source SHA256 `d5d9f043…`; source commitคง `be48735cc43703f2f7f172d08562ae895da77793` | PASS — PACKAGE / HOLD | `PILOT_MANIFEST.json`, ZIP sidecar, `RC_MANIFEST.json`, source manifest |
 | 2026-08-22 19:51 +07 | Correction Dashboard sync/verify | final live HOLD state ต้องเข้า Dashboard data และยัง build/test/lint ได้ | synced 33 projects; build ผ่าน; 8 testsผ่าน; ESLint ผ่าน | PASS | `npm --prefix ~/Projects/portfolio-site run dashboard:update` |
+| 2026-08-22 19:52 +07 | Final correction handoff | Control Center และ Phase 6 ต้องได้รับ source gate/decision/runtime blocker โดยไม่มี secret | ส่ง Outcome → Evidence → exact unlock ไป task หลัก `01a0146d…` และ full source gate ไป Phase 6 `01a02975…` สำเร็จ | PASS | Codex task message acknowledgements |
 
 ## Definition of Done
 

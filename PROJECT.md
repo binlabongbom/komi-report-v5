@@ -12,7 +12,7 @@ current_phase: Production Phase 5 complete — PILOT HOLD from live Registration
 current_task: keep Pilot blocked until the deployed API accepts the current Desktop serial_number schema
 next_action: migrate deployed schema-v2 allow-list/storage/Dashboard from device_instance_id to serial_number, keep canonical www endpoint, then rerun current-client E2E
 problem: Live POST /api/v1/installations/register returns HTTP 422 VALIDATION_ERROR for device_inventory.devices.0.serial_number
-updated_at: 2026-08-22T19:51:06+07:00
+updated_at: 2026-08-22T19:52:00+07:00
 ---
 
 # KOMI Report V5.1
