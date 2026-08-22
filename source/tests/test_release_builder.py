@@ -135,6 +135,15 @@ def test_macos_bundle_disables_runtime_bytecode_writes():
     assert "sys.dont_write_bytecode = True" in hook.read_text(encoding="utf-8")
 
 
+def test_macos_archive_keeps_secret_scanning_enabled():
+    packager = (PROJECT_ROOT / "source" / "tools" / "package_macos_release.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert "assert_zip_safe(ARCHIVE)" in packager
+    assert "scan_secrets=False" not in packager
+
+
 def test_windows_portable_launchers_support_unc_redirected_folders():
     for launcher in (SETUP_CMD, START_CMD, START_DEBUG_CMD):
         assert 'pushd "%~dp0"' in launcher

@@ -45,7 +45,7 @@ def package_macos_app() -> tuple[Path, str]:
         ],
         check=True,
     )
-    assert_zip_safe(ARCHIVE, scan_secrets=False)
+    assert_zip_safe(ARCHIVE)
     digest = hashlib.sha256(ARCHIVE.read_bytes()).hexdigest()
     CHECKSUM.write_text(f"{digest}  {ARCHIVE.name}\n", encoding="utf-8")
     with info_plist.open("rb") as stream:
