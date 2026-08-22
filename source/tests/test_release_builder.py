@@ -106,6 +106,7 @@ def test_source_release_manifest_contains_traceability_fields(tmp_path, monkeypa
     manifest = json.loads((tmp_path / "MANIFEST.json").read_text(encoding="utf-8"))
 
     assert count > 0
+    assert count == manifest["file_count"]
     assert digest == hashlib.sha256(archive.read_bytes()).hexdigest()
     assert manifest["version"] == "5.1.0"
     assert manifest["artifact"] == archive.name

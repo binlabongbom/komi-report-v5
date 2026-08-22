@@ -130,7 +130,7 @@ def build_source_archive() -> tuple[Path, str, int]:
         json.dumps(manifest, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
-    return archive, digest, len(files)
+    return archive, digest, len(files) + 1
 
 
 if __name__ == "__main__":
