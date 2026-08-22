@@ -12,7 +12,7 @@
 >
 > ### ผลลัพธ์ข้อมูลที่ต้องตรวจสอบได้
 >
-> ระบบต้องทำให้ทีม KOMI ที่ได้รับสิทธิ์ตรวจสอบข้อมูลต่อไปนี้ได้ โดยรับ Serial No เป็นข้อมูลเครื่องสำหรับงาน Registration ตาม Privacy Notice ที่อนุมัติ และยังคงปิดข้อมูลการใช้งาน/เครือข่ายอื่นตาม privacy boundary:
+> ระบบต้องทำให้ทีม KOMI ที่ได้รับสิทธิ์ตรวจสอบข้อมูลต่อไปนี้ได้ โดยรับ Serial No เป็นข้อมูลอุปกรณ์สำหรับงาน Registration ตาม Registration Data Notice ที่อนุมัติ และยังคงปิดข้อมูลการใช้งาน/เครือข่ายอื่นตาม data boundary:
 >
 > 1. ชื่อบริษัท
 > 2. `installation_id` แบบ UUID
@@ -68,7 +68,7 @@
 >
 > `konica_discovered_count` คือจำนวน Konica Minolta ทั้งหมดที่พบจาก IP scan ตอนลงทะเบียน ไม่จำกัดที่ 3 เครื่อง ส่วน `selected=true` คือเครื่องที่ลูกค้าเลือกสำหรับอ่าน Report ซึ่งยังจำกัดสูงสุด 3 เครื่องตามความสามารถของ Desktop. `serial_number` เป็น identity ของเครื่องจริงและต้อง unique ภายใน snapshot; Dashboard สามารถแสดง Serial No เต็มแก่ role ที่อนุมัติ และใช้ Short Serial ในหน้ารวมได้
 >
-> การเปลี่ยนแปลงนี้เป็นข้อมูลหลังบ้านเท่านั้น ห้ามเพิ่มคำเตือน/ข้อความขาย Print Management หรือเปลี่ยน workflow ฝั่งผู้ใช้. ห้ามรับหรือเก็บ IP address, MAC address, hostname, username/password/credential, meter/counter, user/account, document name/content และ application log ใน Registration/Heartbeat. Serial No เป็นข้อยกเว้นที่ต้องระบุใน Privacy Notice, retention/access/export policy และต้องผ่าน DPO/Security approval ก่อน production
+> การเปลี่ยนแปลงนี้เป็นข้อมูลหลังบ้านเท่านั้น ห้ามเพิ่มคำเตือน/ข้อความขาย Print Management หรือเปลี่ยน workflow ฝั่งผู้ใช้. ห้ามรับหรือเก็บ IP address, MAC address, hostname, username/password/credential, meter/counter, user/account, document name/content และ application log ใน Registration/Heartbeat. Company ต้องเป็นชื่อนิติบุคคล/หน่วยงานและห้ามกรอกชื่อบุคคล; Serial No เป็นข้อมูลอุปกรณ์. ทั้งสองรายการต้องอยู่ใน Registration Data Notice และ retention/access policy ที่ Product owner/Hosting Security อนุมัติก่อน Production
 >
 > Response ที่ต้องการสำหรับ register ทั้งกรณีสร้างใหม่และยิงซ้ำ:
 >
@@ -225,11 +225,15 @@
   attempt history เก็บสูงสุด 50 รายการต่อ operation และเมื่อ lifecycle ใหม่สำเร็จจะ prune completed/superseded payload เก่า
   เพื่อลด local Serial No retention.
 - Factory Reset ลบ registration attempts/outbox/profile และ scoped token; หาก vault ใช้งานไม่ได้จะไม่ลบ local state ครึ่งเดียว.
+- Registration Data Notice ไทย/อังกฤษอยู่ที่ `docs/REGISTRATION_DATA_NOTICE.md` และข้อความที่แอปแสดงอยู่ที่
+  `source/services/registration_data_notice.py`. Payload ออกแบบเป็นข้อมูลนิติบุคคล/Installation/อุปกรณ์ ไม่ใช่ข้อมูลบุคคล;
+  ระบบหลังบ้าน/พื้นที่จัดเก็บคือ `https://www.dmskm.com/` ในประเทศไทย และเจ้าของระบบยืนยันว่า API/Application log
+  ไม่จัดเก็บ Source IP, Raw request body หรือ Token. การยืนยันนี้ปิด data-boundary question แต่ไม่ใช่ OpenAPI/Staging E2E proof.
 
 ### Evidence gap ที่ยังบล็อก Production
 
 ณ วันที่ 2026-08-22 ยังไม่มี OpenAPI/deployed staging artefact, verified environment, bootstrap lifecycle,
-token rotate/revoke/error contract หรือ approved Privacy Notice/DPO/Legal retention/access/export/deletion evidence อยู่ใน
+token rotate/revoke/error contract หรือ approved Registration Data Notice/Hosting Security retention/access/deletion evidence อยู่ใน
 nested repository นี้ จึงยังไม่ทำ live Registration request, staging E2E, Dashboard read-back หรือ cleanup และสถานะยังเป็น
 **Technical Pass / Production blocked**.
 

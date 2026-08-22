@@ -133,6 +133,7 @@ from services.pipeline_log import PipelineEvent, pipeline_log
 from services.polling import PollingPolicy, ScheduleWindow
 from services.pricing import PriceList, PricingRepository
 from services.reconciliation import ReconciliationReport, reconcile_web_counters
+from services.registration_data_notice import registration_data_notice
 from services.registration_envelope import (
     build_registration_envelope,
     normalize_device_models,
@@ -1300,7 +1301,7 @@ class SetupWizardV5(QDialog):
 
         self.company_notice = QLabel(
             "<b>ขอบเขตข้อมูลที่ปลอดภัย:</b> Registration ส่ง Serial Number, Model และสถานะเลือกใช้ตาม "
-            "Privacy Notice · ไม่ส่ง IP, MAC, hostname, Credential, Meter, ผู้ใช้, เอกสาร หรือ Log"
+            "ประกาศข้อมูลการลงทะเบียน · ไม่ส่ง IP, MAC, hostname, Credential, Meter, ผู้ใช้, เอกสาร หรือ Log"
         )
         self.company_notice.setWordWrap(True)
         self.company_notice.setFixedWidth(760)
@@ -1322,35 +1323,35 @@ class SetupWizardV5(QDialog):
         privacy_layout.setSpacing(8)
         privacy_row = QHBoxLayout()
         privacy_copy = QVBoxLayout()
-        privacy_title = QLabel("Privacy Notice สำหรับ Registration")
+        privacy_title = QLabel("ประกาศข้อมูลการลงทะเบียน")
         privacy_title.setFont(fnt(F_MD, True))
         self.privacy_notice_status = QLabel()
         self.privacy_notice_status.setWordWrap(True)
         privacy_copy.addWidget(privacy_title)
         privacy_copy.addWidget(self.privacy_notice_status)
         privacy_row.addLayout(privacy_copy, 1)
-        self.view_privacy_notice_button = btn("ดู Privacy Notice", "outline")
-        self.view_privacy_notice_button.setAccessibleName("เปิดดู Privacy Notice สำหรับ Registration")
+        self.view_privacy_notice_button = btn("ดูข้อมูลที่ส่ง", "outline")
+        self.view_privacy_notice_button.setAccessibleName("เปิดดูประกาศข้อมูลการลงทะเบียน")
         self.view_privacy_notice_button.clicked.connect(self._show_privacy_notice)
         privacy_row.addWidget(self.view_privacy_notice_button)
         privacy_layout.addLayout(privacy_row)
-        self.privacy_notice_accepted = QCheckBox("ฉันได้อ่านและยอมรับ Privacy Notice ฉบับนี้")
-        self.privacy_notice_accepted.setAccessibleName("ยอมรับ Privacy Notice สำหรับ Registration")
+        self.privacy_notice_accepted = QCheckBox("ฉันได้อ่านและรับทราบข้อมูลการลงทะเบียนฉบับนี้")
+        self.privacy_notice_accepted.setAccessibleName("รับทราบประกาศข้อมูลการลงทะเบียน")
         policy = self.registration_policy
         notice_ready = bool(policy and policy.notice.complete)
         self.privacy_notice_accepted.setEnabled(notice_ready)
         if notice_ready:
             self.privacy_notice_status.setText(
                 tr(
-                    f"ฉบับ {policy.notice.version} · อนุมัติแล้ว · ต้องยอมรับก่อนส่งข้อมูล",
-                    f"Version {policy.notice.version} · approved · acceptance is required before sending",
+                    f"ฉบับ {policy.notice.version} · อนุมัติแล้ว · ต้องรับทราบก่อนส่งข้อมูล",
+                    f"Version {policy.notice.version} · approved · acknowledgement is required before sending",
                 )
             )
         else:
             self.privacy_notice_status.setText(
                 tr(
-                    "ยังไม่มี Privacy Notice ฉบับอนุมัติ · โปรแกรมจะบันทึกในเครื่องและปิดการส่ง Production",
-                    "No approved Privacy Notice is available · local setup remains available and production sending is disabled",
+                    "ยังไม่ได้อนุมัติการส่งข้อมูล · โปรแกรมจะบันทึกในเครื่องและปิดการส่ง Production",
+                    "Data delivery is not approved · local setup remains available and production sending is disabled",
                 )
             )
         privacy_layout.addWidget(self.privacy_notice_accepted)
@@ -1395,7 +1396,9 @@ class SetupWizardV5(QDialog):
 
     def _show_privacy_notice(self) -> None:
         dialog = QDialog(self)
-        dialog.setWindowTitle(tr("Privacy Notice สำหรับ Registration", "Registration Privacy Notice"))
+        dialog.setWindowTitle(
+            tr("ประกาศข้อมูลการลงทะเบียน", "Registration Data Notice")
+        )
         dialog.resize(680, 520)
         layout = QVBoxLayout(dialog)
         notice = self.registration_policy.notice if self.registration_policy else None
@@ -1418,14 +1421,7 @@ class SetupWizardV5(QDialog):
                 )
             )
         else:
-            text.setPlainText(
-                tr(
-                    "DRAFT / ยังไม่อนุมัติ\n\nยังไม่มี Privacy Notice, legal basis, retention, access/export "
-                    "และ deletion workflow ที่อนุมัติ โปรแกรมจึงปิดการส่ง Registration ไว้",
-                    "DRAFT / NOT APPROVED\n\nNo approved Privacy Notice, legal basis, retention, access/export, "
-                    "or deletion workflow is available. Registration sending is disabled.",
-                )
-            )
+            text.setPlainText(registration_data_notice(get_language()))
         layout.addWidget(text)
         close_button = btn(tr("ปิด", "Close"), "primary")
         close_button.clicked.connect(dialog.accept)
@@ -3008,7 +3004,7 @@ class SetupWizardV5(QDialog):
             f"{escape(str(row['model']))} × {row['quantity']}" for row in model_rows
         ) or "—"
         self.review_sections["registration"].setText(
-            f"<b>{tr('ข้อมูลที่จะส่งเมื่อผ่าน Privacy gate:', 'Data sent after the Privacy gate passes:')}</b> "
+            f"<b>{tr('ข้อมูลที่จะส่งเมื่ออนุมัติ Registration:', 'Data sent after Registration approval:')}</b> "
             f"{tr('ชื่อบริษัท:', 'Company:')} {company} · Version {escape(PACKAGE_VERSION)} · "
             f"{escape(platform_name)} / {escape(architecture)} · "
             f"{tr('Serial Number + รุ่นเครื่อง + สถานะเลือกใช้', 'serial number + printer model + selected state')} "
@@ -3016,7 +3012,7 @@ class SetupWizardV5(QDialog):
             f"<b>{tr('ไม่ส่ง:', 'Never sent:')}</b> "
             f"{tr('IP, MAC, hostname, Credential, Meter, ผู้ใช้, เอกสาร หรือ Log', 'IP, MAC, hostname, credentials, meters, users, documents, or logs')}<br>"
             f"<b>{tr('สถานะ:', 'Status:')}</b> "
-            f"{tr('บันทึกในเครื่องก่อน · ส่งภายหลังแบบ Background เมื่อผ่าน Privacy gate', 'saved locally first · sent later in the background after the Privacy gate passes')}"
+            f"{tr('บันทึกในเครื่องก่อน · ส่งภายหลังแบบ Background เมื่ออนุมัติ Registration', 'saved locally first · sent later in the background after Registration approval')}"
         )
         if self.registration_policy and self.registration_policy.notice.complete:
             self.registration_status_label.setText(
@@ -9069,8 +9065,8 @@ class PageFleetSettings(QWidget):
         self.registration_retry_button.setAccessibleName("ลองส่งข้อมูลลงทะเบียนอีกครั้ง")
         self.registration_retry_button.clicked.connect(self._retry_registration)
         registration_row = registration_card.layout().itemAt(0).layout()
-        self.registration_privacy_button = btn("ดู Privacy Notice", "outline")
-        self.registration_privacy_button.setAccessibleName("เปิดดู Privacy Notice สำหรับ Registration")
+        self.registration_privacy_button = btn("ดูข้อมูลที่ส่ง", "outline")
+        self.registration_privacy_button.setAccessibleName("เปิดดูประกาศข้อมูลการลงทะเบียน")
         self.registration_privacy_button.clicked.connect(self._show_registration_privacy)
         if registration_row is not None:
             registration_row.insertWidget(
@@ -9081,12 +9077,15 @@ class PageFleetSettings(QWidget):
             )
         self.registration_notice_accept = QCheckBox(
             tr(
-                "ฉันได้อ่านและยอมรับ Privacy Notice เวอร์ชันปัจจุบัน",
-                "I have read and accept the current Privacy Notice",
+                "ฉันได้อ่านและรับทราบข้อมูลการลงทะเบียนเวอร์ชันปัจจุบัน",
+                "I have read and acknowledge the current Registration Data Notice",
             )
         )
         self.registration_notice_accept.setAccessibleName(
-            tr("ยอมรับ Privacy Notice เวอร์ชันปัจจุบัน", "Accept the current Privacy Notice")
+            tr(
+                "รับทราบข้อมูลการลงทะเบียนเวอร์ชันปัจจุบัน",
+                "Acknowledge the current Registration Data Notice",
+            )
         )
         self.registration_notice_accept.clicked.connect(self._accept_registration_notice)
         registration_card.layout().addWidget(self.registration_notice_accept)
@@ -9769,8 +9768,8 @@ class PageFleetSettings(QWidget):
             "registration_policy_invalid",
         }:
             detail += tr(
-                " · Privacy Notice/การตั้งค่าการเชื่อมต่อยังไม่พร้อม",
-                " · the Privacy Notice or connection policy is not ready",
+                " · ประกาศข้อมูล/การตั้งค่าการเชื่อมต่อยังไม่พร้อม",
+                " · the Registration Data Notice or connection policy is not ready",
             )
         if summary.last_heartbeat_at:
             detail += tr(
@@ -9816,8 +9815,8 @@ class PageFleetSettings(QWidget):
         if accepted:
             self.registration_summary.setText(
                 tr(
-                    "ยอมรับ Privacy Notice แล้ว · จัดคิว Background ใหม่",
-                    "Privacy Notice accepted · background delivery re-queued",
+                    "รับทราบข้อมูลการลงทะเบียนแล้ว · จัดคิว Background ใหม่",
+                    "Registration Data Notice acknowledged · background delivery re-queued",
                 )
             )
 
@@ -9837,7 +9836,9 @@ class PageFleetSettings(QWidget):
 
     def _show_registration_privacy(self) -> None:
         dialog = QDialog(self)
-        dialog.setWindowTitle(tr("Privacy Notice สำหรับ Registration", "Registration Privacy Notice"))
+        dialog.setWindowTitle(
+            tr("ประกาศข้อมูลการลงทะเบียน", "Registration Data Notice")
+        )
         dialog.resize(680, 520)
         layout = QVBoxLayout(dialog)
         text = QPlainTextEdit()
@@ -9860,14 +9861,7 @@ class PageFleetSettings(QWidget):
                 )
             )
         else:
-            text.setPlainText(
-                tr(
-                    "DRAFT / ยังไม่อนุมัติ\n\nProduction Registration ถูกปิดไว้จนกว่าจะมี Privacy Notice, "
-                    "legal basis, retention, access/export และ deletion workflow ที่อนุมัติ",
-                    "DRAFT / NOT APPROVED\n\nProduction Registration remains disabled until an approved "
-                    "Privacy Notice, legal basis, retention, access/export, and deletion workflow are available.",
-                )
-            )
+            text.setPlainText(registration_data_notice(get_language()))
         layout.addWidget(text)
         close_button = btn(tr("ปิด", "Close"), "primary")
         close_button.clicked.connect(dialog.accept)
