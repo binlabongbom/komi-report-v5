@@ -6,7 +6,7 @@ thread_title: Production Phase 2 — Registration & Privacy
 dashboard_visible: true
 department: dev
 status: blocked
-progress: 88
+progress: 90
 owner: VEGA
 current_phase: Technical Pass complete; Production gate blocked
 current_task: finalize reviewed branch delivery and preserve fail-closed production state
@@ -99,8 +99,8 @@ Data flow:
 - [x] focused migration/outbox/client/worker/privacy/UI/secret tests
 - [ ] staging synthetic UAT + Dashboard read-back/cleanup — ไม่รันเพราะไม่พบ staging artefact; ห้ามใช้ production แทน
 - [x] full Python regression, Web build/security, lint/audits และ Phase 0 release-safety
-- [ ] outcome/maintainability review, workbook sync, branch/main/private origin clean
-- [ ] Dashboard publish handoff กลับ main thread
+- [x] outcome/maintainability review, workbook sync, branch/main/private origin clean
+- [x] Dashboard publish handoff กลับ main thread
 
 ## Problem / Blocker
 
@@ -133,6 +133,7 @@ Data flow:
 | 2026-08-22 13:01 +07 | Phase 0 release safety + live security | release allow-list/secret scan และ LAN HTTPS/auth/session ต้องไม่อ่อนลง | release builder `8 passed`; live security check ผ่าน TLS 1.3, auth/session/lockout/revocation และ Web build/audit | PASS | `test_release_builder.py`, `security_live_check.py --project-root .` |
 | 2026-08-22 13:04 +07 | Focused visual/accessibility | Settings status/privacy/acknowledgement ต้องเรียบง่ายและไม่ clip ที่ 1024px | Thai offscreen render ตรวจด้วยตาแล้ว; checkbox disabled ชัดเมื่อยังไม่มี approved/current notice; existing English/accessibility UI tests ผ่าน | PASS — FOCUSED | `/tmp/komi-phase2-settings-final.png`, `test_settings_v5.py` |
 | 2026-08-22 13:05 +07 | Staging E2E/Dashboard/cleanup | ต้องใช้ staging artefact จริงและ synthetic identity เท่านั้น | ไม่พบ staging artefact/OpenAPI ใน scope; ไม่สร้าง record และไม่ยิง production | BLOCKED — SAFE | repository/config audit |
+| 2026-08-22 13:48 +07 | Branch delivery | code gates ผ่านก่อน commit/fast-forward/push และ origin ต้องเป็น private target เดิม | implementation commit `1e27ec6`; Phase 2 branch fast-forward เข้า `main` และ push private origin; worktree clean | PASS | Git branch/main/origin status |
 
 ## Definition of Done
 
@@ -147,4 +148,4 @@ Data flow:
 - [ ] API/bootstrap/token/retention contracts ถูกบันทึกโดยไม่เปิด secret — client-side fail-closed contract บันทึกแล้ว แต่ deployed contract artefact ยังขาด
 - [x] approved Privacy Notice/DPO/Legal evidence มีจริง หรือรายงาน Technical Pass / Production blocked ชัดเจน — รายงาน blocked ตามจริง
 - [x] full regression, Web build/security, audits และ Phase 0 release safety ผ่าน
-- [ ] branch delivery/private origin clean และไม่เริ่ม Phase 3
+- [x] branch delivery/private origin clean และไม่เริ่ม Phase 3

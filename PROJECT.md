@@ -1486,6 +1486,7 @@ V5.0 foundation เดิมเสร็จตามรายการด้า�
 | Focused UI/accessibility | Setup/Settings tests ผ่าน; Thai Settings render 1024×760 ตรวจแล้วไม่ clip และ state disabled ชัด | PASS — SYNTHETIC/OFFSCREEN |
 | Independent review | ปิด findings เรื่อง stale outbox, worker wedge, redirect credentials, error sanitization, fingerprint, reset/vault, ack และ retention | PASS — CODE/TEST |
 | Staging first register/replay/offline/restart/heartbeat/auth/rate limit/invalid payload/Dashboard/cleanup | ไม่พบ verified staging/OpenAPI artefact ใน nested repo; ไม่ยิง production แทน | BLOCKED — SAFE |
+| Branch delivery | implementation commit `1e27ec6`; Phase 2 branch fast-forward เข้า `main` และ push private origin หลัง code gates | PASS |
 
 Task evidence แบบละเอียดอยู่ใน canonical thread workbook เดิมที่
 `work/01a02760-f602-7d70-9eea-05cc8685dd8c/PROJECT.md`; ไม่มีการสร้าง PROJECT v2/final ซ้ำ.
