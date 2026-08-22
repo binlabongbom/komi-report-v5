@@ -183,7 +183,7 @@ def test_setup_wizard_uses_the_approved_four_step_flow(tmp_path):
         assert "IP, MAC, hostname, Credential, Meter" in registration_review
         assert wizard.registration_status_label.text() == "ปิดการส่ง"
         assert wizard.privacy_notice_accepted.isEnabled() is False
-        assert "ยังไม่มี Privacy Notice ฉบับอนุมัติ" in wizard.privacy_notice_status.text()
+        assert "ยังไม่ได้อนุมัติการส่งข้อมูล" in wizard.privacy_notice_status.text()
         wizard.close()
         app.processEvents()
     finally:

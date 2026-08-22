@@ -5,14 +5,14 @@ thread_id: 019f69b5-6709-7e53-8ebf-a35114d233d0
 thread_title: Komi report V5
 dashboard_visible: true
 department: dev
-status: active
+status: blocked
 progress: 60
 owner: VEGA
-current_phase: Production Phase 4 Native Packaging & Release Candidate approved to start; Phase 3 Update deferred
-current_task: open a separate Phase 4 workbook/thread and establish the Windows 10/11 x64 native release baseline
-next_action: build and verify a Windows release candidate with clean install, upgrade, backup/restore, tray/autostart, LAN Web, real-device and controlled billing UAT
-problem: Windows native packaging/signing/UAT evidence is still absent; Registration remains fail-closed pending API and Privacy/Legal approval, while Update is explicitly out of the end-of-month release
-updated_at: 2026-08-22T13:52:00+07:00
+current_phase: Phase 4 Technical RC; signing deferred; Registration Data Notice drafted
+current_task: verify deployed OpenAPI/Staging, retention and Dashboard access controls on dmskm.com
+next_action: obtain deployed API artefacts and run staging Registration/Heartbeat plus Dashboard read-back
+problem: dmskm.com and non-personal data boundary are owner-confirmed, but Production Registration remains fail-closed pending deployed API/E2E evidence; Windows installer and Update remain deferred
+updated_at: 2026-08-22T17:17:22+07:00
 ---
 
 # KOMI Report V5.1
@@ -22,7 +22,10 @@ updated_at: 2026-08-22T13:52:00+07:00
 - Bom เลื่อน Production Phase 3 ระบบ Update ทั้งหมดออกจากเป้าหมาย Release สิ้นเดือนนี้ เนื่องจากเวลาไม่พอ.
 - เก็บ Signed Manifest, verified download, rollout และ updater/installer automation เป็น backlog หลัง Release; ห้ามลบ design เดิมและห้ามเริ่ม implementation โดยไม่มีงานใหม่ที่อนุมัติชัดเจน.
 - Release ปัจจุบันไปต่อที่ **Production Phase 4 — Native Packaging & Release Candidate** โดยใช้ Windows 10/11 x64 เป็นเป้าหมายลูกค้าหลัก, macOS เป็น Internal UAT และ Linux deferred.
-- Registration/Heartbeat คงสถานะ fail-closed จน OpenAPI/Staging และ Privacy/DPO/Legal gates ผ่าน; การข้าม Phase 3 ไม่ได้เปลี่ยน Phase 2 จาก Technical Pass / Production blocked เป็น Production Pass.
+- Registration/Heartbeat คงสถานะ fail-closed จน OpenAPI/Staging และ Registration Data Notice/Hosting Security gates ผ่าน; การข้าม Phase 3 ไม่ได้เปลี่ยน Phase 2 จาก Technical Pass / Production blocked เป็น Production Pass.
+- Bom เลื่อน Windows code signing ออกไปก่อนเพราะเป็นโปรแกรมแจกฟรี; ถือเป็น **Deferred / ยังไม่ผ่าน** ไม่ใช่ Signed release.
+  การทดสอบภายในหรือ Pilot ใช้ unsigned installer ได้เมื่อแจ้งคำเตือนและตรวจ SHA256 แต่ห้ามแสดง Publisher ว่า verified
+  หรือ claim ว่า Authenticode ผ่าน.
 - Release Candidate นี้ไม่มี forced/silent update, remote update command หรือ update telemetry.
 
 ## Goal
@@ -58,7 +61,7 @@ Release ที่ตรงกับ OS/architecture โดยไม่ส่ง 
 - Import `.txt`, parser, billing, history และ report behavior ที่ยังจำเป็นจาก V4.6
 - Import สำเนา Database V4.6 แบบ read-only เฉพาะ Meter/Usage History; Preview ก่อนเขียน, Backup V5,
   ตัด Account/IP/Credential/Price/Settings ออก, กันข้อมูลซ้ำด้วย row fingerprint และต่อ Timeline เข้ากับ V5 ตาม Slot
-- local-first; ส่งออกเฉพาะ Company Registration/Heartbeat/Update status ที่ประกาศใน Privacy Notice
+- local-first; ส่งออกเฉพาะข้อมูลนิติบุคคล/Installation/อุปกรณ์ใน Registration/Heartbeat ที่ประกาศใน Registration Data Notice
 - Registration schema v2 อนุญาตเฉพาะ installation ID, company, first-started date, app version, platform/architecture,
   timestamps และ device inventory จาก IP scan ที่มี Serial No + Model + Selected + Local Slot; ส่งเครื่องที่พบทั้งหมดได้เกิน 3
   แต่เลือกเครื่องอ่าน Report ได้สูงสุด 3 และยังห้ามส่ง IP, MAC, hostname, Credential, Counter, User, Document หรือ Application log
@@ -102,7 +105,7 @@ Release ที่ตรงกับ OS/architecture โดยไม่ส่ง 
   (`client_first_started_at`) และเวลาที่ Server รับ (`server_registered_at`) เพื่อ Audit
 - `Version ที่ใช้` อ่านจาก package version source เดียวและแสดง `5.1.0` แบบ read-only; ผู้ใช้ห้ามกรอกเอง
 - แสดงข้อความว่าโปรแกรมจะส่งชื่อบริษัท วันที่เริ่มใช้ Version, OS/architecture และรุ่นเครื่องไปยังระบบของผู้พัฒนา
-- แสดงลิงก์ Privacy Notice, วัตถุประสงค์, ระยะเวลาเก็บ และช่องทางขอแก้ไข/ลบข้อมูลก่อนดำเนินการ
+- แสดง Registration Data Notice, วัตถุประสงค์, ระยะเวลาเก็บ และช่องทางขอแก้ไข/ลบข้อมูล Installation ก่อนดำเนินการ
 - `Customer/Activation Code` เป็น security gate ที่แนะนำ แต่ยังไม่บังคับจนกว่าจะล็อกกระบวนการออก Code กับทีมขาย
 
 #### Step 2 — ค้นหาและเชื่อมต่อ
@@ -505,7 +508,7 @@ V5.0 foundation เดิมเสร็จตามรายการด้า�
 - [x] เปลี่ยน development/package version เป็น `5.1` / `5.1.0`
 - [x] ปรับ Registration API handoff เป็น target schema v2 สำหรับ Dashboard/Heartbeat history และ privacy-bounded device discovery/selection
 - [ ] ยืนยัน Hosting stack, Domain/API URL, Customer/Activation Code และผู้ดูแลระบบ
-- [ ] ให้ DPO/Legal อนุมัติ Privacy Notice, legal basis, retention และ deletion workflow
+- [ ] ให้ Product owner/Hosting Security อนุมัติ Registration Data Notice, Source-IP log policy, retention และ deletion workflow
 
 ### Phase 8 — V5.1 implementation and release
 
@@ -513,7 +516,7 @@ V5.0 foundation เดิมเสร็จตามรายการด้า�
 - [x] เปลี่ยน IP ตัวอย่างเป็น `192.168.1.1`–`192.168.1.255` และเพิ่ม Virtual Printer Setup Lab ที่ตอบ SNMP/Web จริง
 - [x] ทำ Setup Lab แบบ Mac-first ที่ใช้พอร์ต local ไม่ต้องขอ Admin แต่ส่งเข้า discovery/test worker ชุดเดียวกับ Windows
 - [x] บังคับ Light Theme ทั้ง 4 Step, ยืด Company fields, ล็อกสี Device table/Price scroll และกัน Header ชนกันใน macOS Dark Mode/Windows
-- [x] เพิ่ม Registration Envelope แบบ allow-list และบันทึกซอง Pending ในเครื่องหลัง Setup โดยยังไม่ส่งออกก่อนมี API/Privacy Notice
+- [x] เพิ่ม Registration Envelope แบบ allow-list และบันทึกซอง Pending ในเครื่องหลัง Setup โดยยังไม่ส่งออกก่อนมี API/Registration Data Notice
 - [x] ปรับ local schema v2 ให้เก็บผล IP scan ทุกเครื่องด้วย Serial No/Model และทำเครื่องหมาย selected/slot สูงสุด 3 โดยไม่เปลี่ยน UI
 - [ ] เพิ่ม local Registration repository/outbox พร้อม offline retry, idempotency และสถานะ Registered/Pending/Failed
 - [ ] สร้าง HTTPS Registration/Heartbeat API และ Private Admin Dashboard พร้อม MFA/RBAC/Audit log
@@ -570,8 +573,8 @@ V5.0 foundation เดิมเสร็จตามรายการด้า�
 - OpenAPI/API live schema v2 ยังบังคับ random `device_instance_id` และ reject Serial No; ต้องให้ทีม API เปลี่ยนเป็น
   `serial_number` พร้อม migration/index/retention/access control ก่อน Desktop ส่ง revised envelope จริง
 - Staging ใช้ host เดียวกับ production และ database instance เดียวกับ DMS (แม้แยก table); ต้องแยก environment
-  หรือให้ DPO/Security อนุมัติพร้อมมาตรการ isolation, retention และ deletion ที่ตรวจสอบได้
-- Privacy Notice, legal basis, retention/deletion และสิทธิ์เข้าถึง Dashboard ยังต้องผ่าน DPO/Legal
+  หรือให้ Hosting Security อนุมัติพร้อมมาตรการ isolation, retention และ deletion ที่ตรวจสอบได้
+- Registration Data Notice, Source-IP log policy, retention/deletion และสิทธิ์เข้าถึง Dashboard ยังต้องผ่าน Product owner/Hosting Security
 - One-click/forced update ยังไม่อนุมัติ; V5.1 จำกัดที่ Notify + Download จนผ่าน code signing และ native upgrade UAT
 - Canonical source ใหม่อยู่ใน `~/Projects/dev/komi-report-v5`; ต้นฉบับ OneDrive ยังเก็บเป็น rollback archive ห้ามแก้สองที่พร้อมกัน
 - Append-only Billing Ledger และ immutable evidence พร้อมแล้ว; รายงานย้อนหลังใช้เฉพาะยอดที่ยืนยันและห้ามคำนวณทับ
@@ -620,6 +623,9 @@ V5.0 foundation เดิมเสร็จตามรายการด้า�
 
 ## Decisions and Changes
 
+- 2026-08-22 — Bom ยืนยัน Registration payload เป็นข้อมูลนิติบุคคล/Installation/อุปกรณ์และ API ที่เก็บบน
+  `https://www.dmskm.com/` ไม่จัดเก็บ Source IP. เปลี่ยนข้อความผู้ใช้จาก Privacy Notice/Consent เป็น Registration
+  Data Notice/Acknowledgement ทั้งไทยและอังกฤษ; หาก configuration เปลี่ยนให้เก็บข้อมูลบุคคลจึงค่อยเปิด privacy assessment แยก.
 - 2026-08-22 — เริ่ม Production Phase 1 Security Baseline ใน task workbook
   `work/01a02733-fd41-78c3-aa89-e735a595a458/PROJECT.md` บน branch `codex/phase-1-security-baseline`.
   คง local-first modular monolith; FastAPI loopback-only, LAN Web ต้อง HTTPS, certificate ต่อ installation/customer-provided,
@@ -628,7 +634,9 @@ V5.0 foundation เดิมเสร็จตามรายการด้า�
   Konica Minolta ทุกเครื่องที่พบจาก IP scan ตอนลงทะเบียน พร้อม Model/Selected/Local Slot. จำนวน discovered ไม่จำกัดที่ 3
   แต่ Desktop ยังคงเลือกอ่าน Report ได้สูงสุด 3 เครื่อง. เป็นข้อมูลหลังบ้านเท่านั้น ไม่เพิ่มคำเตือน/ข้อความขายสินค้า
   หรือเปลี่ยนหน้าตาแอป. Hosting ยังคงห้ามรับ IP, MAC, hostname, Credential, Counter, User, Document และ Application log;
-  Serial No ต้องอยู่ใน Privacy Notice/retention/access policy และผ่าน DPO/Security approval ก่อน production.
+  Company ต้องเป็นชื่อนิติบุคคล/หน่วยงานและ Serial No เป็นข้อมูลอุปกรณ์; ทั้งคู่ต้องอยู่ใน Registration Data Notice/
+  retention/access policy และผ่าน Product owner/Hosting Security approval ก่อน production. หาก Hosting เก็บ Source IP
+  หรือข้อมูลบุคคล ต้องเปิด privacy assessment แยก.
 - 2026-08-20 — Step 3 shared-pricing ต้องแสดง `วิธีใช้ราคา → วันที่เริ่มใช้ → ตารางราคา → รอบบิล/วันตัดรอบ`
   ครบใน viewport เดียวที่ 1120×720 และขนาดขั้นต่ำ 980×620 โดย vertical scroll เป็น 0. ใช้พื้นที่แนวนอนสำหรับ
   heading/help และ billing controls, คง touch target อย่างน้อย 42–44 px, ย่อเฉพาะ spacing/padding ที่ฟุ่มเฟือย,
@@ -1474,9 +1482,12 @@ V5.0 foundation เดิมเสร็จตามรายการด้า�
   request fingerprint/idempotency, stale-operation supersede, retry/backoff+jitter/Retry-After และ restart recovery โดยไม่เปลี่ยน Billing tables/semantics.
 - Setup commit local ก่อน registration enqueue; outbox/network failure ไม่ย้อน device/pricing/settings และไม่ขวางการเปิดแอป.
 - Registration worker ใช้ executor แยกจาก printer polling, heartbeat cadence มาจาก typed response และเก็บ scoped token ใน OS vault เท่านั้น.
-- Production sender fail-closed เมื่อ policy artefact หาย/invalid, Privacy Notice ยังไม่อนุมัติ หรือ acknowledgement ไม่ตรง version.
+- Production sender fail-closed เมื่อ policy artefact หาย/invalid, Registration Data Notice ยังไม่อนุมัติ หรือ acknowledgement ไม่ตรง version.
 - Settings แสดงสถานะไทย/อังกฤษแบบ `registered`, `pending`, `offline retry`, `action required`, มี Manual Retry,
-  Privacy Notice viewer และ acknowledgement เวอร์ชันปัจจุบัน โดยไม่เพิ่มเมนูซับซ้อน.
+  Registration Data Notice viewer และ acknowledgement เวอร์ชันปัจจุบัน โดยไม่เพิ่มเมนูซับซ้อน.
+- เพิ่ม Registration Data Notice ไทย/อังกฤษ `DRAFT-2026-08-22` ตาม payload จริง และแสดงจาก Setup/Settings เมื่อยังไม่มี
+  approved policy. ระบุว่า Company ต้องเป็นชื่อนิติบุคคล/หน่วยงาน, ข้อมูลที่ส่ง/ไม่ส่ง, Purpose, ความสมัครใจ,
+  ผู้เข้าถึง, retention proposal, security และ Source-IP log caveat โดยยังไม่เปิด Production sender.
 - Factory Reset ลบ registration state และ scoped token แบบ fail-closed เมื่อ vault ใช้งานไม่ได้; log/SQLite ไม่เก็บ token,
   raw payload หรือ serial list ใน observability.
 - ไม่เริ่ม Update/manifest/download (Production Phase 3).
@@ -1493,6 +1504,7 @@ V5.0 foundation เดิมเสร็จตามรายการด้า�
 | Phase 1 live security preservation | TLS 1.3, HTTPS/auth/session/lockout/revocation และ Web build/audit ผ่าน | PASS |
 | Focused UI/accessibility | Setup/Settings tests ผ่าน; Thai Settings render 1024×760 ตรวจแล้วไม่ clip และ state disabled ชัด | PASS — SYNTHETIC/OFFSCREEN |
 | Independent review | ปิด findings เรื่อง stale outbox, worker wedge, redirect credentials, error sanitization, fingerprint, reset/vault, ack และ retention | PASS — CODE/TEST |
+| Registration Data Notice | ไทย/อังกฤษตรง schema-v2/non-personal boundary; Registration/UI `138 passed`; full Desktop `499 passed` | PASS — DRAFT |
 | Staging first register/replay/offline/restart/heartbeat/auth/rate limit/invalid payload/Dashboard/cleanup | ไม่พบ verified staging/OpenAPI artefact ใน nested repo; ไม่ยิง production แทน | BLOCKED — SAFE |
 | Branch delivery | implementation commit `1e27ec6`; Phase 2 branch fast-forward เข้า `main` และ push private origin หลัง code gates | PASS |
 
@@ -1501,8 +1513,10 @@ Task evidence แบบละเอียดอยู่ใน canonical thread 
 
 ### Production blocker / unlock conditions
 
-- ยังไม่มี approved Privacy Notice version และหลักฐาน DPO/Legal ที่ตรวจสอบได้สำหรับ legal basis, retention,
-  access/export, deletion workflow, approval owner/reference/date.
+- Payload ฝั่งแอปเป็นข้อมูลนิติบุคคล/Installation/อุปกรณ์ ไม่ใช่ข้อมูลบุคคลเมื่อ Company ห้ามเป็นชื่อบุคคล.
+- Data Notice พร้อมที่ `docs/REGISTRATION_DATA_NOTICE.md`; Hosting คือ `https://www.dmskm.com/` ในประเทศไทย และ
+  Bom ยืนยันว่า API/Application log ไม่จัดเก็บ Source IP/Raw body/Token. ยังต้องพิสูจน์ OpenAPI/Staging, retention,
+  access/deletion และ Dashboard read-back จากระบบที่ deploy จริง.
 - ยังไม่มี OpenAPI schema v2 + verified deployed staging environment artefact ที่บันทึก bootstrap flow,
   installation-token rotate/revoke และ typed error contract โดยไม่เปิดเผย secret.
 - เมื่อได้รับ artefact ทั้งสองกลุ่ม ให้ติดตั้ง non-secret runtime policy + vault bootstrap reference แล้วรัน synthetic
@@ -1541,7 +1555,7 @@ Task evidence แบบละเอียดอยู่ใน canonical thread 
 ### Scope out
 
 - Production Phase 3 update manifest/download/updater ทุกชนิด.
-- เปิด Production Registration/Heartbeat ก่อน OpenAPI/Staging และ Privacy/DPO/Legal gates ผ่าน.
+- เปิด Production Registration/Heartbeat ก่อน OpenAPI/Staging และ Registration Data Notice/Hosting Security gates ผ่าน.
 - Forced/silent update, remote command, Linux production package และการเปลี่ยน Meter/Billing calculation.
 - ส่ง DB, log, credential, counter, user หรือเอกสารออกภายนอก.
 
@@ -1562,7 +1576,8 @@ Task evidence แบบละเอียดอยู่ใน canonical thread 
 - [x] Canonical source เป็น real directory ที่ `~/Projects/dev/komi-report-v5` และมี rollback link กลับ OneDrive
 - [x] Development/UI/package version ถูกกำหนดเป็น `5.1` / `5.1.0`
 - [x] First-run แสดง Company, read-only start date/version ใน Setup 4 ขั้น และบันทึก local โดยยังไม่ส่งข้อมูลออก
-- [ ] Privacy Notice ฉบับอนุมัติแสดงก่อน Registration API ส่งข้อมูลออก
+- [x] Registration Data Notice ไทย/อังกฤษตรง Registration schema-v2 แสดงใน Setup/Settings และติดป้ายยังไม่อนุมัติ
+- [ ] Registration Data Notice ฉบับอนุมัติแสดงก่อน Registration API ส่งข้อมูลออก
 - [x] ผู้ใช้ V5.0 เดิมได้รับ one-time onboarding โดยไม่ล้าง Devices/Price/History/Billing Ledger
 - [ ] Registration offline ใช้งานต่อได้, retry ได้, ไม่สร้างรายการซ้ำ และแสดง Registered/Pending/Failed
 - [x] Automated payload test ยืนยันว่า Serial No + Model + Selected + Slot ครบ และไม่มี IP/MAC/Credential/Counter/User/Document/Log
@@ -1571,7 +1586,7 @@ Task evidence แบบละเอียดอยู่ใน canonical thread 
 - [ ] **DEFERRED หลัง Release:** Update check เลือก signed artifact ถูก OS/architecture/channel และ reject checksum/signature ที่ไม่ตรง
 - [ ] V5.0 → V5.1 upgrade สร้าง DB backup, migrate, restore/rollback และเปิดข้อมูลเดิมได้ครบ
 - [ ] Clean-install/upgrade UAT ผ่านบน target OS จริง; local/offscreen/package check ไม่นับแทน native UAT
-- [ ] DPO/Legal, Hosting security, release signing และผู้มีสิทธิ์ publish อนุมัติก่อน Production rollout
+- [ ] Hosting security, Registration Data Notice และผู้มีสิทธิ์ publish อนุมัติก่อน Production rollout; Windows signing deferred และต้องติดป้าย unsigned ตามจริง
 
 ### V5.0 functional baseline retained
 

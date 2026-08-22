@@ -6,20 +6,20 @@ thread_title: Production Phase 2 — Registration & Privacy
 dashboard_visible: true
 department: dev
 status: blocked
-progress: 90
+progress: 92
 owner: VEGA
-current_phase: Technical Pass complete; Production gate blocked
-current_task: finalize reviewed branch delivery and preserve fail-closed production state
-next_action: provide approved Privacy Notice and verified staging/API contract artefacts, then run staging E2E and Dashboard read-back
-problem: No repository artefact proves OpenAPI v2/deployed staging/bootstrap-token lifecycle or approved DPO/Legal privacy workflow; live Production Registration remains disabled
-updated_at: 2026-08-22T13:15:00+07:00
+current_phase: Bilingual Registration Data Notice available; Production gate remains blocked
+current_task: verify OpenAPI/Staging endpoints, deployed retention and Dashboard access controls on dmskm.com
+next_action: obtain the deployed OpenAPI/base URL and run staging Registration/Heartbeat plus Dashboard read-back
+problem: Non-personal data boundary and dmskm.com storage are owner-confirmed, but deployed OpenAPI/Staging/retention/Dashboard evidence is still absent; live Production Registration remains disabled
+updated_at: 2026-08-22T17:17:22+07:00
 ---
 
 # Production Phase 2 — Registration & Privacy
 
 ## Goal
 
-ทำ Registration schema v2 ให้เป็นส่วนหนึ่งของ Desktop แบบ local-first ที่ทน offline/restart เก็บ token ใน OS vault เท่านั้น และส่งข้อมูลออกได้เฉพาะเมื่อ Privacy Notice รุ่นที่อนุมัติแล้วถูกยอมรับ โดยไม่ทำให้ Setup หรือ printer polling ล้มตาม network.
+ทำ Registration schema v2 ให้เป็นส่วนหนึ่งของ Desktop แบบ local-first ที่ทน offline/restart เก็บ token ใน OS vault เท่านั้น และส่งข้อมูลนิติบุคคล/Installation/อุปกรณ์ออกได้เฉพาะเมื่อ Registration Data Notice รุ่นที่อนุมัติแล้วถูกรับทราบ โดยไม่ทำให้ Setup หรือ printer polling ล้มตาม network.
 
 ## Scope
 
@@ -31,7 +31,7 @@ updated_at: 2026-08-22T13:15:00+07:00
 - installation token อยู่ OS vault; SQLite/log เก็บเพียง reference/status ที่ redact แล้ว
 - Setup บันทึก local ให้สำเร็จก่อน enqueue และ network failure ห้าม rollback Setup
 - privacy-bounded register/heartbeat schema v2 และ forbidden-field rejection
-- Privacy Notice acknowledgement + Settings status/retry แบบไทย/อังกฤษที่เรียบง่าย
+- Registration Data Notice acknowledgement + Settings status/retry แบบไทย/อังกฤษที่เรียบง่าย
 - staging UAT/Dashboard read-back เมื่อพิสูจน์ได้ว่าเป็น staging จริง
 - full Desktop/Web/security/release-safety regression และ private branch delivery
 
@@ -40,13 +40,13 @@ updated_at: 2026-08-22T13:15:00+07:00
 - Update/manifest/download หรือ Production Phase 3
 - การแก้ API repository, portfolio-site หรือโปรเจกต์อื่น
 - การสร้าง test installation ใน production
-- การแต่งคำอนุมัติ DPO/Legal, retention, access/export หรือ deletion workflow
+- การแต่งคำอนุมัติ Product owner/Hosting Security, retention, access/export หรือ deletion workflow
 - การเปลี่ยน Billing tables/formula/ledger semantics
 
 ## Design
 
 - ผู้ใช้จบ Setup จาก local transaction ก่อนเสมอ แล้ว Desktop enqueue registration แบบ durable.
-- Settings แสดงเพียง `registered`, `pending`, `offline retry`, `action required` พร้อมปุ่ม Retry และ Privacy Notice viewer/acknowledgement.
+- Settings แสดงเพียง `registered`, `pending`, `offline retry`, `action required` พร้อมปุ่ม Retry และ Registration Data Notice viewer/acknowledgement.
 - Production sender fail-closed เมื่อไม่มี approved notice version หรือ acknowledgement ที่ตรง version.
 - Heartbeat ใช้ cadence จาก typed server policy และส่งเฉพาะ lifecycle/device inventory ใน allow-list.
 - Observability บันทึก operation/status/error code/timing ที่ redact แล้ว ไม่บันทึก token, raw payload หรือ serial list.
@@ -67,11 +67,11 @@ Data flow:
 ## คำที่ใช้ร่วมกัน
 
 - `installation_id`: ตัวตนของการติดตั้ง KOMI บนคอมพิวเตอร์ ไม่ใช่ตัวตนเครื่องพิมพ์
-- `serial_number`: ตัวตนเครื่องพิมพ์จริงใน inventory; เป็นข้อมูลที่ส่งได้เฉพาะตาม Privacy Notice ที่อนุมัติ
+- `serial_number`: ตัวตนเครื่องพิมพ์จริงใน inventory; เป็นข้อมูลอุปกรณ์ที่ส่งได้เฉพาะตาม Registration Data Notice ที่อนุมัติ
 - `Technical Pass`: implementation และ local/code gates ผ่าน แต่ยังไม่อนุญาต production sender หาก privacy/staging evidence ไม่ครบ
-- `Production Pass`: Technical Pass พร้อม approved notice, DPO/Legal, retention, access/export, deletion และ staging acceptance จริง
+- `Production Pass`: Technical Pass พร้อม approved Data Notice, Hosting Security, retention, access/export, deletion และ staging acceptance จริง
 
-## Progress: 88%
+## Progress: 92%
 
 ### Phase 1 — Baseline and contract audit 🔴
 
@@ -91,7 +91,9 @@ Data flow:
 
 - [x] เชื่อม Setup local success → enqueue โดย outbox failure ไม่ rollback/misreport local Setup
 - [x] เชื่อม heartbeat lifecycle ด้วย executor แยกจาก printer polling
-- [x] เพิ่ม Privacy Notice viewer/acknowledgement และ production fail-closed
+- [x] เพิ่ม Registration Data Notice viewer/acknowledgement และ production fail-closed
+- [x] เพิ่ม Registration Data Notice ไทย/อังกฤษตาม schema-v2 จริง พร้อม Purpose, recipients, retention proposal,
+  security, Source-IP caveat และรายการข้อมูลที่ไม่ส่ง โดยยังไม่เปิด Production sender
 - [x] เพิ่ม Settings status/manual Retry ไทย/อังกฤษและ redacted observability
 
 ### Phase 4 — Verification and delivery
@@ -104,12 +106,15 @@ Data flow:
 
 ## Problem / Blocker
 
-- What failed: ไม่พบ OpenAPI v2, deployed staging URL/environment artefact, bootstrap/token rotate-revoke/error contract หรือ approved Privacy Notice/DPO/Legal evidence ใน scope ที่อนุญาต
+- What failed: ยืนยันแล้วว่า application payload ไม่มีข้อมูลบุคคลเมื่อ Company เป็นชื่อนิติบุคคล/หน่วยงาน และเจ้าของระบบ
+  ยืนยันว่า dmskm.com/API ไม่จัดเก็บ Source IP/Raw body/Token แต่ยังไม่มี deployed OpenAPI v2, canonical staging,
+  bootstrap/token rotate-revoke/error contract, retention execution หรือ Dashboard read-back evidence ใน repository
 - User impact: Desktop implementation เป็น Technical Pass แต่ production sender disabled และห้าม claim Production Pass; staging E2E/Dashboard read-back/cleanup ยังไม่ผ่าน
 - Attempts made: ตรวจ canonical handoff, repository files/config references และ historical project evidence โดยไม่เปิดเผย URL/credential/token; ไม่พบ secure staging artefact จึงไม่ยิง network
 - Model / effort tried: GPT-5.6 high — Production architecture/integration risk
 - Evidence: `docs/REGISTRATION_API_HANDOFF.md`, canonical `PROJECT.md`, repository clean baseline `e70a929d7bcd3f83813e1fd8b92254a264e68ad9`
-- Needed next: OpenAPI/deployed staging artefact, approved notice version, legal basis, retention, access/export, deletion workflow และ owner ที่ตรวจสอบได้
+- Needed next: นำ deployed OpenAPI/base URL/bootstrap reference ที่ไม่เปิด secret เข้ามา, ยืนยัน retention/access/deletion
+  จากระบบ dmskm.com แล้วรัน staging E2E/Dashboard read-back
 
 ## Decisions and Changes
 
@@ -119,6 +124,12 @@ Data flow:
 - 2026-08-22 — ใช้ non-secret policy artefact จาก `KOMI_REGISTRATION_POLICY_FILE`; policy ที่หาย/invalid, Notice ไม่อนุมัติ หรือ acknowledgement ไม่ตรง version จะหยุดก่อนเปิด vault/network.
 - 2026-08-22 — Independent review พบ stale outbox, redirect credential forwarding, worker wedge, untrusted error code, reset/vault และ acknowledgement gaps; แก้พร้อม regression tests แล้ว.
 - 2026-08-22 — Outbox supersede operation เก่า, ตรวจ payload fingerprint ก่อนส่ง, จำกัด attempt history 50 รายการ และ prune serial-bearing completed payload เมื่อ lifecycle ใหม่สำเร็จ.
+- 2026-08-22 — Bom ยืนยันว่า payload ไม่มีข้อมูลส่วนบุคคล จึงเปลี่ยนข้อความผู้ใช้จาก Privacy Notice เป็น Registration
+  Data Notice, บังคับความหมาย Company เป็นชื่อนิติบุคคล/หน่วยงานและห้ามชื่อบุคคล. Bom ยืนยันต่อว่า API/Application
+  log ไม่เก็บ Source IP; หาก configuration เปลี่ยนให้เก็บ IP หรือข้อมูลบุคคลต้องเปิด privacy assessment แยก.
+- 2026-08-22 — Bom ยืนยันระบบหลังบ้านเก็บที่ `https://www.dmskm.com/` และ API ไม่จัดเก็บ Source IP ตาม contract
+  ที่ส่งให้ทีม API. Live HTTPS/DNS preflight พบ www ตอบ 200, root redirect ไป www, certificate ครอบคลุม domain และ
+  APNIC ระบุ IP network ในประเทศไทย. บันทึกเป็น owner confirmation + network preflight ไม่ใช่ log-config/OpenAPI E2E proof.
 
 ## Test Log
 
@@ -135,6 +146,9 @@ Data flow:
 | 2026-08-22 13:05 +07 | Staging E2E/Dashboard/cleanup | ต้องใช้ staging artefact จริงและ synthetic identity เท่านั้น | ไม่พบ staging artefact/OpenAPI ใน scope; ไม่สร้าง record และไม่ยิง production | BLOCKED — SAFE | repository/config audit |
 | 2026-08-22 13:48 +07 | Branch delivery | code gates ผ่านก่อน commit/fast-forward/push และ origin ต้องเป็น private target เดิม | implementation commit `1e27ec6`; Phase 2 branch fast-forward เข้า `main` และ push private origin; worktree clean | PASS | Git branch/main/origin status |
 | 2026-08-22 13:52 +07 | Verified learning capture | ส่ง solution ที่มี objective test evidence เข้า Knowledge API | endpoint ตอบสำเร็จแต่คืน `observed=false`, `verified=false`, `promoted=false`; ไม่แต่งหรือเขียน learning เอง | NOT CAPTURED | `POST /api/knowledge/learnings/observe` |
+| 2026-08-22 17:11 +07 | Registration Data Notice ไทย/อังกฤษ | ต้องตรง schema-v2, ระบุ non-personal boundary/retention/ผู้เข้าถึง/Source-IP rule และยัง fail-closed | เพิ่ม Data Notice ใน Setup/Settings; Registration/UI regression `138 passed in 8.97s`; new-file Ruff/compileall/diff check ผ่าน | PASS — DRAFT | `registration_data_notice.py`, `REGISTRATION_DATA_NOTICE.md` |
+| 2026-08-22 17:12 +07 | Full Desktop regression | Data Notice wording/import ต้องไม่กระทบ Meter/Billing/Report/Setup | `499 passed, 1 expected virtual-printer TLS warning in 38.22s` | PASS | `source/tests` |
+| 2026-08-22 17:14 +07 | dmskm.com Hosting preflight | Domain ต้องตอบ HTTPS และข้อมูล Location/Source-IP boundary ต้องไม่ถูกเดา | www ตอบ HTTP/2 200, root 301→www, valid domain certificate; APNIC country TH; Bom ยืนยัน API ไม่เก็บ Source IP | PASS — OWNER + LIVE PREFLIGHT | `www.dmskm.com`, DNS/TLS/APNIC read-only |
 
 ## Definition of Done
 
@@ -143,10 +157,11 @@ Data flow:
 - [x] schema v2 allow-list และ forbidden-field rejection ผ่าน
 - [x] Setup offline จบได้และภายหลัง recover ได้
 - [x] heartbeat cadence/retry/auth failures ทำงานตาม typed policy โดยไม่ชน printer polling
-- [x] Privacy Notice/version acknowledgement และ production fail-closed ผ่าน
+- [x] Registration Data Notice/version acknowledgement และ production fail-closed ผ่าน
+- [x] Registration Data Notice ไทย/อังกฤษตรง payload non-personal และแสดงให้ตรวจได้
 - [x] Thai/English Settings status/retry/privacy UI ผ่าน focused visual/accessibility checks
 - [ ] staging E2E + Dashboard read-back ตรงกันและไม่สร้าง duplicate
 - [ ] API/bootstrap/token/retention contracts ถูกบันทึกโดยไม่เปิด secret — client-side fail-closed contract บันทึกแล้ว แต่ deployed contract artefact ยังขาด
-- [x] approved Privacy Notice/DPO/Legal evidence มีจริง หรือรายงาน Technical Pass / Production blocked ชัดเจน — รายงาน blocked ตามจริง
+- [x] approved Data Notice/Hosting Security evidence มีจริง หรือรายงาน Technical Pass / Production blocked ชัดเจน — รายงาน blocked ตามจริง
 - [x] full regression, Web build/security, audits และ Phase 0 release safety ผ่าน
 - [x] branch delivery/private origin clean และไม่เริ่ม Phase 3

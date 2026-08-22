@@ -569,7 +569,7 @@ def test_registration_settings_copy_switches_to_english(tmp_path):
         page.show()
         app.processEvents()
 
-        assert page.registration_privacy_button.text() == "View Privacy Notice"
+        assert page.registration_privacy_button.text() == "View data sent"
         assert page.registration_summary.text() == "Not configured"
         assert page.registration_summary.accessibleName() == "Application registration status"
         page.close()
