@@ -5,14 +5,14 @@ thread_id: 01a02804-d2a8-7ed3-b57e-4264b4b0cae2
 thread_title: Production Phase 4 — Native Packaging & Release Candidate
 dashboard_visible: true
 department: dev
-status: testing
-progress: 50
+status: blocked
+progress: 78
 owner: VEGA
-current_phase: Phase 4 automated gates passed; Windows ARM VM RC preflight in progress
-current_task: build the committed source archive into an x64 installer/evidence bundle inside the Windows ARM VM
-next_action: run VM install/launch/Web/recovery preflight, then macOS Internal UAT and record remaining native/signing/real-device blockers
-problem: Windows VM is Windows 11 ARM64 rather than x64; Windows x64 native/signing and controlled real-device acceptance evidence are not yet available
-updated_at: 2026-08-22T14:50:00+07:00
+current_phase: Phase 4 Technical RC assembled and preflighted; Production GO blocked
+current_task: close evidence, push the private Phase 4 branch and hand off exact blockers
+next_action: repeat the approved installer/UAT matrix on native Windows 10 and 11 x64, sign the artifact, then run controlled real-device acceptance
+problem: available Windows VM is ARM64; native Windows x64, signing, tray/autostart/OS-vault/LAN HTTPS/restart/upgrade and controlled real-device evidence remain unavailable
+updated_at: 2026-08-22T15:45:00+07:00
 ---
 
 # Production Phase 4 — Native Packaging & Release Candidate
@@ -67,9 +67,9 @@ updated_at: 2026-08-22T14:50:00+07:00
 - **Windows native x64 evidence**: ผลจาก Windows 10/11 x64 environment จริงตาม target; Windows 11 ARM VM หรือ emulation เป็น VM preflight ไม่ใช่ final acceptance.
 - **Controlled real-device proof**: การอ่าน/คำนวณจากเครื่องพิมพ์ที่ได้รับอนุญาต มี expected delta และไม่แตะข้อมูลลูกค้านอก scope.
 
-## Progress: 50%
+## Progress: 78%
 
-### Phase 4.1 — Baseline and workbook 🟡
+### Phase 4.1 — Baseline and workbook ✅
 
 - [x] ตรวจ `main`, `origin/main`, clean worktree และ approved baseline `6248ef2`
 - [x] สร้าง branch `codex/phase-4-native-release-candidate`
@@ -79,7 +79,7 @@ updated_at: 2026-08-22T14:50:00+07:00
 ### Phase 4.2 — Reproducible Windows x64 RC pipeline
 
 - [x] เพิ่ม fail-closed non-interactive Windows x64 RC builder
-- [ ] สร้าง installer/portable artifact พร้อม identity, source commit, SHA256 และ file inventory
+- [x] สร้าง installer artifact พร้อม identity, source commit, SHA256 และ file inventory
 - [x] สร้าง SBOM/file-inventory/checksum contract และ native-runtime safety allowlist แบบจำกัด root
 - [x] ยืนยัน Registration fail-closed และ Update runtime path absent/deferred ด้วย automated gate
 
@@ -88,32 +88,32 @@ updated_at: 2026-08-22T14:50:00+07:00
 - [x] full Python regression ด้วย `source/.venv/bin/python`
 - [x] Web type/lint/build/security tests และ production dependency audits
 - [x] security/release-safety/secret/data scan
-- [ ] package smoke, DB migration/backup/integrity/restore tests และ no semantic drift checks
+- [x] package smoke, DB migration/backup/integrity/restore preflight และ no semantic drift automated checks
 
 ### Phase 4.4 — Environment UAT
 
-- [ ] Windows 11 ARM VM preflight โดยติดป้าย VM/ARM ชัดเจน
+- [x] Windows 11 ARM VM clean install/installed smoke/first-run/backup/integrity/restore/uninstall/reinstall preflight โดยติดป้าย VM/ARM ชัดเจน
 - [ ] Windows 10 x64 native UAT
 - [ ] Windows 11 x64 native UAT
 - [ ] Windows code signing verification
 - [ ] controlled real-device Meter/Billing/Report/Excel acceptance
-- [ ] macOS arm64 Internal UAT
+- [x] macOS arm64 Internal UAT: bundle launch/first-run ผ่าน; ad-hoc signing และ notarization ยัง block customer Production
 
 ### Phase 4.5 — Release control and handoff
 
 - [x] support/recovery/rollback guide และ UAT checklist พร้อมใช้งาน
-- [ ] self-review Outcome/Maintainability และ safe merge gate
+- [x] self-review Outcome/Maintainability; safe merge gate = HOLD เพราะ native/signing/real-device evidence ขาด
 - [ ] commit/push private branch; fast-forward main เฉพาะเมื่อ merge gate ผ่าน
 - [ ] อัปเดต canonical `PROJECT.md` และส่ง compact handoff ไป main thread
 
 ## Problem / Blocker
 
-- What failed: target VM `Window Test for KOMI` เป็น Windows 11 on ARM64 (`platformArchitecture=ARM`) ไม่ใช่ Windows 10/11 x64; ยังไม่มี signing certificate หรือ approved controlled real-device scope ใน task นี้.
+- What failed: target VM `Window Test for KOMI` เป็น Windows 11 on ARM64 (`platformArchitecture=ARM`) ไม่ใช่ Windows 10/11 x64; Windows installer และ macOS bundle ไม่มี production signing และยังไม่มี approved controlled real-device scope.
 - User impact: ใช้ VM ทำ Windows packaging/behavior preflight ได้ แต่ยังปิด Windows x64 native, signing และ real-device Definition of Done ไม่ได้ จึงห้าม claim Production GO.
-- Attempts made: ตรวจ VirtualBox/Guest Additions/Shared Folder; เพิ่ม writable evidence share; ติดตั้ง official Python 3.11.9 ARM64 และ Inno Setup 6.7.3 ผ่าน verified `winget`; สร้าง self-contained x64 builder และกำลังเริ่ม artifact preflight.
+- Attempts made: สร้าง self-contained x64 installer จาก official hash-verified CPython/Node runtimes; รัน ARM64 VM clean install, installed smoke, first-run UI, synthetic DB backup/integrity/restore, uninstall/reinstall; รัน macOS arm64 bundle launch/first-run และตรวจ signing/notarization ตามจริง.
 - Model / effort tried: direct execution, high-risk Production review.
-- Evidence: `VBoxManage showvminfo "Window Test for KOMI" --machinereadable`; baseline commit `6248ef23bbfdf14369a6d1ce98b68846be4f0ea7`.
-- Needed next: สร้าง automated/VM RC preflight ให้ครบก่อน แล้วจัด Windows 10/11 x64 native environment + signing certificate + controlled printer acceptance scope เพื่อปิด final gates.
+- Evidence: Windows artifact commit `0bc1c5d9c168a6ff535725050c5a901f868541e2`, SHA256 `875e5ca1b2d0134213aca8210308e4a41d7920d7e86e7b1162cf3001207debc1`; VM evidence ระบุ `windows-arm64-vm-preflight` และ `production_go=false`; macOS artifact SHA256 `ab6e7003d63dd381acd73dcf5df091e8d36f980774ef9f8570476ad8dc08bd0f`, ad-hoc/not notarized.
+- Needed next: จัด Windows 10 และ 11 x64 native environment + signing certificate + controlled printer acceptance scope แล้วรัน restart/tray/autostart/OS-vault/LAN HTTPS/upgrade matrix ก่อนพิจารณา Production GO.
 
 ## Decisions and Changes
 
@@ -136,15 +136,20 @@ updated_at: 2026-08-22T14:50:00+07:00
 | 2026-08-22 14:38 +07 | Web/security/dependency gates | TypeScript/security/standalone build และ production dependencies ต้องผ่าน | `npm ci`, `tsc`, security 2/2, Next standalone production build และ `npm audit --omit=dev` ผ่าน; 0 vulnerabilities | PASS | `web/package.json`, `web/next.config.ts` |
 | 2026-08-22 14:40 +07 | Python dependency + release safety | lock/env compatible, known vulnerability 0 และ source archive ไม่มี forbidden data/secrets | `uv pip check`/`uv lock --check` ผ่าน; installed-env `pip-audit` พบ 0; source archive 223 files ผ่าน safety scan. การ audit lock โดยสร้าง temp venv abort จึงเปลี่ยนไป audit installed locked env | PASS AFTER SAFE ALTERNATIVE | `source/.venv`, `release/MANIFEST.json` |
 | 2026-08-22 14:49 +07 | VM toolchain preparation | official toolchain ต้องติดตั้งแบบตรวจ hashได้และห้ามทำให้ VM evidence กลายเป็น native | `winget` verified/installed Python 3.11.9 ARM64 + Inno Setup 6.7.3; VM ยังติดป้าย ARM64 preflight | PASS — VM TOOLCHAIN | `outputs/.../vm-evidence/prepare-vm.txt`, installer logs |
+| 2026-08-22 15:03 +07 | macOS arm64 Internal UAT | bundle ต้อง launch/first-run ได้และ signing state ต้องรายงานตามจริง | Mach-O arm64 bundle เปิดและแสดง first-run จาก isolated DB; package scan ผ่าน; `codesign` เป็น ad-hoc และ `spctl` reject เพราะไม่ notarized | PASS — INTERNAL / BLOCKED — CUSTOMER | `release/MACOS_MANIFEST.json`, local screenshot `/tmp/komi-phase4-inspect/macos-first-run.png` |
+| 2026-08-22 15:25 +07 | Windows x64 RC artifact build | artifact ต้อง trace source/runtime, มี checksum/inventory/SBOM, ไม่มี Update/Registration enablement หรือ forbidden data | installer 8,570 files; identity `komi-report-v5-windows-x64-rc-5.1.0-0bc1c5d9c168`; Phase 0 scan ผ่าน; Authenticode `NotSigned`; `production_go=false` | PASS — ARTIFACT / BLOCKED — SIGNING | `outputs/.../rc-output/RC_MANIFEST.json`, `CHECKSUMS.sha256`, `FILE_INVENTORY.json`, `SBOM.cdx.json` |
+| 2026-08-22 15:34 +07 | Windows 11 ARM64 installer/recovery preflight | clean install/smoke/backup/integrity/restore/uninstall/reinstall ต้องรักษา critical tables | ทุกขั้นผ่านด้วย synthetic recovery-only DB; integrity `ok`, schema 12, critical counts ตรง backup และ uninstall เก็บ user DB ไว้ | PASS — ARM64 VM PREFLIGHT | `outputs/.../vm-evidence/installer-uat.txt` |
+| 2026-08-22 15:39 +07 | Installed first-run visual preflight | เปิด wizard จาก installed x64 payload โดยไม่ทำ printer/network action | V5.1.0 first-run 1/4 เปิดจาก isolated root; ปิดโดยไม่ submit setup | PASS — ARM64 VM PREFLIGHT | `outputs/.../vm-evidence/windows-installed-first-run.png`, `installed-first-run.txt` |
+| 2026-08-22 15:44 +07 | Final Python/Web/security regression | tracked Phase 4 changes ต้องไม่เปลี่ยน Meter/Billing/Report semantics | Python `513 passed, 1 expected TLS fixture warning`; Ruff ผ่าน; Web type/security/standalone build ผ่าน; npm/pip audit พบ 0 known vulnerabilities | PASS | `source/tests`, `web` build/audit logs in task run |
 
 ## Definition of Done
 
 - [ ] Windows 10/11 x64 native clean install/launch/first-run/restart/tray/autostart/LAN Web HTTPS/OS vault ผ่าน
 - [ ] upgrade + backup + integrity + restore/rollback ผ่านและ Devices/Prices/History/Billing Ledger ไม่สูญหาย
 - [ ] controlled printer proof ทำให้ raw meter, expected delta, posted ledger และ Export totals ตรงกัน
-- [ ] artifact มี SHA256/SBOM/source commit/build identity และไม่มี forbidden data/secrets
-- [ ] full Python/Web/security/dependency/release gates ผ่าน
-- [ ] Registration/Heartbeat ยัง fail-closed และไม่มี Update code/runtime path ใน Release นี้
+- [x] artifact มี SHA256/SBOM/source commit/build identity และไม่มี forbidden data/secrets
+- [x] full Python/Web/security/dependency/release gates ผ่าน
+- [x] Registration/Heartbeat ยัง fail-closed และไม่มี Update code/runtime path ใน Release นี้
 - [ ] signed Windows x64 artifact ผ่าน verification
-- [ ] macOS arm64 Internal UAT แยกจาก customer Production claim
-- [ ] blocker ทุกข้อรายงานตามจริง; ไม่มี Production GO หาก gate ใดยังขาด
+- [x] macOS arm64 Internal UAT แยกจาก customer Production claim
+- [x] blocker ทุกข้อรายงานตามจริง; ไม่มี Production GO หาก gate ใดยังขาด

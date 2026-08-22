@@ -5,14 +5,14 @@ thread_id: 019f69b5-6709-7e53-8ebf-a35114d233d0
 thread_title: Komi report V5
 dashboard_visible: true
 department: dev
-status: active
-progress: 60
+status: blocked
+progress: 72
 owner: VEGA
-current_phase: Production Phase 4 Native Packaging & Release Candidate approved to start; Phase 3 Update deferred
-current_task: open a separate Phase 4 workbook/thread and establish the Windows 10/11 x64 native release baseline
-next_action: build and verify a Windows release candidate with clean install, upgrade, backup/restore, tray/autostart, LAN Web, real-device and controlled billing UAT
-problem: Windows native packaging/signing/UAT evidence is still absent; Registration remains fail-closed pending API and Privacy/Legal approval, while Update is explicitly out of the end-of-month release
-updated_at: 2026-08-22T13:52:00+07:00
+current_phase: Production Phase 4 Technical RC assembled; Production GO blocked
+current_task: preserve Phase 4 evidence and hand off the native Windows x64, signing and controlled real-device gates
+next_action: run the approved RC on native Windows 10 and 11 x64, verify signed installer behavior, then complete controlled printer/billing/export acceptance
+problem: Windows ARM64 VM and macOS Internal UAT passed their limited preflight, but native Windows x64, production signing, restart/tray/autostart/OS-vault/LAN HTTPS/upgrade and real-device proof remain absent; Registration remains fail-closed
+updated_at: 2026-08-22T15:45:00+07:00
 ---
 
 # KOMI Report V5.1
@@ -402,10 +402,10 @@ SNMP status every 5 min
 - **เปลี่ยนเครื่อง:** เปลี่ยน Serial/Model/IP ภายใน Slot เดิม ประวัติยังอยู่กลุ่มเดิม แต่เริ่ม Meter Baseline ใหม่และไม่หาผลต่างข้ามเครื่อง
 - **V4.6 Historical:** Usage ที่คำนวณจาก Meter snapshot เดิมตามกติกา V4.6; ไม่มีค่าใช้จ่ายย้อนหลังและไม่เขียนเข้า Billing Ledger
 
-## Progress: 43%
+## Progress: 72%
 
-V5.0 foundation เดิมเสร็จตามรายการด้านล่าง แต่การเพิ่ม Registration/Update และการย้าย canonical source เปิดรอบ V5.1 ใหม่
-โดยให้น้ำหนัก V5.1 design/migration 20%, registration 25%, backend/dashboard 20%, update 20% และ verification/release 15%.
+V5.0 foundation และ Phase 4 Technical RC automation/preflight เสร็จแล้ว; Registration production, native Windows x64,
+signing และ controlled real-device acceptance ยังเป็น blocking gates ส่วน Update ถูก deferred ออกจาก Release นี้โดยชัดเจน.
 
 ### Phase 1 — Discovery and revised design ✅
 
@@ -1523,6 +1523,15 @@ Task evidence แบบละเอียดอยู่ใน canonical thread 
 - การเลื่อน Phase 3 ไม่อนุญาตให้ลด Phase 0 release safety, Phase 1 security baseline หรือ Phase 2 privacy boundary.
 
 ## Production Phase 4 — Native Packaging & Release Candidate — APPROVED 2026-08-22
+
+### Technical RC result — 2026-08-22
+
+- สร้าง Windows x64 installer จาก source commit `0bc1c5d9c168a6ff535725050c5a901f868541e2` สำเร็จ: identity `komi-report-v5-windows-x64-rc-5.1.0-0bc1c5d9c168`, SHA256 `875e5ca1b2d0134213aca8210308e4a41d7920d7e86e7b1162cf3001207debc1`, file inventory 8,570 รายการ, CycloneDX SBOM และ checksum evidence ครบ.
+- Phase 0 packaged-payload scan ผ่าน; artifact ไม่มี forbidden DB/CSV/log/env/credential/customer evidence, Registration ไม่มี policy artifact และ Update runtime path ไม่มีอยู่ตาม Phase 3 deferred.
+- Windows 11 ARM64 VM ผ่าน clean install, installed smoke, first-run visual, synthetic backup/integrity/restore/rollback, uninstall preservation และ reinstall แต่หลักฐานถูกล็อกเป็น `windows-arm64-vm-preflight`, `production_go=false`; ห้ามใช้แทน Windows x64 native UAT.
+- macOS arm64 Internal UAT ผ่าน bundle launch และ first-run จาก isolated DB; artifact SHA256 `ab6e7003d63dd381acd73dcf5df091e8d36f980774ef9f8570476ad8dc08bd0f`, signing เป็น ad-hoc และยังไม่ notarized จึงห้าม customer Production.
+- Final regression ผ่าน: Python `513 passed` (warning เดียวเป็น explicit Virtual Printer TLS compatibility fixture), Web type/security/standalone production build ผ่าน และ Python/npm dependency audit พบ 0 known vulnerabilities.
+- **Release decision: Technical RC / Production GO blocked.** ยังขาด native Windows 10/11 x64 clean install/restart/tray/autostart/OS vault/LAN HTTPS/upgrade, production code signing และ controlled real-device Meter/Billing/Report/Excel proof. Registration/Heartbeat ยังคง fail-closed และ Phase 2 ไม่ใช่ Production Pass.
 
 ### Objective
 

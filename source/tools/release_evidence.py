@@ -143,8 +143,9 @@ def assert_native_payload_safe(root: Path) -> None:
     ``node_modules`` and generated ``dist`` directories are forbidden in source
     artifacts. A self-contained native runtime needs its traced production Node
     dependencies, so only ``forbidden-path`` findings below the two explicit
-    runtime roots are filtered. Credential files, forbidden file types and
-    secret patterns remain blocking everywhere.
+    runtime roots are filtered. Scanner-name false positives are filtered only
+    for locked dependency source code below explicit runtime roots; real token
+    patterns, credential files and forbidden file types remain blocking.
     """
 
     files = [path for path in root.rglob("*") if path.is_file()]
