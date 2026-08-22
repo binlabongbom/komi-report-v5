@@ -6,13 +6,13 @@ thread_title: Komi report V5
 dashboard_visible: true
 department: dev
 status: blocked
-progress: 82
+progress: 86
 owner: VEGA
-current_phase: Production Phase 5 decision HOLD; unsigned Pilot candidate and recovery preflight verified
-current_task: obtain verified Registration staging/OpenAPI/bootstrap/token/retention/Dashboard artefacts
-next_action: rerun synthetic Registration E2E and Dashboard cleanup on verified staging before any PILOT GO
-problem: PILOT HOLD because Registration staging E2E/Dashboard cleanup cannot run without verified deployment artefacts; production was not used as a substitute
-updated_at: 2026-08-22T18:48:00+07:00
+current_phase: Production Phase 6 customer release packaging completed as RELEASE HOLD
+current_task: keep the cross-platform HOLD bundle internal and close Registration/signing/native Windows gates
+next_action: migrate deployed Registration allow-list/persistence/Dashboard to serial_number and rerun current-client E2E before signing/native release closure
+problem: RELEASE HOLD — live current-client Registration returns HTTP 422; macOS trust and Windows Authenticode/native x64/Tray/Auto-start/LAN evidence remain incomplete
+updated_at: 2026-08-22T20:38:00+07:00
 ---
 
 # KOMI Report V5.1
@@ -1611,6 +1611,32 @@ Task evidence แบบละเอียดอยู่ใน canonical thread 
 - คำตัดสินคือ **PILOT HOLD** จนได้รับ non-secret OpenAPI 3.x, staging environment/base URL proof,
   bootstrap method/vault reference, token rotate/revoke/error contract, retention/access/deletion และ Dashboard role artefact
   แล้วรัน synthetic E2E/read-back/cleanup สำเร็จ. Phase 3 Update, signing, native Windows x64 และ Linux ยัง Deferred ไม่ใช่ Passed.
+- Final Phase 5 correction: API/connection/vault reference และ authenticated Dashboard เป็น live; backend-compatible synthetic
+  lifecycle/read-back/deactivate ผ่าน แต่ current Desktop schema v2 ส่ง `serial_number` แล้ว live canonical endpoint
+  `https://www.dmskm.com` ตอบ HTTP 422 เพราะ deployed allow-list/persistence/Dashboard ยังใช้ `device_instance_id`.
+  Approved source gate คง `be48735cc43703f2f7f172d08562ae895da77793`; docs close `1c6bf94`; decision ยัง `PILOT HOLD`.
+
+## Production Phase 6 — Customer Release Packaging — RELEASE HOLD 2026-08-22
+
+- Dedicated branch/worktree `codex/phase-6-customer-release-packaging` สร้างโดยไม่ checkout/แก้ canonical Phase 5 worktree.
+- macOS arm64 customer-behavior app/ZIP/DMG สร้างจาก artifact source `c9c45a67f1e024bd81a5153e7faac881a72ec2ed`:
+  ZIP SHA256 `a5b7ba77ed3d5d97faa24fd08ce0e7deb3d4f1f68807d20fe37de0c35c554f84`, DMG SHA256
+  `a6dd4c2aaa3c9cb4f02c3c5cd4edb6d5119301f45097cdfec687a0fba6c12f1f`; bundle smoke/DB/graceful exit
+  ผ่าน แต่ signing เป็น ad-hoc, ไม่มี Team ID/notarization และ Gatekeeper rejected.
+- Windows installer สร้างด้วย Inno Setup ภายใน Windows 11 Pro ARM64 VM จาก clean checkout commit เดียวกัน;
+  SHA256 `852b9d8de1f5e05f474f53578542e169fe629877636a139a2f05e44f2f4d7663`, Product 5.1.0,
+  Authenticode `NotSigned`. Clean install/first-run/restart/uninstall/reinstall/data preservation/backup/restore-on-copy ผ่าน;
+  เป็น ARM64 VM/x64 emulation preflight และ Tray/Auto-start/LAN Web exact-installer UAT ยังไม่ผ่านหลักฐาน.
+- Shared internal HOLD bundle `KOMI_Report_V5_1_0_Customer_Release_HOLD.zip` ขนาด 204,797,504 bytes,
+  SHA256 `db191ff601b8460dae20619354cff12ba2fb71710912cf5a2f03f6ad613efc8e`; manifest ระบุ approved Phase 5 gate,
+  artifact source, assembly commit `881eccb3102a20cacaf03bce03953c1a39515e62`, canonical Registration endpoint,
+  checksum/inventory/CycloneDX SBOM และ `production_go=false`; final zip safety/secret scanพบ 0 finding.
+- Full exact-source verification ผ่าน: Python `522 passed`, Web type/lint/Next production build/npm audit 0,
+  dependency locks/audits และ live TLS/auth/security checks ผ่าน. Phase 3 Update runtime, Lab/demo/Virtual Printer auto-injection,
+  mock endpoint, DB/CSV/log/env/credential/customer evidence ไม่อยู่ใน release payload.
+- คำตัดสินคือ **RELEASE HOLD**. Unlock ต้อง migrate deployed schema-v2 allow-list/persistence/Dashboard จาก
+  `device_instance_id` ไป `serial_number` แล้ว rerun current-client live E2E; จากนั้นปิด Developer ID/notarization,
+  Windows Authenticode, native Windows x64 และ Tray/Auto-start/LAN Web gates. ห้ามแก้ Desktop ย้อนกลับและห้ามปล่อย bundle นี้ให้ลูกค้า.
 
 ## Definition of Done
 
