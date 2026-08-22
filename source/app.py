@@ -146,6 +146,7 @@ from pages    import (
 )
 from services.autostart import configure_autostart
 from services.background_polling import BackgroundPollingCoordinator
+from services.registration_worker import RegistrationCoordinator
 from services.desktop_shortcuts import create_desktop_shortcuts
 from services.device_config import DeviceConfigRepository
 from services.instance_guard import SingleInstanceGuard
@@ -362,6 +363,7 @@ class MainWindow(QMainWindow):
         self._refresh_timer.setInterval(150)
         self._refresh_timer.timeout.connect(self._refresh_all)
         self.polling = BackgroundPollingCoordinator(parent=self)
+        self.registration = RegistrationCoordinator(parent=self)
         self.web_service = web_service_manager()
         self.polling.device_updated.connect(self._device_updated)
         self.polling.reading_saved.connect(lambda _slot: self._schedule_refresh_all())
@@ -610,6 +612,7 @@ class MainWindow(QMainWindow):
             return
         self._background_started = True
         self.polling.start()
+        self.registration.start()
         if get_cfg("web_service_enabled", "1") != "0":
             status = self.web_service.start()
             log.info("web service start requested: %s (%s)", status.state, status.detail)
@@ -691,6 +694,7 @@ class MainWindow(QMainWindow):
             return
         self._quitting = True
         self.polling.stop()
+        self.registration.stop()
         self.web_service.stop()
         QApplication.instance().quit()
 
@@ -700,6 +704,7 @@ class MainWindow(QMainWindow):
                 event.ignore()
                 return
             self.polling.stop()
+            self.registration.stop()
             self.web_service.stop()
             event.accept()
             return

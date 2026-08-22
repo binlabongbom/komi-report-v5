@@ -1,13 +1,16 @@
 from __future__ import annotations
 
 import json
+from copy import deepcopy
 
 import pytest
 
 from services.registration_envelope import (
     assert_registration_boundary,
+    build_heartbeat_envelope,
     build_registration_envelope,
     normalize_device_inventory,
+    validate_registration_envelope,
 )
 
 
@@ -60,6 +63,61 @@ def test_registration_boundary_fails_closed_for_nested_sensitive_fields():
 
 
 @pytest.mark.parametrize(
+    "field",
+    ["mac_address", "hostname", "application_log", "account", "installation_token", "raw_request"],
+)
+def test_registration_boundary_rejects_every_forbidden_privacy_family(field):
+    with pytest.raises(ValueError, match="excluded field"):
+        assert_registration_boundary({"device_inventory": {"devices": [{field: "must-not-leave-device"}]}})
+
+
+def test_registration_validation_rejects_arbitrary_extra_field():
+    envelope = build_registration_envelope(
+        installation_id="install-strict",
+        company_name="KOMI-UAT-STRICT",
+        first_started_at="2026-08-22",
+        app_version="5.1.0",
+        devices=[
+            {"serial_number": "SYNTHETIC-1", "model": "bizhub UAT", "selected": True, "device_slot": 1}
+        ],
+        created_at="2026-08-22T01:00:00+00:00",
+    )
+    envelope["marketing_segment"] = "unexpected"
+
+    with pytest.raises(ValueError, match="unexpected field"):
+        validate_registration_envelope(envelope)
+
+
+def test_heartbeat_contains_only_lifecycle_and_inventory_fields():
+    registration = build_registration_envelope(
+        installation_id="install-heartbeat",
+        company_name="KOMI-UAT-HEARTBEAT",
+        first_started_at="2026-08-22",
+        app_version="5.1.0",
+        devices=[
+            {"serial_number": "SYNTHETIC-1", "model": "bizhub UAT", "selected": True, "device_slot": 1}
+        ],
+        created_at="2026-08-22T01:00:00+00:00",
+    )
+
+    heartbeat = build_heartbeat_envelope(
+        registration,
+        occurred_at="2026-08-22T02:00:00+00:00",
+    )
+
+    assert set(heartbeat) == {
+        "schema_version",
+        "installation_id",
+        "app_version",
+        "platform",
+        "architecture",
+        "device_inventory",
+        "occurred_at",
+    }
+    assert "company_name" not in heartbeat
+
+
+@pytest.mark.parametrize(
     ("devices", "message"),
     [
         (
@@ -99,3 +157,56 @@ def test_device_inventory_allows_more_than_three_found_but_only_three_selected()
 
     assert inventory["konica_discovered_count"] == 8
     assert sum(bool(item["selected"]) for item in inventory["devices"]) == 3
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    (
+        lambda payload: payload["device_inventory"]["devices"].__setitem__(0, "not-an-object"),
+        lambda payload: payload["device_inventory"].__setitem__("konica_discovered_count", True),
+        lambda payload: payload["device_inventory"]["devices"][0].__setitem__("selected", 1),
+        lambda payload: payload["device_inventory"]["devices"][0].__setitem__("device_slot", True),
+    ),
+)
+def test_inventory_type_confusion_fails_closed_as_value_error(mutation):
+    payload = deepcopy(
+        build_registration_envelope(
+            installation_id="install-types",
+            company_name="KOMI-UAT-TYPES",
+            first_started_at="2026-08-22",
+            app_version="5.1.0",
+            devices=[
+                {
+                    "serial_number": "SYNTHETIC-1",
+                    "model": "bizhub UAT",
+                    "selected": True,
+                    "device_slot": 1,
+                }
+            ],
+            created_at="2026-08-22T01:00:00+00:00",
+        )
+    )
+    mutation(payload)
+
+    with pytest.raises(ValueError):
+        validate_registration_envelope(payload)
+
+
+@pytest.mark.parametrize(
+    "device",
+    (
+        "not-an-object",
+        {"serial_number": "SYNTHETIC-1", "model": "UAT", "selected": 1, "device_slot": 1},
+        {"serial_number": "SYNTHETIC-1", "model": "UAT", "selected": "false", "device_slot": None},
+        {"serial_number": "SYNTHETIC-1", "model": "UAT", "selected": True, "device_slot": 1.5},
+    ),
+)
+def test_registration_builder_rejects_type_confused_device_input(device):
+    with pytest.raises(ValueError):
+        build_registration_envelope(
+            installation_id="install-builder-types",
+            company_name="KOMI-UAT-TYPES",
+            first_started_at="2026-08-22",
+            app_version="5.1.0",
+            devices=[device],
+        )

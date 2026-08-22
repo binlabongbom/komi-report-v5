@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import inspect
 import os
-from datetime import time
+from datetime import UTC, datetime, time, timedelta
 from pathlib import Path
 
 import pytest
@@ -14,8 +14,12 @@ from PyQt6.QtWidgets import QApplication, QDialog, QWidget
 
 import database
 import v5_pages
+from i18n import apply_language, set_language
 from pages import PageSettings
 from services.device_config import DeviceConfig, DeviceConfigRepository
+from services.registration_envelope import build_registration_envelope
+from services.registration_policy import REQUIRED_NOTICE_FIELDS, PrivacyNotice, RegistrationRuntimePolicy
+from services.registration_repository import RegistrationRepository
 from services.sync_schedule import default_schedule_windows, load_schedule_windows
 from services.web_access import ACCESS_HASH_KEY, verify_web_access_code
 from services.web_service import WebServiceStatus
@@ -496,6 +500,170 @@ def test_settings_tools_do_not_request_password(tmp_path):
         assert page.currentWidget() is page.legacy
         assert page.ensure_unlocked()
         assert legacy.unlock_calls == 0
+        page.close()
+        app.processEvents()
+    finally:
+        database.set_db_path(original)
+
+
+def test_settings_shows_simple_registration_status_and_manual_retry(tmp_path):
+    app = QApplication.instance() or QApplication([])
+    original = _database(tmp_path)
+    now = datetime(2026, 8, 22, 1, tzinfo=UTC)
+    repository = RegistrationRepository()
+    envelope = build_registration_envelope(
+        installation_id="install-settings",
+        company_name="KOMI-UAT-SETTINGS",
+        first_started_at="2026-08-22",
+        app_version="5.1.0",
+        devices=[
+            {"serial_number": "SYNTHETIC-1", "model": "bizhub UAT", "selected": True, "device_slot": 1}
+        ],
+        created_at=now.isoformat(),
+    )
+    repository.upsert_profile_and_enqueue_register(
+        envelope,
+        notice_version="",
+        notice_accepted_at="",
+        now=now,
+    )
+    operation = repository.claim_due(now=now)
+    assert operation is not None
+    repository.complete_failure(
+        operation,
+        error_code="offline",
+        retryable=True,
+        next_attempt_at=now + timedelta(minutes=2),
+        http_status=None,
+        retry_after_seconds=None,
+        duration_ms=4,
+        now=now,
+    )
+    try:
+        page = PageFleetSettings()
+        page.show()
+        app.processEvents()
+
+        assert "ออฟไลน์" in page.registration_summary.text()
+        assert page.registration_retry_button.isVisible()
+        assert page.registration_retry_button.isEnabled()
+        assert page.registration_privacy_button.isVisible()
+
+        page.registration_retry_button.click()
+
+        assert "จัดคิวใหม่แล้ว" in page.registration_summary.text()
+        assert RegistrationRepository().summary().status == "pending"
+        page.close()
+        app.processEvents()
+    finally:
+        database.set_db_path(original)
+
+
+def test_registration_settings_copy_switches_to_english(tmp_path):
+    app = QApplication.instance() or QApplication([])
+    original = _database(tmp_path)
+    try:
+        set_language("en")
+        page = PageFleetSettings()
+        apply_language(page)
+        page.show()
+        app.processEvents()
+
+        assert page.registration_privacy_button.text() == "View Privacy Notice"
+        assert page.registration_summary.text() == "Not configured"
+        assert page.registration_summary.accessibleName() == "Application registration status"
+        page.close()
+        app.processEvents()
+    finally:
+        set_language("th")
+        database.set_db_path(original)
+
+
+def test_settings_can_accept_current_privacy_notice_and_requeue(tmp_path, monkeypatch):
+    app = QApplication.instance() or QApplication([])
+    original = _database(tmp_path)
+    now = datetime(2026, 8, 22, 1, tzinfo=UTC)
+    policy = RegistrationRuntimePolicy(
+        base_url="https://staging.invalid.example",
+        environment="staging",
+        bootstrap_mode="vault_header",
+        bootstrap_header="X-Synthetic-Bootstrap",
+        bootstrap_ref="registration-bootstrap-reference",
+        notice=PrivacyNotice(
+            version="notice-2026-08",
+            approved=True,
+            purpose="Synthetic UI notice",
+            fields=REQUIRED_NOTICE_FIELDS,
+            retention="Synthetic retention",
+            deletion_contact="privacy@example.invalid",
+            legal_basis="Synthetic legal basis",
+            access_export="Synthetic access/export",
+            approval_reference="SYNTHETIC-APPROVAL",
+            approved_at=now.isoformat(),
+            approval_owner="Synthetic Approver",
+        ),
+    )
+    monkeypatch.setattr(v5_pages, "load_registration_policy", lambda: policy)
+    repository = RegistrationRepository()
+    envelope = build_registration_envelope(
+        installation_id="install-settings-accept",
+        company_name="KOMI-UAT-SETTINGS",
+        first_started_at="2026-08-22",
+        app_version="5.1.0",
+        devices=[
+            {"serial_number": "SYNTHETIC-1", "model": "bizhub UAT", "selected": True, "device_slot": 1}
+        ],
+        created_at=now.isoformat(),
+    )
+    repository.upsert_profile_and_enqueue_register(
+        envelope, notice_version="", notice_accepted_at="", now=now
+    )
+    operation = repository.claim_due(now=now)
+    assert operation is not None
+    repository.complete_failure(
+        operation,
+        error_code="privacy_notice_not_accepted",
+        retryable=False,
+        next_attempt_at=now,
+        http_status=None,
+        retry_after_seconds=None,
+        duration_ms=0,
+        now=now,
+    )
+    try:
+        page = PageFleetSettings()
+        page.show()
+        app.processEvents()
+
+        assert page.registration_notice_accept.isEnabled()
+        page.registration_notice_accept.click()
+
+        profile = RegistrationRepository().profile()
+        assert profile.notice_version == policy.notice.version
+        assert profile.notice_accepted_at
+        assert RegistrationRepository().summary().status == "pending"
+        page.close()
+        app.processEvents()
+    finally:
+        database.set_db_path(original)
+
+
+def test_settings_routes_local_enqueue_failure_back_to_setup(tmp_path, monkeypatch):
+    app = QApplication.instance() or QApplication([])
+    original = _database(tmp_path)
+    database.set_cfg("registration_status", "action_required")
+    try:
+        page = PageFleetSettings()
+        opened: list[bool] = []
+        monkeypatch.setattr(page, "_edit_devices", lambda: opened.append(True))
+        page.show()
+        app.processEvents()
+
+        assert "ต้องดำเนินการ" in page.registration_summary.text()
+        assert page.registration_retry_button.text() == "ตรวจสอบการตั้งค่า"
+        assert page.registration_retry_button.isEnabled()
+        page.registration_retry_button.click()
+        assert opened == [True]
         page.close()
         app.processEvents()
     finally:

@@ -53,6 +53,7 @@ class _WindowDouble:
         self._quitting = False
         self._background_started = False
         self.polling = _Polling()
+        self.registration = _Polling()
         self.web_service = _WebService()
         self.tray = _Tray()
         self.hidden = 0
@@ -89,6 +90,7 @@ def test_close_hides_to_tray_without_stopping_polling(monkeypatch):
 
     assert window.hidden == 1
     assert window.polling.stopped == 0
+    assert window.registration.stopped == 0
     assert event.ignored is True
     assert event.accepted is False
     assert len(window.tray.messages) == 1
@@ -102,6 +104,7 @@ def test_close_really_exits_when_tray_is_unavailable(monkeypatch):
     app.MainWindow.closeEvent(window, event)
 
     assert window.polling.stopped == 1
+    assert window.registration.stopped == 1
     assert window.web_service.stopped == 1
     assert event.accepted is True
 
@@ -115,6 +118,7 @@ def test_close_keeps_app_open_when_settings_draft_is_not_discarded(monkeypatch):
     app.MainWindow.closeEvent(window, event)
 
     assert window.polling.stopped == 0
+    assert window.registration.stopped == 0
     assert window.web_service.stopped == 0
     assert event.ignored is True
     assert event.accepted is False
@@ -127,6 +131,7 @@ def test_background_start_is_idempotent_and_activation_restores_maximized_window
     app.MainWindow._show_from_tray(window)
 
     assert window.polling.started == 1
+    assert window.registration.started == 1
     assert window.web_service.started == 1
     assert (window.maximized, window.raised, window.activated) == (1, 1, 1)
 

@@ -12,7 +12,7 @@ from contextlib import closing
 from datetime import datetime
 from pathlib import Path
 
-CURRENT_SCHEMA_VERSION = 11
+CURRENT_SCHEMA_VERSION = 12
 
 
 class UnsupportedSchemaVersionError(RuntimeError):
@@ -34,6 +34,52 @@ _REQUIRED_SCHEMA: dict[str, frozenset[str]] = {
     "daily_subject_records": frozenset({"id", "device_slot", "subject_type", "subject_id"}),
     "legacy_history_imports": frozenset({"id", "source_sha256", "imported_rows"}),
     "legacy_history_items": frozenset({"id", "reading_id", "row_fingerprint"}),
+    "registration_profile": frozenset(
+        {
+            "singleton_id",
+            "installation_id",
+            "company_name",
+            "client_first_started_at",
+            "notice_version",
+            "notice_accepted_at",
+            "token_ref",
+            "status",
+            "registered_at",
+            "last_heartbeat_at",
+            "next_heartbeat_at",
+            "last_error_code",
+            "updated_at",
+        }
+    ),
+    "registration_outbox": frozenset(
+        {
+            "operation_id",
+            "event_type",
+            "idempotency_key",
+            "request_fingerprint",
+            "payload_json",
+            "state",
+            "attempt_count",
+            "next_attempt_at",
+            "last_error_code",
+            "created_at",
+            "updated_at",
+            "completed_at",
+        }
+    ),
+    "registration_attempt_history": frozenset(
+        {
+            "id",
+            "operation_id",
+            "attempted_at",
+            "outcome",
+            "http_status",
+            "error_code",
+            "retryable",
+            "retry_after_seconds",
+            "duration_ms",
+        }
+    ),
 }
 
 
@@ -167,11 +213,74 @@ def _migration_011_printer_tls_policy(connection: sqlite3.Connection) -> None:
         connection.execute("ALTER TABLE devices ADD COLUMN tls_fingerprint TEXT NOT NULL DEFAULT ''")
 
 
+def _migration_012_registration_outbox(connection: sqlite3.Connection) -> None:
+    """Add durable registration state without touching meter or billing data."""
+
+    connection.execute(
+        """CREATE TABLE IF NOT EXISTS registration_profile(
+               singleton_id            INTEGER PRIMARY KEY CHECK(singleton_id = 1),
+               installation_id         TEXT NOT NULL UNIQUE,
+               company_name            TEXT NOT NULL,
+               client_first_started_at TEXT NOT NULL,
+               notice_version          TEXT NOT NULL DEFAULT '',
+               notice_accepted_at      TEXT NOT NULL DEFAULT '',
+               token_ref               TEXT NOT NULL DEFAULT '',
+               status                  TEXT NOT NULL DEFAULT 'pending',
+               registered_at           TEXT NOT NULL DEFAULT '',
+               last_heartbeat_at       TEXT NOT NULL DEFAULT '',
+               next_heartbeat_at       TEXT NOT NULL DEFAULT '',
+               last_error_code         TEXT NOT NULL DEFAULT '',
+               updated_at              TEXT NOT NULL
+           )"""
+    )
+    connection.execute(
+        """CREATE TABLE IF NOT EXISTS registration_outbox(
+               operation_id       TEXT PRIMARY KEY,
+               event_type         TEXT NOT NULL CHECK(event_type IN ('register','heartbeat')),
+               idempotency_key    TEXT NOT NULL UNIQUE,
+               request_fingerprint TEXT NOT NULL,
+               payload_json       TEXT NOT NULL,
+               state              TEXT NOT NULL DEFAULT 'pending'
+                                  CHECK(state IN ('pending','in_flight','retry','succeeded','action_required','superseded')),
+               attempt_count      INTEGER NOT NULL DEFAULT 0 CHECK(attempt_count >= 0),
+               next_attempt_at    TEXT NOT NULL,
+               last_error_code    TEXT NOT NULL DEFAULT '',
+               created_at         TEXT NOT NULL,
+               updated_at         TEXT NOT NULL,
+               completed_at       TEXT NOT NULL DEFAULT '',
+               UNIQUE(event_type, request_fingerprint)
+           )"""
+    )
+    connection.execute(
+        """CREATE TABLE IF NOT EXISTS registration_attempt_history(
+               id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+               operation_id        TEXT NOT NULL,
+               attempted_at        TEXT NOT NULL,
+               outcome             TEXT NOT NULL,
+               http_status         INTEGER,
+               error_code          TEXT NOT NULL DEFAULT '',
+               retryable           INTEGER NOT NULL DEFAULT 0,
+               retry_after_seconds INTEGER,
+               duration_ms         INTEGER NOT NULL DEFAULT 0,
+               FOREIGN KEY(operation_id) REFERENCES registration_outbox(operation_id) ON DELETE CASCADE
+           )"""
+    )
+    connection.execute(
+        """CREATE INDEX IF NOT EXISTS idx_registration_outbox_due
+           ON registration_outbox(state, next_attempt_at)"""
+    )
+    connection.execute(
+        """CREATE INDEX IF NOT EXISTS idx_registration_attempt_operation
+           ON registration_attempt_history(operation_id, id DESC)"""
+    )
+
+
 MIGRATIONS: tuple[tuple[int, str, object], ...] = (
     (8, "record_schema_history_and_reporting_indexes", _migration_008_record_schema_history),
     (9, "add_legacy_usage_history_import_provenance", _migration_009_legacy_history_import),
     (10, "add_os_vault_credential_reference", _migration_010_credential_reference),
     (11, "add_verified_or_pinned_printer_tls_policy", _migration_011_printer_tls_policy),
+    (12, "add_durable_registration_outbox", _migration_012_registration_outbox),
 )
 
 

@@ -201,6 +201,38 @@
 
 > ตรวจ OpenAPI ของ KOMI Report V5.1 Registration API กับ target `schema_version: 2` ใน `docs/REGISTRATION_API_HANDOFF.md` ก่อน โดยใช้ Staging Base URL: `<URL>` และ OpenAPI file: `<path/attachment>`. API source commit: `<commit>`. Bootstrap method: `<method>`. Secret ถูกเก็บไว้ที่ `<secure location; ห้ามใส่ค่าจริงในแชต>`. หาก contract ตรงกันจึงค่อยเชื่อม Desktop ด้วย local durable outbox, offline retry/idempotency, secure token storage และ integration tests โดยไม่เปลี่ยนหน้าตา/ข้อความของแอป พร้อมเพิ่ม allow-list tests สำหรับ Serial No + Model + Selected + Local Slot และกรณีค้นพบมากกว่า 3 เครื่องแต่เลือกใช้ไม่เกิน 3 เครื่อง จากนั้นทดสอบ staging end-to-end และรายงานว่าส่วนใดผ่าน/ยังไม่ผ่าน
 
+## Desktop Phase 2 implementation status — 2026-08-22
+
+ส่วนนี้บันทึก contract ฝั่ง Desktop ที่ implement และทดสอบแล้ว ไม่ใช่หลักฐานว่า deployed API ตรงกัน:
+
+- Desktop โหลด non-secret JSON policy จาก path ใน `KOMI_REGISTRATION_POLICY_FILE`; repository ไม่มี deployed URL,
+  bootstrap value หรือ bearer token และจะ disabled เมื่อไม่มี policy.
+- Policy root ต้องมีเฉพาะ `base_url`, `environment`, `bootstrap`, `privacy_notice`, `request_timeout_seconds`.
+  Base URL ต้องเป็น HTTPS absolute URL ที่ไม่มี userinfo/query/fragment; timeout อยู่ในช่วง 1–60 วินาที.
+- `bootstrap` ต้องมีเฉพาะ `mode`, `header`, `vault_ref`; Production รองรับเฉพาะ `vault_header` และอ่านค่าจริงจาก
+  OS vault ตาม reference. `anonymous` ยอมรับเฉพาะ staging.
+- `privacy_notice` ต้องมี version, approved flag, purpose, exact field list, retention, deletion contact, legal basis,
+  access/export workflow และ approval reference/date/owner. Production sender หยุดก่อนเปิด vault/network หาก notice ไม่ครบ
+  หรือผู้ใช้ยังไม่ยอมรับ version ปัจจุบัน.
+- Client ส่ง exact schema-v2 body, recompute request fingerprint ก่อนใช้ Idempotency-Key, ไม่ตาม HTTP redirect และยอมรับ
+  success response เฉพาะ exact typed fields ด้านบน. Error code/request ID ที่มีอักขระหรือความยาวนอก allow-list จะถูกแทนด้วย
+  generic safe code ก่อนเก็บ/log/UI.
+- Register token และ optional heartbeat rotation token ถูกเขียน OS vault ก่อน mark outbox success; SQLite เก็บเพียง stable
+  token reference. Vault unavailable หรือ local commit failure จะ fail-closed/rollback token write.
+- HTTP `401/403` เป็น terminal `token_rejected`; `408/425/429/500/502/503/504` retry ตาม typed response/default policy
+  และ `Retry-After` นับจากเวลารับ response. Unexpected worker failure ถูกคืนเป็น durable retry โดยไม่รอ restart.
+- Outbox operation ใหม่ supersede inventory เก่าที่ยังไม่สำเร็จ, duplicate fingerprint reuse operation/idempotency key เดิม,
+  attempt history เก็บสูงสุด 50 รายการต่อ operation และเมื่อ lifecycle ใหม่สำเร็จจะ prune completed/superseded payload เก่า
+  เพื่อลด local Serial No retention.
+- Factory Reset ลบ registration attempts/outbox/profile และ scoped token; หาก vault ใช้งานไม่ได้จะไม่ลบ local state ครึ่งเดียว.
+
+### Evidence gap ที่ยังบล็อก Production
+
+ณ วันที่ 2026-08-22 ยังไม่มี OpenAPI/deployed staging artefact, verified environment, bootstrap lifecycle,
+token rotate/revoke/error contract หรือ approved Privacy Notice/DPO/Legal retention/access/export/deletion evidence อยู่ใน
+nested repository นี้ จึงยังไม่ทำ live Registration request, staging E2E, Dashboard read-back หรือ cleanup และสถานะยังเป็น
+**Technical Pass / Production blocked**.
+
 ## หมายเหตุเรื่อง Update
 
 อย่ารวมไฟล์อัปเดตหรือคำสั่งบังคับ update ใน Registration response รุ่นแรก รอบ Update ต้องมี contract แยกสำหรับ signed manifest, SHA-256/signature, OS/architecture artifact, rollout cohort, rollback และ native UAT ก่อนเปิด one-click update

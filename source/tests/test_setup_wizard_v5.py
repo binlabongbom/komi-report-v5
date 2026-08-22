@@ -27,6 +27,7 @@ from PyQt6.QtWidgets import (
 import database
 from services.device_config import DeviceConfig, DeviceConfigRepository
 from services.pricing import PricingRepository
+from services.registration_repository import RegistrationRepository
 from v5_pages import NetworkDiscoveryWorker, SetupWizardV5
 
 
@@ -178,9 +179,11 @@ def test_setup_wizard_uses_the_approved_four_step_flow(tmp_path):
         registration_review = wizard.review_sections["registration"].text()
         assert "Version 5.1.0" in registration_review
         assert "bizhub C450i × 1" in registration_review
-        assert "ไม่ส่ง" in registration_review
-        assert "IP, Serial, Credential, Meter" in registration_review
-        assert wizard.registration_status_label.text() == "ยังไม่ส่ง"
+        assert "Serial Number + รุ่นเครื่อง + สถานะเลือกใช้" in registration_review
+        assert "IP, MAC, hostname, Credential, Meter" in registration_review
+        assert wizard.registration_status_label.text() == "ปิดการส่ง"
+        assert wizard.privacy_notice_accepted.isEnabled() is False
+        assert "ยังไม่มี Privacy Notice ฉบับอนุมัติ" in wizard.privacy_notice_status.text()
         wizard.close()
         app.processEvents()
     finally:
@@ -772,7 +775,11 @@ def test_setup_wizard_shared_price_is_written_to_every_selected_device(tmp_path)
         assert database.get_cfg("waste_paper_pct") == "2.0"
         installation_id = database.get_cfg("installation_id")
         assert installation_id
-        envelope = json.loads(database.get_cfg("registration_pending_envelope"))
+        with database._open(commit=False) as connection:
+            raw_envelope = connection.execute(
+                "SELECT payload_json FROM registration_outbox WHERE event_type='register'"
+            ).fetchone()[0]
+        envelope = json.loads(raw_envelope)
         assert envelope["installation_id"] == installation_id
         assert envelope["company_name"] == "บริษัท ทดสอบ จำกัด"
         assert envelope["schema_version"] == 2
@@ -783,10 +790,100 @@ def test_setup_wizard_shared_price_is_written_to_every_selected_device(tmp_path)
             {"serial_number": "SN-12", "model": "bizhub C650i", "selected": False, "device_slot": None},
             {"serial_number": "SN-13", "model": "bizhub C450i", "selected": False, "device_slot": None},
         ]
-        assert database.get_cfg("registration_status") == "pending_configuration"
+        assert database.get_cfg("registration_pending_envelope") == ""
+        assert database.get_cfg("registration_status") == "pending"
+        assert RegistrationRepository().summary().status == "pending"
         serialized = json.dumps(envelope).lower()
         for excluded in ("192.0.2.10", "192.0.2.13", "password", "meter", "user", "document", "application_log"):
             assert excluded not in serialized
+        wizard.close()
+        app.processEvents()
+    finally:
+        database.set_db_path(original_path)
+
+
+def test_setup_completes_locally_when_registration_enqueue_fails(tmp_path):
+    original_path = _wizard_database(tmp_path)
+    app = QApplication.instance() or QApplication([])
+    try:
+        wizard = SetupWizardV5()
+        _add_selected_device(wizard, "DMS Printer", "192.0.2.10")
+
+        class FailingRegistrationRepository:
+            def upsert_profile_and_enqueue_register(self, *args, **kwargs):
+                raise RuntimeError("synthetic outbox failure")
+
+        wizard.registration_repository = FailingRegistrationRepository()
+        wizard._save()
+
+        assert wizard.result() == int(QDialog.DialogCode.Accepted)
+        assert DeviceConfigRepository().setup_complete() is True
+        assert database.get_cfg("registration_status") == "action_required"
+        wizard.close()
+        app.processEvents()
+    finally:
+        database.set_db_path(original_path)
+
+
+def test_setup_records_acknowledgement_only_for_complete_approved_notice(tmp_path, monkeypatch):
+    original_path = _wizard_database(tmp_path)
+    app = QApplication.instance() or QApplication([])
+    policy_path = tmp_path / "registration-policy.json"
+    policy_path.write_text(
+        json.dumps(
+            {
+                "base_url": "https://staging.invalid.example",
+                "environment": "staging",
+                "bootstrap": {
+                    "mode": "vault_header",
+                    "header": "X-Synthetic-Bootstrap",
+                    "vault_ref": "registration-bootstrap-reference",
+                },
+                "privacy_notice": {
+                    "version": "notice-2026-08",
+                    "approved": True,
+                    "purpose": "Synthetic registration UI test",
+                    "fields": [
+                        "installation_id",
+                        "company_name",
+                        "client_first_started_at",
+                        "app_version",
+                        "platform",
+                        "architecture",
+                        "serial_number",
+                        "model",
+                        "selected",
+                        "device_slot",
+                        "timestamps",
+                        "status",
+                    ],
+                    "retention": "Synthetic retention",
+                    "deletion_contact": "privacy@example.invalid",
+                    "legal_basis": "Synthetic legal basis",
+                    "access_export": "Synthetic access/export workflow",
+                    "approval_reference": "SYNTHETIC-DPO-TEST-REFERENCE",
+                    "approved_at": "2026-08-22T00:00:00+00:00",
+                    "approval_owner": "Synthetic Test Approver",
+                },
+                "request_timeout_seconds": 15,
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("KOMI_REGISTRATION_POLICY_FILE", str(policy_path))
+    try:
+        wizard = SetupWizardV5()
+        _add_selected_device(wizard, "DMS Printer", "192.0.2.10")
+
+        assert wizard.privacy_notice_accepted.isEnabled()
+        wizard.privacy_notice_accepted.setChecked(True)
+        wizard._save()
+
+        profile = RegistrationRepository().profile()
+        assert profile is not None
+        assert profile.notice_version == "notice-2026-08"
+        assert profile.notice_accepted_at
+        assert RegistrationRepository().summary().status == "pending"
         wizard.close()
         app.processEvents()
     finally:

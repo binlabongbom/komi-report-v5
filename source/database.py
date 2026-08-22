@@ -714,7 +714,16 @@ def reset_db():
     reset_usage_data()
 
 
-def factory_reset_v5() -> None:
+def factory_reset_v5(*, registration_secret_store=None) -> None:
+    """Reset all local state while serialized with registration token commits."""
+
+    from services.registration_vault import registration_state_lock
+
+    with registration_state_lock:
+        _factory_reset_v5_locked(registration_secret_store=registration_secret_store)
+
+
+def _factory_reset_v5_locked(*, registration_secret_store=None) -> None:
     """Return V5 to a true first-run state without deleting the SQLite file.
 
     This removes device configuration, pricing, usage, daily evidence and the
@@ -724,29 +733,53 @@ def factory_reset_v5() -> None:
     """
     global _cfg_cache
 
-    with _open() as c:
-        c.execute("DROP TRIGGER IF EXISTS billing_ledger_no_update")
-        c.execute("DROP TRIGGER IF EXISTS billing_ledger_no_delete")
+    token_ref = ""
+    previous_token = None
+    with _open(commit=False) as c:
+        row = c.execute(
+            "SELECT token_ref FROM registration_profile WHERE singleton_id=1"
+        ).fetchone()
+        token_ref = str(row[0]) if row and row[0] else ""
+    if token_ref:
+        if registration_secret_store is None:
+            from services.registration_vault import platform_registration_secret_store
 
-        # Children and immutable audit records first, then their source rows.
-        for table in (
-            "billing_ledger",
-            "daily_subject_records",
-            "cost_category_history",
-            "price_history",
-            "daily_meter_records",
-            "price_snapshot",
-            "config_log",
-            "readings",
-            "devices",
-            "settings",
-        ):
-            c.execute(f"DELETE FROM {table}")
-        c.execute(
-            "DELETE FROM sqlite_sequence WHERE name IN "
-            "('billing_ledger','daily_subject_records','cost_category_history',"
-            "'price_history','daily_meter_records','price_snapshot','config_log','readings')"
-        )
+            registration_secret_store = platform_registration_secret_store()
+        previous_token = registration_secret_store.load(token_ref)
+        registration_secret_store.delete(token_ref)
+
+    try:
+        with _open() as c:
+            c.execute("DROP TRIGGER IF EXISTS billing_ledger_no_update")
+            c.execute("DROP TRIGGER IF EXISTS billing_ledger_no_delete")
+
+            # Children and immutable audit records first, then their source rows.
+            for table in (
+                "registration_attempt_history",
+                "registration_outbox",
+                "registration_profile",
+                "billing_ledger",
+                "daily_subject_records",
+                "cost_category_history",
+                "price_history",
+                "daily_meter_records",
+                "price_snapshot",
+                "config_log",
+                "readings",
+                "devices",
+                "settings",
+            ):
+                c.execute(f"DELETE FROM {table}")
+            c.execute(
+                "DELETE FROM sqlite_sequence WHERE name IN "
+                "('registration_attempt_history','billing_ledger','daily_subject_records',"
+                "'cost_category_history','price_history','daily_meter_records','price_snapshot',"
+                "'config_log','readings')"
+            )
+    except Exception:
+        if token_ref and previous_token is not None:
+            registration_secret_store.save(token_ref, previous_token)
+        raise
 
     _cfg_cache = None
     _clear_read_caches()

@@ -1,10 +1,16 @@
 from __future__ import annotations
 
 import secrets
+from datetime import UTC, datetime
+
+import pytest
 
 from database import _open, factory_reset_v5, init_db, reset_usage_data, set_db_path
 from komi_snmp_profiler.credential_store import CredentialStoreError, SessionCredentialStore
 from services.device_config import DatabaseCredentialStore, DeviceConfig, DeviceConfigRepository
+from services.registration_envelope import build_registration_envelope
+from services.registration_repository import RegistrationRepository
+from services.registration_vault import SessionRegistrationSecretStore
 
 
 def test_device_repository_persists_one_to_three_devices(tmp_path):
@@ -182,3 +188,84 @@ def test_factory_reset_removes_setup_and_restores_first_run_state(tmp_path):
             "SELECT 1 FROM sqlite_master WHERE type='trigger' AND name='billing_ledger_no_delete'"
         ).fetchone()
     assert trigger is not None
+
+
+def test_factory_reset_removes_registration_state_and_scoped_vault_token(tmp_path):
+    set_db_path(tmp_path / "factory-reset-registration.db")
+    init_db()
+    now = datetime(2026, 8, 22, 1, tzinfo=UTC)
+    repository = RegistrationRepository()
+    payload = build_registration_envelope(
+        installation_id="install-factory-reset",
+        company_name="KOMI-UAT-RESET",
+        first_started_at="2026-08-22",
+        app_version="5.1.0",
+        devices=[
+            {"serial_number": "SYNTHETIC-1", "model": "bizhub UAT", "selected": True, "device_slot": 1}
+        ],
+        created_at=now.isoformat(),
+    )
+    repository.upsert_profile_and_enqueue_register(
+        payload, notice_version="notice-1", notice_accepted_at=now.isoformat(), now=now
+    )
+    operation = repository.claim_due(now=now)
+    assert operation is not None
+    token_ref = "registration-token-reference"
+    repository.complete_success(
+        operation,
+        http_status=201,
+        duration_ms=1,
+        token_ref=token_ref,
+        next_heartbeat_after_seconds=3600,
+        now=now,
+    )
+    vault = SessionRegistrationSecretStore()
+    vault.save(token_ref, "synthetic-token")
+
+    factory_reset_v5(registration_secret_store=vault)
+
+    assert vault.load(token_ref) is None
+    assert RegistrationRepository().profile() is None
+    with _open(commit=False) as connection:
+        assert connection.execute("SELECT COUNT(*) FROM registration_outbox").fetchone()[0] == 0
+
+
+def test_factory_reset_fails_closed_when_registration_vault_is_unavailable(tmp_path):
+    set_db_path(tmp_path / "factory-reset-vault-failure.db")
+    init_db()
+    now = datetime(2026, 8, 22, 1, tzinfo=UTC)
+    repository = RegistrationRepository()
+    payload = build_registration_envelope(
+        installation_id="install-vault-reset",
+        company_name="KOMI-UAT-RESET",
+        first_started_at="2026-08-22",
+        app_version="5.1.0",
+        devices=[
+            {"serial_number": "SYNTHETIC-1", "model": "bizhub UAT", "selected": True, "device_slot": 1}
+        ],
+        created_at=now.isoformat(),
+    )
+    repository.upsert_profile_and_enqueue_register(
+        payload, notice_version="notice-1", notice_accepted_at=now.isoformat(), now=now
+    )
+    operation = repository.claim_due(now=now)
+    assert operation is not None
+    repository.complete_success(
+        operation,
+        http_status=201,
+        duration_ms=1,
+        token_ref="registration-token-reference",
+        next_heartbeat_after_seconds=3600,
+        now=now,
+    )
+
+    class FailingVault(SessionRegistrationSecretStore):
+        def delete(self, reference: str) -> None:
+            raise CredentialStoreError("synthetic vault unavailable")
+
+    vault = FailingVault()
+    vault.save("registration-token-reference", "synthetic-token")
+    with pytest.raises(CredentialStoreError):
+        factory_reset_v5(registration_secret_store=vault)
+
+    assert RegistrationRepository().profile() is not None

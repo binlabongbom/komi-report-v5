@@ -6,13 +6,13 @@ thread_title: Komi report V5
 dashboard_visible: true
 department: dev
 status: active
-progress: 51
+progress: 58
 owner: VEGA
-current_phase: Production Phase 1 Security Baseline complete; Phase 0 remains locked
-current_task: preserve security baseline และส่ง Dashboard publish handoff กลับ main thread
-next_action: main thread publish Dashboard; Phase 2 ต้องเริ่มเป็นงานแยกเมื่อได้รับอนุมัติ
-problem: Phase 1 ไม่มี blocker; Registration v2 deployed E2E และ release UAT/signing เป็นงาน phase อื่นที่ยังไม่ผ่าน
-updated_at: 2026-08-22T09:41:00+07:00
+current_phase: Production Phase 2 Registration & Privacy Technical Pass; Production blocked
+current_task: preserve fail-closed registration sender and hand off Dashboard publication
+next_action: supply approved Privacy Notice plus verified staging/OpenAPI/bootstrap/token artefacts, then run staging E2E and Dashboard read-back
+problem: Registration production approval and staging contract evidence are absent; technical implementation is complete but Production Pass is not claimed
+updated_at: 2026-08-22T13:15:00+07:00
 ---
 
 # KOMI Report V5.1
@@ -1457,6 +1457,54 @@ V5.0 foundation เดิมเสร็จตามรายการด้า�
 - Visual runner ปิด global clipping assertion เพราะมี baseline เดิมใน Overview ที่อยู่นอก Settings แต่ยังเปิด
   Settings-specific clipping, horizontal overflow, Thai/English metadata และ network-attempt assertions ครบ
 - Advanced schedule ยังมี horizontal scroll ภายในตารางที่ 1024px แต่ซ่อนหลัง action สำหรับเจ้าหน้าที่และไม่อยู่ใน workflow ผู้ใช้ทั่วไป
+
+## Production Phase 2 — Registration & Privacy — 2026-08-22
+
+### Outcome
+
+- Technical Pass: เพิ่ม additive schema 12 สำหรับ profile/outbox/attempt history, typed repository/client, strict schema-v2 allow-list,
+  request fingerprint/idempotency, stale-operation supersede, retry/backoff+jitter/Retry-After และ restart recovery โดยไม่เปลี่ยน Billing tables/semantics.
+- Setup commit local ก่อน registration enqueue; outbox/network failure ไม่ย้อน device/pricing/settings และไม่ขวางการเปิดแอป.
+- Registration worker ใช้ executor แยกจาก printer polling, heartbeat cadence มาจาก typed response และเก็บ scoped token ใน OS vault เท่านั้น.
+- Production sender fail-closed เมื่อ policy artefact หาย/invalid, Privacy Notice ยังไม่อนุมัติ หรือ acknowledgement ไม่ตรง version.
+- Settings แสดงสถานะไทย/อังกฤษแบบ `registered`, `pending`, `offline retry`, `action required`, มี Manual Retry,
+  Privacy Notice viewer และ acknowledgement เวอร์ชันปัจจุบัน โดยไม่เพิ่มเมนูซับซ้อน.
+- Factory Reset ลบ registration state และ scoped token แบบ fail-closed เมื่อ vault ใช้งานไม่ได้; log/SQLite ไม่เก็บ token,
+  raw payload หรือ serial list ใน observability.
+- ไม่เริ่ม Update/manifest/download (Production Phase 3).
+
+### Evidence
+
+| Gate | Actual | Result |
+|---|---|---|
+| Focused Phase 2 regression + independent final review | `156 passed in 16.60s`; scoped Ruff/diff check ผ่าน; ไม่พบ actionable P1/P2 | PASS |
+| Full Python regression | `497 passed, 1 warning in 47.52s`; warning เป็น explicit virtual-printer TLS compatibility fixture | PASS |
+| Web security/lint/build/audit | security `2 passed`; TypeScript lint/build ผ่าน; npm vulnerabilities `0` | PASS |
+| Python dependency audit | `No known vulnerabilities found` | PASS |
+| Phase 0 release safety | release builder `8 passed`; secret/allow-list gate ผ่าน | PASS |
+| Phase 1 live security preservation | TLS 1.3, HTTPS/auth/session/lockout/revocation และ Web build/audit ผ่าน | PASS |
+| Focused UI/accessibility | Setup/Settings tests ผ่าน; Thai Settings render 1024×760 ตรวจแล้วไม่ clip และ state disabled ชัด | PASS — SYNTHETIC/OFFSCREEN |
+| Independent review | ปิด findings เรื่อง stale outbox, worker wedge, redirect credentials, error sanitization, fingerprint, reset/vault, ack และ retention | PASS — CODE/TEST |
+| Staging first register/replay/offline/restart/heartbeat/auth/rate limit/invalid payload/Dashboard/cleanup | ไม่พบ verified staging/OpenAPI artefact ใน nested repo; ไม่ยิง production แทน | BLOCKED — SAFE |
+
+Task evidence แบบละเอียดอยู่ใน canonical thread workbook เดิมที่
+`work/01a02760-f602-7d70-9eea-05cc8685dd8c/PROJECT.md`; ไม่มีการสร้าง PROJECT v2/final ซ้ำ.
+
+### Production blocker / unlock conditions
+
+- ยังไม่มี approved Privacy Notice version และหลักฐาน DPO/Legal ที่ตรวจสอบได้สำหรับ legal basis, retention,
+  access/export, deletion workflow, approval owner/reference/date.
+- ยังไม่มี OpenAPI schema v2 + verified deployed staging environment artefact ที่บันทึก bootstrap flow,
+  installation-token rotate/revoke และ typed error contract โดยไม่เปิดเผย secret.
+- เมื่อได้รับ artefact ทั้งสองกลุ่ม ให้ติดตั้ง non-secret runtime policy + vault bootstrap reference แล้วรัน synthetic
+  `KOMI-UAT-<unique>` บน staging เท่านั้น: first register, idempotent replay, offline→restart→retry, heartbeat,
+  bad/revoked token, Retry-After, forbidden payload, >3 discovered/≤3 selected, Dashboard read-back และ cleanup/deactivate.
+- จนกว่าจะครบเงื่อนไขนี้ สถานะคือ **Technical Pass / Production blocked** และห้าม claim Production Pass.
+
+### Dashboard publish handoff
+
+- Nested repo อัปเดต canonical project/workbook แล้ว; main thread ต้อง publish Dashboard จาก Projects root ตาม workflow กลาง.
+- Phase 2 ไม่แก้ `portfolio-site` และไม่แก้ API project อื่นตาม scope ที่อนุมัติ.
 
 ## Definition of Done
 
