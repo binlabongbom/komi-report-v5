@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>KOMI Report V5.1 — Registration &amp; Update Design</title>
+  <style>
+    :root { color-scheme: light; --ink:#172033; --muted:#52677d; --line:#cbd5e1; --blue:#1769aa; --soft:#f6f8fb; --ok:#176b49; --warn:#8a4b08; }
+    * { box-sizing:border-box; }
+    body { margin:0; font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; color:var(--ink); background:#fff; }
+    main { max-width:1180px; margin:0 auto; padding:28px 22px 52px; }
+    h1 { margin:0 0 4px; font-size:28px; }
+    h2 { margin:28px 0 12px; font-size:20px; }
+    h3 { margin:0 0 10px; font-size:16px; }
+    p { margin:7px 0; }
+    .muted { color:var(--muted); }
+    .badge { display:inline-block; padding:4px 9px; border:1px solid var(--line); border-radius:999px; margin-right:6px; font-size:13px; }
+    .two { display:grid; grid-template-columns:minmax(0,1.35fr) minmax(300px,.65fr); gap:22px; align-items:start; }
+    .panel { border:1px solid var(--line); border-radius:8px; padding:18px; background:#fff; }
+    .progress { height:10px; background:#e7edf4; border-radius:10px; overflow:hidden; margin:10px 0 14px; }
+    .progress span { display:block; width:29%; height:100%; background:var(--blue); }
+    ul { margin:8px 0; padding-left:22px; }
+    li { margin:5px 0; }
+    .steps { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin:12px 0 18px; }
+    .step { border:1px solid var(--line); border-radius:7px; padding:10px; background:var(--soft); }
+    .step strong { display:block; color:var(--blue); }
+    .form { max-width:720px; border:1px solid var(--line); border-radius:8px; padding:18px; }
+    label { display:block; font-weight:700; margin:13px 0 5px; }
+    input { width:100%; padding:11px 12px; border:1px solid #9aabbd; border-radius:6px; font:inherit; background:#fff; }
+    input[readonly] { background:#eef2f6; color:#405166; }
+    .notice { margin-top:16px; padding:13px; border-left:4px solid var(--blue); background:#edf5fb; }
+    .flow { display:grid; grid-template-columns:repeat(5,1fr); gap:8px; align-items:center; }
+    .node { min-height:82px; border:1px solid var(--line); border-radius:7px; padding:11px; background:var(--soft); text-align:center; display:grid; place-items:center; }
+    .shots { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-top:12px; }
+    figure { margin:0; }
+    figure img { width:100%; border:1px solid var(--line); border-radius:7px; display:block; }
+    figcaption { color:var(--muted); padding-top:6px; font-size:13px; }
+    .arrow { display:none; }
+    table { width:100%; border-collapse:collapse; }
+    th,td { border-bottom:1px solid var(--line); padding:9px; text-align:left; vertical-align:top; }
+    th { background:var(--soft); }
+    .ok { color:var(--ok); } .warn { color:var(--warn); }
+    @media (max-width:850px) { .two,.steps,.flow,.shots { grid-template-columns:1fr; } }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>KOMI Report V5.1</h1>
+    <p class="muted">Company Setup + Virtual Printer Lab + Registration/Update Design · 20 สิงหาคม 2026</p>
+    <span class="badge">Status: Mac-first testing</span><span class="badge">Progress: 29%</span><span class="badge">Owner: VEGA</span>
+  </header>
+
+  <section class="two">
+    <div>
+      <h2>เป้าหมาย</h2>
+      <p>ให้ลูกค้าระบุบริษัทตอนเริ่มใช้งาน ส่งเฉพาะข้อมูลขั้นต่ำให้ผู้ดูแล และตรวจว่ามี Release ใหม่หรือไม่โดยไม่ส่ง Meter, Credential หรือข้อมูลเอกสารออกจากเครื่อง</p>
+
+      <h2>Setup 4 ขั้น</h2>
+      <div class="steps">
+        <div class="step"><strong>1 · บริษัท</strong>ชื่อบริษัท + วันที่/Version อัตโนมัติ</div>
+        <div class="step"><strong>2 · เครื่องพิมพ์</strong>ค้นหา 1–3 เครื่องและ Test All</div>
+        <div class="step"><strong>3 · ราคา</strong>Pricelist และ Billing</div>
+        <div class="step"><strong>4 · ตรวจสอบ</strong>ข้อมูล Local / ข้อมูลที่จะส่ง</div>
+      </div>
+
+      <div class="form" aria-label="ตัวอย่างหน้าเริ่มต้น V5.1">
+        <h3>ข้อมูลองค์กร</h3>
+        <p class="muted">ข้อมูลนี้บันทึกในเครื่องเพื่อระบุ installation; การส่งออกจะเปิดเมื่อ Registration API และ Privacy Notice พร้อม</p>
+        <label for="company">ชื่อบริษัท *</label>
+        <input id="company" value="บริษัท ตัวอย่าง จำกัด">
+        <label for="started">วันที่เริ่มเปิดใช้</label>
+        <input id="started" value="20/08/2026" readonly>
+        <label for="version">Version ที่ใช้</label>
+        <input id="version" value="KOMI Report 5.1.0" readonly>
+        <div class="notice"><strong>สถานะ V5.1 ตอนนี้:</strong> บันทึกชื่อบริษัท วันที่เริ่มใช้ และ Version ไว้ในเครื่องเท่านั้น ยังไม่ส่งออก<br><strong>ขอบเขตในอนาคต:</strong> ไม่ส่ง Serial, IP, Password, Counter, User หรือข้อมูลเอกสาร</div>
+      </div>
+
+      <h2>Virtual Printer Setup Lab</h2>
+      <div class="flow" aria-label="Virtual printer setup lab flow">
+        <div class="node">Mac / Windows<br>Wizard ชุดเดียว</div>
+        <div class="node">Virtual Printer<br>SNMP v2c</div>
+        <div class="node">Quick Scan<br>Production worker</div>
+        <div class="node">Web Connection<br>HTTPS</div>
+        <div class="node">Test ผ่าน<br>กด Next</div>
+      </div>
+      <p class="muted">Mac Lab ใช้ 127.0.0.1:1161/8443 เพื่อทดลองเร็วโดยไม่ขอ Admin; Windows/เครื่องจริงใช้ LAN และพอร์ต 161/443. ตัวอย่าง Advanced Scan ยังคงเป็น 192.168.1.1–192.168.1.255.</p>
+
+      <h2>Wizard ที่ render จาก Mac</h2>
+      <div class="shots">
+        <figure><img src="docs/setup-v51-dark-check-step1.png" alt="Setup step 1 company with macOS Dark Mode compatibility"><figcaption>STEP 1 · Company/วันที่/Version ยืดเต็มแนวและอ่านได้ใน Dark Mode</figcaption></figure>
+        <figure><img src="docs/setup-v51-dark-check-step2.png" alt="Setup step 2 virtual printer with light table"><figcaption>STEP 2 · Device table พื้นขาว, Virtual Printer ผ่าน SNMP + Web</figcaption></figure>
+        <figure><img src="docs/setup-v51-dark-check-step3.png" alt="Setup step 3 price with light scroll area"><figcaption>STEP 3 · Pricelist/scroll area คง Light Theme และเลื่อนได้</figcaption></figure>
+        <figure><img src="docs/setup-v51-dark-check-step4.png" alt="Setup step 4 review with responsive header"><figcaption>STEP 4 · Review อ่านได้ครบและ Header ไม่ชน Language/STEP</figcaption></figure>
+      </div>
+
+      <h2>Architecture ที่เลือก</h2>
+      <div class="flow" aria-label="Registration and update data flow">
+        <div class="node">Setup Wizard<br>Local save</div>
+        <div class="node">Durable Outbox<br>Offline retry</div>
+        <div class="node">HTTPS API<br>Register / Heartbeat</div>
+        <div class="node">Registration DB<br>Release Manifest</div>
+        <div class="node">Private Dashboard<br>MFA / Audit</div>
+      </div>
+      <p class="muted">Update ใช้ Client pull: โปรแกรมตรวจ Signed Manifest แล้วดาวน์โหลดไฟล์ที่ตรงกับ OS/architecture; Server ไม่ remote-control เครื่องลูกค้า</p>
+    </div>
+
+    <aside>
+      <h2>สถานะและงานถัดไป</h2>
+      <div class="panel">
+        <strong>Progress: 29%</strong>
+        <div class="progress"><span></span></div>
+        <p class="ok">✓ ย้าย source ไป ~/Projects/dev</p>
+        <p class="ok">✓ กำหนด Version 5.1 / 5.1.0</p>
+        <p class="ok">✓ ออกแบบ Setup/API/Update flow</p>
+        <p class="ok">✓ Company step + IP ตัวอย่าง 192.168.1.x</p>
+        <p class="ok">✓ Virtual Printer SNMP/Web + isolated Setup Lab</p>
+        <p class="ok">✓ Mac flow 4 ขั้น + Dark Mode repair + 345 tests</p>
+        <p class="warn">○ รอ Hosting/API URL</p>
+        <p class="warn">○ รอ Privacy/Retention approval</p>
+        <p class="warn">○ รอ Signing และ native upgrade UAT</p>
+      </div>
+      <h2>Update policy รุ่นแรก</h2>
+      <div class="panel">
+        <ul>
+          <li>Optional Notify + Download</li>
+          <li>Pilot ก่อน Stable</li>
+          <li>ตรวจ SHA-256 + Signature</li>
+          <li>Backup DB ก่อน Migration</li>
+          <li>รายงาน Installed/Failed แบบข้อมูลขั้นต่ำ</li>
+        </ul>
+      </div>
+    </aside>
+  </section>
+
+  <h2>Release gate</h2>
+  <table>
+    <thead><tr><th>Gate</th><th>ผ่านเมื่อ</th><th>สถานะ</th></tr></thead>
+    <tbody>
+      <tr><td>Privacy</td><td>ประกาศข้อมูล/วัตถุประสงค์/ระยะเวลาเก็บ/ช่องทางลบได้รับอนุมัติ</td><td>รอ</td></tr>
+      <tr><td>Registration</td><td>Offline retry + idempotency + excluded-field test ผ่าน</td><td>ยังไม่ทำ</td></tr>
+      <tr><td>Update</td><td>Signed manifest, checksum, OS mapping และ rollback ผ่าน</td><td>ยังไม่ทำ</td></tr>
+      <tr><td>Native UAT</td><td>Clean install และ V5.0 → V5.1 upgrade ผ่านบน OS จริง</td><td>ยังไม่ผ่าน</td></tr>
+    </tbody>
+  </table>
+</main>
+</body>
+</html>

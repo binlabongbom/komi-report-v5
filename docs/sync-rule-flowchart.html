@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>KOMI Report V5 — กฎการ Sync</title>
+  <style>
+    :root { --ink:#172033; --muted:#5f6b7a; --paper:#f5f7fa; --line:#cad3df; }
+    * { box-sizing:border-box; }
+    body { margin:0; color:var(--ink); background:var(--paper); font-family:"Noto Sans Thai",Tahoma,Arial,sans-serif; }
+    main { max-width:1600px; margin:auto; padding:28px; }
+    header { display:flex; align-items:end; justify-content:space-between; gap:20px; margin-bottom:18px; }
+    h1 { margin:0; font-size:38px; letter-spacing:-.03em; }
+    p { margin:6px 0 0; color:var(--muted); }
+    .legend { display:flex; flex-wrap:wrap; gap:12px; font-size:13px; }
+    .links { display:flex; gap:8px; margin-top:10px; }
+    .links a { color:#1769aa; text-decoration:none; border:1px solid #b8c8d8; background:white; padding:7px 11px; font-weight:700; font-size:13px; }
+    .legend span { display:flex; align-items:center; gap:6px; }
+    .dot { width:12px; height:12px; border-radius:3px; }
+    .canvas { overflow:auto; border:1px solid var(--line); background:white; box-shadow:0 12px 30px rgba(23,32,51,.08); }
+    svg { display:block; width:100%; min-width:1280px; height:auto; }
+    .node { stroke-width:2; rx:14; }
+    .start { fill:#e9f8f0; stroke:#18875d; }
+    .snmp { fill:#f1edff; stroke:#6d53c9; }
+    .web { fill:#eaf3ff; stroke:#1769aa; }
+    .ram { fill:#e8f8f7; stroke:#198f89; }
+    .db { fill:#e9f8f0; stroke:#18875d; }
+    .wait { fill:#f4f6f8; stroke:#7b8794; }
+    .error { fill:#fff0f0; stroke:#bd3f3f; }
+    .decision { fill:#fff5dd; stroke:#d89028; stroke-width:2; }
+    .title { font-size:21px; font-weight:800; fill:var(--ink); }
+    .copy { font-size:16px; fill:#405066; }
+    .small { font-size:14px; fill:#5f6b7a; }
+    .branch { font-size:15px; font-weight:800; fill:#405066; }
+    .arrow { fill:none; stroke:#526273; stroke-width:3; marker-end:url(#arrow); }
+    .arrow-red { fill:none; stroke:#bd3f3f; stroke-width:3; marker-end:url(#arrow-red); }
+    .arrow-blue { fill:none; stroke:#1769aa; stroke-width:3; marker-end:url(#arrow-blue); }
+    .dash { stroke-dasharray:9 7; }
+    .lane { fill:#f8fafc; stroke:#e1e6ec; }
+    .lane-label { font-size:15px; font-weight:800; letter-spacing:.05em; fill:#718096; }
+    .footer { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin-top:16px; }
+    .note { border-left:5px solid #1769aa; background:white; padding:13px 15px; font-size:14px; }
+    .note strong { display:block; margin-bottom:3px; }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <div><h1>กฎการ Sync — KOMI Report V5</h1><p>เส้นทางจริง: SNMP ตรวจสถานะ → Web Connection เป็น Meter หลัก → RAM แยก User → Daily Cache / Database</p><div class="links"><a href="data-storage-overview.html">ดูภาพการเก็บข้อมูล →</a></div></div>
+    <div class="legend">
+      <span><i class="dot" style="background:#6d53c9"></i>SNMP</span>
+      <span><i class="dot" style="background:#1769aa"></i>Web</span>
+      <span><i class="dot" style="background:#198f89"></i>RAM</span>
+      <span><i class="dot" style="background:#18875d"></i>Cache / DB</span>
+      <span><i class="dot" style="background:#d89028"></i>เงื่อนไข</span>
+    </div>
+  </header>
+
+  <section class="canvas">
+  <svg viewBox="0 0 1540 1860" role="img" aria-label="Flowchart กฎการ Sync KOMI Report V5">
+    <defs>
+      <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#526273"/></marker>
+      <marker id="arrow-red" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#bd3f3f"/></marker>
+      <marker id="arrow-blue" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#1769aa"/></marker>
+    </defs>
+
+    <rect class="lane" x="35" y="30" width="1470" height="340" rx="18"/><text class="lane-label" x="65" y="65">START / TRIGGER</text>
+    <rect class="lane" x="35" y="390" width="1470" height="660" rx="18"/><text class="lane-label" x="65" y="425">READ &amp; DECIDE</text>
+    <rect class="lane" x="35" y="1070" width="1470" height="520" rx="18"/><text class="lane-label" x="65" y="1105">SAVE DATA</text>
+    <rect class="lane" x="35" y="1610" width="1470" height="210" rx="18"/><text class="lane-label" x="65" y="1645">NEXT ROUND</text>
+
+    <rect class="node start" x="350" y="105" width="360" height="115"/>
+    <text class="title" x="530" y="148" text-anchor="middle">Background Scheduler</text>
+    <text class="copy" x="530" y="180" text-anchor="middle">เริ่มรอบ SNMP ทุก 5 นาที</text>
+
+    <rect class="node web" x="830" y="105" width="360" height="115"/>
+    <text class="title" x="1010" y="148" text-anchor="middle">ผู้ใช้กด Sync now</text>
+    <text class="copy" x="1010" y="180" text-anchor="middle">อ่านทุกเครื่องทันที + บังคับ Web</text>
+
+    <path class="arrow" d="M530 220 L530 300 L770 300 L770 455"/>
+    <path class="arrow-blue" d="M1010 220 L1010 300 L770 300"/>
+
+    <rect class="node snmp" x="565" y="455" width="410" height="130"/>
+    <text class="title" x="770" y="496" text-anchor="middle">1. อ่าน SNMP</text>
+    <text class="copy" x="770" y="529" text-anchor="middle">Online · Model · Serial · Total Meter</text>
+    <text class="copy" x="770" y="557" text-anchor="middle">Toner C / Y / M / K</text>
+
+    <path class="arrow" d="M770 585 L770 645"/>
+    <path class="decision" d="M770 645 L945 725 L770 805 L595 725 Z"/>
+    <text class="title" x="770" y="716" text-anchor="middle">SNMP ตอบไหม?</text>
+    <text class="small" x="770" y="744" text-anchor="middle">ตรวจการเชื่อมต่อเครื่อง</text>
+
+    <text class="branch" x="965" y="705">ใช่</text>
+    <path class="arrow" d="M945 725 L1080 725 L1080 845"/>
+    <path class="decision" d="M1080 845 L1250 925 L1080 1005 L910 925 Z"/>
+    <text class="title" x="1080" y="916" text-anchor="middle">Total เพิ่มไหม?</text>
+    <text class="small" x="1080" y="944" text-anchor="middle">หรือกด Sync now?</text>
+
+    <text class="branch" x="572" y="705">ไม่</text>
+    <path class="arrow-red" d="M595 725 L405 725 L405 845"/>
+    <rect class="node error" x="205" y="845" width="400" height="130"/>
+    <text class="title" x="405" y="886" text-anchor="middle">Web fallback</text>
+    <text class="copy" x="405" y="919" text-anchor="middle">ลองสูงสุด 5 ครั้ง · ห่างครั้งละ 5 นาที</text>
+    <text class="small" x="405" y="947" text-anchor="middle">ไม่ได้ครบ 5 ครั้ง → Offline และคงค่าล่าสุด</text>
+
+    <text class="branch" x="1270" y="905">ไม่</text>
+    <path class="arrow" d="M1250 925 L1370 925 L1370 1185"/>
+    <rect class="node wait" x="1190" y="1185" width="320" height="125"/>
+    <text class="title" x="1350" y="1227" text-anchor="middle">เก็บ Heartbeat + Toner</text>
+    <text class="copy" x="1350" y="1260" text-anchor="middle">ไม่เรียก Web เพิ่ม</text>
+    <text class="small" x="1350" y="1287" text-anchor="middle">รอ SNMP รอบถัดไป</text>
+
+    <text class="branch" x="885" y="905">ใช่</text>
+    <path class="arrow" d="M910 925 L770 925 L770 1085"/>
+    <path class="decision" d="M770 1085 L950 1165 L770 1245 L590 1165 Z"/>
+    <text class="title" x="770" y="1154" text-anchor="middle">พ้น Web throttle?</text>
+    <text class="small" x="770" y="1182" text-anchor="middle">Peak 5 นาที · Normal 15 นาที</text>
+
+    <text class="branch" x="565" y="1145">ยัง</text>
+    <path class="arrow" d="M590 1165 L455 1165 L455 1360"/>
+    <rect class="node wait" x="260" y="1360" width="390" height="110"/>
+    <text class="title" x="455" y="1402" text-anchor="middle">จำว่า Pending</text>
+    <text class="copy" x="455" y="1435" text-anchor="middle">รอรอบถัดไป ไม่ทำ Usage หาย</text>
+
+    <text class="branch" x="965" y="1145">พ้นแล้ว</text>
+    <path class="arrow-blue" d="M950 1165 L1050 1165 L1050 1270"/>
+    <rect class="node web" x="850" y="1270" width="400" height="115"/>
+    <text class="title" x="1050" y="1312" text-anchor="middle">2. อ่าน Web Connection</text>
+    <text class="copy" x="1050" y="1345" text-anchor="middle">Counter ทุกค่า · Billing source</text>
+
+    <path class="arrow" d="M1050 1385 L1050 1425 L800 1425 L800 1490"/>
+    <rect class="node ram" x="600" y="1490" width="400" height="95"/>
+    <text class="title" x="800" y="1528" text-anchor="middle">3. ดึง RAM User / Account</text>
+    <text class="copy" x="800" y="1558" text-anchor="middle">ใช้ดูผู้ใช้งาน · ไม่ใช้คิดเงิน</text>
+
+    <path class="arrow" d="M800 1585 L800 1665"/>
+    <rect class="node db" x="570" y="1665" width="460" height="110"/>
+    <text class="title" x="800" y="1707" text-anchor="middle">4. บันทึก Daily Cache</text>
+    <text class="copy" x="800" y="1740" text-anchor="middle">00:00 → แพ็ก 1 Daily Record / เครื่อง / วัน</text>
+
+    <path class="arrow dash" d="M455 1470 L455 1720 L570 1720"/>
+    <path class="arrow dash" d="M1350 1310 L1350 1720 L1030 1720"/>
+    <path class="arrow-red dash" d="M405 975 L405 1720 L570 1720"/>
+
+    <path class="arrow" d="M800 1775 L800 1810"/>
+    <text class="branch" x="820" y="1804">วนกลับตรวจอีกครั้งทุก 5 นาที</text>
+  </svg>
+  </section>
+
+  <section class="footer">
+    <div class="note"><strong>SNMP = ตรวจสถานะ</strong>ใช้ดู Online, Total และ Toner ไม่ใช้เป็นยอด Billing</div>
+    <div class="note"><strong>Web = ยอดหลัก</strong>Counter จาก Web Connection เท่านั้นที่ใช้คำนวณ Usage และค่าใช้จ่าย</div>
+    <div class="note"><strong>RAM = ผู้ใช้งาน</strong>ใช้แสดง User Authentication / Account Track แยกจาก Billing</div>
+  </section>
+</main>
+</body>
+</html>

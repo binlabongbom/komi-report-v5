@@ -1,0 +1,129 @@
+{
+  "profiles": [
+    {
+      "slot": 1,
+      "name": "C450i Summary",
+      "models": "C450i,C750i,C900i",
+      "types": ["summary"],
+      "column_map": {
+        "grand_total": 0,
+        "full_color_total": 1,
+        "bw_total": 2,
+        "a4_color": 12,
+        "a4_bw": 15,
+        "a3_color": 14,
+        "a3_bw": 17
+      },
+      "column_multipliers": {}
+    },
+    {
+      "slot": 2,
+      "name": "C450i User Account",
+      "models": "C450i,C750i,C900i",
+      "types": ["user"],
+      "column_map": {
+        "user": 0,
+        "grand_total": 1,
+        "full_color_total": 22,
+        "bw_total": 23,
+        "a4_color": 25,
+        "a4_bw": 28,
+        "a3_color": 27,
+        "a3_bw": 30
+      },
+      "column_multipliers": {}
+    },
+    {
+      "slot": 3,
+      "name": "Press C4070 Production",
+      "models": "Press_C4070",
+      "types": ["production"],
+      "column_map": {
+        "grand_total": 0,
+        "full_color_total": 10,
+        "bw_total": 11,
+        "a4_color": 12,
+        "a4_bw": 15,
+        "a3_color": 14,
+        "a3_bw": 17
+      },
+      "column_multipliers": {}
+    },
+    {
+      "slot": 4,
+      "name": "Press C7090 Production",
+      "models": "Press_C7090",
+      "types": ["production"],
+      "column_map": {
+        "grand_total": 0,
+        "full_color_total": 10,
+        "bw_total": 11,
+        "a4_color": 12,
+        "a4_bw": 15,
+        "a3_color": 14,
+        "a3_bw": 17
+      },
+      "column_multipliers": {}
+    },
+    {
+      "slot": 5,
+      "name": "Press C12010S Production",
+      "models": "Press_C12010S",
+      "types": ["production"],
+      "column_map": {
+        "grand_total": 0,
+        "full_color_total": 10,
+        "bw_total": 11,
+        "a4_color": 12,
+        "a4_bw": 15,
+        "a3_color": 14,
+        "a3_bw": 17
+      },
+      "column_multipliers": {}
+    },
+    {
+      "slot": 6,
+      "name": "Label 230 Meter",
+      "models": "Label_230",
+      "types": ["label"],
+      "column_map": {
+        "grand_total": 2,
+        "full_color_total": 2,
+        "bw_total": 2
+      },
+      "column_multipliers": {}
+    },
+    {
+      "slot": 7,
+      "name": "Custom Template 1",
+      "models": "",
+      "types": [],
+      "column_map": {},
+      "column_multipliers": {}
+    },
+    {
+      "slot": 8,
+      "name": "Custom Template 2",
+      "models": "",
+      "types": [],
+      "column_map": {},
+      "column_multipliers": {}
+    },
+    {
+      "slot": 9,
+      "name": "Custom Template 3",
+      "models": "",
+      "types": [],
+      "column_map": {},
+      "column_multipliers": {}
+    },
+    {
+      "slot": 10,
+      "name": "Custom Template 4",
+      "models": "",
+      "types": [],
+      "column_map": {},
+      "column_multipliers": {}
+    }
+  ]
+}

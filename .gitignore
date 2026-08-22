@@ -1,0 +1,84 @@
+# macOS / editor / local agent state
+.DS_Store
+.codex/
+.impeccable/
+
+# Secrets and machine-local configuration
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+id_rsa*
+credentials.json
+credential*.json
+config.json
+settings.local.json
+.npmrc
+.pypirc
+
+# Recovery and generated release artifacts
+_recovery/
+release/
+outputs/
+exports/
+data/exports/
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.dmg
+*.pkg
+*.exe
+*.app/
+*.csv
+*.xls
+*.xlsx
+/(Draft)Overview - KOMI REPORT V5.pptx
+
+# Python caches, virtual environments, and build output
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+env/
+build/
+dist/
+
+# Node / web generated output
+node_modules/
+.next/
+out/
+*.tsbuildinfo
+npm-debug.log*
+
+# Runtime state, databases, WAL files, and logs
+runtime/
+web-runtime/
+*.db
+*.db-*
+*.sqlite
+*.sqlite-*
+*.sqlite3
+*.sqlite3-*
+*.log
+logs/
+
+# Tokens, credentials, and customer-specific exports
+*token*.json
+*credentials*.json
+customer-data/
+customer_exports/
+
+# Local QA/evidence screenshots may contain real device or customer context.
+# Keep them recoverable on disk, but out of the source baseline.
+docs/qa/
+docs/executive-summary-deck/
+docs/setup-*.png
+docs/web-edition*.png
+source/*preview*.png

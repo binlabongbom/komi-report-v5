@@ -1,0 +1,31 @@
+KOMI Report V5 — Local Development Release Notes
+
+Version 5.1.0 — 2026-08-20 (Design/Migration baseline)
+
+- ย้าย canonical development source ไป `~/Projects/dev/komi-report-v5` และเก็บ OneDrive เดิมไว้ rollback
+- กำหนด Company Registration และ Update Service เป็น scope ของ V5.1; ยังไม่เปิดส่งข้อมูลหรือ Auto Update
+- ปรับ Desktop/API/Web/package version ให้เป็น 5.1.0 สำหรับเริ่ม implementation และ verification รอบใหม่
+
+Version 5.0.0.dev2 — 2026-07-23
+
+- ใช้โครง PyQt6 และ Import/Report workflow จาก KOMI Reader V4.6
+- รวม SNMP status/toner และ read-only Web Connection Device Meter จาก KOMI SNMP Profiler
+- First-run Setup รองรับสแกน เลือก และทดสอบเครื่อง 1–3 เครื่อง พร้อม Pricelist แบบใช้ร่วมกันหรือแยกรายเครื่อง
+- จำ Administrator credential รายเครื่องใน local database ตามข้อกำหนด โดยไม่ใช้ Keychain/Credential Manager
+- Scheduler อ่าน SNMP ทุก 5 นาทีและเรียก Web เมื่อ Total เพิ่ม ตาม Normal/Peak throttle และ fallback policy
+- ปิดหน้าต่างแล้วย่อเข้า System Tray, รองรับ Auto-start หลังผู้ใช้ยืนยัน Setup และป้องกันการเปิดซ้ำหลาย instance
+- เก็บ atomic Daily Cache และสรุปเป็น Daily Record หนึ่งรายการต่อเครื่องต่อวัน โดยไม่บวก cumulative snapshot ซ้ำ
+- ใช้ append-only Billing Ledger แบบ Posting/Hold/Reversal/Replacement พร้อม frozen identity, source hash,
+  category, Pricelist, waste discount และ billing period สำหรับตรวจสอบย้อนหลัง
+- วันที่ไม่มี Web success, reconciliation ไม่ปลอดภัย, counter reset หรือ identity conflict จะถูก Hold และไม่รวม Billing
+- Overview และ Reports ใช้ Posted Ledger เท่านั้น; RAM User/Account เป็นข้อมูลดูประกอบและไม่ใช้คิดค่าใช้จ่าย
+- Settings แยก Fleet/Pricelist, Billing/Schedule, Billing Audit และเครื่องมือ legacy ให้เห็นขอบเขตชัดเจน
+- Import ปรับอัตโนมัติสำหรับ 1–3 เครื่องที่หน้าต่าง 1024/1280/1440 px และมี Sync Log/Manual แบบ Offline
+- คง `.txt` Import, Parser, Backup และ Web Edition สำหรับ Trusted LAN
+
+สถานะหลักฐานล่าสุดและจำนวน test ที่รันจริงอยู่ใน `PROJECT.md` และ `release/MANIFEST.json` ของ artifact
+แต่ละรอบ เพื่อไม่ให้ Release Notes กลายเป็นตัวเลขค้างจาก checkpoint เก่า
+
+ข้อจำกัดของ build นี้:
+- เป็น local unsigned macOS build สำหรับ Apple Silicon; ยังไม่ได้ sign/notarize และยังไม่ใช่ package แจกภายนอก
+- การทดสอบอัตโนมัติใช้ temp HOME/temp database และไม่ได้แตะ Printer, production database หรือ LaunchAgent จริง
