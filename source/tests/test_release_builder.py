@@ -129,6 +129,7 @@ def test_macos_bundle_disables_runtime_bytecode_writes():
     hook = PROJECT_ROOT / "source" / "runtime_hooks" / "no_bytecode.py"
 
     assert "runtime_hooks=['runtime_hooks/no_bytecode.py']" in spec
+    assert "'distutils'" not in spec
     assert "sys.dont_write_bytecode = True" in hook.read_text(encoding="utf-8")
 
 

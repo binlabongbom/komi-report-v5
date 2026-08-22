@@ -25,7 +25,7 @@ a = Analysis(
         'tkinter', 'unittest', 'doctest', 'pdb', 'lib2to3',
         'test', 'idlelib', 'turtle', 'turtledemo', 'curses',
         'difflib', 'ftplib', 'imaplib', 'poplib',
-        'smtplib', 'telnetlib', 'xmlrpc', 'distutils',
+        'smtplib', 'telnetlib', 'xmlrpc',
     ],
     noarchive=False,
     optimize=2,
