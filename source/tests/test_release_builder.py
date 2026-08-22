@@ -31,6 +31,7 @@ def test_source_release_excludes_runtime_data_dependencies_and_secrets():
 
     assert files
     assert any(path.name == "RELEASE_RUNBOOK.md" for path in files)
+    assert any(path.name == "KOMI_Report_V5.iss" for path in files)
     for path in files:
         assert not any(part in EXCLUDED_PARTS for part in path.parts)
         assert not path.name.startswith(".env")

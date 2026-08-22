@@ -20,6 +20,7 @@ RELEASE_DIR = PROJECT_ROOT / "release"
 ARCHIVE_NAME = "KOMI_Report_V5_1_0_Source.zip"
 INCLUDE_ROOTS = (
     PROJECT_ROOT / "Open KOMI Report Web.command",
+    PROJECT_ROOT / "packaging" / "windows" / "KOMI_Report_V5.iss",
     PROJECT_ROOT / "docs" / "PILOT_RELEASE_CHECKLIST.md",
     PROJECT_ROOT / "docs" / "REGISTRATION_DATA_NOTICE.md",
     PROJECT_ROOT / "docs" / "RELEASE_RUNBOOK.md",
