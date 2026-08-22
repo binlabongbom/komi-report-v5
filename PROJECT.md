@@ -8,11 +8,11 @@ department: dev
 status: blocked
 progress: 72
 owner: VEGA
-current_phase: Production Phase 4 Technical RC assembled; Production GO blocked
-current_task: wait for authorized access to the BTHL0564 native Windows environment
-next_action: save the private komi-report-v5 project and Phase 4 branch on BTHL0564, or provide a working authorized SSH/remote path, before native x64 UAT resumes
-problem: BTHL0564 cross-host handoff found no matching saved project and read-only SSH port 22 timed out; native Windows x64, production signing and real-device proof remain absent while Registration stays fail-closed
-updated_at: 2026-08-22T15:49:31+07:00
+current_phase: Production Phase 4 real-device acceptance passed for authorized Slot 1; Production GO blocked
+current_task: obtain and verify Windows production code signing
+next_action: sign the Windows x64 installer with an approved production certificate and verify Authenticode before merge
+problem: Windows production code signing remains unavailable; Windows 10/11 x64 native UAT is explicitly deferred by Bom and is not claimed as passed while Registration stays fail-closed
+updated_at: 2026-08-22T16:46:07+07:00
 ---
 
 # KOMI Report V5.1
@@ -1531,13 +1531,21 @@ Task evidence แบบละเอียดอยู่ใน canonical thread 
 - Windows 11 ARM64 VM ผ่าน clean install, installed smoke, first-run visual, synthetic backup/integrity/restore/rollback, uninstall preservation และ reinstall แต่หลักฐานถูกล็อกเป็น `windows-arm64-vm-preflight`, `production_go=false`; ห้ามใช้แทน Windows x64 native UAT.
 - macOS arm64 Internal UAT ผ่าน bundle launch และ first-run จาก isolated DB; artifact SHA256 `ab6e7003d63dd381acd73dcf5df091e8d36f980774ef9f8570476ad8dc08bd0f`, signing เป็น ad-hoc และยังไม่ notarized จึงห้าม customer Production.
 - Final regression ผ่าน: Python `513 passed` (warning เดียวเป็น explicit Virtual Printer TLS compatibility fixture), Web type/security/standalone production build ผ่าน และ Python/npm dependency audit พบ 0 known vulnerabilities.
-- **Release decision: Technical RC / Production GO blocked.** ยังขาด native Windows 10/11 x64 clean install/restart/tray/autostart/OS vault/LAN HTTPS/upgrade, production code signing และ controlled real-device Meter/Billing/Report/Excel proof. Registration/Heartbeat ยังคง fail-closed และ Phase 2 ไม่ใช่ Production Pass.
+- **Release decision: Technical RC / Production GO blocked.** Bom เลื่อน native Windows 10/11 x64 UAT ไปหลัง Release โดยไม่ claim ว่าผ่าน; controlled real-device Meter/Billing/Report/Excel ผ่านสำหรับ authorized Slot 1 แล้ว. Phase 4 ยังขาด production code signing ส่วน Registration/Heartbeat ยังคง fail-closed และ Phase 2 ไม่ใช่ Production Pass.
 
-### Native-host access blocker — 2026-08-22
+### Historical native-host access attempt — 2026-08-22
 
 - Codex cross-host handoff ไป `BTHL0564` ล้มเหลวแบบ fail-safe ด้วยข้อความ `No matching saved project was found on BTHL0564.` และ read-only SSH preflight ไป host alias เดียวกัน timeout ที่ port 22; ไม่มี installation หรือ remote mutation เกิดขึ้น.
-- เงื่อนไขปลดล็อก: `BTHL0564` ต้องมี private project `komi-report-v5` พร้อม branch `codex/phase-4-native-release-candidate` เป็น saved Codex project หรือมี working authorized SSH/remote path ที่เข้าถึง repository/Windows environment ได้.
-- จนกว่าจะปลดล็อก ให้คง Phase 4 เป็น Technical RC / Production GO blocked, ไม่ merge `main`, ไม่เริ่ม Phase 5 และไม่เปลี่ยน Update/Registration gates.
+- เดิมเงื่อนไขปลดล็อกคือ `BTHL0564` ต้องมี private project `komi-report-v5` พร้อม branch `codex/phase-4-native-release-candidate` เป็น saved Codex project หรือมี working authorized SSH/remote path ที่เข้าถึง repository/Windows environment ได้.
+- ต่อมา Bom เลื่อน Windows 10/11 native UAT ไปหลัง Release จึงไม่ใช้ BTHL0564 เป็น current Phase 4 gate แล้ว; เก็บผลล้มเหลวนี้เป็น historical evidence และยังห้าม claim native x64 pass.
+
+### Real-device acceptance and Windows UAT deferral — 2026-08-22
+
+- Bom เลื่อน Windows 10 x64 และ Windows 11 x64 native UAT ไปหลัง Release; รายการนี้ไม่ใช่หลักฐานที่ผ่านและห้ามใช้ claim customer compatibility.
+- Controlled scope คือ Slot 1 `10.244.116.6` เท่านั้น: SNMP และ fingerprint-pinned Administrator Web Connection ให้ Total ตรงกัน `266,488`; baseline จริง `2026-08-11` ถึง `2026-08-22` มี Total delta `2,260`.
+- Production pricing functions คำนวณ real delta ได้ gross `3,542.80` และ net หลัง waste 2% `3,471.94`, ตรงสูตรอิสระ. Isolated Report/Excel จาก real history สร้างครบ 3 sheets, 9 วันที่ไม่ซ้ำ, totals ตรง canonical Hold/fail-closed และไม่พบ IP/Serial/Credential ใน workbook.
+- Slot 2 `10.244.116.8` ไม่ตอบ SNMP/HTTP/HTTPS หลังตรวจซ้ำ จึงอยู่นอก acceptance scope รอบนี้. ไม่มีการส่งงานพิมพ์ แก้ค่าหน้าเครื่อง หรือแก้ฐานข้อมูลต้นฉบับ.
+- Phase 4 blocker ที่เหลือคือ approved Windows production code signing และ Authenticode verification; Product Production GO ยังขึ้นกับ Registration/Privacy gates ของ Phase 2 แยกต่างหาก.
 
 ### Objective
 
@@ -1562,9 +1570,9 @@ Task evidence แบบละเอียดอยู่ใน canonical thread 
 
 ### Definition of Done
 
-- Windows 10/11 x64 clean install/launch/first-run/restart/tray/autostart/LAN Web/OS vault ผ่านบน target OS จริง.
+- Windows 10/11 x64 native UAT ถูก Deferred หลัง Release ตามคำสั่ง Bom; ต้องคง backlog และห้าม claim ว่าผ่าน.
 - Upgrade + backup + integrity check + restore/rollback ผ่านโดย Devices, Prices, History และ Billing Ledger ไม่สูญหายหรือเปลี่ยนความหมาย.
-- Controlled printer/billing acceptance มี raw meter provenance, expected delta, posted ledger และ Export totals ตรงกัน; unsafe evidence ยังคง Hold.
+- Controlled printer/billing acceptance สำหรับ authorized Slot 1 มี SNMP/Web raw meter provenance, expected delta, production Billing projection และ fail-closed Report/Export totals ตรงกัน; unsafe canonical ledger ยังคง Hold.
 - Release artifact ไม่มี DB/CSV/log/env/credential/customer evidence, มี SHA256/SBOM/source commit และ build identity ที่ตรวจย้อนกลับได้.
 - Full Python/Web/security/release-safety regression ผ่าน; repository/private origin clean และ support/recovery runbook ใช้งานได้.
 - Registration ยังคง fail-closed และ Update ไม่มีอยู่ใน artifact/runtime path ของ Release นี้.
