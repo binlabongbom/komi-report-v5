@@ -5,14 +5,14 @@ thread_id: 019f69b5-6709-7e53-8ebf-a35114d233d0
 thread_title: Komi report V5
 dashboard_visible: true
 department: dev
-status: testing
-progress: 76
+status: blocked
+progress: 82
 owner: VEGA
-current_phase: Production Phase 5 integrated regression passed; unsigned Pilot artifact pending
-current_task: build and verify the unsigned Pilot candidate from the clean Phase 5 integration commit
-next_action: create the source-identified Windows artifact in ARM VM preflight, then run isolated recovery and Pilot bundle verification
-problem: Registration staging E2E is HOLD because deployed OpenAPI/staging/bootstrap/retention/Dashboard artefacts are absent; production was not used as a substitute
-updated_at: 2026-08-22T17:44:53+07:00
+current_phase: Production Phase 5 decision HOLD; unsigned Pilot candidate and recovery preflight verified
+current_task: obtain verified Registration staging/OpenAPI/bootstrap/token/retention/Dashboard artefacts
+next_action: rerun synthetic Registration E2E and Dashboard cleanup on verified staging before any PILOT GO
+problem: PILOT HOLD because Registration staging E2E/Dashboard cleanup cannot run without verified deployment artefacts; production was not used as a substitute
+updated_at: 2026-08-22T18:45:00+07:00
 ---
 
 # KOMI Report V5.1
@@ -1592,18 +1592,24 @@ Task evidence แบบละเอียดอยู่ใน canonical thread 
 - Registration ยังคง fail-closed และ Update ไม่มีอยู่ใน artifact/runtime path ของ Release นี้.
 - ถ้า code signing หรือ Windows native evidence ยังไม่ครบ ให้รายงาน RC blocked ตามจริงและห้าม claim Production GO.
 
-## Production Phase 5 — Pilot Release & Go-Live Readiness — ACTIVE 2026-08-22
+## Production Phase 5 — Pilot Release & Go-Live Readiness — HOLD 2026-08-22
 
 - Integration branch `codex/phase-5-pilot-go-live` เริ่มจาก Phase 4 latest `ab529ec` และรวม Phase 2 Data Notice
-  `e2a90e5` เป็น commit `9b08a07`; `main`/`origin/main` ยังอยู่ `6248ef2` และยังไม่ merge.
+  `e2a90e5`; source ที่ผ่าน gate ล่าสุดคือ `be48735`; `main`/`origin/main` ยังอยู่ `6248ef2` และยังไม่ merge.
 - Integrated regression ผ่าน: Python `518 passed`, Registration focused `141 passed`, Pilot/release focused `29 passed`,
   Web type/security/build, live TLS/auth และ Python/npm dependency audit ผ่าน.
-- เพิ่ม unsigned Pilot builder + checklist ที่บังคับ source commit/SHA256/manifest/SBOM, Publisher warning,
-  Registration fail-closed, `production_go=false` และไม่มี Phase 3 Update runtime ก่อนสร้าง bundle.
+- unsigned Windows artifact ผ่าน ARM VM preflight: SHA256 `39807a0645…`, source commit `be48735`,
+  `unverified-blocked` / Authenticode `NotSigned`, `production_go=false`; ไม่ใช่ native Windows x64 UAT.
+- unsigned Pilot bundle SHA256 `36c2853ff0…` มี source commit/checksum/manifest/SBOM, Publisher warning,
+  support/pilot/rollback guides, Registration fail-closed และไม่มี Phase 3 Update runtime.
+- isolated recovery และ Windows ARM VM install/backup/restore/uninstall/reinstall ผ่านโดยรักษา
+  Devices/Prices/History/Billing Ledger; controlled-printer evidenceใช้ authorized Phase 4 Slot 1 ของวันเดียวกัน
+  เพราะ diff ไม่แตะ Meter/Billing/Report/Excel และไม่ได้ยิงเครื่องจริงซ้ำ.
 - Registration E2E เป็น **HOLD — SAFE**: ไม่พบ deployed OpenAPI v2, verified staging base URL, bootstrap/token lifecycle,
   retention execution และ Dashboard role/read-back artefact จึงไม่เปิด vaultและไม่ยิง production แทน.
-- งานถัดไปคือ commit source ที่ผ่าน gate, สร้าง installer/Pilot bundle จาก source commit เดียวกัน, ตรวจ recovery preservation
-  และตัดสิน PILOT GO/HOLD ใน task workbook `work/01a0290a-40c2-70c0-9c84-f4ab26f0f84e/PROJECT.md`.
+- คำตัดสินคือ **PILOT HOLD** จนได้รับ non-secret OpenAPI 3.x, staging environment/base URL proof,
+  bootstrap method/vault reference, token rotate/revoke/error contract, retention/access/deletion และ Dashboard role artefact
+  แล้วรัน synthetic E2E/read-back/cleanup สำเร็จ. Phase 3 Update, signing, native Windows x64 และ Linux ยัง Deferred ไม่ใช่ Passed.
 
 ## Definition of Done
 
