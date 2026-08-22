@@ -6,13 +6,13 @@ thread_title: Komi report V5
 dashboard_visible: true
 department: dev
 status: active
-progress: 50
+progress: 51
 owner: VEGA
-current_phase: Production Phase 1 Security Baseline active; Phase 0 remains locked
-current_task: review/commit Production Phase 1 หลัง security implementation และ verification ผ่าน
-next_action: fast-forward main, push private origin และยืนยัน clean repository ก่อนปิด Phase 1
-problem: Phase 1 implementation/verification ผ่าน; ยังไม่ done จนกว่า merge/push/clean gate สำเร็จ
-updated_at: 2026-08-22T09:32:30+07:00
+current_phase: Production Phase 1 Security Baseline complete; Phase 0 remains locked
+current_task: preserve security baseline และส่ง Dashboard publish handoff กลับ main thread
+next_action: main thread publish Dashboard; Phase 2 ต้องเริ่มเป็นงานแยกเมื่อได้รับอนุมัติ
+problem: Phase 1 ไม่มี blocker; Registration v2 deployed E2E และ release UAT/signing เป็นงาน phase อื่นที่ยังไม่ผ่าน
+updated_at: 2026-08-22T09:41:00+07:00
 ---
 
 # KOMI Report V5.1
@@ -552,7 +552,7 @@ V5.0 foundation เดิมเสร็จตามรายการด้า�
 - [x] เพิ่ม Web login throttling/lockout/session expiry/revocation และ secure cookie พร้อม automated/live checks
 - [x] ย้าย printer credential ไป OS vault ผ่าน rollback-safe migration โดยไม่เหลือ plaintext ใน SQLite/log
 - [x] บังคับ trusted/pinned printer TLS และลบ hard-coded/default credential อย่าง backward-compatible
-- [ ] ผ่าน security/full regression, scans, Web build/typecheck, release safety, merge main และ push private origin
+- [x] ผ่าน security/full regression, scans, Web build/typecheck, release safety, merge main และ push private origin
 
 ## Problem / Blocker
 
@@ -877,6 +877,7 @@ V5.0 foundation เดิมเสร็จตามรายการด้า�
 
 | Time | Action | Expected | Actual | Result | Evidence |
 |---|---|---|---|---|---|
+| 2026-08-22 09:41 +07 | Production Phase 1 delivery | Security baseline ต้องผ่านครบ, fast-forward เข้า main, push private origin และคง Phase 0 gate | implementation `13c9488` fast-forward/push สำเร็จ; final durable close record อยู่ใน commit ถัดไป; Dashboard publish ส่งกลับ main threadและไม่แก้ portfolio-site | PASS — PHASE 1 COMPLETE | `work/01a02733-fd41-78c3-aa89-e735a595a458/PROJECT.md`, `git merge --ff-only`, `git push origin main`, final clean/read-back |
 | 2026-08-22 09:39 +07 | Production Phase 1 Security Baseline pre-merge | LAN/auth/vault/printer TLS/dependency gates ต้องผ่านโดยไม่แตะข้อมูลจริงหรือ Meter/Billing semantics | Live TLS 1.3 + LAN SAN/HTTP block/API loopback/auth lifecycle ผ่าน; OS vault migration/pin tests ผ่าน; npm/pip audit 0; Python 410, Web security 2, build/typecheck, focused Ruff, release 8, tracked candidates 230/0 และ releasable set 210/0 ผ่าน | PASS — PRE-MERGE; รอ commit/main/push/clean | `work/01a02733-fd41-78c3-aa89-e735a595a458/PROJECT.md`, `source/tools/security_live_check.py` |
 | 2026-08-22 08:49 +07 | Production Phase 0 clean-checkout/tag/private remote | Artifact ต้อง build จาก clean clone, ชี้กลับ commit, SHA256 ตรง, ไม่มี forbidden content และ private remote ต้องไม่ชนชื่อ | Commit `85e308f`, tag `v5.1.0-phase0`; clean clone source artifact 204 files, source `clean`, SHA256 `a15776f0…`, forbidden entries 0; private GitHub `binlabongbom/komi-report-v5` main/tag push และ read-back สำเร็จ | PASS — PHASE 0 COMPLETE; Phase 1 ยังไม่เริ่ม | `work/01a0271d-8f64-79a2-89f7-5129dc34c6dd/PROJECT.md`, `release/MANIFEST.json` (local ignored artifact), Git/GitHub read-back |
 | 2026-08-22 08:47 +07 | Production Phase 0 pre-commit gate | ห้าม track/package DB/CSV/log/env/credential/output/customer evidence; version ต้องตรงและ behavior ไม่ถอย | Shared gate reject negative CSV/output/token cases; candidate scan 223 files = 0 findings; export จริง 2 จุดอยู่ ignored; focused 8/full 399 tests, scoped Ruff, Web typecheck/Next build ผ่าน | PASS — PRE-COMMIT; รอ commit/clean clone/tag/remote | `.gitignore`, `source/tools/release_safety.py`, `source/tools/build_local_release.py`, `source/tests/test_release_builder.py`, `work/01a0271d-8f64-79a2-89f7-5129dc34c6dd/PROJECT.md` |

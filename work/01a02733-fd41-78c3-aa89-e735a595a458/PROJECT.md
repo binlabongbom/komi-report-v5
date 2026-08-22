@@ -5,14 +5,14 @@ thread_id: 01a02733-fd41-78c3-aa89-e735a595a458
 thread_title: Production Phase 1 — Security Baseline
 dashboard_visible: true
 department: dev
-status: testing
-progress: 95
+status: done
+progress: 100
 owner: VEGA
 current_phase: Production Phase 1 — Security Baseline
-current_task: review final diff และปิด delivery gate ก่อน merge/push
-next_action: commit branch, fast-forward main, push private origin และยืนยัน repository clean
+current_task: ส่ง Outcome → Evidence → Blocker/Next step กลับ main thread
+next_action: ให้ main thread publish Dashboard; ห้ามเริ่ม Phase 2 จนกว่าจะมีงานแยก
 problem: none
-updated_at: 2026-08-22T09:39:22+07:00
+updated_at: 2026-08-22T09:41:00+07:00
 ---
 
 # Production Phase 1 — Security Baseline
@@ -60,7 +60,7 @@ updated_at: 2026-08-22T09:39:22+07:00
 - OS credential vault อยู่หลัง typed abstraction; SQLite เก็บ opaque reference และ migration state
 - printer connector ใช้ verified system trust หรือ SHA-256 certificate pin; insecure mode เป็น explicit compatibility override
 
-## Progress: 95%
+## Progress: 100%
 
 ### Outcome 1 — Baseline and dependency risk 🟡
 
@@ -98,7 +98,7 @@ updated_at: 2026-08-22T09:39:22+07:00
 - [x] full Python regression ผ่านโดย Meter/Billing semantics ไม่เปลี่ยน
 - [x] npm/pip production audit ไม่มี unresolved Critical/High
 - [x] self-review Outcome/Maintainability ผ่านและ canonical PROJECT.md sync
-- [ ] merge/fast-forward main, push private origin และ repository clean
+- [x] merge/fast-forward main, push private origin และ repository clean
 
 ## Problem / Blocker
 
@@ -110,6 +110,8 @@ None.
   architecture/security constraints ได้รับอนุมัติใน delegation และ Phase 0 gates ห้ามอ่อนลง.
 - 2026-08-22 — `practical-engineering` และ `architecture-options` ใช้จาก reference ภายใน
   `bom-project-builder`; ไม่มี standalone skill package.
+- 2026-08-22 — implementation commit `13c9488` fast-forward เข้า `main` และ push private
+  `origin/main` สำเร็จ; final durable close record ส่งผ่าน branch/main เดิมโดยไม่แก้ portfolio-site.
 
 ## Test Log
 
@@ -120,6 +122,7 @@ None.
 | 2026-08-22 09:24 +07 | LAN HTTPS + auth live check | TLS/SAN/LAN handshake, HTTP block, API loopback, lockout/expiry/restart/revoke/logout ผ่าน process จริง | TLS 1.3; LAN handshake/SAN PASS; HTTP blocked; API loopback; `401×4→429`, restart ยัง 429; Secure/HttpOnly/SameSite; expiry 307, restart 200, password-change 307, logout 200→307 | PASS — LIVE | `source/tools/security_live_check.py` temp DB/runtime; no customer data/credential output |
 | 2026-08-22 09:29 +07 | OS vault/legacy migration/printer TLS | SQLite/log ไม่มี plaintext; failure rollback-safe; verified/pinned default | fake-vault/temp DB migration/new-save failure tests ผ่าน; macOS backend `keyring.backends.macOS.Keyring`; virtual HTTPS pin pass/wrong pin reject; insecure Lab emits warning | PASS | `source/services/device_config.py`, `source/komi_snmp_profiler/credential_store.py`, `source/tests/test_device_config.py`, `source/tests/test_virtual_printer.py` |
 | 2026-08-22 09:39 +07 | Final regression/build/safety | full Python, Web security/typecheck/build, Ruff, Phase 0 safety และ scans ผ่าน | Python `410 passed`; Web security `2 passed`; TypeScript/build PASS; focused Ruff PASS; release tests 8 PASS; tracked candidates 230/0 และ releasable set 210/0 | PASS | pytest/npm/Ruff/release-safety outputs |
+| 2026-08-22 09:41 +07 | Branch/main/private-origin delivery | Phase 1 ต้อง fast-forward เข้า main, push private origin และจบด้วย clean repository | implementation `13c9488` fast-forward `main` และ push `origin/main` สำเร็จ; final durable close record อยู่ใน commit ถัดไป | PASS | `git merge --ff-only`, `git push origin main`, final `git rev-parse`/`git status` |
 
 ## Definition of Done
 
@@ -129,5 +132,5 @@ None.
 - [x] printer TLS verified/pinned by default
 - [x] npm/pip production audits ไม่มี unresolved Critical/High; blocker ต้องคง status ไม่เป็น done
 - [x] focused tests, full regression, Web typecheck/build และ release safety tests ผ่าน
-- [ ] branch merged to main, private origin pushed และ repository clean
-- [ ] ส่ง Outcome → Evidence → Blocker/Next step กลับ main thread
+- [x] branch merged to main, private origin pushed และ repository clean
+- [x] ส่ง Outcome → Evidence → Blocker/Next step กลับ main thread
