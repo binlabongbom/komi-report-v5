@@ -402,6 +402,12 @@ def source_identity(explicit_commit: str = "") -> tuple[str, str]:
     return git_identity(PROJECT_ROOT)
 
 
+def source_state_is_clean(source_state: str) -> bool:
+    """Treat a verified source archive as equivalent to a clean Git checkout."""
+
+    return source_state in {"clean", "archive-clean"}
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Build KOMI Report V5.1.0 Windows x64 RC")
     parser.add_argument("--output", type=Path, default=RELEASE_ROOT)
@@ -420,7 +426,7 @@ def main() -> int:
         require_windows_x64()
 
     commit, source_state = source_identity(args.source_commit)
-    if source_state != "clean" and not args.allow_dirty_preflight:
+    if not source_state_is_clean(source_state) and not args.allow_dirty_preflight:
         raise ReleaseContractError("RC build requires a clean committed source tree")
     output_root = args.output.resolve()
     output_root.mkdir(parents=True, exist_ok=True)

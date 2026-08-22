@@ -5,7 +5,13 @@ import sqlite3
 
 import pytest
 
-from tools.build_windows_rc import INNO_SCRIPT, RUNTIME_TOOL_FILES, START_CMD, source_identity
+from tools.build_windows_rc import (
+    INNO_SCRIPT,
+    RUNTIME_TOOL_FILES,
+    START_CMD,
+    source_identity,
+    source_state_is_clean,
+)
 from tools.db_recovery import backup_database, inspect_database, restore_database
 from tools.release_evidence import (
     ReleaseContractError,
@@ -189,3 +195,9 @@ def test_archived_source_commit_must_match_explicit_identity(tmp_path, monkeypat
     assert source_identity(commit) == (commit, "archive-clean")
     with pytest.raises(ReleaseContractError, match="does not match"):
         source_identity("b" * 40)
+
+
+def test_verified_source_archive_is_a_clean_build_input():
+    assert source_state_is_clean("clean") is True
+    assert source_state_is_clean("archive-clean") is True
+    assert source_state_is_clean("dirty") is False
