@@ -5,14 +5,14 @@ thread_id: 01a0271d-8f64-79a2-89f7-5129dc34c6dd
 thread_title: Production Phase 0 — Release Safety Baseline
 dashboard_visible: true
 department: dev
-status: testing
-progress: 73
+status: done
+progress: 100
 owner: VEGA
-current_phase: Phase 0 baseline and clean-checkout verification
-current_task: Create the first local baseline commit after a clean secret/data scan
-next_action: Commit, build from a temp clone, then create/push the private remote if the name is free
+current_phase: Production Phase 0 complete
+current_task: Hand off the verified release-safety baseline to Production control
+next_action: Keep Phase 1 closed until the main Production thread explicitly starts it
 problem: none
-updated_at: 2026-08-22T08:47:21+07:00
+updated_at: 2026-08-22T08:49:42+07:00
 ---
 
 # Production Phase 0 — Release Safety Baseline
@@ -53,7 +53,7 @@ updated_at: 2026-08-22T08:47:21+07:00
 2. ตรวจหลังแพ็กอย่างเดียว — พบช้าและเสี่ยงสร้าง artifact ที่มีข้อมูลแล้ว
 3. Shared fail-closed gate — เลือก เพราะตรวจได้ทั้งก่อน/หลังแพ็กและทดสอบ negative case ได้
 
-## Progress: 73%
+## Progress: 100%
 
 ### Phase 0A — Inventory and containment
 
@@ -71,14 +71,16 @@ updated_at: 2026-08-22T08:47:21+07:00
 ### Phase 0C — Baseline and verification
 
 - [x] Secret/data scan ก่อน first commit
-- [ ] สร้าง local baseline commit/tag
-- [ ] Build จาก clean checkout/temp clone และตรวจ artifact contents
-- [ ] สร้าง/push private remote เมื่อ GitHub พร้อมและไม่มีชื่อชน
-- [ ] Sync canonical summary และ Dashboard
+- [x] สร้าง local baseline commit/tag
+- [x] Build จาก clean checkout/temp clone และตรวจ artifact contents
+- [x] สร้าง/push private remote เมื่อ GitHub พร้อมและไม่มีชื่อชน
+- [x] Sync canonical summary; Dashboard publish ส่งกลับ Main/VEGA เพราะห้ามแก้โปรเจกต์อื่นใน Phase 0
 
 ## Problem / Blocker
 
-None.
+- Phase 0: none.
+- นอกขอบเขต Phase 0: signing/notarization, native Windows/macOS package UAT, clean install/upgrade/backup/restore และ Registration API/DPO gates ยังต้องปิดใน Production phase ถัดไป
+- `npm ci` รายงาน dependency audit 4 high-severity findings; TypeScript/Next build ผ่าน แต่ dependency remediation ต้องแยก review เพื่อไม่เปลี่ยน behavior ใน Phase 0
 
 ## Decisions and Changes
 
@@ -94,13 +96,18 @@ None.
 | 2026-08-22 | Full source regression | Phase 0 ต้องไม่เปลี่ยน behavior | `399 passed` | PASS | `source/.venv/bin/python -m pytest source/tests -q` |
 | 2026-08-22 | Web typecheck/build | Version-only change ต้อง build ได้ | TypeScript และ Next production build ผ่านหลัง `npm ci` | PASS | `npm run lint`, `npm run build` |
 | 2026-08-22 | Pre-commit candidate scan | Candidate tracked files ต้องไม่มี secret/data signature และ export จริงต้องถูก ignore | 223 candidate files, 0 findings, 0 files >5 MB; CSV/XLSX อยู่ ignored | PASS | shared `release_safety.py`, `git check-ignore` |
+| 2026-08-22 | First baseline commit/tag | Source ที่ scan แล้วต้องมี immutable local baseline | Commit `85e308f`, annotated tag `v5.1.0-phase0` | PASS | `git log`, `git tag` |
+| 2026-08-22 | Clean-checkout build attempt 1 | Source archive ต้อง build จาก temp clone | เรียก module จาก repo root ผิดตำแหน่ง ทำให้ `ModuleNotFoundError: tools` | FAIL — invocation corrected | `/tmp/komi-phase0-clean.eN3aoh/repo` |
+| 2026-08-22 | Clean-checkout build attempt 2 | Manifest/ZIP ต้องผ่านทุก assertion | Build สำเร็จ แต่ assertion ใช้ commit SHA ที่พิมพ์ผิดเอง; manifest มี SHA จริงครบ | FAIL — assertion corrected | `/tmp/komi-phase0-clean.CP65D1/repo` |
+| 2026-08-22 | Clean-checkout artifact verification | Artifact ต้องชี้ commit/tag, checksum ตรง และไม่มี forbidden content | `5.1.0`, commit `85e308f…`, source `clean`, 204 files, SHA256 `a15776f0…`, forbidden entries 0 | PASS | temp clone + independent ZIP/manifest verification |
+| 2026-08-22 | Private remote | ชื่อ repo ไม่ชน, private, push/tag สำเร็จ | `binlabongbom/komi-report-v5`, private=true, viewer=ADMIN, main/tag pushed | PASS | GitHub CLI read-back |
 
 ## Definition of Done
 
-- [ ] ไม่มี customer data/secret ใน tracked files และ artifact
-- [ ] Release safety test ผ่านและพิสูจน์กรณี fail ได้
-- [ ] Runtime/build metadata ทุกจุดตรง `5.1.0`
-- [ ] Artifact มี SHA256 และชี้กลับ commit ได้
-- [ ] Clean-checkout build ผ่านและ artifact contents ผ่าน safety audit
-- [ ] มี local baseline commit/tag
-- [ ] Private remote ถูก push หาก environment พร้อม หรือมี evidence-based blocker
+- [x] ไม่มี customer data/secret ใน tracked files และ artifact
+- [x] Release safety test ผ่านและพิสูจน์กรณี fail ได้
+- [x] Runtime/build metadata ทุกจุดตรง `5.1.0`
+- [x] Artifact มี SHA256 และชี้กลับ commit ได้
+- [x] Clean-checkout build ผ่านและ artifact contents ผ่าน safety audit
+- [x] มี local baseline commit/tag
+- [x] Private remote ถูก push หาก environment พร้อม หรือมี evidence-based blocker

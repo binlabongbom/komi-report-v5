@@ -5,14 +5,14 @@ thread_id: 019f69b5-6709-7e53-8ebf-a35114d233d0
 thread_title: Komi report V5
 dashboard_visible: true
 department: dev
-status: testing
-progress: 42
+status: active
+progress: 43
 owner: VEGA
-current_phase: Production Phase 0 release safety baseline
-current_task: สร้าง first commit หลัง release safety/full regression ผ่าน และเตรียม clean-checkout build
-next_action: Commit baseline, verify artifact from temp clone, tag และ push private remote ถ้าชื่อว่าง
-problem: Phase 0 ไม่มี blocker ภายใน; product ยังมี blocker เดิมที่ API live/DPO/Security และ native release gates
-updated_at: 2026-08-22T08:47:21+07:00
+current_phase: Production Phase 0 complete; later Production gates remain closed
+current_task: รักษา release-safety baseline ที่ tag v5.1.0-phase0 และส่งหลักฐานกลับ Production control
+next_action: ปิด signing/native package/upgrade/restore/Registration API gates ใน phase ถัดไปหลังได้รับคำสั่ง; ยังไม่เริ่ม Phase 1
+problem: Phase 0 ผ่าน; product ยังติด API live/DPO/Security, signing และ native install/upgrade/UAT gates
+updated_at: 2026-08-22T08:49:42+07:00
 ---
 
 # KOMI Report V5.1
@@ -393,7 +393,7 @@ SNMP status every 5 min
 - **เปลี่ยนเครื่อง:** เปลี่ยน Serial/Model/IP ภายใน Slot เดิม ประวัติยังอยู่กลุ่มเดิม แต่เริ่ม Meter Baseline ใหม่และไม่หาผลต่างข้ามเครื่อง
 - **V4.6 Historical:** Usage ที่คำนวณจาก Meter snapshot เดิมตามกติกา V4.6; ไม่มีค่าใช้จ่ายย้อนหลังและไม่เขียนเข้า Billing Ledger
 
-## Progress: 42%
+## Progress: 43%
 
 V5.0 foundation เดิมเสร็จตามรายการด้านล่าง แต่การเพิ่ม Registration/Update และการย้าย canonical source เปิดรอบ V5.1 ใหม่
 โดยให้น้ำหนัก V5.1 design/migration 20%, registration 25%, backend/dashboard 20%, update 20% และ verification/release 15%.
@@ -540,8 +540,8 @@ V5.0 foundation เดิมเสร็จตามรายการด้า�
 - [x] ทำ runtime/build metadata ให้ตรง `5.1.0` และ manifest มี commit/time/SHA256/artifact identity
 - [x] Full source regression `399 passed`, scoped Ruff, Web typecheck และ production build ผ่าน
 - [x] Pre-commit candidate scan 223 files ได้ 0 secret/data findings; export จริง 2 จุดยังอยู่และถูก ignore
-- [ ] สร้าง baseline commit/tag และยืนยัน clean-checkout artifact contents
-- [ ] สร้าง/push private GitHub remote เมื่อ authentication พร้อมและชื่อ repository ไม่ชน
+- [x] สร้าง baseline commit `85e308f`, tag `v5.1.0-phase0` และยืนยัน clean-checkout artifact contents 204 files / forbidden entries 0
+- [x] สร้าง/push private GitHub remote `binlabongbom/komi-report-v5`; main/tag read-back เป็น private และสิทธิ์ ADMIN
 
 ## Problem / Blocker
 
@@ -862,6 +862,7 @@ V5.0 foundation เดิมเสร็จตามรายการด้า�
 
 | Time | Action | Expected | Actual | Result | Evidence |
 |---|---|---|---|---|---|
+| 2026-08-22 08:49 +07 | Production Phase 0 clean-checkout/tag/private remote | Artifact ต้อง build จาก clean clone, ชี้กลับ commit, SHA256 ตรง, ไม่มี forbidden content และ private remote ต้องไม่ชนชื่อ | Commit `85e308f`, tag `v5.1.0-phase0`; clean clone source artifact 204 files, source `clean`, SHA256 `a15776f0…`, forbidden entries 0; private GitHub `binlabongbom/komi-report-v5` main/tag push และ read-back สำเร็จ | PASS — PHASE 0 COMPLETE; Phase 1 ยังไม่เริ่ม | `work/01a0271d-8f64-79a2-89f7-5129dc34c6dd/PROJECT.md`, `release/MANIFEST.json` (local ignored artifact), Git/GitHub read-back |
 | 2026-08-22 08:47 +07 | Production Phase 0 pre-commit gate | ห้าม track/package DB/CSV/log/env/credential/output/customer evidence; version ต้องตรงและ behavior ไม่ถอย | Shared gate reject negative CSV/output/token cases; candidate scan 223 files = 0 findings; export จริง 2 จุดอยู่ ignored; focused 8/full 399 tests, scoped Ruff, Web typecheck/Next build ผ่าน | PASS — PRE-COMMIT; รอ commit/clean clone/tag/remote | `.gitignore`, `source/tools/release_safety.py`, `source/tools/build_local_release.py`, `source/tests/test_release_builder.py`, `work/01a0271d-8f64-79a2-89f7-5129dc34c6dd/PROJECT.md` |
 | 2026-08-20 22:32 +07 | Wizard native-control polish + Registration Envelope Preview | Slot dropdown, ราคา, calendar และปุ่ม Review ต้องไม่หลุด Dark Mode/ถูกตัด; Step 4 ต้องแสดงข้อมูลที่จะส่งและสิ่งที่ห้ามส่งก่อนบันทึก | เพิ่ม painted chevron/light popup สำหรับ ComboBox, ซ่อน spin steppers, บังคับ light Calendar, ลดปุ่ม Edit เป็น 78×36 และแทน action ของ Registration ด้วยสถานะ `ยังไม่ส่ง`. เพิ่ม allow-listed envelope: installation ID, company, first started, version, OS/architecture, model+quantity; หลัง Save เก็บ pending envelope ใน local config และไม่มี network call. Regression `368 passed + 1 isolated cancellation passed`, compileall/scoped Ruff ผ่าน; offscreen visual ตรวจ Price/Calendar/Slot popup/Review ผ่าน และ Review ที่ 1120×720 มี scroll maximum `0`. Restart Customer First Run จาก source ล่าสุด PID `44231`, DB integrity `ok`, devices `0` | PASS — SOURCE/PRIVACY UNIT/OFFSCREEN VISUAL + CLEAN REAL PROCESS; รอ Bom ตรวจ interaction บน macOS live, Hosting/API/Privacy ยังไม่ผ่าน | `source/v5_pages.py`, `source/services/registration_envelope.py`, `source/i18n.py`, `source/tests/test_registration_envelope.py`, `source/tests/test_setup_wizard_v5.py`, `/tmp/komi-v51-polish-price.png`, `/tmp/komi-v51-polish-calendar.png`, `/tmp/komi-v51-polish-slots-2.png`, `/tmp/komi-v51-combo-popup.png`, `/tmp/komi-v51-registration-review.png` |
 | 2026-08-20 21:49 +07 | Compact Step 3 shared-pricing layout | ที่ 1120×720 และ 980×620 ต้องเห็น Price Matrix, ส่วนลดกระดาษเสีย, วันสิ้นสุดรอบบิล, hints และ footer ครบโดยไม่เลื่อน | รวม heading/help เป็นแถวเดียว, mode 44 px, compact matrix, billing เป็น horizontal band. Render จริงได้ scroll maximum `0`; 1120×720 billing bottom/viewport `427/533`, 980×620 `411/433`. Focused `26 passed`, full `360 passed`, compileall ผ่าน, Impeccable layout detector `[]`. Restart clean real UAT PID `40108`, DB integrity `ok`, devices/setup `0/0` | PASS — TWO-SIZE OFFSCREEN VISUAL + SOURCE REGRESSION + CLEAN REAL PROCESS; รอ Bom live acceptance | `source/v5_pages.py`, `source/i18n.py`, `source/tests/test_setup_wizard_v5.py`, `/tmp/komi-wizard-price-compact-1120x720.png`, `/tmp/komi-wizard-price-compact-980x620.png` |
