@@ -134,6 +134,7 @@ Data flow:
 | 2026-08-22 13:04 +07 | Focused visual/accessibility | Settings status/privacy/acknowledgement ต้องเรียบง่ายและไม่ clip ที่ 1024px | Thai offscreen render ตรวจด้วยตาแล้ว; checkbox disabled ชัดเมื่อยังไม่มี approved/current notice; existing English/accessibility UI tests ผ่าน | PASS — FOCUSED | `/tmp/komi-phase2-settings-final.png`, `test_settings_v5.py` |
 | 2026-08-22 13:05 +07 | Staging E2E/Dashboard/cleanup | ต้องใช้ staging artefact จริงและ synthetic identity เท่านั้น | ไม่พบ staging artefact/OpenAPI ใน scope; ไม่สร้าง record และไม่ยิง production | BLOCKED — SAFE | repository/config audit |
 | 2026-08-22 13:48 +07 | Branch delivery | code gates ผ่านก่อน commit/fast-forward/push และ origin ต้องเป็น private target เดิม | implementation commit `1e27ec6`; Phase 2 branch fast-forward เข้า `main` และ push private origin; worktree clean | PASS | Git branch/main/origin status |
+| 2026-08-22 13:52 +07 | Verified learning capture | ส่ง solution ที่มี objective test evidence เข้า Knowledge API | endpoint ตอบสำเร็จแต่คืน `observed=false`, `verified=false`, `promoted=false`; ไม่แต่งหรือเขียน learning เอง | NOT CAPTURED | `POST /api/knowledge/learnings/observe` |
 
 ## Definition of Done
 
