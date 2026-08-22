@@ -24,6 +24,15 @@ source commit เดียวกัน. ตรวจ `CUSTOMER_RELEASE_MANIFEST.
 - ad-hoc/unsigned artifact ใช้ตรวจภายในได้เมื่อ checksum ตรง แต่ยังเป็น `HOLD` สำหรับ customer release และต้องแจ้ง
   Gatekeeper/Unknown Publisher warning ตามจริง.
 
+## Current release gate — HOLD
+
+ชุดนี้ห้ามปล่อยลูกค้าและใช้ได้เฉพาะ authorized internal verification. Current Desktop schema v2 ส่ง
+`device_inventory.devices[].serial_number` แต่ live `POST https://www.dmskm.com/api/v1/installations/register`
+ตอบ HTTP 422 `VALIDATION_ERROR` เพราะ deployed schema-v2 privacy allow-list/persistence/Dashboard ยังใช้
+`device_instance_id`. ห้ามแก้ Desktop ย้อนกลับ; ต้อง migrate backend boundary ไป `serial_number` โดยรักษา
+forbidden-data boundary แล้ว rerun current-client live E2E จึงพิจารณาปลด HOLD ได้. Canonical production endpoint
+ต้องเป็น `https://www.dmskm.com` เพราะ non-www redirect และ client ไม่ follow credential redirect โดยตั้งใจ.
+
 ## Recovery boundary
 
 Uninstall/reinstall ลบเฉพาะ program files; ห้ามลบ Database, CSV, logs, backup, Web certificate/local secret หรือ OS-vault

@@ -105,7 +105,13 @@ def test_customer_delivery_holds_unsigned_arm_vm_artifacts(
     monkeypatch.setattr("tools.build_customer_delivery.PROJECT_ROOT", tmp_path)
 
     archive, manifest = build_delivery(
-        macos, windows, tmp_path / "delivery", expected_commit=commit
+        macos,
+        windows,
+        tmp_path / "delivery",
+        expected_commit=commit,
+        approved_source_gate="b" * 40,
+        assembly_commit="c" * 40,
+        registration_blocker="Live Registration HTTP 422 serial_number allow-list mismatch",
     )
 
     assert manifest["release_decision"] == "HOLD"
@@ -113,6 +119,11 @@ def test_customer_delivery_holds_unsigned_arm_vm_artifacts(
     assert any("Developer ID" in item for item in manifest["blockers"])
     assert any("native Windows x64" in item for item in manifest["blockers"])
     assert any("Authenticode" in item for item in manifest["blockers"])
+    assert any("HTTP 422" in item for item in manifest["blockers"])
+    assert manifest["registration_endpoint"] == "https://www.dmskm.com"
+    assert manifest["registration_decision"] == "hold"
+    assert manifest["approved_phase5_source_gate"] == "b" * 40
+    assert manifest["assembly_commit"] == "c" * 40
     assert manifest["delivery_sha256"] == _digest(archive)
     with zipfile.ZipFile(archive) as packaged:
         names = set(packaged.namelist())

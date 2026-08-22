@@ -113,10 +113,15 @@ def build_delivery(
     output_root: Path,
     *,
     expected_commit: str,
+    approved_source_gate: str = "",
+    assembly_commit: str = "",
+    registration_blocker: str = "",
 ) -> tuple[Path, dict[str, object]]:
     macos_manifest, macos_blockers = verify_macos(macos_root, expected_commit)
     windows_manifest, windows_blockers = verify_windows(windows_root, expected_commit)
     blockers = macos_blockers + windows_blockers
+    if registration_blocker:
+        blockers.append(registration_blocker)
     decision = "RELEASE READY" if not blockers else "HOLD"
     staging = output_root / "staging"
     if staging.exists():
@@ -140,10 +145,14 @@ def build_delivery(
         "product": "KOMI Report V5",
         "version": VERSION,
         "source_commit": expected_commit,
+        "approved_phase5_source_gate": approved_source_gate or expected_commit,
+        "assembly_commit": assembly_commit or expected_commit,
         "release_profile": "customer-production-behavior",
         "macos_artifact_identity": macos_manifest.get("artifact_identity"),
         "windows_artifact_identity": windows_manifest.get("artifact_identity"),
         "registration_runtime": "external-approved-policy-required-fail-closed",
+        "registration_endpoint": "https://www.dmskm.com",
+        "registration_decision": "hold" if registration_blocker else "passed",
         "update_runtime": "absent-phase-3-deferred",
         "release_decision": decision,
         "production_go": decision == "RELEASE READY",
@@ -179,12 +188,18 @@ def main() -> int:
     parser.add_argument("--windows", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--expected-source-commit", required=True)
+    parser.add_argument("--approved-source-gate", default="")
+    parser.add_argument("--assembly-commit", default="")
+    parser.add_argument("--registration-blocker", default="")
     args = parser.parse_args()
     archive, manifest = build_delivery(
         args.macos.resolve(),
         args.windows.resolve(),
         args.output.resolve(),
         expected_commit=args.expected_source_commit.strip().casefold(),
+        approved_source_gate=args.approved_source_gate.strip().casefold(),
+        assembly_commit=args.assembly_commit.strip().casefold(),
+        registration_blocker=args.registration_blocker.strip(),
     )
     print(f"delivery={archive}")
     print(f"sha256={manifest['delivery_sha256']}")
