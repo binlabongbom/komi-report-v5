@@ -7,6 +7,12 @@
 #ifndef SourceCommit
   #define SourceCommit "UNCOMMITTED"
 #endif
+#ifndef OutputBaseFilename
+  #define OutputBaseFilename "KOMI_Report_V5_1_0_Windows_x64_RC"
+#endif
+#ifndef VersionInfoDescription
+  #define VersionInfoDescription "KOMI Report V5.1.0 Release Candidate"
+#endif
 
 #define AppVersion "5.1.0"
 #define AppName "KOMI Report V5"
@@ -28,14 +34,14 @@ PrivilegesRequiredOverridesAllowed=dialog
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 OutputDir={#OutputDir}
-OutputBaseFilename=KOMI_Report_V5_1_0_Windows_x64_RC
+OutputBaseFilename={#OutputBaseFilename}
 Compression=lzma2/ultra64
 SolidCompression=yes
 WizardStyle=modern
 SetupIconFile={#PayloadDir}\source\Logo.ico
 UninstallDisplayIcon={app}\source\Logo.ico
 VersionInfoVersion=5.1.0.0
-VersionInfoDescription=KOMI Report V5.1.0 Release Candidate
+VersionInfoDescription={#VersionInfoDescription}
 VersionInfoProductName=KOMI Report V5
 VersionInfoProductVersion=5.1.0
 VersionInfoCompany=Konica Minolta

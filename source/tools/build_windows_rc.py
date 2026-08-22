@@ -50,6 +50,7 @@ VERSION = tomllib.loads((SOURCE_ROOT / "pyproject.toml").read_text(encoding="utf
 RELEASE_ROOT = PROJECT_ROOT / "release" / "windows-x64-rc"
 PAYLOAD_NAME = f"KOMI Report V{VERSION}"
 INSTALLER_NAME = "KOMI_Report_V5_1_0_Windows_x64_RC.exe"
+CUSTOMER_INSTALLER_NAME = "KOMI_Report_V5_1_0_Windows_x64_Installer.exe"
 INNO_SCRIPT = PROJECT_ROOT / "packaging" / "windows" / "KOMI_Report_V5.iss"
 NODE_VERSION = "24.18.0"
 NODE_ARCHIVE = f"node-v{NODE_VERSION}-win-x64.zip"
@@ -150,6 +151,29 @@ This is not a signed Production release.
 User data is stored outside the installation directory. Uninstall removes program files only.
 Follow docs/PILOT_RELEASE_CHECKLIST.md and docs/RELEASE_SUPPORT_AND_RECOVERY.md
 before installation, upgrade, restore, rollback or data cleanup.
+"""
+
+CUSTOMER_README = """KOMI Report V5.1.0 — Windows Customer Release Package
+
+Target runtime: Windows 10/11 x64
+Build evidence: {build_evidence}
+Runtime: bundled CPython 3.11 x64 and Node.js {node_version} LTS x64
+
+This package runs the production Desktop, local SQLite, OS-vault integration
+and LAN Web HTTPS behavior. It contains no Lab/test/demo/Virtual Printer auto-
+injection and no Update client, updater, remote command or Update telemetry.
+Registration uses the separately approved external policy/configuration and
+fails closed when that configuration is absent or invalid. No secret is
+embedded in this installer.
+
+PUBLISHER WARNING: this installer is not code-signed. Windows can display
+"Unknown publisher" or "Publisher could not be verified". Verify the SHA-256
+sidecar before installation. The unsigned state blocks RELEASE READY even
+though the application payload uses production behavior.
+
+User data is stored outside the installation directory. Uninstall removes
+program files only. Follow docs/CUSTOMER_RELEASE_NOTES.md and
+docs/RELEASE_SUPPORT_AND_RECOVERY.md before install, recovery or rollback.
 """
 
 
@@ -306,7 +330,12 @@ def build_web_runtime_seed(*, payload_root: Path, node_root: Path) -> None:
     (seed / BUILD_STAMP).write_text(source_hash(web_source) + "\n", encoding="utf-8")
 
 
-def build_payload(output_root: Path) -> tuple[Path, dict[str, str]]:
+def build_payload(
+    output_root: Path,
+    *,
+    customer_release: bool = False,
+    build_evidence: str = "not-yet-classified",
+) -> tuple[Path, dict[str, str]]:
     payload_root = output_root / "payload" / PAYLOAD_NAME
     if payload_root.exists():
         shutil.rmtree(payload_root)
@@ -333,6 +362,11 @@ def build_payload(output_root: Path) -> tuple[Path, dict[str, str]]:
     recovery_guide = PROJECT_ROOT / "docs" / "RELEASE_SUPPORT_AND_RECOVERY.md"
     if recovery_guide.is_file():
         shutil.copy2(recovery_guide, docs_destination / recovery_guide.name)
+    if customer_release:
+        for filename in ("CUSTOMER_RELEASE_NOTES.md", "CUSTOMER_INSTALL_GUIDE.md"):
+            source = PROJECT_ROOT / "docs" / filename
+            if source.is_file():
+                shutil.copy2(source, docs_destination / filename)
 
     runtime_root = payload_root / "runtime"
     python_runtime_sha256 = download_python_runtime(runtime_root)
@@ -358,8 +392,11 @@ def build_payload(output_root: Path) -> tuple[Path, dict[str, str]]:
 
     (payload_root / "START_KOMI_REPORT.cmd").write_text(START_CMD, encoding="utf-8", newline="\r\n")
     (payload_root / "START_DEBUG.cmd").write_text(START_DEBUG_CMD, encoding="utf-8", newline="\r\n")
+    readme = CUSTOMER_README if customer_release else README
     (payload_root / "README-WINDOWS.txt").write_text(
-        README.format(node_version=NODE_VERSION), encoding="utf-8-sig", newline="\r\n"
+        readme.format(node_version=NODE_VERSION, build_evidence=build_evidence),
+        encoding="utf-8-sig",
+        newline="\r\n",
     )
 
     for cache in sorted(payload_root.rglob("__pycache__"), reverse=True):
@@ -397,19 +434,35 @@ def find_iscc(explicit: Path | None = None) -> Path:
     raise ReleaseContractError("Inno Setup compiler is required to build the installer")
 
 
-def compile_installer(*, payload_root: Path, output_root: Path, source_commit: str, iscc: Path) -> Path:
+def compile_installer(
+    *,
+    payload_root: Path,
+    output_root: Path,
+    source_commit: str,
+    iscc: Path,
+    customer_release: bool = False,
+) -> Path:
+    installer_name = CUSTOMER_INSTALLER_NAME if customer_release else INSTALLER_NAME
+    output_base = installer_name.removesuffix(".exe")
+    description = (
+        "KOMI Report V5.1.0 Customer Release Package"
+        if customer_release
+        else "KOMI Report V5.1.0 Release Candidate"
+    )
     subprocess.run(
         [
             str(iscc),
             f"/DPayloadDir={payload_root}",
             f"/DOutputDir={output_root}",
             f"/DSourceCommit={source_commit}",
+            f"/DOutputBaseFilename={output_base}",
+            f"/DVersionInfoDescription={description}",
             str(INNO_SCRIPT),
         ],
         cwd=PROJECT_ROOT,
         check=True,
     )
-    installer = output_root / INSTALLER_NAME
+    installer = output_root / installer_name
     if not installer.is_file():
         raise ReleaseContractError("Inno Setup did not produce the expected installer")
     return installer
@@ -463,6 +516,11 @@ def main() -> int:
     parser.add_argument("--allow-arm64-vm-preflight", action="store_true")
     parser.add_argument("--allow-dirty-preflight", action="store_true")
     parser.add_argument("--source-commit", default="")
+    parser.add_argument(
+        "--customer-release",
+        action="store_true",
+        help="Build the production-behavior customer package profile (signing gate remains independent)",
+    )
     args = parser.parse_args()
 
     machine = platform.machine()
@@ -477,19 +535,25 @@ def main() -> int:
         raise ReleaseContractError("RC build requires a clean committed source tree")
     output_root = args.output.resolve()
     output_root.mkdir(parents=True, exist_ok=True)
-    payload_root, runtime_evidence = build_payload(output_root)
-    installer = compile_installer(
-        payload_root=payload_root,
-        output_root=output_root,
-        source_commit=commit,
-        iscc=find_iscc(args.iscc),
-    )
-    signing = authenticode_status(installer)
     environment = build_environment_label(
         platform_name=sys.platform,
         machine=machine,
         virtualized=args.virtualized,
     )
+    payload_root, runtime_evidence = build_payload(
+        output_root,
+        customer_release=args.customer_release,
+        build_evidence=environment,
+    )
+    installer = compile_installer(
+        payload_root=payload_root,
+        output_root=output_root,
+        source_commit=commit,
+        iscc=find_iscc(args.iscc),
+        customer_release=args.customer_release,
+    )
+    signing = authenticode_status(installer)
+    manifest_name = "WINDOWS_MANIFEST.json" if args.customer_release else "RC_MANIFEST.json"
     manifest = write_release_evidence(
         artifact=installer,
         payload_root=payload_root,
@@ -502,9 +566,21 @@ def main() -> int:
         signing=signing,
         requirements_lock=SOURCE_ROOT / "requirements-windows-x64.lock.txt",
         package_lock=PROJECT_ROOT / "web" / "package-lock.json",
+        artifact_identity_prefix=(
+            "komi-report-v5-windows-x64-customer"
+            if args.customer_release
+            else "komi-report-v5-windows-x64-rc"
+        ),
+        manifest_name=manifest_name,
+        registration_runtime=(
+            "external-approved-policy-required-fail-closed"
+            if args.customer_release
+            else "fail-closed-no-policy-artefact"
+        ),
     )
+    manifest["release_profile"] = "customer-production-behavior" if args.customer_release else "rc"
     manifest.update(runtime_evidence)
-    (output_root / "RC_MANIFEST.json").write_text(
+    (output_root / manifest_name).write_text(
         json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
     )
     print(f"installer={installer}")

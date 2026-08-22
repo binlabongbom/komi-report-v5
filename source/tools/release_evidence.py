@@ -256,6 +256,9 @@ def write_release_evidence(
     signing: str,
     requirements_lock: Path,
     package_lock: Path,
+    artifact_identity_prefix: str = "komi-report-v5-windows-x64-rc",
+    manifest_name: str = "RC_MANIFEST.json",
+    registration_runtime: str = "fail-closed-no-policy-artefact",
 ) -> dict[str, object]:
     assert_native_payload_safe(payload_root)
     assert_no_update_runtime_paths(payload_root)
@@ -284,7 +287,7 @@ def write_release_evidence(
         "product": "KOMI Report V5",
         "version": version,
         "artifact": artifact.name,
-        "artifact_identity": f"komi-report-v5-windows-x64-rc-{version}-{source_commit[:12]}",
+        "artifact_identity": f"{artifact_identity_prefix}-{version}-{source_commit[:12]}",
         "artifact_sha256": artifact_sha256,
         "source_commit": source_commit,
         "source_state": source_state,
@@ -294,12 +297,12 @@ def write_release_evidence(
         "file_count": len(inventory),
         "file_inventory": inventory_path.name,
         "sbom": sbom_path.name,
-        "registration_runtime": "fail-closed-no-policy-artefact",
+        "registration_runtime": registration_runtime,
         "update_runtime": "absent-phase-3-deferred",
         "built_at": datetime.now().astimezone().isoformat(timespec="seconds"),
         "production_go": False,
     }
-    (output_dir / "RC_MANIFEST.json").write_text(
+    (output_dir / manifest_name).write_text(
         json.dumps(manifest, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
