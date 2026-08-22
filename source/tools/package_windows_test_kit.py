@@ -62,6 +62,7 @@ ROOT_FILES = (
 PACKAGE_DIRS = ("services", "komi_snmp_profiler", "ui")
 TOOL_FILES = ("__init__.py", "check_parser.py", "default_profiles.json")
 DOC_FILES = (
+    "PILOT_RELEASE_CHECKLIST.md",
     "RELEASE_RUNBOOK.md",
     "data-storage-overview.png",
     "sync-rule-flowchart.png",

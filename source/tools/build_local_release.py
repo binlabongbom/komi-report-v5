@@ -20,7 +20,10 @@ RELEASE_DIR = PROJECT_ROOT / "release"
 ARCHIVE_NAME = "KOMI_Report_V5_1_0_Source.zip"
 INCLUDE_ROOTS = (
     PROJECT_ROOT / "Open KOMI Report Web.command",
+    PROJECT_ROOT / "docs" / "PILOT_RELEASE_CHECKLIST.md",
+    PROJECT_ROOT / "docs" / "REGISTRATION_DATA_NOTICE.md",
     PROJECT_ROOT / "docs" / "RELEASE_RUNBOOK.md",
+    PROJECT_ROOT / "docs" / "RELEASE_SUPPORT_AND_RECOVERY.md",
     PROJECT_ROOT / "docs" / "SUPPORT_MATRIX.md",
     PROJECT_ROOT / "docs" / "data-storage-overview.html",
     PROJECT_ROOT / "docs" / "data-storage-overview.png",
@@ -93,6 +96,7 @@ def build_source_archive() -> tuple[Path, str, int]:
     archive = RELEASE_DIR / ARCHIVE_NAME
     files = _included_files()
     assert_release_safe(files, root=PROJECT_ROOT)
+    commit, source_state = git_identity(PROJECT_ROOT)
     with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as output:
         for path in files:
             relative = path.relative_to(PROJECT_ROOT).as_posix()
@@ -101,11 +105,14 @@ def build_source_archive() -> tuple[Path, str, int]:
             info.external_attr = (stat.S_IMODE(mode) & 0xFFFF) << 16
             info.compress_type = zipfile.ZIP_DEFLATED
             output.writestr(info, path.read_bytes(), compresslevel=9)
+        identity_info = zipfile.ZipInfo("SOURCE_COMMIT.txt", ZIP_TIMESTAMP)
+        identity_info.external_attr = 0o644 << 16
+        identity_info.compress_type = zipfile.ZIP_DEFLATED
+        output.writestr(identity_info, f"{commit}\n".encode("ascii"), compresslevel=9)
     assert_zip_safe(archive)
     digest = hashlib.sha256(archive.read_bytes()).hexdigest()
     checksum = archive.with_suffix(archive.suffix + ".sha256")
     checksum.write_text(f"{digest}  {archive.name}\n", encoding="utf-8")
-    commit, source_state = git_identity(PROJECT_ROOT)
     artifact_identity = f"komi-report-v5-source-{PACKAGE_VERSION}-{commit[:12]}"
     manifest = {
         "version": PACKAGE_VERSION,
@@ -115,7 +122,7 @@ def build_source_archive() -> tuple[Path, str, int]:
         "git_commit": commit,
         "source_state": source_state,
         "sha256": digest,
-        "file_count": len(files),
+        "file_count": len(files) + 1,
         "build_time": datetime.now().astimezone().isoformat(timespec="seconds"),
         "publish_state": "local-only",
     }

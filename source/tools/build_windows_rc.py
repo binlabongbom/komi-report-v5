@@ -133,7 +133,7 @@ popd
 exit /b %KOMI_EXIT_CODE%
 """
 
-README = """KOMI Report V5.1.0 — Windows x64 Release Candidate
+README = """KOMI Report V5.1.0 — Windows x64 Unsigned Pilot Candidate
 
 Target: Windows 10/11 x64
 Runtime: bundled CPython 3.11 x64 and Node.js {node_version} LTS x64
@@ -142,8 +142,14 @@ This RC includes Desktop, local SQLite, OS-vault integration and LAN Web HTTPS.
 It does not include an Update client, updater, remote update command or Update telemetry.
 Registration/Heartbeat remains fail-closed unless a separately approved policy artefact is configured.
 
+PUBLISHER WARNING: this installer is not code-signed. Windows can display
+"Unknown publisher" or "Publisher could not be verified". Verify the SHA-256
+sidecar before installation and use this package only for the controlled Pilot.
+This is not a signed Production release.
+
 User data is stored outside the installation directory. Uninstall removes program files only.
-Follow docs/RELEASE_SUPPORT_AND_RECOVERY.md before upgrade, restore, rollback or data cleanup.
+Follow docs/PILOT_RELEASE_CHECKLIST.md and docs/RELEASE_SUPPORT_AND_RECOVERY.md
+before installation, upgrade, restore, rollback or data cleanup.
 """
 
 

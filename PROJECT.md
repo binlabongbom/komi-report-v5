@@ -5,14 +5,14 @@ thread_id: 019f69b5-6709-7e53-8ebf-a35114d233d0
 thread_title: Komi report V5
 dashboard_visible: true
 department: dev
-status: active
-progress: 72
+status: testing
+progress: 76
 owner: VEGA
-current_phase: Production Phase 5 baseline integration and pilot evidence review
-current_task: verify integrated Phase 2 notice and Phase 4 RC gates before assembling the unsigned Pilot package
-next_action: run integrated regression and confirm whether deployed staging/OpenAPI artefacts exist without using production credentials
-problem: Production Registration remains fail-closed pending deployed API/E2E evidence; unsigned Pilot must retain Publisher warning and cannot claim Production
-updated_at: 2026-08-22T17:45:00+07:00
+current_phase: Production Phase 5 integrated regression passed; unsigned Pilot artifact pending
+current_task: build and verify the unsigned Pilot candidate from the clean Phase 5 integration commit
+next_action: create the source-identified Windows artifact in ARM VM preflight, then run isolated recovery and Pilot bundle verification
+problem: Registration staging E2E is HOLD because deployed OpenAPI/staging/bootstrap/retention/Dashboard artefacts are absent; production was not used as a substitute
+updated_at: 2026-08-22T17:44:53+07:00
 ---
 
 # KOMI Report V5.1
@@ -1591,6 +1591,19 @@ Task evidence แบบละเอียดอยู่ใน canonical thread 
 - Full Python/Web/security/release-safety regression ผ่าน; repository/private origin clean และ support/recovery runbook ใช้งานได้.
 - Registration ยังคง fail-closed และ Update ไม่มีอยู่ใน artifact/runtime path ของ Release นี้.
 - ถ้า code signing หรือ Windows native evidence ยังไม่ครบ ให้รายงาน RC blocked ตามจริงและห้าม claim Production GO.
+
+## Production Phase 5 — Pilot Release & Go-Live Readiness — ACTIVE 2026-08-22
+
+- Integration branch `codex/phase-5-pilot-go-live` เริ่มจาก Phase 4 latest `ab529ec` และรวม Phase 2 Data Notice
+  `e2a90e5` เป็น commit `9b08a07`; `main`/`origin/main` ยังอยู่ `6248ef2` และยังไม่ merge.
+- Integrated regression ผ่าน: Python `518 passed`, Registration focused `141 passed`, Pilot/release focused `29 passed`,
+  Web type/security/build, live TLS/auth และ Python/npm dependency audit ผ่าน.
+- เพิ่ม unsigned Pilot builder + checklist ที่บังคับ source commit/SHA256/manifest/SBOM, Publisher warning,
+  Registration fail-closed, `production_go=false` และไม่มี Phase 3 Update runtime ก่อนสร้าง bundle.
+- Registration E2E เป็น **HOLD — SAFE**: ไม่พบ deployed OpenAPI v2, verified staging base URL, bootstrap/token lifecycle,
+  retention execution และ Dashboard role/read-back artefact จึงไม่เปิด vaultและไม่ยิง production แทน.
+- งานถัดไปคือ commit source ที่ผ่าน gate, สร้าง installer/Pilot bundle จาก source commit เดียวกัน, ตรวจ recovery preservation
+  และตัดสิน PILOT GO/HOLD ใน task workbook `work/01a0290a-40c2-70c0-9c84-f4ab26f0f84e/PROJECT.md`.
 
 ## Definition of Done
 
