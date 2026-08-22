@@ -9,10 +9,10 @@ status: blocked
 progress: 78
 owner: VEGA
 current_phase: Phase 4 Technical RC assembled and preflighted; Production GO blocked
-current_task: close evidence, push the private Phase 4 branch and hand off exact blockers
+current_task: Phase 4 handoff completed; wait for native x64/signing/controlled-device prerequisites
 next_action: repeat the approved installer/UAT matrix on native Windows 10 and 11 x64, sign the artifact, then run controlled real-device acceptance
 problem: available Windows VM is ARM64; native Windows x64, signing, tray/autostart/OS-vault/LAN HTTPS/restart/upgrade and controlled real-device evidence remain unavailable
-updated_at: 2026-08-22T15:45:00+07:00
+updated_at: 2026-08-22T15:48:00+07:00
 ---
 
 # Production Phase 4 — Native Packaging & Release Candidate
@@ -103,8 +103,8 @@ updated_at: 2026-08-22T15:45:00+07:00
 
 - [x] support/recovery/rollback guide และ UAT checklist พร้อมใช้งาน
 - [x] self-review Outcome/Maintainability; safe merge gate = HOLD เพราะ native/signing/real-device evidence ขาด
-- [ ] commit/push private branch; fast-forward main เฉพาะเมื่อ merge gate ผ่าน
-- [ ] อัปเดต canonical `PROJECT.md` และส่ง compact handoff ไป main thread
+- [x] commit/push private branch; safe merge gate HOLD จึงไม่ fast-forward `main`
+- [x] อัปเดต canonical `PROJECT.md` และส่ง compact handoff ไป main thread `01a0146d-a3a6-7252-920a-9bb331faa2be`
 
 ## Problem / Blocker
 
