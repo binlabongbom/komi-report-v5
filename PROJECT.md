@@ -6,13 +6,13 @@ thread_title: Komi report V5
 dashboard_visible: true
 department: dev
 status: blocked
-progress: 82
+progress: 84
 owner: VEGA
-current_phase: Production Phase 5 decision HOLD; unsigned Pilot candidate and recovery preflight verified
-current_task: obtain verified Registration staging/OpenAPI/bootstrap/token/retention/Dashboard artefacts
-next_action: rerun synthetic Registration E2E and Dashboard cleanup on verified staging before any PILOT GO
-problem: PILOT HOLD because Registration staging E2E/Dashboard cleanup cannot run without verified deployment artefacts; production was not used as a substitute
-updated_at: 2026-08-22T18:48:00+07:00
+current_phase: Production Phase 5 complete — PILOT HOLD from live Registration contract mismatch
+current_task: keep Pilot blocked until the deployed API accepts the current Desktop serial_number schema
+next_action: migrate deployed schema-v2 allow-list/storage/Dashboard from device_instance_id to serial_number, keep canonical www endpoint, then rerun current-client E2E
+problem: Live POST /api/v1/installations/register returns HTTP 422 VALIDATION_ERROR for device_inventory.devices.0.serial_number
+updated_at: 2026-08-22T19:51:06+07:00
 ---
 
 # KOMI Report V5.1
@@ -22,7 +22,7 @@ updated_at: 2026-08-22T18:48:00+07:00
 - Bom เลื่อน Production Phase 3 ระบบ Update ทั้งหมดออกจากเป้าหมาย Release สิ้นเดือนนี้ เนื่องจากเวลาไม่พอ.
 - เก็บ Signed Manifest, verified download, rollout และ updater/installer automation เป็น backlog หลัง Release; ห้ามลบ design เดิมและห้ามเริ่ม implementation โดยไม่มีงานใหม่ที่อนุมัติชัดเจน.
 - Release ปัจจุบันไปต่อที่ **Production Phase 4 — Native Packaging & Release Candidate** โดยใช้ Windows 10/11 x64 เป็นเป้าหมายลูกค้าหลัก, macOS เป็น Internal UAT และ Linux deferred.
-- Registration/Heartbeat คงสถานะ fail-closed จน OpenAPI/Staging และ Registration Data Notice/Hosting Security gates ผ่าน; การข้าม Phase 3 ไม่ได้เปลี่ยน Phase 2 จาก Technical Pass / Production blocked เป็น Production Pass.
+- Registration API/connection/Dashboard ถูกยืนยันว่า live แล้ว แต่ current Desktop schema v2 ยัง fail-closed ด้วย `HTTP 422` เพราะ deployed allow-list ไม่รับ `serial_number`; การข้าม Phase 3 ไม่ได้เปลี่ยน Phase 2/5 เป็น Production Pass.
 - Bom เลื่อน Windows code signing ออกไปก่อนเพราะเป็นโปรแกรมแจกฟรี; ถือเป็น **Deferred / ยังไม่ผ่าน** ไม่ใช่ Signed release.
   การทดสอบภายในหรือ Pilot ใช้ unsigned installer ได้เมื่อแจ้งคำเตือนและตรวจ SHA256 แต่ห้ามแสดง Publisher ว่า verified
   หรือ claim ว่า Authenticode ผ่าน.
@@ -1592,7 +1592,7 @@ Task evidence แบบละเอียดอยู่ใน canonical thread 
 - Registration ยังคง fail-closed และ Update ไม่มีอยู่ใน artifact/runtime path ของ Release นี้.
 - ถ้า code signing หรือ Windows native evidence ยังไม่ครบ ให้รายงาน RC blocked ตามจริงและห้าม claim Production GO.
 
-## Production Phase 5 — Pilot Release & Go-Live Readiness — HOLD 2026-08-22
+## Production Phase 5 — Pilot Release & Go-Live Readiness — PILOT HOLD 2026-08-22
 
 - Integration branch `codex/phase-5-pilot-go-live` เริ่มจาก Phase 4 latest `ab529ec` และรวม Phase 2 Data Notice
   `e2a90e5`; source ที่ผ่าน gate ล่าสุดคือ `be48735` และ decision workbook ถูก push ที่ `f9334e7`;
@@ -1601,16 +1601,24 @@ Task evidence แบบละเอียดอยู่ใน canonical thread 
   Web type/security/build, live TLS/auth และ Python/npm dependency audit ผ่าน.
 - unsigned Windows artifact ผ่าน ARM VM preflight: SHA256 `39807a0645…`, source commit `be48735`,
   `unverified-blocked` / Authenticode `NotSigned`, `production_go=false`; ไม่ใช่ native Windows x64 UAT.
-- unsigned Pilot bundle SHA256 `36c2853ff0…` มี source commit/checksum/manifest/SBOM, Publisher warning,
+- unsigned Pilot bundle ถูก refresh หลัง live correction: SHA256 `cdbc661a86…`, source commit `be48735cc43703f2f7f172d08562ae895da77793`,
+  installer SHA256 `39807a0645…`, manifest ระบุ `registration_e2e=hold-live-contract-mismatch`, Publisher warning,
   support/pilot/rollback guides, Registration fail-closed และไม่มี Phase 3 Update runtime.
 - isolated recovery และ Windows ARM VM install/backup/restore/uninstall/reinstall ผ่านโดยรักษา
   Devices/Prices/History/Billing Ledger; controlled-printer evidenceใช้ authorized Phase 4 Slot 1 ของวันเดียวกัน
   เพราะ diff ไม่แตะ Meter/Billing/Report/Excel และไม่ได้ยิงเครื่องจริงซ้ำ.
-- Registration E2E เป็น **HOLD — SAFE**: ไม่พบ deployed OpenAPI v2, verified staging base URL, bootstrap/token lifecycle,
-  retention execution และ Dashboard role/read-back artefact จึงไม่เปิด vaultและไม่ยิง production แทน.
-- คำตัดสินคือ **PILOT HOLD** จนได้รับ non-secret OpenAPI 3.x, staging environment/base URL proof,
-  bootstrap method/vault reference, token rotate/revoke/error contract, retention/access/deletion และ Dashboard role artefact
-  แล้วรัน synthetic E2E/read-back/cleanup สำเร็จ. Phase 3 Update, signing, native Windows x64 และ Linux ยัง Deferred ไม่ใช่ Passed.
+- Bom ยืนยันว่า Registration API และ connection ที่โปรแกรมใช้อยู่ถูกต้องแล้ว; missing-repo-artefact HOLD เดิมถูกยกเลิก
+  และ live verification ยืนยันว่า API, vault reference และ authenticated Dashboard ใช้งานได้จริงโดยไม่เปิด secret.
+- **Final PILOT HOLD มาจาก live execution:** current Desktop ส่ง `device_inventory.devices[].serial_number` แล้ว canonical
+  `https://www.dmskm.com/api/v1/installations/register` ตอบ `HTTP 422 VALIDATION_ERROR` ว่า field นี้ไม่อยู่ใน privacy allow-list.
+  Backend-compatible schema เดิมผ่าน register/replay/heartbeat, bad/revoked token, Retry-After, forbidden payload,
+  >3 discovered/3 selected, Dashboard read-back และ deactivate synthetic record; จึงเป็น contract mismatch ไม่ใช่ API unavailable.
+- Offline/restart/retry durability ผ่านใน isolated DB และ retry ไป live ด้วย operation/idempotency เดิมก่อนจบที่ HTTP 422 เดียวกัน.
+  Unlock condition คือ migrate deployed schema-v2 allow-list/persistence/Dashboard จาก `device_instance_id` เป็น `serial_number`
+  ตาม current Desktop โดยคง forbidden-data boundary; non-www `301` ต้องเปลี่ยนเป็น canonical `www` runtime base หรือหยุด redirect.
+- Relevant correction regression `126 passed`; ไม่มี source-code change จึงคง approved source gate ที่
+  `be48735cc43703f2f7f172d08562ae895da77793`. `main`/`origin/main` ไม่ถูก merge.
+- Phase 3 Update, signing, native Windows x64 และ Linux ยังคง Deferred ไม่ใช่ Passed.
 
 ## Definition of Done
 
@@ -1622,10 +1630,9 @@ Task evidence แบบละเอียดอยู่ใน canonical thread 
 - [x] Registration Data Notice ไทย/อังกฤษตรง Registration schema-v2 แสดงใน Setup/Settings และติดป้ายยังไม่อนุมัติ
 - [ ] Registration Data Notice ฉบับอนุมัติแสดงก่อน Registration API ส่งข้อมูลออก
 - [x] ผู้ใช้ V5.0 เดิมได้รับ one-time onboarding โดยไม่ล้าง Devices/Price/History/Billing Ledger
-- [ ] Registration offline ใช้งานต่อได้, retry ได้, ไม่สร้างรายการซ้ำ และแสดง Registered/Pending/Failed
+- [x] Registration offline/restart/retry และ idempotent outbox ผ่าน isolated/live transition; deployed contract ยังทำให้สถานะจบ `action_required` ตามจริง
 - [x] Automated payload test ยืนยันว่า Serial No + Model + Selected + Slot ครบ และไม่มี IP/MAC/Credential/Counter/User/Document/Log
-- [ ] Dashboard แสดง Company/installation, version/OS, registered/last seen, lifecycle/heartbeat history,
-  Active 7/30/90, discovered Konica count/models และ Serial No + Model + Selected + Local Slot หลัง MFA/RBAC
+- [ ] Dashboard read-back/authenticated lifecycle/deactivate ผ่านกับ backend-compatible schema แต่ยังไม่ผ่าน current Desktop Serial No contract; รอ API/Dashboard migration จาก `device_instance_id` เป็น `serial_number`
 - [ ] **DEFERRED หลัง Release:** Update check เลือก signed artifact ถูก OS/architecture/channel และ reject checksum/signature ที่ไม่ตรง
 - [ ] V5.0 → V5.1 upgrade สร้าง DB backup, migrate, restore/rollback และเปิดข้อมูลเดิมได้ครบ
 - [ ] Clean-install/upgrade UAT ผ่านบน target OS จริง; local/offscreen/package check ไม่นับแทน native UAT
