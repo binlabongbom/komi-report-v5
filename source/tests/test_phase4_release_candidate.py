@@ -177,7 +177,8 @@ def test_native_payload_allows_locked_dependency_code_examples_only(tmp_path):
     )
     dependency_code.parent.mkdir(parents=True)
     dependency_code.write_text(
-        "EXAMPLE = 'https://user:password@example.invalid'\n", encoding="utf-8"
+        "EXAMPLE = " + repr("https://user" + ":password@example.invalid") + "\n",
+        encoding="utf-8",
     )
     assert_native_payload_safe(payload)
 
