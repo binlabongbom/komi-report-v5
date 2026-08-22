@@ -10,6 +10,7 @@ from tools.build_windows_rc import (
     RUNTIME_TOOL_FILES,
     START_CMD,
     remove_forbidden_dependency_assets,
+    remove_node_build_tooling,
     source_identity,
     source_state_is_clean,
 )
@@ -169,6 +170,23 @@ def test_native_payload_allows_only_traced_dependency_roots(tmp_path):
         assert_native_payload_safe(payload)
 
 
+def test_native_payload_allows_locked_dependency_code_examples_only(tmp_path):
+    payload = tmp_path / "payload"
+    dependency_code = (
+        payload / "runtime" / "Lib" / "site-packages" / "pydantic" / "networks.py"
+    )
+    dependency_code.parent.mkdir(parents=True)
+    dependency_code.write_text(
+        "EXAMPLE = 'https://user:password@example.invalid'\n", encoding="utf-8"
+    )
+    assert_native_payload_safe(payload)
+
+    credential = dependency_code.with_name("credentials.json")
+    credential.write_text("{}\n", encoding="utf-8")
+    with pytest.raises(ReleaseSafetyError, match="credential-file"):
+        assert_native_payload_safe(payload)
+
+
 def test_installer_is_per_user_stable_and_preserves_user_data():
     script = INNO_SCRIPT.read_text(encoding="utf-8")
 
@@ -205,13 +223,30 @@ def test_verified_source_archive_is_a_clean_build_input():
 
 
 def test_forbidden_dependency_assets_are_removed_before_packaging(tmp_path):
-    package = tmp_path / "Lib" / "site-packages" / "synthetic_package"
+    payload = tmp_path / "payload"
+    package = payload / "Lib" / "site-packages" / "synthetic_package"
     package.mkdir(parents=True)
     (package / "runtime.py").write_text("VALUE = 1\n", encoding="utf-8")
     (package / "test-data.csv").write_text("synthetic,data\n", encoding="utf-8")
+    (package / "compressed.csv.gz").write_text("synthetic,data\n", encoding="utf-8")
     (package / "debug.log").write_text("synthetic\n", encoding="utf-8")
 
-    assert remove_forbidden_dependency_assets(tmp_path) >= 2
+    assert remove_forbidden_dependency_assets(payload) == 3
     assert (package / "runtime.py").is_file()
     assert not (package / "test-data.csv").exists()
+    assert not (package / "compressed.csv.gz").exists()
     assert not (package / "debug.log").exists()
+
+
+def test_node_build_tooling_is_removed_after_standalone_build(tmp_path):
+    node_root = tmp_path / "node-runtime"
+    npm_runtime = node_root / "node_modules" / "npm"
+    npm_runtime.mkdir(parents=True)
+    (node_root / "node.exe").write_bytes(b"runtime")
+    (node_root / "npm.cmd").write_text("synthetic\n", encoding="utf-8")
+    (npm_runtime / ".npmrc").write_text("synthetic\n", encoding="utf-8")
+
+    assert remove_node_build_tooling(node_root) == 2
+    assert (node_root / "node.exe").is_file()
+    assert not (node_root / "npm.cmd").exists()
+    assert not (node_root / "node_modules").exists()

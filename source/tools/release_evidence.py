@@ -38,6 +38,13 @@ NATIVE_DEPENDENCY_ROOTS = (
     "web-runtime-seed/.next/",
     "web-runtime-seed/node_modules/",
 )
+LOCKED_DEPENDENCY_CODE_ROOTS = NATIVE_DEPENDENCY_ROOTS + (
+    "runtime/Lib/site-packages/",
+)
+DEPENDENCY_CODE_SUFFIXES = frozenset({".js", ".mjs", ".py", ".pyi", ".ts", ".tsx"})
+DEPENDENCY_CODE_FALSE_POSITIVES = frozenset(
+    {"basic-auth-url", "credential-file", "private-key"}
+)
 
 
 class ReleaseContractError(RuntimeError):
@@ -148,6 +155,11 @@ def assert_native_payload_safe(root: Path) -> None:
         if not (
             finding.category == "forbidden-path"
             and finding.path.startswith(NATIVE_DEPENDENCY_ROOTS)
+        )
+        and not (
+            finding.category in DEPENDENCY_CODE_FALSE_POSITIVES
+            and finding.path.startswith(LOCKED_DEPENDENCY_CODE_ROOTS)
+            and Path(finding.path).suffix.casefold() in DEPENDENCY_CODE_SUFFIXES
         )
     ]
     if blocking:

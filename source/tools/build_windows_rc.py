@@ -237,9 +237,31 @@ def remove_forbidden_dependency_assets(root: Path) -> int:
 
     removed = 0
     for path in root.rglob("*"):
-        if path.is_file() and any(
-            path.name.casefold().endswith(suffix) for suffix in FORBIDDEN_SUFFIXES
-        ):
+        suffixes = {suffix.casefold() for suffix in path.suffixes}
+        if path.is_file() and suffixes.intersection(FORBIDDEN_SUFFIXES):
+            path.unlink()
+            removed += 1
+    return removed
+
+
+def remove_node_build_tooling(node_root: Path) -> int:
+    """Keep only the Node runtime after the Web standalone seed is built."""
+
+    removed = 0
+    for name in (
+        "node_modules",
+        "corepack",
+        "corepack.cmd",
+        "npm",
+        "npm.cmd",
+        "npx",
+        "npx.cmd",
+    ):
+        path = node_root / name
+        if path.is_dir():
+            removed += sum(1 for item in path.rglob("*") if item.is_file())
+            shutil.rmtree(path)
+        elif path.is_file():
             path.unlink()
             removed += 1
     return removed
@@ -326,6 +348,7 @@ def build_payload(output_root: Path) -> tuple[Path, dict[str, str]]:
     node_root = payload_root / "node-runtime"
     node_runtime_sha256 = install_node_runtime(node_root)
     build_web_runtime_seed(payload_root=payload_root, node_root=node_root)
+    removed_node_build_tool_files = remove_node_build_tooling(node_root)
 
     (payload_root / "START_KOMI_REPORT.cmd").write_text(START_CMD, encoding="utf-8", newline="\r\n")
     (payload_root / "START_DEBUG.cmd").write_text(START_DEBUG_CMD, encoding="utf-8", newline="\r\n")
@@ -344,6 +367,7 @@ def build_payload(output_root: Path) -> tuple[Path, dict[str, str]]:
         "python_runtime_sha256": python_runtime_sha256,
         "node_runtime_sha256": node_runtime_sha256,
         "removed_forbidden_dependency_assets": str(removed_forbidden_assets),
+        "removed_node_build_tool_files": str(removed_node_build_tool_files),
         "wheel_count": str(wheel_count),
     }
 
