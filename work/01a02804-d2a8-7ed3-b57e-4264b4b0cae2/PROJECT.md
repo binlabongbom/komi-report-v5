@@ -9,10 +9,10 @@ status: blocked
 progress: 78
 owner: VEGA
 current_phase: Phase 4 Technical RC assembled and preflighted; Production GO blocked
-current_task: Phase 4 handoff completed; wait for native x64/signing/controlled-device prerequisites
-next_action: repeat the approved installer/UAT matrix on native Windows 10 and 11 x64, sign the artifact, then run controlled real-device acceptance
-problem: available Windows VM is ARM64; native Windows x64, signing, tray/autostart/OS-vault/LAN HTTPS/restart/upgrade and controlled real-device evidence remain unavailable
-updated_at: 2026-08-22T15:48:00+07:00
+current_task: wait for authorized access to the BTHL0564 native Windows environment
+next_action: make the private komi-report-v5 project and Phase 4 branch a saved Codex project on BTHL0564, or provide a working authorized SSH/remote path
+problem: BTHL0564 cross-host handoff found no matching saved project and read-only SSH port 22 timed out; native Windows x64, signing and controlled real-device evidence remain unavailable
+updated_at: 2026-08-22T15:49:31+07:00
 ---
 
 # Production Phase 4 — Native Packaging & Release Candidate
@@ -108,12 +108,12 @@ updated_at: 2026-08-22T15:48:00+07:00
 
 ## Problem / Blocker
 
-- What failed: target VM `Window Test for KOMI` เป็น Windows 11 on ARM64 (`platformArchitecture=ARM`) ไม่ใช่ Windows 10/11 x64; Windows installer และ macOS bundle ไม่มี production signing และยังไม่มี approved controlled real-device scope.
+- What failed: target VM `Window Test for KOMI` เป็น Windows 11 on ARM64 (`platformArchitecture=ARM`) ไม่ใช่ Windows 10/11 x64; cross-host handoff ไป `BTHL0564` ล้มเหลวด้วยข้อความ `No matching saved project was found on BTHL0564.` และ read-only SSH preflight ไป host alias เดียวกัน timeout ที่ port 22; Windows installer และ macOS bundle ยังไม่มี production signing และยังไม่มี approved controlled real-device scope.
 - User impact: ใช้ VM ทำ Windows packaging/behavior preflight ได้ แต่ยังปิด Windows x64 native, signing และ real-device Definition of Done ไม่ได้ จึงห้าม claim Production GO.
-- Attempts made: สร้าง self-contained x64 installer จาก official hash-verified CPython/Node runtimes; รัน ARM64 VM clean install, installed smoke, first-run UI, synthetic DB backup/integrity/restore, uninstall/reinstall; รัน macOS arm64 bundle launch/first-run และตรวจ signing/notarization ตามจริง.
+- Attempts made: สร้าง self-contained x64 installer จาก official hash-verified CPython/Node runtimes; รัน ARM64 VM clean install, installed smoke, first-run UI, synthetic DB backup/integrity/restore, uninstall/reinstall; รัน macOS arm64 bundle launch/first-run; ลอง Codex cross-host handoff ไป `BTHL0564` และ read-only SSH preflight หนึ่งครั้งตามขอบเขต โดยไม่มี installation หรือ remote mutation.
 - Model / effort tried: direct execution, high-risk Production review.
-- Evidence: Windows artifact commit `0bc1c5d9c168a6ff535725050c5a901f868541e2`, SHA256 `875e5ca1b2d0134213aca8210308e4a41d7920d7e86e7b1162cf3001207debc1`; VM evidence ระบุ `windows-arm64-vm-preflight` และ `production_go=false`; macOS artifact SHA256 `ab6e7003d63dd381acd73dcf5df091e8d36f980774ef9f8570476ad8dc08bd0f`, ad-hoc/not notarized.
-- Needed next: จัด Windows 10 และ 11 x64 native environment + signing certificate + controlled printer acceptance scope แล้วรัน restart/tray/autostart/OS-vault/LAN HTTPS/upgrade matrix ก่อนพิจารณา Production GO.
+- Evidence: Windows artifact commit `0bc1c5d9c168a6ff535725050c5a901f868541e2`, SHA256 `875e5ca1b2d0134213aca8210308e4a41d7920d7e86e7b1162cf3001207debc1`; VM evidence ระบุ `windows-arm64-vm-preflight` และ `production_go=false`; main-thread continuation รายงาน exact handoff error และ SSH port 22 timeout โดยยืนยันว่าไม่มี remote mutation.
+- Needed next: `BTHL0564` ต้องมี private project `komi-report-v5` และ branch `codex/phase-4-native-release-candidate` พร้อมใช้เป็น saved Codex project หรือมี working authorized SSH/remote path ที่เข้าถึง repository/Windows environment ได้; หลังปลดล็อกจึงรัน native Windows 10/11 x64 matrix, signing และ controlled printer acceptance ต่อได้.
 
 ## Decisions and Changes
 
@@ -123,6 +123,7 @@ updated_at: 2026-08-22T15:48:00+07:00
 - 2026-08-22 — ใช้ Windows 11 ARM VM ที่ Bom เตรียมไว้สำหรับ preflight เท่านั้น ไม่เลื่อนเป็น native x64 evidence.
 - 2026-08-22 — RC ใช้ source-layout runtime (`source/`) + official CPython x64 + Node.js 24 LTS x64 + traced Next standalone seed เพื่อให้ Desktop และ LAN Web HTTPS ทำงานจาก installer เดียวโดยไม่ต้องติดตั้ง Python/Node เพิ่ม.
 - 2026-08-22 — Installer เป็น per-user stable AppId และไม่ลบ Database/Web security/OS-vault data ตอน uninstall; restore ต้อง offline, สร้าง rollback backup และตรวจ critical counts.
+- 2026-08-22 — BTHL0564 access ถูกเพิ่มเป็น external blocker: cross-host handoff จะลองใหม่เมื่อ private project/Phase 4 branch ถูกบันทึกเป็น Codex saved project บน host นั้น หรือเมื่อมี authorized SSH/remote path ที่ใช้งานได้; ห้ามลด native-evidence gate เพื่อเลี่ยง blocker.
 
 ## Test Log
 
@@ -141,6 +142,7 @@ updated_at: 2026-08-22T15:48:00+07:00
 | 2026-08-22 15:34 +07 | Windows 11 ARM64 installer/recovery preflight | clean install/smoke/backup/integrity/restore/uninstall/reinstall ต้องรักษา critical tables | ทุกขั้นผ่านด้วย synthetic recovery-only DB; integrity `ok`, schema 12, critical counts ตรง backup และ uninstall เก็บ user DB ไว้ | PASS — ARM64 VM PREFLIGHT | `outputs/.../vm-evidence/installer-uat.txt` |
 | 2026-08-22 15:39 +07 | Installed first-run visual preflight | เปิด wizard จาก installed x64 payload โดยไม่ทำ printer/network action | V5.1.0 first-run 1/4 เปิดจาก isolated root; ปิดโดยไม่ submit setup | PASS — ARM64 VM PREFLIGHT | `outputs/.../vm-evidence/windows-installed-first-run.png`, `installed-first-run.txt` |
 | 2026-08-22 15:44 +07 | Final Python/Web/security regression | tracked Phase 4 changes ต้องไม่เปลี่ยน Meter/Billing/Report semantics | Python `513 passed, 1 expected TLS fixture warning`; Ruff ผ่าน; Web type/security/standalone build ผ่าน; npm/pip audit พบ 0 known vulnerabilities | PASS | `source/tests`, `web` build/audit logs in task run |
+| 2026-08-22 15:49 +07 | BTHL0564 native-host access preflight | host ต้องมี matching saved project หรือ authorized remote path ก่อนเริ่ม native x64 UAT | Codex handoff ตอบ `No matching saved project was found on BTHL0564.`; read-only SSH port 22 timeout; ไม่มี installation หรือ remote mutation | HOLD — ACCESS | main-thread continuation from `01a0146d-a3a6-7252-920a-9bb331faa2be` |
 
 ## Definition of Done
 

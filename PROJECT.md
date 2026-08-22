@@ -9,10 +9,10 @@ status: blocked
 progress: 72
 owner: VEGA
 current_phase: Production Phase 4 Technical RC assembled; Production GO blocked
-current_task: preserve Phase 4 evidence and hand off the native Windows x64, signing and controlled real-device gates
-next_action: run the approved RC on native Windows 10 and 11 x64, verify signed installer behavior, then complete controlled printer/billing/export acceptance
-problem: Windows ARM64 VM and macOS Internal UAT passed their limited preflight, but native Windows x64, production signing, restart/tray/autostart/OS-vault/LAN HTTPS/upgrade and real-device proof remain absent; Registration remains fail-closed
-updated_at: 2026-08-22T15:45:00+07:00
+current_task: wait for authorized access to the BTHL0564 native Windows environment
+next_action: save the private komi-report-v5 project and Phase 4 branch on BTHL0564, or provide a working authorized SSH/remote path, before native x64 UAT resumes
+problem: BTHL0564 cross-host handoff found no matching saved project and read-only SSH port 22 timed out; native Windows x64, production signing and real-device proof remain absent while Registration stays fail-closed
+updated_at: 2026-08-22T15:49:31+07:00
 ---
 
 # KOMI Report V5.1
@@ -1532,6 +1532,12 @@ Task evidence แบบละเอียดอยู่ใน canonical thread 
 - macOS arm64 Internal UAT ผ่าน bundle launch และ first-run จาก isolated DB; artifact SHA256 `ab6e7003d63dd381acd73dcf5df091e8d36f980774ef9f8570476ad8dc08bd0f`, signing เป็น ad-hoc และยังไม่ notarized จึงห้าม customer Production.
 - Final regression ผ่าน: Python `513 passed` (warning เดียวเป็น explicit Virtual Printer TLS compatibility fixture), Web type/security/standalone production build ผ่าน และ Python/npm dependency audit พบ 0 known vulnerabilities.
 - **Release decision: Technical RC / Production GO blocked.** ยังขาด native Windows 10/11 x64 clean install/restart/tray/autostart/OS vault/LAN HTTPS/upgrade, production code signing และ controlled real-device Meter/Billing/Report/Excel proof. Registration/Heartbeat ยังคง fail-closed และ Phase 2 ไม่ใช่ Production Pass.
+
+### Native-host access blocker — 2026-08-22
+
+- Codex cross-host handoff ไป `BTHL0564` ล้มเหลวแบบ fail-safe ด้วยข้อความ `No matching saved project was found on BTHL0564.` และ read-only SSH preflight ไป host alias เดียวกัน timeout ที่ port 22; ไม่มี installation หรือ remote mutation เกิดขึ้น.
+- เงื่อนไขปลดล็อก: `BTHL0564` ต้องมี private project `komi-report-v5` พร้อม branch `codex/phase-4-native-release-candidate` เป็น saved Codex project หรือมี working authorized SSH/remote path ที่เข้าถึง repository/Windows environment ได้.
+- จนกว่าจะปลดล็อก ให้คง Phase 4 เป็น Technical RC / Production GO blocked, ไม่ merge `main`, ไม่เริ่ม Phase 5 และไม่เปลี่ยน Update/Registration gates.
 
 ### Objective
 
