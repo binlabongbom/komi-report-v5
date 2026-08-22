@@ -6,13 +6,13 @@ thread_title: Production Phase 5 — Pilot Release & Go-Live Readiness
 dashboard_visible: true
 department: dev
 status: blocked
-progress: 98
+progress: 100
 owner: VEGA
 current_phase: Final decision HOLD; product/package/recovery evidence complete within Pilot scope
-current_task: commit and push the evidence workbook, sync Dashboard data and send the compact Control Center handoff
+current_task: wait for verified Registration staging artefacts; all safe Phase 5 work and Control Center handoff are complete
 next_action: provide verified staging/OpenAPI/bootstrap/retention/Dashboard artefacts, then rerun Registration E2E before PILOT GO
 problem: PILOT HOLD because Registration staging E2E/Dashboard cleanup cannot run without deployed OpenAPI/staging/bootstrap/token/retention/access artefacts; production was not used as a substitute
-updated_at: 2026-08-22T18:45:00+07:00
+updated_at: 2026-08-22T18:48:00+07:00
 ---
 
 # Production Phase 5 — Pilot Release & Go-Live Readiness
@@ -66,7 +66,7 @@ Data flow: verified integration commit → regression/release-safety → unsigne
 - **Publisher warning**: Windows จะแจ้งผู้เผยแพร่ไม่ผ่านการยืนยันเพราะยังไม่มี code signing; เป็นข้อเท็จจริงที่ต้องแจ้งผู้ทดสอบก่อนติดตั้ง.
 - **Controlled printer evidence**: read-only หรือ test action ที่มี authority/scope/provenance ชัดเจนและไม่แตะข้อมูลนอกขอบเขต.
 
-## Progress: 98%
+## Progress: 100%
 
 ### Phase 5.1 — Baseline and integration 🟡
 
@@ -96,8 +96,8 @@ Data flow: verified integration commit → regression/release-safety → unsigne
 ### Phase 5.5 — Decision and handoff
 
 - [x] self-review Outcome/Maintainability และตัดสิน PILOT GO/HOLD — **HOLD**
-- [ ] อัปเดต canonical workbook/Dashboard sync และส่ง compact handoff กลับ task หลัก
-- [ ] push private integration branch โดยไม่ merge `main`
+- [x] อัปเดต canonical workbook/Dashboard sync และส่ง compact handoffกลับ task หลัก
+- [x] push private integration branch โดยไม่ merge `main`
 
 ## Problem / Blocker
 
@@ -136,6 +136,9 @@ Data flow: verified integration commit → regression/release-safety → unsigne
 | 2026-08-22 18:37 +07 | Installed Pilot identity | reinstall ต้องมี current Data Notice/checklist/warning และ launcher/uninstaller | launcher/uninstaller, Registration Data Notice, Pilot checklist, `Unsigned Pilot Candidate` และ `PUBLISHER WARNING` อยู่ครบ; UAT-2 DB/backup อยู่ครบ | PASS — ARM VM PREFLIGHT | `installed-pilot-precondition.txt` |
 | 2026-08-22 18:37 +07 | Controlled printer evidence reuse | reuse ได้เฉพาะ authority/provenance ชัดและ semantics ไม่เปลี่ยน | Phase 4 authorized Slot 1 evidenceมี SNMP/Web Total `266,488`, expected delta `2,260`, gross `3,542.80`, net `3,471.94`, Report/Excel fail-closed; diff ถึง `be48735` ไม่แตะ Billing/Meter/Report/Excel paths | PASS — REUSED SAME-DAY CONTROLLED EVIDENCE | Phase 4 workbook + path-level Git diff |
 | 2026-08-22 18:38 +07 | Final Python regression | final committed sourceต้องไม่ถอย | `518 passed, 1 expected virtual-printer TLS compatibility warning in 32.34s` | PASS | `source/tests` |
+| 2026-08-22 18:47 +07 | Branch publication | private integration branchต้องตรวจย้อนกลับได้และห้ามแตะ main | pushed `codex/phase-5-pilot-go-live` at `f9334e7`; remote `main` คง `6248ef2` | PASS | `git push`, `git ls-remote`, `git rev-parse` |
+| 2026-08-22 18:47 +07 | Dashboard sync/verify | canonical และ task workbookต้องเข้า Dashboard data โดย build/test/lint ผ่าน | synced 26 projects; build ผ่าน; 8 testsผ่าน; ESLint ผ่าน | PASS | `npm --prefix ~/Projects/portfolio-site run dashboard:update` |
+| 2026-08-22 18:48 +07 | Control Center handoff | task หลักต้องได้รับ Outcome → Evidence → Blocker/Next | ส่ง compact handoff ไป thread `01a0146d-a3a6-7252-920a-9bb331faa2be` สำเร็จ | PASS | Codex task message acknowledgement |
 
 ## Definition of Done
 
@@ -144,5 +147,5 @@ Data flow: verified integration commit → regression/release-safety → unsigne
 - [x] Pilot package ตรวจย้อนกลับได้, unsigned warning ถูกต้อง และไม่มี forbidden data/Update runtime
 - [x] Controlled printer + Report/Excel + recovery evidence ผ่านตาม authorized scope; unsafe evidence คง Hold
 - [x] Devices/Prices/History/Billing Ledger ถูกเก็บครบหลัง backup/restore/reinstall/rollback
-- [ ] support/pilot/rollback guides พร้อมและ PILOT GO/HOLD handoff ถูกส่งกลับ main task — guides พร้อม; handoff รอ final decision
-- [ ] canonical workbook/Dashboard sync ครบและ `main` ยังไม่ถูก merge
+- [x] support/pilot/rollback guides พร้อมและ PILOT GO/HOLD handoff ถูกส่งกลับ main task
+- [x] canonical workbook/Dashboard sync ครบและ `main` ยังไม่ถูก merge

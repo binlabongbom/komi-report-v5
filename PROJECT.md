@@ -12,7 +12,7 @@ current_phase: Production Phase 5 decision HOLD; unsigned Pilot candidate and re
 current_task: obtain verified Registration staging/OpenAPI/bootstrap/token/retention/Dashboard artefacts
 next_action: rerun synthetic Registration E2E and Dashboard cleanup on verified staging before any PILOT GO
 problem: PILOT HOLD because Registration staging E2E/Dashboard cleanup cannot run without verified deployment artefacts; production was not used as a substitute
-updated_at: 2026-08-22T18:45:00+07:00
+updated_at: 2026-08-22T18:48:00+07:00
 ---
 
 # KOMI Report V5.1
@@ -1595,7 +1595,8 @@ Task evidence แบบละเอียดอยู่ใน canonical thread 
 ## Production Phase 5 — Pilot Release & Go-Live Readiness — HOLD 2026-08-22
 
 - Integration branch `codex/phase-5-pilot-go-live` เริ่มจาก Phase 4 latest `ab529ec` และรวม Phase 2 Data Notice
-  `e2a90e5`; source ที่ผ่าน gate ล่าสุดคือ `be48735`; `main`/`origin/main` ยังอยู่ `6248ef2` และยังไม่ merge.
+  `e2a90e5`; source ที่ผ่าน gate ล่าสุดคือ `be48735` และ decision workbook ถูก push ที่ `f9334e7`;
+  `main`/`origin/main` ยังอยู่ `6248ef2` และยังไม่ merge.
 - Integrated regression ผ่าน: Python `518 passed`, Registration focused `141 passed`, Pilot/release focused `29 passed`,
   Web type/security/build, live TLS/auth และ Python/npm dependency audit ผ่าน.
 - unsigned Windows artifact ผ่าน ARM VM preflight: SHA256 `39807a0645…`, source commit `be48735`,
