@@ -6,16 +6,24 @@ thread_title: Komi report V5
 dashboard_visible: true
 department: dev
 status: active
-progress: 58
+progress: 60
 owner: VEGA
-current_phase: Production Phase 2 Registration & Privacy Technical Pass; Production blocked
-current_task: preserve fail-closed registration sender and hand off Dashboard publication
-next_action: supply approved Privacy Notice plus verified staging/OpenAPI/bootstrap/token artefacts, then run staging E2E and Dashboard read-back
-problem: Registration production approval and staging contract evidence are absent; technical implementation is complete but Production Pass is not claimed
-updated_at: 2026-08-22T13:15:00+07:00
+current_phase: Production Phase 4 Native Packaging & Release Candidate approved to start; Phase 3 Update deferred
+current_task: open a separate Phase 4 workbook/thread and establish the Windows 10/11 x64 native release baseline
+next_action: build and verify a Windows release candidate with clean install, upgrade, backup/restore, tray/autostart, LAN Web, real-device and controlled billing UAT
+problem: Windows native packaging/signing/UAT evidence is still absent; Registration remains fail-closed pending API and Privacy/Legal approval, while Update is explicitly out of the end-of-month release
+updated_at: 2026-08-22T13:52:00+07:00
 ---
 
 # KOMI Report V5.1
+
+## Current release decision — 2026-08-22
+
+- Bom เลื่อน Production Phase 3 ระบบ Update ทั้งหมดออกจากเป้าหมาย Release สิ้นเดือนนี้ เนื่องจากเวลาไม่พอ.
+- เก็บ Signed Manifest, verified download, rollout และ updater/installer automation เป็น backlog หลัง Release; ห้ามลบ design เดิมและห้ามเริ่ม implementation โดยไม่มีงานใหม่ที่อนุมัติชัดเจน.
+- Release ปัจจุบันไปต่อที่ **Production Phase 4 — Native Packaging & Release Candidate** โดยใช้ Windows 10/11 x64 เป็นเป้าหมายลูกค้าหลัก, macOS เป็น Internal UAT และ Linux deferred.
+- Registration/Heartbeat คงสถานะ fail-closed จน OpenAPI/Staging และ Privacy/DPO/Legal gates ผ่าน; การข้าม Phase 3 ไม่ได้เปลี่ยน Phase 2 จาก Technical Pass / Production blocked เป็น Production Pass.
+- Release Candidate นี้ไม่มี forced/silent update, remote update command หรือ update telemetry.
 
 ## Goal
 
@@ -1507,6 +1515,46 @@ Task evidence แบบละเอียดอยู่ใน canonical thread 
 - Nested repo อัปเดต canonical project/workbook แล้ว; main thread ต้อง publish Dashboard จาก Projects root ตาม workflow กลาง.
 - Phase 2 ไม่แก้ `portfolio-site` และไม่แก้ API project อื่นตาม scope ที่อนุมัติ.
 
+## Production Phase 3 — Update Delivery — DEFERRED 2026-08-22
+
+- Bom เลื่อน signed update manifest, release check, verified download, staged rollout และ updater automation ไปทำภายหลัง เพื่อให้ทันเป้าหมาย Release สิ้นเดือน.
+- งานนี้ไม่ถูกยกเลิก: architecture/options, security boundary, prerequisites, test/UAT gates และ rollback plan ยังคงเป็น backlog ที่ต้องเปิด task ใหม่ก่อน implementation.
+- Current release ห้ามมี forced/silent update, remote update command, arbitrary script, update event telemetry หรือ private signing key ใน client/hosting/repository.
+- การเลื่อน Phase 3 ไม่อนุญาตให้ลด Phase 0 release safety, Phase 1 security baseline หรือ Phase 2 privacy boundary.
+
+## Production Phase 4 — Native Packaging & Release Candidate — APPROVED 2026-08-22
+
+### Objective
+
+สร้าง Windows 10/11 x64 Release Candidate จาก source `5.1.0` ที่ผ่าน Phase 0–2 ให้ติดตั้ง เปิดใช้งาน อัปเกรด สำรอง/กู้คืน และถอนติดตั้งได้บนเครื่องจริง โดยคง Meter/Billing/Report semantics และ Registration fail-closed; macOS เป็น Internal UAT และ Linux deferred.
+
+### Scope in
+
+- แยก task workbook/thread/branch ของ Phase 4 และยืนยัน baseline commit, version, dependency locks และ release gates ก่อนแก้ package.
+- สร้าง Windows x64 package/installer จาก canonical source พร้อม artifact identity, SHA256, source commit และรายการไฟล์.
+- Native clean install, first-run Setup, Desktop launch, Tray, Auto-start, OS vault, LAN Web HTTPS และ restart UAT บน Windows 10/11 x64.
+- ทดสอบ upgrade จาก V5.0/V5.1 data ที่อนุญาตผ่านสำเนา, SQLite backup/integrity, restore/rollback และเปิดข้อมูลเดิมได้.
+- Controlled real-device Meter/Billing/Report/Excel acceptance โดยห้ามแก้ข้อมูลลูกค้านอก test scope และห้าม claim จาก Lab/offscreen แทน native proof.
+- ตรวจ release artifact ด้วย Phase 0 safety gate, dependency/security regression, secret/data scan, SBOM/checksum และ support/recovery guide.
+- macOS arm64 Internal UAT สำหรับ bundle launch, tray, printer read และ restore; ห้าม claim customer Production จน signing/notarization ผ่าน.
+
+### Scope out
+
+- Production Phase 3 update manifest/download/updater ทุกชนิด.
+- เปิด Production Registration/Heartbeat ก่อน OpenAPI/Staging และ Privacy/DPO/Legal gates ผ่าน.
+- Forced/silent update, remote command, Linux production package และการเปลี่ยน Meter/Billing calculation.
+- ส่ง DB, log, credential, counter, user หรือเอกสารออกภายนอก.
+
+### Definition of Done
+
+- Windows 10/11 x64 clean install/launch/first-run/restart/tray/autostart/LAN Web/OS vault ผ่านบน target OS จริง.
+- Upgrade + backup + integrity check + restore/rollback ผ่านโดย Devices, Prices, History และ Billing Ledger ไม่สูญหายหรือเปลี่ยนความหมาย.
+- Controlled printer/billing acceptance มี raw meter provenance, expected delta, posted ledger และ Export totals ตรงกัน; unsafe evidence ยังคง Hold.
+- Release artifact ไม่มี DB/CSV/log/env/credential/customer evidence, มี SHA256/SBOM/source commit และ build identity ที่ตรวจย้อนกลับได้.
+- Full Python/Web/security/release-safety regression ผ่าน; repository/private origin clean และ support/recovery runbook ใช้งานได้.
+- Registration ยังคง fail-closed และ Update ไม่มีอยู่ใน artifact/runtime path ของ Release นี้.
+- ถ้า code signing หรือ Windows native evidence ยังไม่ครบ ให้รายงาน RC blocked ตามจริงและห้าม claim Production GO.
+
 ## Definition of Done
 
 ### V5.1 Registration and Update
@@ -1520,7 +1568,7 @@ Task evidence แบบละเอียดอยู่ใน canonical thread 
 - [x] Automated payload test ยืนยันว่า Serial No + Model + Selected + Slot ครบ และไม่มี IP/MAC/Credential/Counter/User/Document/Log
 - [ ] Dashboard แสดง Company/installation, version/OS, registered/last seen, lifecycle/heartbeat history,
   Active 7/30/90, discovered Konica count/models และ Serial No + Model + Selected + Local Slot หลัง MFA/RBAC
-- [ ] Update check เลือก signed artifact ถูก OS/architecture/channel และ reject checksum/signature ที่ไม่ตรง
+- [ ] **DEFERRED หลัง Release:** Update check เลือก signed artifact ถูก OS/architecture/channel และ reject checksum/signature ที่ไม่ตรง
 - [ ] V5.0 → V5.1 upgrade สร้าง DB backup, migrate, restore/rollback และเปิดข้อมูลเดิมได้ครบ
 - [ ] Clean-install/upgrade UAT ผ่านบน target OS จริง; local/offscreen/package check ไม่นับแทน native UAT
 - [ ] DPO/Legal, Hosting security, release signing และผู้มีสิทธิ์ publish อนุมัติก่อน Production rollout
