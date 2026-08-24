@@ -86,6 +86,9 @@ def test_windows_customer_profile_is_not_labelled_pilot_or_lab():
     assert "Unsigned Pilot Candidate" not in CUSTOMER_README
     assert "Virtual Printer auto-" in CUSTOMER_README
     assert "Update telemetry" in CUSTOMER_README
+    assert "limited bootstrap identifier" in CUSTOMER_README
+    assert "public/extractable" in CUSTOMER_README
+    assert "Dashboard, delete, Update or remote-command" in CUSTOMER_README
 
 
 def test_customer_delivery_holds_unsigned_arm_vm_artifacts(

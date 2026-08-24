@@ -13,6 +13,8 @@
 1. เปิด DMG แล้วลาก `KOMI Report V5.1.0.app` ไป Applications หรือแตก ZIP ไปยังโฟลเดอร์ Applications ที่ควบคุมได้.
 2. ตรวจ app identity ด้วย `codesign -dvvv --entitlements :-` และ `spctl -a -vv` โดยเทียบกับ manifest.
 3. เปิดแอป, จบ First-run Setup ด้วยข้อมูลที่ได้รับอนุญาต, ตรวจ Settings และเปิด LAN Web HTTPS จากอุปกรณ์ใน LAN.
+   Production policy อยู่ในแอปแล้ว; เมื่อรับทราบประกาศ โปรแกรมจะย้าย limited bootstrap identifier เข้า macOS Keychain
+   และส่ง Registration เบื้องหลัง. หาก API ใช้ไม่ได้ โปรแกรมหลักยังเปิดและเก็บคิว retry ในเครื่อง.
 4. กดปิดหน้าต่างเพื่อยืนยัน Tray/background และเลือก Exit เพื่อยืนยัน graceful shutdown.
 5. ค่าเริ่มต้นของ Database/log อยู่ใต้ `~/KOMI Report V5/`; Web runtime/security material อยู่ใต้
    `~/Library/Application Support/KOMI Report V5/`. Path ที่ผู้ใช้เลือกจริงให้ตรวจจาก Settings/runtime config.
@@ -25,6 +27,8 @@
 1. ตรวจ Authenticode และ SHA256 ของ `KOMI_Report_V5_1_0_Windows_x64_Installer.exe`.
 2. เปิด installer แบบ per-user. Program files อยู่ `%LOCALAPPDATA%\Programs\KOMI Report V5`.
 3. เปิด KOMI Report V5, ตรวจ First-run, Database path, Settings, Tray, Auto-start หลัง login และ LAN Web HTTPS.
+   Production policy อยู่ในแอปแล้ว; limited bootstrap identifier จะถูกย้ายเข้า Windows Credential Manager อัตโนมัติ
+   ตอนเปิดครั้งแรก โดยไม่มีช่องให้ลูกค้ากรอกรหัส API.
 4. Restart Windows แล้วตรวจว่าแอปอ่าน Database เดิม, OS vault และ Web security state เดิม.
 5. Windows user data ค่าเริ่มต้นอยู่ `%USERPROFILE%\KOMI Report V5`; Web runtime/security material อยู่
    `%LOCALAPPDATA%\KOMI Report V5\web-runtime`.

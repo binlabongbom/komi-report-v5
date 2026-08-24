@@ -4,7 +4,11 @@ import json
 
 import pytest
 
-from services.registration_policy import REQUIRED_NOTICE_FIELDS, load_registration_policy
+from services.registration_policy import (
+    BUILT_IN_NOTICE_VERSION,
+    REQUIRED_NOTICE_FIELDS,
+    load_registration_policy,
+)
 
 
 def _artefact(**overrides):
@@ -35,8 +39,20 @@ def _artefact(**overrides):
     return payload
 
 
-def test_policy_is_disabled_when_no_artefact_is_configured():
-    assert load_registration_policy({}) is None
+def test_approved_production_policy_is_built_in_when_no_override_is_configured():
+    policy = load_registration_policy({})
+
+    assert policy is not None
+    assert policy.base_url == "https://www.dmskm.com"
+    assert policy.environment == "production"
+    assert policy.bootstrap_header == "X-Bootstrap-Key"
+    assert policy.bootstrap_ref == "registration-bootstrap-reference"
+    assert policy.notice.version == BUILT_IN_NOTICE_VERSION
+    assert policy.notice.complete is True
+
+
+def test_diagnostic_environment_can_explicitly_disable_built_in_policy():
+    assert load_registration_policy({"KOMI_REGISTRATION_DISABLED": "1"}) is None
 
 
 def test_policy_loader_requires_complete_typed_artefact(tmp_path):

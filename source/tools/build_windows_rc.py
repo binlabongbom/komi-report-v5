@@ -162,9 +162,12 @@ Runtime: bundled CPython 3.11 x64 and Node.js {node_version} LTS x64
 This package runs the production Desktop, local SQLite, OS-vault integration
 and LAN Web HTTPS behavior. It contains no Lab/test/demo/Virtual Printer auto-
 injection and no Update client, updater, remote command or Update telemetry.
-Registration uses the separately approved external policy/configuration and
-fails closed when that configuration is absent or invalid. No secret is
-embedded in this installer.
+Registration uses the approved built-in production policy. The installer also
+contains a limited bootstrap identifier which is copied into Windows Credential
+Manager on first launch. Treat that identifier as public/extractable: the API
+must exchange it for a scoped per-installation token and must never grant it
+Dashboard, delete, Update or remote-command authority. Registration fails
+closed if OS-vault provisioning or the API contract is unavailable.
 
 PUBLISHER WARNING: this installer is not code-signed. Windows can display
 "Unknown publisher" or "Publisher could not be verified". Verify the SHA-256
@@ -335,6 +338,7 @@ def build_payload(
     *,
     customer_release: bool = False,
     build_evidence: str = "not-yet-classified",
+    registration_bootstrap_file: Path | None = None,
 ) -> tuple[Path, dict[str, str]]:
     payload_root = output_root / "payload" / PAYLOAD_NAME
     if payload_root.exists():
@@ -390,6 +394,21 @@ def build_payload(
     build_web_runtime_seed(payload_root=payload_root, node_root=node_root)
     removed_node_build_tool_files = remove_node_build_tooling(node_root)
 
+    registration_bootstrap_state = "absent-fail-closed"
+    if customer_release:
+        if registration_bootstrap_file is None or not registration_bootstrap_file.is_file():
+            raise ReleaseContractError(
+                "Customer build requires --registration-bootstrap-file from the authorized OS vault"
+            )
+        raw_bootstrap = registration_bootstrap_file.read_bytes()
+        if not raw_bootstrap.strip() or len(raw_bootstrap) > 4096 or b"\x00" in raw_bootstrap:
+            raise ReleaseContractError("Registration bootstrap build input is invalid")
+        runtime_config = payload_root / "runtime-config"
+        runtime_config.mkdir()
+        destination = runtime_config / "komi-registration-bootstrap.dat"
+        destination.write_bytes(raw_bootstrap)
+        registration_bootstrap_state = "packaged-limited-public-bootstrap-identifier"
+
     (payload_root / "START_KOMI_REPORT.cmd").write_text(START_CMD, encoding="utf-8", newline="\r\n")
     (payload_root / "START_DEBUG.cmd").write_text(START_DEBUG_CMD, encoding="utf-8", newline="\r\n")
     readme = CUSTOMER_README if customer_release else README
@@ -412,6 +431,7 @@ def build_payload(
         "removed_forbidden_dependency_assets": str(removed_forbidden_assets),
         "removed_node_build_tool_files": str(removed_node_build_tool_files),
         "wheel_count": str(wheel_count),
+        "registration_bootstrap": registration_bootstrap_state,
     }
 
 
@@ -521,6 +541,11 @@ def main() -> int:
         action="store_true",
         help="Build the production-behavior customer package profile (signing gate remains independent)",
     )
+    parser.add_argument(
+        "--registration-bootstrap-file",
+        type=Path,
+        help="Authorized build-time bootstrap input; value is never written to Git or logs",
+    )
     args = parser.parse_args()
 
     machine = platform.machine()
@@ -544,6 +569,7 @@ def main() -> int:
         output_root,
         customer_release=args.customer_release,
         build_evidence=environment,
+        registration_bootstrap_file=args.registration_bootstrap_file,
     )
     installer = compile_installer(
         payload_root=payload_root,
@@ -573,7 +599,7 @@ def main() -> int:
         ),
         manifest_name=manifest_name,
         registration_runtime=(
-            "external-approved-policy-required-fail-closed"
+            "built-in-production-policy-os-vault-provisioned-limited-bootstrap"
             if args.customer_release
             else "fail-closed-no-policy-artefact"
         ),

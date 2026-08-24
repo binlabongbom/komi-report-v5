@@ -147,6 +147,8 @@ from pages    import (
 from services.autostart import configure_autostart
 from services.background_polling import BackgroundPollingCoordinator
 from services.registration_worker import RegistrationCoordinator
+from services.registration_bootstrap import provision_registration_bootstrap
+from services.registration_policy import load_registration_policy
 from services.desktop_shortcuts import create_desktop_shortcuts
 from services.device_config import DeviceConfigRepository
 from services.instance_guard import SingleInstanceGuard
@@ -1651,6 +1653,13 @@ if __name__ == "__main__":
         sys.exit(0)
 
     def show_configured_application() -> None:
+        try:
+            bootstrap_state = provision_registration_bootstrap(load_registration_policy())
+            log.info("registration bootstrap state=%s", bootstrap_state)
+        except Exception:
+            # Registration remains fail-closed; local Meter/Billing/Report and
+            # the completed first-run setup must remain available.
+            log.exception("registration bootstrap provisioning is unavailable")
         win.start_background_services()
         splash.close()
         if "--background" in sys.argv:

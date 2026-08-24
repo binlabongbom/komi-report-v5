@@ -13,6 +13,7 @@ import os
 import platform
 import plistlib
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -32,6 +33,7 @@ APP_NAME = f"KOMI Report V{VERSION}"
 APP_BUNDLE = SOURCE_ROOT / "dist" / f"{APP_NAME}.app"
 DEFAULT_OUTPUT = PROJECT_ROOT / "release" / "macos-customer"
 COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
+REGISTRATION_BOOTSTRAP_FILENAME = "komi-registration-bootstrap.dat"
 
 
 class MacCustomerBuildError(RuntimeError):
@@ -78,13 +80,25 @@ def require_clean_source(expected_commit: str) -> tuple[str, str]:
     return commit, source_state
 
 
-def build_app() -> None:
-    _run(
-        [sys.executable, "-m", "PyInstaller", "--noconfirm", "--clean", "app.spec"],
-        cwd=SOURCE_ROOT,
-        check=True,
-        timeout=1800,
-    )
+def build_app(registration_bootstrap_file: Path) -> None:
+    if not registration_bootstrap_file.is_file():
+        raise MacCustomerBuildError("authorized Registration bootstrap build input is unavailable")
+    raw_bootstrap = registration_bootstrap_file.read_bytes()
+    if not raw_bootstrap.strip() or len(raw_bootstrap) > 4096 or b"\x00" in raw_bootstrap:
+        raise MacCustomerBuildError("Registration bootstrap build input is invalid")
+    with tempfile.TemporaryDirectory(prefix="komi-registration-build-") as temp:
+        staged = Path(temp) / REGISTRATION_BOOTSTRAP_FILENAME
+        shutil.copyfile(registration_bootstrap_file, staged)
+        staged.chmod(0o600)
+        env = os.environ.copy()
+        env["KOMI_REGISTRATION_BOOTSTRAP_BUILD_FILE"] = str(staged)
+        _run(
+            [sys.executable, "-m", "PyInstaller", "--noconfirm", "--clean", "app.spec"],
+            cwd=SOURCE_ROOT,
+            env=env,
+            check=True,
+            timeout=1800,
+        )
 
 
 def _main_executable(app_bundle: Path) -> Path:
@@ -226,11 +240,17 @@ def build_customer_package(
     *,
     expected_commit: str = "",
     skip_build: bool = False,
+    registration_bootstrap_file: Path | None = None,
 ) -> dict[str, object]:
     require_macos_arm64()
     commit, source_state = require_clean_source(expected_commit)
     if not skip_build:
-        build_app()
+        if registration_bootstrap_file is None:
+            raise MacCustomerBuildError("--registration-bootstrap-file is required")
+        build_app(registration_bootstrap_file)
+    packaged_bootstrap = tuple(APP_BUNDLE.rglob(REGISTRATION_BOOTSTRAP_FILENAME))
+    if len(packaged_bootstrap) != 1:
+        raise MacCustomerBuildError("macOS bundle does not contain exactly one Registration bootstrap")
     structure = inspect_structure(APP_BUNDLE)
     if structure["short_version"] != VERSION or structure["architectures"] != ["arm64"]:
         raise MacCustomerBuildError("bundle version or architecture does not match V5.1.0 arm64")
@@ -291,7 +311,8 @@ def build_customer_package(
         "gatekeeper": "accepted" if signing["gatekeeper_exit"] == 0 else "rejected-blocked",
         "structure": structure,
         "smoke": smoke,
-        "registration_runtime": "external-approved-policy-required-fail-closed",
+        "registration_runtime": "built-in-production-policy-os-vault-provisioned-limited-bootstrap",
+        "registration_bootstrap": "packaged-limited-public-bootstrap-identifier",
         "update_runtime": "absent-phase-3-deferred",
         "built_at": datetime.now().astimezone().isoformat(timespec="seconds"),
         "release_decision": "RELEASE READY" if release_ready else "HOLD",
@@ -308,11 +329,17 @@ def main() -> int:
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument("--expected-source-commit", default="")
     parser.add_argument("--skip-build", action="store_true")
+    parser.add_argument(
+        "--registration-bootstrap-file",
+        type=Path,
+        help="Authorized build-time bootstrap input; value is never written to Git or logs",
+    )
     args = parser.parse_args()
     manifest = build_customer_package(
         args.output.resolve(),
         expected_commit=args.expected_source_commit,
         skip_build=args.skip_build,
+        registration_bootstrap_file=args.registration_bootstrap_file,
     )
     for artifact in manifest["artifacts"]:
         print(f"artifact={artifact['name']} size={artifact['size']} sha256={artifact['sha256']}")

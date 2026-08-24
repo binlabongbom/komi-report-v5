@@ -21,6 +21,7 @@ from PyQt6.QtWidgets import (
     QGroupBox,
     QLabel,
     QLineEdit,
+    QPlainTextEdit,
     QPushButton,
     QTableWidget,
 )
@@ -184,9 +185,18 @@ def test_setup_wizard_uses_the_approved_four_step_flow(tmp_path):
         assert "bizhub C450i × 1" in registration_review
         assert "Serial Number + รุ่นเครื่อง + สถานะเลือกใช้" in registration_review
         assert "IP, MAC, hostname, Credential, Meter" in registration_review
-        assert wizard.registration_status_label.text() == "ปิดการส่ง"
-        assert wizard.privacy_notice_accepted.isEnabled() is False
-        assert "ยังไม่ได้อนุมัติการส่งข้อมูล" in wizard.privacy_notice_status.text()
+        assert wizard.registration_status_label.text() == "รอยอมรับ"
+        assert wizard.privacy_notice_accepted.isEnabled() is True
+        assert "อนุมัติแล้ว" in wizard.privacy_notice_status.text()
+        wizard.view_privacy_notice_button.click()
+        app.processEvents()
+        notice_dialog = wizard._wizard_child_dialogs[-1]
+        notice_copy = notice_dialog.findChild(QPlainTextEdit).toPlainText()
+        assert notice_dialog.isVisible()
+        assert "ข้อมูลที่ส่ง" in notice_copy
+        assert "Serial Number" in notice_copy
+        assert "ไม่ส่ง IP address" in notice_copy
+        notice_dialog.close()
         wizard.close()
         app.processEvents()
     finally:

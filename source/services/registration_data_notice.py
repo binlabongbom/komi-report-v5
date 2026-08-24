@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-DRAFT_NOTICE_VERSION = "DRAFT-2026-08-22"
+DRAFT_NOTICE_VERSION = "KOMI-REG-2026-08-24"
 
 _THAI_NOTICE = f"""ประกาศข้อมูลการลงทะเบียน KOMI Report V5.1
-เวอร์ชัน {DRAFT_NOTICE_VERSION} · ร่างเพื่อการตรวจสอบ
+เวอร์ชัน {DRAFT_NOTICE_VERSION} · ใช้กับ KOMI Report V5.1
 
 ข้อมูลชุดนี้ออกแบบให้เป็นข้อมูลของนิติบุคคล การติดตั้ง และอุปกรณ์ ไม่ใช่ข้อมูลส่วนบุคคล ผู้ใช้ต้องกรอกเฉพาะชื่อบริษัท/หน่วยงานและห้ามกรอกชื่อบุคคล
 
@@ -25,8 +25,8 @@ _THAI_NOTICE = f"""ประกาศข้อมูลการลงทะเ�
 • ตรวจสอบความเข้ากันได้และแก้ปัญหาการลงทะเบียนโดยไม่อ่านข้อมูลงานพิมพ์
 ข้อมูลจะไม่ถูกขาย ไม่ใช้โฆษณาแบบเจาะจง และไม่ใช้วิเคราะห์ผู้ใช้หรือเนื้อหาเอกสาร
 
-4. ความสมัครใจ
-ผู้ใช้เลือกไม่ส่งข้อมูลได้ การไม่รับทราบประกาศนี้ไม่กระทบ Meter, Billing, Report หรือ Excel ภายในเครื่อง แต่ Installation จะไม่ปรากฏในระบบหลังบ้านและทีม Support จะไม่เห็นสถานะจากระยะไกล
+4. การรับทราบ
+KOMI Report เป็นโปรแกรมที่ให้ใช้ร่วมกับเครื่อง Konica Minolta ตามสัญญาหลักของลูกค้า การทำเครื่องหมายในหน้าติดตั้งเป็นการยืนยันว่าได้อ่านรายละเอียดข้อมูลที่ระบบส่ง ไม่ใช่การขอสิทธิ์เข้าถึงข้อมูลงานพิมพ์หรือข้อมูลผู้ใช้งาน การลงทะเบียนไม่กระทบการคำนวณ Meter, Billing, Report หรือ Excel ภายในเครื่อง
 
 5. ผู้ที่เข้าถึงได้
 เฉพาะผู้ดูแล KOMI Report/Support ที่ได้รับสิทธิ์ และผู้ให้บริการ Hosting ตามหน้าที่ ระบบหลังบ้านต้องใช้ Login และกำหนดสิทธิ์ตามบทบาท ห้ามเปิดข้อมูล Registration เป็นสาธารณะ
@@ -46,10 +46,10 @@ _THAI_NOTICE = f"""ประกาศข้อมูลการลงทะเ�
 ช่องทาง Support/ขอแก้ไขหรือลบข้อมูล Installation: ติดต่อผู้ส่งมอบโปรแกรม KOMI Report
 ระบบหลังบ้านและพื้นที่จัดเก็บ: https://www.dmskm.com/ ประเทศไทย
 
-รายการที่ต้องยืนยันก่อนเปิด Production: Retention ที่ทำได้จริง, OpenAPI/Staging contract และผู้อนุมัติการเปิดใช้งาน"""
+ข้อมูลนี้ใช้เฉพาะการลงทะเบียนระบบและงาน Support ตามขอบเขตข้างต้น"""
 
 _ENGLISH_NOTICE = f"""KOMI Report V5.1 Registration Data Notice
-Version {DRAFT_NOTICE_VERSION} · Review draft
+Version {DRAFT_NOTICE_VERSION} · KOMI Report V5.1
 
 This dataset is designed to contain organisation, installation, and device information—not personal data. Users must enter a company/organisation name only and must not enter a person's name.
 
@@ -69,8 +69,8 @@ The application does not send IP address, MAC address, hostname, username/passwo
 • Check compatibility and diagnose Registration without reading print-job data
 The data is not sold, used for targeted advertising, or used to profile users or document content.
 
-4. Optional delivery
-Users may choose not to send the data. Declining this notice does not affect local Meter, Billing, Report, or Excel functions. The Installation will not appear in the back-office system and Support will not have remote lifecycle status.
+4. Acknowledgement
+KOMI Report is supplied for use with Konica Minolta devices under the customer's master agreement. The checkbox confirms that the user has read the delivery details; it does not grant access to print-job or user data. Registration does not change local Meter, Billing, Report, or Excel calculations.
 
 5. Access
 Access is limited to authorised KOMI Report administrators/Support and the Hosting provider as required to operate the service. The back office must require login and role-based access. Registration data must not be public.
@@ -90,7 +90,7 @@ System owner: KOMI Report team
 Support/Installation correction or deletion channel: Contact the KOMI Report software provider
 Back-office system and storage location: https://www.dmskm.com/ — Thailand
 
-Items required before Production: proven retention, OpenAPI/Staging contract, and the release approver."""
+This information is used only for system registration and Support within the scope above."""
 
 
 def registration_data_notice(language: str) -> str:

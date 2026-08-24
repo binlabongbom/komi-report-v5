@@ -1441,13 +1441,7 @@ class SetupWizardV5(QDialog):
             text.setPlainText(
                 "\n\n".join(
                     (
-                        f"Version: {notice.version}",
-                        f"Purpose / วัตถุประสงค์\n{notice.purpose}",
-                        "Fields / ข้อมูล\n" + "\n".join(f"• {field}" for field in sorted(notice.fields)),
-                        f"Legal basis / ฐานกฎหมาย\n{notice.legal_basis}",
-                        f"Retention / ระยะเวลาเก็บ\n{notice.retention}",
-                        f"Access and export / การเข้าถึงและส่งออก\n{notice.access_export}",
-                        f"Deletion contact / ช่องทางขอลบ\n{notice.deletion_contact}",
+                        registration_data_notice(get_language()),
                         "Approval evidence / หลักฐานอนุมัติ\n"
                         f"{notice.approval_reference} · {notice.approval_owner} · {notice.approved_at}",
                     )
@@ -9889,13 +9883,7 @@ class PageFleetSettings(QWidget):
             text.setPlainText(
                 "\n\n".join(
                     (
-                        f"Version: {notice.version}",
-                        f"Purpose / วัตถุประสงค์\n{notice.purpose}",
-                        "Fields / ข้อมูล\n" + "\n".join(f"• {field}" for field in sorted(notice.fields)),
-                        f"Legal basis / ฐานกฎหมาย\n{notice.legal_basis}",
-                        f"Retention / ระยะเวลาเก็บ\n{notice.retention}",
-                        f"Access and export / การเข้าถึงและส่งออก\n{notice.access_export}",
-                        f"Deletion contact / ช่องทางขอลบ\n{notice.deletion_contact}",
+                        registration_data_notice(get_language()),
                         "Approval evidence / หลักฐานอนุมัติ\n"
                         f"{notice.approval_reference} · {notice.approval_owner} · {notice.approved_at}",
                     )

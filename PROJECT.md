@@ -6,13 +6,13 @@ thread_title: Komi report V5
 dashboard_visible: true
 department: dev
 status: blocked
-progress: 86
+progress: 90
 owner: VEGA
-current_phase: Production Phase 6 customer release packaging completed as RELEASE HOLD
-current_task: keep the cross-platform HOLD bundle internal and close Registration/signing/native Windows gates
-next_action: migrate deployed Registration allow-list/persistence/Dashboard to serial_number and rerun current-client E2E before signing/native release closure
-problem: RELEASE HOLD — live current-client Registration returns HTTP 422; macOS trust and Windows Authenticode/native x64/Tray/Auto-start/LAN evidence remain incomplete
-updated_at: 2026-08-22T20:38:00+07:00
+current_phase: Production registration built-in customer runtime implementation
+current_task: package approved built-in policy and limited bootstrap identifier, then rebuild customer installers
+next_action: API team must deploy serial_number allow-list/persistence/Dashboard; rerun current-client E2E before customer release
+problem: RELEASE HOLD — live current-client Registration still returns HTTP 422 for device_inventory.devices.0.serial_number
+updated_at: 2026-08-24T10:45:00+07:00
 ---
 
 # KOMI Report V5.1
@@ -1638,6 +1638,15 @@ Task evidence แบบละเอียดอยู่ใน canonical thread 
   `device_instance_id` ไป `serial_number` แล้ว rerun current-client live E2E; จากนั้นปิด Developer ID/notarization,
   Windows Authenticode, native Windows x64 และ Tray/Auto-start/LAN Web gates. ห้ามแก้ Desktop ย้อนกลับและห้ามปล่อย bundle นี้ให้ลูกค้า.
 
+## Built-in Production Registration runtime — 2026-08-24
+
+- Bom ยืนยันว่าลูกค้าใช้ KOMI Report เป็นโปรแกรมแถมสำหรับเครื่อง Konica Minolta ตามสัญญาหลัก และอนุมัติให้ใช้ API/bootstrap เดิมในตัวติดตั้งโดยไม่ให้ลูกค้ากรอกค่าเอง.
+- เพิ่ม approved built-in policy ที่ canonical `https://www.dmskm.com`, notice version `KOMI-REG-2026-08-24` และ exact schema-v2 field boundary. Setup/Settings แสดงปุ่มดูข้อมูลและเปิด checkbox รับทราบได้โดยไม่ต้องมี external policy file.
+- เพิ่ม one-time bootstrap provisioning: customer build inject ค่าเดิมจากช่องทาง OS vault โดยไม่เขียน Git/log/manifest; app ย้ายเข้า macOS Keychain หรือ Windows Credential Manager และไม่ overwrite ค่าเดิม. ค่านี้ถือเป็น limited public bootstrap identifier ที่ extract ได้จาก installer; Server ต้องออก scoped installation token และห้ามให้สิทธิ์ Dashboard/delete/Update/remote command.
+- Local Registration/Setup/Settings regression `146 passed`; Phase 4–6 packaging regression `22 passed`; focused Ruff และ compileall ผ่าน. OS vault บน macOS พบ `registration-bootstrap-reference` พร้อมใช้งานโดยไม่เปิดเผยค่า.
+- Live current-client probe ใช้ built-in policy + bootstrap เดิมจริงแล้ว แต่ `POST /api/v1/installations/register` ยังตอบ `HTTP 422 VALIDATION_ERROR` พร้อม safe message ว่า `device_inventory.devices.0.serial_number` ไม่อยู่ใน deployed privacy allow-list. ไม่มี remote Installation ถูกสร้างและไม่ได้รับ token จึงไม่มี heartbeat/read-back/cleanup.
+- คำตัดสินยัง **RELEASE HOLD**. Code/packaging path พร้อมสำหรับ build แต่ห้ามเรียก Production-ready หรือแจกตัวติดตั้งจน API deploy `serial_number` แล้ว current-client register/replay/heartbeat/Dashboard/deactivate ผ่าน.
+
 ## Definition of Done
 
 ### V5.1 Registration and Update
@@ -1645,8 +1654,8 @@ Task evidence แบบละเอียดอยู่ใน canonical thread 
 - [x] Canonical source เป็น real directory ที่ `~/Projects/dev/komi-report-v5` และมี rollback link กลับ OneDrive
 - [x] Development/UI/package version ถูกกำหนดเป็น `5.1` / `5.1.0`
 - [x] First-run แสดง Company, read-only start date/version ใน Setup 4 ขั้น และบันทึก local โดยยังไม่ส่งข้อมูลออก
-- [x] Registration Data Notice ไทย/อังกฤษตรง Registration schema-v2 แสดงใน Setup/Settings และติดป้ายยังไม่อนุมัติ
-- [ ] Registration Data Notice ฉบับอนุมัติแสดงก่อน Registration API ส่งข้อมูลออก
+- [x] Registration Data Notice ไทย/อังกฤษตรง Registration schema-v2 แสดงใน Setup/Settings
+- [x] Registration Data Notice ฉบับอนุมัติ `KOMI-REG-2026-08-24` แสดงก่อน Registration API ส่งข้อมูลออก
 - [x] ผู้ใช้ V5.0 เดิมได้รับ one-time onboarding โดยไม่ล้าง Devices/Price/History/Billing Ledger
 - [ ] Registration offline ใช้งานต่อได้, retry ได้, ไม่สร้างรายการซ้ำ และแสดง Registered/Pending/Failed
 - [x] Automated payload test ยืนยันว่า Serial No + Model + Selected + Slot ครบ และไม่มี IP/MAC/Credential/Counter/User/Document/Log

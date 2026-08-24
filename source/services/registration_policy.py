@@ -1,8 +1,9 @@
 """Fail-closed runtime policy for Registration and Privacy.
 
-The file referenced by ``KOMI_REGISTRATION_POLICY_FILE`` is configuration, not
-a credential container. It may hold a non-public endpoint and vault reference,
-but never a bootstrap value or bearer token.
+Customer builds use the approved built-in production policy below.  An
+external ``KOMI_REGISTRATION_POLICY_FILE`` remains available for controlled
+staging/UAT overrides, but neither form contains a bootstrap value or bearer
+token.
 """
 
 from __future__ import annotations
@@ -48,6 +49,47 @@ RESERVED_BOOTSTRAP_HEADERS = frozenset(
         "proxy-authorization",
     }
 )
+
+BUILT_IN_NOTICE_VERSION = "KOMI-REG-2026-08-24"
+BUILT_IN_REGISTRATION_POLICY = {
+    "base_url": "https://www.dmskm.com",
+    "environment": "production",
+    "bootstrap": {
+        "mode": "vault_header",
+        "header": "X-Bootstrap-Key",
+        "vault_ref": "registration-bootstrap-reference",
+    },
+    "privacy_notice": {
+        "version": BUILT_IN_NOTICE_VERSION,
+        "approved": True,
+        "purpose": (
+            "ลงทะเบียนการติดตั้ง KOMI Report ที่ให้ใช้ร่วมกับเครื่อง Konica Minolta "
+            "เพื่อดูจำนวนบริษัทและการติดตั้งที่ใช้งาน ตรวจสอบ Version/OS/รุ่นเครื่อง "
+            "และช่วยงาน Support โดยไม่ส่งข้อมูลงานพิมพ์หรือข้อมูลผู้ใช้งาน"
+        ),
+        "fields": sorted(REQUIRED_NOTICE_FIELDS),
+        "retention": (
+            "เก็บข้อมูล Installation และรายการอุปกรณ์ล่าสุดระหว่างที่ใช้งาน; "
+            "ประวัติ Heartbeat/สถานะไม่เกิน 12 เดือน; บันทึก Idempotency ทางเทคนิคไม่เกิน "
+            "90 วัน; เมื่อลูกค้ายกเลิกใช้งานให้ลบหรือยกเลิกการเชื่อมโยงภายใน 12 เดือน"
+        ),
+        "deletion_contact": "ติดต่อผู้ส่งมอบโปรแกรมหรือทีม Support ของ KOMI Report",
+        "legal_basis": (
+            "การให้บริการตามสัญญาหลักสำหรับการเช่าหรือซื้อเครื่อง Konica Minolta "
+            "ซึ่งรวมสิทธิ์ใช้ KOMI Report และข้อกำหนดการลงทะเบียนระบบ"
+        ),
+        "access_export": (
+            "เฉพาะผู้ดูแล KOMI Report/Support ที่ได้รับสิทธิ์ผ่านระบบหลังบ้านที่ต้อง Login; "
+            "ลูกค้าขอตรวจสอบ แก้ไข ส่งออก หรือยกเลิก Installation ผ่านผู้ส่งมอบโปรแกรมได้"
+        ),
+        "approval_reference": (
+            "Customer master rental/purchase agreement - software and registration data clause"
+        ),
+        "approved_at": "2026-08-24T00:00:00+07:00",
+        "approval_owner": "KOMI Report Product Owner",
+    },
+    "request_timeout_seconds": 15,
+}
 
 
 @dataclass(frozen=True)
@@ -138,17 +180,26 @@ class RegistrationRuntimePolicy:
 
 
 def load_registration_policy(environ: dict[str, str] | None = None) -> RegistrationRuntimePolicy | None:
-    """Load a non-secret policy artefact; return disabled when none is configured."""
+    """Load an override policy or the approved built-in production policy.
+
+    ``KOMI_REGISTRATION_DISABLED=1`` is retained for isolated development and
+    diagnostic runs.  It is never set by a customer launcher.
+    """
 
     values = environ if environ is not None else os.environ
-    raw_path = values.get("KOMI_REGISTRATION_POLICY_FILE", "").strip()
-    if not raw_path:
+    if values.get("KOMI_REGISTRATION_DISABLED", "").strip() == "1":
         return None
-    path = Path(raw_path).expanduser()
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as err:
-        raise ValueError("Registration policy artefact is unavailable or invalid") from err
+    raw_path = values.get("KOMI_REGISTRATION_POLICY_FILE", "").strip()
+    if raw_path:
+        path = Path(raw_path).expanduser()
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as err:
+            raise ValueError("Registration policy artefact is unavailable or invalid") from err
+    else:
+        # Round-trip through JSON so callers can never mutate the module-level
+        # policy shared by another window or test.
+        payload = json.loads(json.dumps(BUILT_IN_REGISTRATION_POLICY))
     if not isinstance(payload, dict):
         raise ValueError("Registration policy artefact must be an object")
     allowed_root = {

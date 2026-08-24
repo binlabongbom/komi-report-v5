@@ -9,9 +9,11 @@ source commit เดียวกัน. ตรวจ `CUSTOMER_RELEASE_MANIFEST.
 ## Production behavior
 
 - Desktop เป็นศูนย์ควบคุม local-first สำหรับเครื่องพิมพ์สูงสุด 3 เครื่อง; Web เป็น LAN report viewer แบบ HTTPS.
-- Database, logs, Web security material และ OS-vault secrets อยู่ใน data/runtime path ของผู้ใช้ ไม่ฝังใน program files.
-- Registration ใช้ external approved policy/configuration และ OS vault; package ไม่มี URL/token/credential/secret ฝังอยู่.
-  หาก policy หายหรือ invalid ระบบหยุดส่งแบบ fail-closed โดย Desktop local workflow ยังทำงานได้.
+- Database, logs, Web security material และ scoped installation token อยู่ใน data/runtime path หรือ OS vault ของผู้ใช้.
+- Registration ใช้ Production policy ภายในโปรแกรมที่ชี้ไป canonical `https://www.dmskm.com`. Customer installer มี limited
+  bootstrap identifier สำหรับย้ายเข้า macOS Keychain/Windows Credential Manager ตอนเปิดครั้งแรก. ค่านี้ถือว่าอ่านออกจาก
+  installer ได้และห้าม Server ให้สิทธิ์ Dashboard, delete, Update หรือ remote command; Server ต้องแลกเป็น scoped token ของ
+  Installation. หาก OS vault หรือ API contract ใช้ไม่ได้ ระบบหยุดส่งแบบ fail-closed โดย local workflow ยังทำงานได้.
 - ไม่มี Lab/test/demo mode, Virtual Printer auto-injection, mock/`.invalid` endpoint หรือ QA-only fallback ใน runtime payload.
 - Production Phase 3 Update ไม่รวมใน V5.1.0: ไม่มี silent/forced update, remote command หรือ Update telemetry.
 
@@ -28,8 +30,8 @@ source commit เดียวกัน. ตรวจ `CUSTOMER_RELEASE_MANIFEST.
 
 ชุดนี้ห้ามปล่อยลูกค้าและใช้ได้เฉพาะ authorized internal verification. Current Desktop schema v2 ส่ง
 `device_inventory.devices[].serial_number` แต่ live `POST https://www.dmskm.com/api/v1/installations/register`
-ตอบ HTTP 422 `VALIDATION_ERROR` เพราะ deployed schema-v2 privacy allow-list/persistence/Dashboard ยังใช้
-`device_instance_id`. ห้ามแก้ Desktop ย้อนกลับ; ต้อง migrate backend boundary ไป `serial_number` โดยรักษา
+ตอบ HTTP 422 `VALIDATION_ERROR` เพราะ deployed schema-v2 privacy allow-list ยังไม่รับ
+`serial_number`. ห้ามแก้ Desktop ย้อนกลับไปใช้ `device_instance_id`; ต้อง migrate backend boundary ไป `serial_number` โดยรักษา
 forbidden-data boundary แล้ว rerun current-client live E2E จึงพิจารณาปลด HOLD ได้. Canonical production endpoint
 ต้องเป็น `https://www.dmskm.com` เพราะ non-www redirect และ client ไม่ follow credential redirect โดยตั้งใจ.
 

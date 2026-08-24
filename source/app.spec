@@ -1,9 +1,20 @@
 # -*- mode: python ; coding: utf-8 -*-
 
+import os
 import sys
+from pathlib import Path
 
 from PyInstaller.utils.hooks import collect_submodules
 from tools.release_safety import FORBIDDEN_SUFFIXES
+
+
+registration_datas = []
+registration_bootstrap = os.environ.get("KOMI_REGISTRATION_BOOTSTRAP_BUILD_FILE", "").strip()
+if registration_bootstrap:
+    bootstrap_path = Path(registration_bootstrap)
+    if not bootstrap_path.is_file():
+        raise ValueError("Registration bootstrap build input is unavailable")
+    registration_datas.append((str(bootstrap_path), "runtime-config"))
 
 
 a = Analysis(
@@ -17,7 +28,7 @@ a = Analysis(
         ('../docs/sync-rule-flowchart.png', 'docs'),
         ('../docs/data-storage-overview.html', 'docs'),
         ('../docs/data-storage-overview.png', 'docs'),
-    ],
+    ] + registration_datas,
     hiddenimports=['tools.check_parser'] + collect_submodules('pysnmp'),
     hookspath=[],
     hooksconfig={},

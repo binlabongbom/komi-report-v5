@@ -240,3 +240,10 @@ nested repository นี้ จึงยังไม่ทำ live Registration 
 ## หมายเหตุเรื่อง Update
 
 อย่ารวมไฟล์อัปเดตหรือคำสั่งบังคับ update ใน Registration response รุ่นแรก รอบ Update ต้องมี contract แยกสำหรับ signed manifest, SHA-256/signature, OS/architecture artifact, rollout cohort, rollback และ native UAT ก่อนเปิด one-click update
+
+## Built-in customer runtime update — 2026-08-24
+
+- Bom อนุมัติให้ใช้ canonical Production endpoint และ bootstrap เดิมที่ทดสอบแล้วใน customer installer โดยไม่ให้ลูกค้ากรอกค่า API.
+- Desktop มี approved built-in policy/notice `KOMI-REG-2026-08-24`; bootstrap ถูก inject เฉพาะตอน build, ย้ายเข้า OS vault ตอนเปิดครั้งแรก และไม่อยู่ใน Git/log/manifest.
+- bootstrap ถือเป็น limited public identifier ที่ extract ได้จาก installer; API ต้องออก scoped token ต่อ Installation และห้ามให้สิทธิ์ Dashboard/delete/Update/remote command.
+- Live current-client probe วันที่ 2026-08-24 ยังตอบ `HTTP 422 VALIDATION_ERROR` ว่า `device_inventory.devices.0.serial_number` ไม่อยู่ใน privacy allow-list. ดังนั้นตัว Desktop/packaging พร้อมทางเทคนิค แต่ Production Registration ยัง HOLD จน backend deploy `serial_number` และผ่าน E2E/read-back/cleanup.
