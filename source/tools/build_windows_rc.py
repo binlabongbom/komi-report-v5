@@ -117,6 +117,15 @@ popd
 exit /b %KOMI_EXIT_CODE%
 """
 
+START_VBS = r"""Option Explicit
+Dim shell, fileSystem, installRoot, command
+Set shell = CreateObject("WScript.Shell")
+Set fileSystem = CreateObject("Scripting.FileSystemObject")
+installRoot = fileSystem.GetParentFolderName(WScript.ScriptFullName)
+command = Chr(34) & installRoot & "\START_KOMI_REPORT.cmd" & Chr(34)
+shell.Run command, 0, False
+"""
+
 START_DEBUG_CMD = r"""@echo off
 setlocal
 chcp 65001 >nul
@@ -410,6 +419,11 @@ def build_payload(
         registration_bootstrap_state = "packaged-limited-public-bootstrap-identifier"
 
     (payload_root / "START_KOMI_REPORT.cmd").write_text(START_CMD, encoding="utf-8", newline="\r\n")
+    (payload_root / "START_KOMI_REPORT.vbs").write_text(
+        START_VBS,
+        encoding="utf-8-sig",
+        newline="\r\n",
+    )
     (payload_root / "START_DEBUG.cmd").write_text(START_DEBUG_CMD, encoding="utf-8", newline="\r\n")
     readme = CUSTOMER_README if customer_release else README
     (payload_root / "README-WINDOWS.txt").write_text(

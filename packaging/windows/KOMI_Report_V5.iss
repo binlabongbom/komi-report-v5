@@ -17,7 +17,7 @@
 #define AppVersion "5.1.0"
 #define AppName "KOMI Report V5"
 #define AppPublisher "Konica Minolta"
-#define AppExe "START_KOMI_REPORT.cmd"
+#define AppLauncher "START_KOMI_REPORT.vbs"
 
 [Setup]
 AppId={{9C32D937-21A5-4A3A-90AE-F0662E60F24A}
@@ -59,14 +59,14 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Source: "{#PayloadDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
-Name: "{autoprograms}\KOMI Report V5"; Filename: "{app}\{#AppExe}"; WorkingDir: "{app}"
-Name: "{autodesktop}\KOMI Report V5"; Filename: "{app}\{#AppExe}"; WorkingDir: "{app}"; Tasks: desktopicon
+Name: "{autoprograms}\KOMI Report V5"; Filename: "{sys}\wscript.exe"; Parameters: """{app}\{#AppLauncher}"""; WorkingDir: "{app}"; IconFilename: "{app}\source\Logo.ico"
+Name: "{autodesktop}\KOMI Report V5"; Filename: "{sys}\wscript.exe"; Parameters: """{app}\{#AppLauncher}"""; WorkingDir: "{app}"; IconFilename: "{app}\source\Logo.ico"; Tasks: desktopicon
 
 [Tasks]
 Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription: "Shortcuts:"; Flags: checkedonce
 
 [Run]
-Filename: "{app}\{#AppExe}"; Description: "Launch KOMI Report V5"; Flags: nowait postinstall skipifsilent
+Filename: "{sys}\wscript.exe"; Parameters: """{app}\{#AppLauncher}"""; WorkingDir: "{app}"; Description: "Launch KOMI Report V5"; Flags: nowait postinstall skipifsilent
 
 ; User database, backups, logs, Web security material and OS-vault entries are
 ; intentionally outside {app}. Uninstall removes program files only. Data

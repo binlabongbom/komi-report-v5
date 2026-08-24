@@ -29,6 +29,8 @@
 3. เปิด KOMI Report V5, ตรวจ First-run, Database path, Settings, Tray, Auto-start หลัง login และ LAN Web HTTPS.
    Production policy อยู่ในแอปแล้ว; limited bootstrap identifier จะถูกย้ายเข้า Windows Credential Manager อัตโนมัติ
    ตอนเปิดครั้งแรก โดยไม่มีช่องให้ลูกค้ากรอกรหัส API.
+   Shortcut สำหรับลูกค้าใช้ hidden launcher จึงไม่ควรมี Command Prompt/Terminal ปรากฏใน flow ปกติ;
+   `START_DEBUG.cmd` มีไว้ให้ Support เปิดเองเมื่อจำเป็นเท่านั้น.
 4. Restart Windows แล้วตรวจว่าแอปอ่าน Database เดิม, OS vault และ Web security state เดิม.
 5. Windows user data ค่าเริ่มต้นอยู่ `%USERPROFILE%\KOMI Report V5`; Web runtime/security material อยู่
    `%LOCALAPPDATA%\KOMI Report V5\web-runtime`.

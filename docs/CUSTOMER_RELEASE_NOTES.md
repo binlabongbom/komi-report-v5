@@ -23,6 +23,7 @@ source commit เดียวกัน. ตรวจ `CUSTOMER_RELEASE_MANIFEST.
 
 - macOS ต้องเป็น `developer-id-notarized-verified` และ Gatekeeper `accepted` จึงผ่าน trust gate.
 - Windows ต้องเป็น Authenticode `verified` และ Publisher ที่อนุมัติจึงผ่าน trust gate.
+- Windows customer shortcut เปิดผ่าน hidden launcher; `START_DEBUG.cmd` ไม่ถูกใช้ใน flow ปกติและสงวนไว้สำหรับ Support.
 - ad-hoc/unsigned artifact ใช้ตรวจภายในได้เมื่อ checksum ตรง แต่ยังเป็น `HOLD` สำหรับ customer release และต้องแจ้ง
   Gatekeeper/Unknown Publisher warning ตามจริง.
 

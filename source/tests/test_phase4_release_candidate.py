@@ -9,6 +9,7 @@ from tools.build_windows_rc import (
     INNO_SCRIPT,
     RUNTIME_TOOL_FILES,
     START_CMD,
+    START_VBS,
     remove_forbidden_dependency_assets,
     remove_node_build_tooling,
     source_identity,
@@ -195,6 +196,8 @@ def test_installer_is_per_user_stable_and_preserves_user_data():
     assert "PrivilegesRequired=lowest" in script
     assert "DefaultDirName={localappdata}\\Programs\\KOMI Report V5" in script
     assert "UsePreviousAppDir=yes" in script
+    assert 'Filename: "{sys}\\wscript.exe"' in script
+    assert 'Parameters: """{app}\\{#AppLauncher}"""' in script
     assert "[UninstallDelete]" not in script
     assert "KOMI Report V5\\KOMI_Report_V5.db" not in script
 
@@ -204,6 +207,7 @@ def test_rc_launcher_seeds_web_runtime_and_runs_canonical_source_layout():
     assert 'set "PATH=%~dp0node-runtime;%PATH%"' in START_CMD
     assert 'robocopy "web-runtime-seed"' in START_CMD
     assert '"runtime\\pythonw.exe" "source\\app.py"' in START_CMD
+    assert 'shell.Run command, 0, False' in START_VBS
     assert "db_recovery.py" in RUNTIME_TOOL_FILES
 
 
