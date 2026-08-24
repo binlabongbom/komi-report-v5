@@ -14,6 +14,7 @@ from tools.build_windows_rc import (
     remove_node_build_tooling,
     source_identity,
     source_state_is_clean,
+    write_hidden_launcher,
 )
 from tools.db_recovery import backup_database, inspect_database, restore_database
 from tools.release_evidence import (
@@ -211,6 +212,17 @@ def test_rc_launcher_seeds_web_runtime_and_runs_canonical_source_layout():
     assert '"runtime\\pythonw.exe" "source\\app.py"' in START_CMD
     assert 'shell.Run command, 0, False' in START_VBS
     assert "db_recovery.py" in RUNTIME_TOOL_FILES
+
+
+def test_hidden_launcher_is_ascii_without_utf8_bom(tmp_path):
+    launcher = tmp_path / "START_KOMI_REPORT.vbs"
+
+    write_hidden_launcher(launcher)
+
+    raw = launcher.read_bytes()
+    assert raw.startswith(b"Option Explicit\r\n")
+    assert not raw.startswith(b"\xef\xbb\xbf")
+    assert b"shell.Run command, 0, False\r\n" in raw
 
 
 def test_archived_source_commit_must_match_explicit_identity(tmp_path, monkeypatch):

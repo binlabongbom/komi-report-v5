@@ -126,6 +126,17 @@ command = Chr(34) & installRoot & "\START_KOMI_REPORT.cmd" & Chr(34)
 shell.Run command, 0, False
 """
 
+
+def write_hidden_launcher(path: Path) -> None:
+    """Write Windows Script Host source without a UTF-8 BOM.
+
+    Legacy Windows Script Host treats the UTF-8 BOM as an invalid VBScript
+    character. The launcher is ASCII-only by design so it works on supported
+    Windows 10/11 hosts without showing a console window.
+    """
+
+    path.write_text(START_VBS, encoding="ascii", newline="\r\n")
+
 START_DEBUG_CMD = r"""@echo off
 setlocal
 chcp 65001 >nul
@@ -419,11 +430,7 @@ def build_payload(
         registration_bootstrap_state = "packaged-limited-public-bootstrap-identifier"
 
     (payload_root / "START_KOMI_REPORT.cmd").write_text(START_CMD, encoding="utf-8", newline="\r\n")
-    (payload_root / "START_KOMI_REPORT.vbs").write_text(
-        START_VBS,
-        encoding="utf-8-sig",
-        newline="\r\n",
-    )
+    write_hidden_launcher(payload_root / "START_KOMI_REPORT.vbs")
     (payload_root / "START_DEBUG.cmd").write_text(START_DEBUG_CMD, encoding="utf-8", newline="\r\n")
     readme = CUSTOMER_README if customer_release else README
     (payload_root / "README-WINDOWS.txt").write_text(
