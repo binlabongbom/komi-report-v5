@@ -237,6 +237,11 @@ class PublicConnector:
         return WebCounterCollection((value,), "web_connection_public", WebAuthState.PUBLIC)
 
 
+class FailingPublicConnector:
+    def collect_result(self, _host: str) -> WebCounterCollection:
+        raise WebConnectionError("public session unavailable")
+
+
 def test_meter_reader_falls_back_to_public_once_and_exports_no_credential(tmp_path) -> None:
     password = secrets.token_urlsafe(18)
     admin = FailingAdminConnector()
@@ -257,6 +262,17 @@ def test_meter_reader_falls_back_to_public_once_and_exports_no_credential(tmp_pa
     assert password not in combined
     assert "counter.total.total" in combined
     assert json.loads(json_path.read_text(encoding="utf-8"))["schema_version"] == "komi.meter.reading.v1"
+
+
+def test_meter_reader_preserves_rejected_admin_error_when_public_is_unavailable() -> None:
+    reader = MeterReader(
+        MemoryStore(AdminCredential(password=secrets.token_urlsafe(18))),
+        public_connector=FailingPublicConnector(),
+        admin_connector=FailingAdminConnector(),
+    )
+
+    with pytest.raises(WebConnectionAuthenticationError, match="rejected"):
+        reader.read("10.0.0.5")
 
 
 def test_public_connector_still_parses_existing_total_schema() -> None:

@@ -8,6 +8,7 @@ from .connectors import (
     AuthenticatedWebConnectionCounterConnector,
     TlsPolicy,
     WebConnectionCounterConnector,
+    WebConnectionAuthenticationError,
     WebConnectionError,
 )
 from .credential_store import AdminCredential, CredentialStore, CredentialStoreError
@@ -69,6 +70,7 @@ class MeterReader:
             credential = self.credential_store.load(host)
         except CredentialStoreError:
             warnings.append("อ่าน session credential ไม่สำเร็จ จึงใช้ public counter เท่านั้น")
+        admin_failure: WebConnectionError | None = None
         if credential is not None:
             try:
                 result = admin_connector.collect_with_credential(host, credential)
@@ -81,11 +83,17 @@ class MeterReader:
                     result.auth_state,
                     warnings + list(result.warnings) + identity_warnings,
                 )
-            except WebConnectionError:
+            except WebConnectionError as err:
+                admin_failure = err
                 warnings.append(
                     "Administrator session ใช้งานไม่ได้หลังลองเพียงหนึ่งครั้ง; ใช้ public fallback เพื่อหลีกเลี่ยง lockout"
                 )
-        result = public_connector.collect_result(host)
+        try:
+            result = public_connector.collect_result(host)
+        except WebConnectionError:
+            if isinstance(admin_failure, WebConnectionAuthenticationError):
+                raise admin_failure
+            raise
         auth_state = WebAuthState.PUBLIC_FALLBACK if warnings else WebAuthState.PUBLIC
         return MeterReading.create(
             host,

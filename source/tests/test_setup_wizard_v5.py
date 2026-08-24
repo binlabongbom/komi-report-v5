@@ -6,6 +6,7 @@ import threading
 import time
 from datetime import date
 from pathlib import Path
+from types import SimpleNamespace
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -25,10 +26,12 @@ from PyQt6.QtWidgets import (
 )
 
 import database
+from komi_snmp_profiler.connectors import WebConnectionCertificateError
+from komi_snmp_profiler.models import MeterReading, WebAuthState, WebCounterValue
 from services.device_config import DeviceConfig, DeviceConfigRepository
 from services.pricing import PricingRepository
 from services.registration_repository import RegistrationRepository
-from v5_pages import NetworkDiscoveryWorker, SetupWizardV5
+from v5_pages import DeviceTestWorker, NetworkDiscoveryWorker, SetupWizardV5
 
 
 def _wizard_database(tmp_path):
@@ -687,6 +690,99 @@ def test_setup_wizard_selects_scanned_rows_without_a_default_password(tmp_path):
         database.set_db_path(original_path)
 
 
+def test_device_test_worker_pins_first_self_signed_certificate(monkeypatch) -> None:
+    fingerprint = "ab" * 32
+    policies: list[str] = []
+
+    monkeypatch.setattr(
+        "v5_pages.SnmpTotalProbe.read",
+        lambda _probe, _host: SimpleNamespace(
+            model="KONICA MINOLTA bizhub C450i",
+            serial="SERIAL-1",
+            total=100,
+            total_oid="1.2.3",
+            oid_values=(("1.2.3", "100"),),
+        ),
+    )
+    monkeypatch.setattr(
+        "v5_pages.server_certificate_fingerprint",
+        lambda _host: fingerprint,
+    )
+
+    def read(_reader, host: str):
+        policy = _reader.public_connector.tls_policy
+        policies.append(policy.mode)
+        if policy.mode == "system":
+            raise WebConnectionCertificateError("self-signed")
+        assert policy.fingerprint_sha256 == fingerprint
+        counter = WebCounterValue("counter.total.total", "Total", 100, "Total", "test")
+        return MeterReading.create(
+            host,
+            [counter],
+            "web_connection_admin_read_only",
+            WebAuthState.ADMIN,
+        )
+
+    monkeypatch.setattr("v5_pages.MeterReader.read", read)
+    result = DeviceTestWorker(
+        [
+            DeviceConfig(
+                0,
+                "MFP 1",
+                "192.0.2.10",
+                password=secrets.token_urlsafe(18),
+            )
+        ]
+    )._test(
+        DeviceConfig(
+            0,
+            "MFP 1",
+            "192.0.2.10",
+            password=secrets.token_urlsafe(18),
+        )
+    )
+
+    assert policies == ["system", "fingerprint"]
+    assert result["web_ok"] is True
+    assert result["tls_mode"] == "fingerprint"
+    assert result["tls_fingerprint"] == fingerprint
+    assert result["web_auth_state"] == "admin"
+
+
+def test_device_test_worker_rejects_public_fallback_when_password_was_entered(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "v5_pages.SnmpTotalProbe.read",
+        lambda _probe, _host: SimpleNamespace(
+            model="KONICA MINOLTA bizhub C450i",
+            serial="SERIAL-1",
+            total=100,
+            total_oid="1.2.3",
+            oid_values=(("1.2.3", "100"),),
+        ),
+    )
+    counter = WebCounterValue("counter.total.total", "Total", 100, "Total", "test")
+    monkeypatch.setattr(
+        "v5_pages.MeterReader.read",
+        lambda _reader, host: MeterReading.create(
+            host,
+            [counter],
+            "web_connection_public",
+            WebAuthState.PUBLIC_FALLBACK,
+        ),
+    )
+    device = DeviceConfig(
+        0,
+        "MFP 1",
+        "192.0.2.10",
+        password=secrets.token_urlsafe(18),
+    )
+
+    result = DeviceTestWorker([device])._test(device)
+
+    assert result["web_ok"] is False
+    assert "Administrator password ไม่ผ่านการตรวจสอบ" in result["error"]
+
+
 def test_setup_wizard_keeps_selected_table_text_stable_and_marks_failed_test(tmp_path):
     original_path = _wizard_database(tmp_path)
     app = QApplication.instance() or QApplication([])
@@ -730,6 +826,38 @@ def test_setup_wizard_keeps_selected_table_text_stable_and_marks_failed_test(tmp
         assert wizard.selection_badge.text() == "เลือกแล้ว 0/3"
         assert wizard.device_table.item(0, 1).background().style().name == "NoBrush"
         assert wizard.device_table.item(0, 4).foreground().color().name().lower() == "#16a34a"
+        wizard.close()
+        app.processEvents()
+    finally:
+        database.set_db_path(original_path)
+
+
+def test_setup_wizard_keeps_verified_certificate_pin_in_device_config(tmp_path) -> None:
+    original_path = _wizard_database(tmp_path)
+    app = QApplication.instance() or QApplication([])
+    try:
+        wizard = SetupWizardV5()
+        _add_selected_device(wizard, "DMS Printer", "192.0.2.10")
+        wizard._configs()
+        fingerprint = "cd" * 32
+
+        wizard._test_result(
+            0,
+            {
+                "online": True,
+                "web_ok": True,
+                "model": "bizhub C450i",
+                "serial": "SN-10",
+                "total": 100,
+                "tls_mode": "fingerprint",
+                "tls_fingerprint": fingerprint,
+                "web_auth_state": "admin",
+            },
+        )
+
+        device = wizard._configs()[0]
+        assert device.tls_mode == "fingerprint"
+        assert device.tls_fingerprint == fingerprint
         wizard.close()
         app.processEvents()
     finally:

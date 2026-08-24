@@ -96,9 +96,12 @@ from komi_snmp_profiler.connectors import (
     AuthenticatedWebConnectionCounterConnector,
     TlsPolicy,
     WebConnectionCounterConnector,
+    WebConnectionCertificateError,
+    server_certificate_fingerprint,
 )
 from komi_snmp_profiler.credential_store import AdminCredential, SessionCredentialStore
 from komi_snmp_profiler.meter import MeterReader
+from komi_snmp_profiler.models import WebAuthState
 from pages import PageHistory
 from runtime_config import RUNTIME_SETTINGS, save_runtime_database_path
 from services.autostart import configure_autostart
@@ -246,6 +249,8 @@ class DeviceTestWorker(QObject):
         probe_result = None
         reading = None
         errors: list[str] = []
+        tls_mode = device.tls_mode
+        tls_fingerprint = device.tls_fingerprint
         pipeline_log.append(
             stage="POLICY",
             action="Setup Test All",
@@ -293,7 +298,10 @@ class DeviceTestWorker(QObject):
             web_host = device.host if web_port == 443 else f"{device.host}:{web_port}"
             store = SessionCredentialStore()
             if device.password:
-                store.save(web_host, AdminCredential(password=device.password))
+                store.save(
+                    web_host,
+                    AdminCredential(username=device.username, password=device.password),
+                )
             pipeline_log.append(
                 stage="WEB",
                 action="Setup Web read request",
@@ -304,15 +312,37 @@ class DeviceTestWorker(QObject):
                 status="request",
             )
             if web_port != 443 and device.host in {"127.0.0.1", "localhost", "::1"}:
-                lab_tls = TlsPolicy(mode="insecure")
+                tls_policy = TlsPolicy(mode="insecure")
+            else:
+                tls_policy = TlsPolicy(
+                    mode=tls_mode,
+                    fingerprint_sha256=tls_fingerprint,
+                )
+
+            def read_with_policy(policy: TlsPolicy):
                 reader = MeterReader(
                     store,
-                    public_connector=WebConnectionCounterConnector(tls_policy=lab_tls),
-                    admin_connector=AuthenticatedWebConnectionCounterConnector(tls_policy=lab_tls),
+                    public_connector=WebConnectionCounterConnector(tls_policy=policy),
+                    admin_connector=AuthenticatedWebConnectionCounterConnector(tls_policy=policy),
                 )
-            else:
-                reader = MeterReader(store)
-            reading = reader.read(web_host)
+                return reader.read(web_host)
+
+            try:
+                reading = read_with_policy(tls_policy)
+            except WebConnectionCertificateError:
+                if tls_policy.mode != "system":
+                    raise
+                tls_fingerprint = server_certificate_fingerprint(web_host)
+                tls_mode = "fingerprint"
+                reading = read_with_policy(
+                    TlsPolicy(mode="fingerprint", fingerprint_sha256=tls_fingerprint)
+                )
+
+            if device.password and reading.auth_state != WebAuthState.ADMIN:
+                reading = None
+                raise ValueError(
+                    "Administrator password ไม่ผ่านการตรวจสอบ; กรุณาตรวจรหัสของเครื่องพิมพ์"
+                )
             pipeline_log.append(
                 stage="WEB",
                 action="Setup Web read complete",
@@ -342,6 +372,9 @@ class DeviceTestWorker(QObject):
             "total": probe_result.total if probe_result else None,
             "web_ok": reading is not None,
             "error": "; ".join(errors),
+            "tls_mode": tls_mode,
+            "tls_fingerprint": tls_fingerprint,
+            "web_auth_state": reading.auth_state.value if reading is not None else "",
         }
 
     @pyqtSlot()
@@ -2157,6 +2190,8 @@ class SetupWizardV5(QDialog):
                     "serial": device.serial,
                     "username": device.username,
                     "password": device.password,
+                    "tls_mode": device.tls_mode,
+                    "tls_fingerprint": device.tls_fingerprint,
                     "result": result,
                 },
                 select=device.enabled,
@@ -2223,6 +2258,8 @@ class SetupWizardV5(QDialog):
                 "serial": payload.get("serial") or "—",
                 "username": payload.get("username") or DEFAULT_ADMIN_USERNAME,
                 "password": payload.get("password") or "",
+                "tls_mode": payload.get("tls_mode") or "system",
+                "tls_fingerprint": payload.get("tls_fingerprint") or "",
                 "result": payload.get("result") or {"online": True, "web_ok": False},
                 "is_virtual": bool(payload.get("is_virtual", False)),
                 "found_in_registration_scan": bool(payload.get("found_in_registration_scan", False)),
@@ -2699,6 +2736,8 @@ class SetupWizardV5(QDialog):
                     host=entry["host"],
                     username=entry["username"],
                     password=entry["password"],
+                    tls_mode=entry.get("tls_mode", "system"),
+                    tls_fingerprint=entry.get("tls_fingerprint", ""),
                     enabled=True,
                     model=result.get("model") or entry["model"].replace("—", ""),
                     serial=result.get("serial") or entry["serial"].replace("—", ""),
@@ -2791,6 +2830,8 @@ class SetupWizardV5(QDialog):
         entry["result"] = payload
         entry["model"] = payload.get("model") or entry["model"]
         entry["serial"] = payload.get("serial") or entry["serial"]
+        entry["tls_mode"] = payload.get("tls_mode") or entry.get("tls_mode", "system")
+        entry["tls_fingerprint"] = payload.get("tls_fingerprint") or entry.get("tls_fingerprint", "")
         self._render_discovered_row(row)
         self._update_device_actions()
 

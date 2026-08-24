@@ -4,6 +4,7 @@ import hashlib
 import hmac
 import json
 import re
+import socket
 import ssl
 import warnings
 from dataclasses import dataclass
@@ -23,6 +24,10 @@ class WebConnectionError(RuntimeError):
 
 class WebConnectionAuthenticationError(WebConnectionError):
     """Raised after one rejected Administrator login attempt; callers must not retry automatically."""
+
+
+class WebConnectionCertificateError(WebConnectionError):
+    """Raised when the printer presents a certificate the operating system does not trust."""
 
 
 @dataclass(frozen=True)
@@ -57,6 +62,34 @@ class WebCounterCollection:
     source: str
     auth_state: WebAuthState
     warnings: tuple[str, ...] = ()
+
+
+def server_certificate_fingerprint(host: str, *, timeout: float = 5.0) -> str:
+    """Read a printer certificate without sending an HTTP request or credential."""
+
+    parsed = urlsplit(f"//{host.strip()}")
+    hostname = parsed.hostname
+    if not hostname:
+        raise WebConnectionCertificateError("IP address ของ Web Connection ไม่ถูกต้อง")
+    try:
+        port = parsed.port or 443
+    except ValueError as err:
+        raise WebConnectionCertificateError("Port ของ Web Connection ไม่ถูกต้อง") from err
+
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    context.check_hostname = False
+    context.verify_mode = ssl.CERT_NONE
+    try:
+        with socket.create_connection((hostname, port), timeout=timeout) as connection:
+            with context.wrap_socket(connection, server_hostname=hostname) as secured:
+                certificate_der = secured.getpeercert(binary_form=True)
+    except (OSError, ssl.SSLError, TimeoutError) as err:
+        raise WebConnectionCertificateError(
+            f"อ่าน certificate ของ Web Connection ไม่สำเร็จ: {type(err).__name__}"
+        ) from err
+    if not certificate_der:
+        raise WebConnectionCertificateError("Web Connection ไม่คืน certificate")
+    return hashlib.sha256(certificate_der).hexdigest()
 
 
 def _snake(value: str) -> str:
@@ -297,8 +330,20 @@ class ReadOnlyWebConnectionSession:
                     ):
                         raise WebConnectionError("Web Connection certificate fingerprint ไม่ตรงค่าที่ pin ไว้")
                 return response.read()
-        except (HTTPError, URLError, TimeoutError) as err:
-            raise WebConnectionError(f"อ่าน Web Connection ไม่สำเร็จ: {type(err).__name__}") from err
+        except HTTPError as err:
+            raise WebConnectionError(f"อ่าน Web Connection ไม่สำเร็จ: HTTP {err.code}") from err
+        except URLError as err:
+            if isinstance(err.reason, ssl.SSLCertVerificationError):
+                raise WebConnectionCertificateError(
+                    "certificate ของเครื่องพิมพ์ยังไม่ได้รับการยืนยัน"
+                ) from err
+            raise WebConnectionError(f"อ่าน Web Connection ไม่สำเร็จ: {type(err.reason).__name__}") from err
+        except ssl.SSLCertVerificationError as err:
+            raise WebConnectionCertificateError(
+                "certificate ของเครื่องพิมพ์ยังไม่ได้รับการยืนยัน"
+            ) from err
+        except TimeoutError as err:
+            raise WebConnectionError("อ่าน Web Connection ไม่สำเร็จ: Timeout") from err
 
     def clear(self) -> None:
         self.cookies.clear()
