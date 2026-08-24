@@ -78,6 +78,6 @@ begin
   Result := FileExists(ExpandConstant('{autodesktop}\KOMI Report V5.lnk'));
 end;
 
-; User database, backups, logs, Web security material and OS-vault entries are
-; intentionally outside {app}. Uninstall removes program files only. Data
-; cleanup is a separate, explicit support action after a verified backup.
+// User database, backups, logs, Web security material and OS-vault entries are
+// intentionally outside {app}. Uninstall removes program files only. Data
+// cleanup is a separate, explicit support action after a verified backup.
