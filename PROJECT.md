@@ -1643,7 +1643,19 @@ Task evidence แบบละเอียดอยู่ใน canonical thread 
 - Bom ยืนยันว่าลูกค้าใช้ KOMI Report เป็นโปรแกรมแถมสำหรับเครื่อง Konica Minolta ตามสัญญาหลัก และอนุมัติให้ใช้ API/bootstrap เดิมในตัวติดตั้งโดยไม่ให้ลูกค้ากรอกค่าเอง.
 - เพิ่ม approved built-in policy ที่ canonical `https://www.dmskm.com`, notice version `KOMI-REG-2026-08-24` และ exact schema-v2 field boundary. Setup/Settings แสดงปุ่มดูข้อมูลและเปิด checkbox รับทราบได้โดยไม่ต้องมี external policy file.
 - เพิ่ม one-time bootstrap provisioning: customer build inject ค่าเดิมจากช่องทาง OS vault โดยไม่เขียน Git/log/manifest; app ย้ายเข้า macOS Keychain หรือ Windows Credential Manager และไม่ overwrite ค่าเดิม. ค่านี้ถือเป็น limited public bootstrap identifier ที่ extract ได้จาก installer; Server ต้องออก scoped installation token และห้ามให้สิทธิ์ Dashboard/delete/Update/remote command.
-- Local Registration/Setup/Settings regression `146 passed`; Phase 4–6 packaging regression `22 passed`; focused Ruff และ compileall ผ่าน. OS vault บน macOS พบ `registration-bootstrap-reference` พร้อมใช้งานโดยไม่เปิดเผยค่า.
+- Final implementation branch `codex/production-registration-built-in` อยู่ที่ source commit
+  `b6cc65ce59a5687490b5363748c8a659896e76e3` และ push private origin แล้ว. Full regression รอบสุดท้าย
+  `532 passed`; launcher/package focused `16 passed`; focused Ruff, compileall และ diff check ผ่าน. OS vault บน macOS
+  พบ `registration-bootstrap-reference` พร้อมใช้งานโดยไม่เปิดเผยค่า.
+- Windows customer-behavior installer จาก Windows 11 ARM64 VM/x64 emulation preflight มี SHA256
+  `a81defaf54b83b4a0d55c1b1d7f736800447b6fb3009da3174bc2d15ffba421c`; exact-installer upgrade ผ่าน,
+  Database SHA256 ตรงก่อน/หลัง. Desktop shortcut เก่าถูก migrate จาก `.cmd` ไป `wscript.exe` + ASCII VBS;
+  runtime evidence หลังเปิดจริงคือ `cmd.exe=0`, `pythonw.exe=1` และหน้าต่างแอปเปิดโดยไม่มี Terminal.
+- macOS arm64 customer-behavior DMG SHA256 `f536083bfe127793d91921f78dfbdbfe9c6656aa6bee2f85230d7a8c9178f541`;
+  bundle smoke exit 0 และสร้าง Database สำเร็จ. Windows ยัง unsigned และ macOS ยัง ad-hoc/not notarized จึงเป็น HOLD.
+- ชุดสำหรับตรวจภายในถูกจัดไว้ที่
+  `/Users/wongsakornu-phonram/Projects/dev/KOMI-Report-V5.1-Installers/INTERNAL-HOLD-API-422-2026-08-24`;
+  มีเฉพาะ EXE, DMG, checksum, manifest และ sanitized install/launch evidence พร้อมป้ายห้ามส่งลูกค้า.
 - Live current-client probe ใช้ built-in policy + bootstrap เดิมจริงแล้ว แต่ `POST /api/v1/installations/register` ยังตอบ `HTTP 422 VALIDATION_ERROR` พร้อม safe message ว่า `device_inventory.devices.0.serial_number` ไม่อยู่ใน deployed privacy allow-list. ไม่มี remote Installation ถูกสร้างและไม่ได้รับ token จึงไม่มี heartbeat/read-back/cleanup.
 - คำตัดสินยัง **RELEASE HOLD**. Code/packaging path พร้อมสำหรับ build แต่ห้ามเรียก Production-ready หรือแจกตัวติดตั้งจน API deploy `serial_number` แล้ว current-client register/replay/heartbeat/Dashboard/deactivate ผ่าน.
 
