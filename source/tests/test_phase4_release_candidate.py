@@ -198,6 +198,8 @@ def test_installer_is_per_user_stable_and_preserves_user_data():
     assert "UsePreviousAppDir=yes" in script
     assert 'Filename: "{sys}\\wscript.exe"' in script
     assert 'Parameters: """{app}\\{#AppLauncher}"""' in script
+    assert "Check: ExistingDesktopShortcut" in script
+    assert "function ExistingDesktopShortcut(): Boolean;" in script
     assert "[UninstallDelete]" not in script
     assert "KOMI Report V5\\KOMI_Report_V5.db" not in script
 

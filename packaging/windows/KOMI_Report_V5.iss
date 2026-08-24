@@ -61,12 +61,22 @@ Source: "{#PayloadDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs
 [Icons]
 Name: "{autoprograms}\KOMI Report V5"; Filename: "{sys}\wscript.exe"; Parameters: """{app}\{#AppLauncher}"""; WorkingDir: "{app}"; IconFilename: "{app}\source\Logo.ico"
 Name: "{autodesktop}\KOMI Report V5"; Filename: "{sys}\wscript.exe"; Parameters: """{app}\{#AppLauncher}"""; WorkingDir: "{app}"; IconFilename: "{app}\source\Logo.ico"; Tasks: desktopicon
+; Upgrade migration: rewrite an existing customer shortcut even when the
+; checked-once desktop task is not offered again. A fresh install that opted
+; out still receives no Desktop shortcut.
+Name: "{autodesktop}\KOMI Report V5"; Filename: "{sys}\wscript.exe"; Parameters: """{app}\{#AppLauncher}"""; WorkingDir: "{app}"; IconFilename: "{app}\source\Logo.ico"; Check: ExistingDesktopShortcut
 
 [Tasks]
 Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription: "Shortcuts:"; Flags: checkedonce
 
 [Run]
 Filename: "{sys}\wscript.exe"; Parameters: """{app}\{#AppLauncher}"""; WorkingDir: "{app}"; Description: "Launch KOMI Report V5"; Flags: nowait postinstall skipifsilent
+
+[Code]
+function ExistingDesktopShortcut(): Boolean;
+begin
+  Result := FileExists(ExpandConstant('{autodesktop}\KOMI Report V5.lnk'));
+end;
 
 ; User database, backups, logs, Web security material and OS-vault entries are
 ; intentionally outside {app}. Uninstall removes program files only. Data
