@@ -238,6 +238,7 @@ updated_at: 2026-08-25T14:16:03+07:00
 | 2026-08-25 14:14 +07 | Static/version/Web/security gates | changed code compile, V5.2 metadata และ Web build/security ต้องผ่าน | scoped Ruff PASS; compileall/diff-check PASS; version gate `5.2.0` PASS; Web TypeScript/security 2/2/Next build/npm audit 0 ผ่าน | PASS — LOCAL | no artifact or deployment |
 | 2026-08-25 14:15 +07 | Changed production-source secret/privacy scan | source ใหม่ห้ามมี credential/private key/token valueหรือ telemetry นอก allow-list | changed production source ผ่าน `release_safety`; strict contract/runtime/UI privacy tests 49 ผ่าน;ไม่มีค่าลับถูกพิมพ์ | PASS — SANITIZED | category-only result; no raw payload/secret output |
 | 2026-08-25 14:18 +07 | Internal project dashboard sync | child workbook เดียวต้องสะท้อน runtime/UX milestone โดยไม่ publish/deploy | sync สำเร็จ 26 projects และ Codex usage snapshot; ไม่มี live publish | PASS — INTERNAL SYNC | `dashboard:quick` |
+| 2026-08-25 14:20 +07 | Verified-learning observation | verified local fix ควรถูกส่งเข้า Knowledge API โดยไม่แต่ง evidence | API ตอบสำเร็จแต่ `observed=false`, `promoted=false`, `notePath=null`; ไม่มี learning ถูก persist และไม่ถือว่าเป็น knowledge promotion | HOLD — KNOWLEDGE BACKEND UNAVAILABLE | `POST /api/knowledge/learnings/observe`; product milestone ไม่ถูกลดระดับ |
 
 ## Captured Evidence — AccurioPress C5070
 
