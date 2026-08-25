@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from tempfile import NamedTemporaryFile
+from uuid import UUID
 
 from services.contract_adapters.v1_draft import DraftV1SigningAdapter
 from services.installation_identity import InstallationIdentity
@@ -42,6 +43,7 @@ LICENSE_FIELDS = frozenset(
         "issued_at",
         "valid_from",
         "expires_at",
+        "algorithm",
         "kid",
         "signature",
     }
@@ -94,6 +96,18 @@ def _timestamp(value: object, field: str) -> datetime:
     return parsed.astimezone(UTC)
 
 
+def _uuid(value: object, field: str) -> str:
+    if not isinstance(value, str):
+        raise ValueError(f"offline {field} must be UUID")
+    try:
+        parsed = UUID(value)
+    except ValueError as err:
+        raise ValueError(f"offline {field} must be UUID") from err
+    if parsed.version not in {1, 2, 3, 4, 5} or str(parsed).casefold() != value.casefold():
+        raise ValueError(f"offline {field} must be UUID")
+    return value
+
+
 def create_offline_request(
     *,
     identity: InstallationIdentity,
@@ -132,6 +146,8 @@ def validate_offline_request(
     _require_exact(payload, REQUEST_FIELDS, "request")
     if payload.get("request_version") != 1:
         raise ValueError("offline request_version is invalid")
+    _uuid(payload.get("request_id"), "request_id")
+    _uuid(payload.get("installation_id"), "installation_id")
     for field in (
         "request_id",
         "company_name",
@@ -218,6 +234,9 @@ def verify_offline_license(
     _require_exact(payload, LICENSE_FIELDS, "license")
     if payload.get("license_version") != 1:
         raise ValueError("offline license_version is invalid")
+    _uuid(payload.get("license_id"), "license_id")
+    if payload.get("algorithm") != "Ed25519":
+        raise ValueError("offline license algorithm is invalid")
     kid = payload.get("kid")
     if not isinstance(kid, str) or kid not in host_public_keys:
         raise ValueError("offline license kid is unknown")

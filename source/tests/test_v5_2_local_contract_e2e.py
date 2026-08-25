@@ -57,6 +57,7 @@ class ContractStub:
                 "schema_version": 3,
                 "installation_id": installation_id,
                 "received_at": "2026-08-25T03:03:01Z",
+                "accepted_observations": len(payload["observations"]),
                 "next_meter_after_seconds": 21_600,
             }
         return V52TransportResponse(200, {}, json.dumps(response).encode())
@@ -64,7 +65,9 @@ class ContractStub:
 
 def test_local_fixture_register_status_meter_e2e_without_shared_api_key():
     vault = SessionRegistrationSecretStore()
-    identity = load_or_create_installation_identity(vault, "install-local-e2e-v52")
+    identity = load_or_create_installation_identity(
+        vault, "11111111-1111-4111-8111-111111111111"
+    )
     repository = V52OutboxRepository()
     stub = ContractStub()
     client = V52ContractClient(
@@ -137,7 +140,7 @@ def test_local_fixture_register_status_meter_e2e_without_shared_api_key():
 
 def test_client_fails_closed_when_queued_body_changes_after_claim():
     identity = load_or_create_installation_identity(
-        SessionRegistrationSecretStore(), "install-tamper-v52"
+        SessionRegistrationSecretStore(), "22222222-2222-4222-8222-222222222222"
     )
     repository = V52OutboxRepository()
     stub = ContractStub()
@@ -191,7 +194,7 @@ def test_client_honors_retry_after_and_treats_validation_as_terminal():
     repository.coalesce(
         "status",
         build_status_payload(
-            installation_id="install-error-v52",
+            installation_id="33333333-3333-4333-8333-333333333333",
             app_version="5.2.0",
             platform_name="TestOS",
             architecture="test64",

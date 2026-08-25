@@ -9,6 +9,7 @@ from services.installation_identity import load_or_create_installation_identity
 from services.registration_vault import SessionRegistrationSecretStore
 from services.v5_2_contract import (
     CONTRACT_SHA256,
+    CONTRACT_VERSION,
     TelemetryPolicy,
     build_meter_payload,
     build_registration_payload,
@@ -21,7 +22,7 @@ from services.v5_2_contract import (
 
 def _identity():
     return load_or_create_installation_identity(
-        SessionRegistrationSecretStore(), "install-contract-v52"
+        SessionRegistrationSecretStore(), "11111111-1111-4111-8111-111111111111"
     )
 
 
@@ -61,7 +62,7 @@ def test_registration_v3_is_signed_and_keeps_strict_serial_privacy_boundary():
 
 def test_status_has_no_online_boolean_and_policy_uses_six_hour_cadence():
     payload = build_status_payload(
-        installation_id="install-contract-v52",
+        installation_id="11111111-1111-4111-8111-111111111111",
         app_version="5.2.0",
         platform_name="TestOS",
         architecture="test64",
@@ -80,11 +81,12 @@ def test_status_has_no_online_boolean_and_policy_uses_six_hour_cadence():
     assert policy.clamp_server_interval(99_999) == 43_200
     assert 19_440 <= policy.with_jitter(21_600, random_unit=0.0) <= 23_760
     assert CONTRACT_SHA256 == "4884a4a6fb798ef0c36c88daca09cf2ae5df66ff609139f812880ab7322413bd"
+    assert CONTRACT_VERSION == "v5.2-shared-2026-08-25-r2"
 
 
 def test_meter_batch_is_latest_selected_aggregate_only_and_counter_reset_is_not_delta():
     payload = build_meter_payload(
-        installation_id="install-contract-v52",
+        installation_id="11111111-1111-4111-8111-111111111111",
         observations=[
             {
                 "serial_number": "SYNTH-001",
@@ -112,7 +114,7 @@ def test_meter_batch_is_latest_selected_aggregate_only_and_counter_reset_is_not_
     assert "delta" not in payload["observations"][0]
 
     unavailable = build_meter_payload(
-        installation_id="install-contract-v52",
+        installation_id="11111111-1111-4111-8111-111111111111",
         observations=[
             {
                 "serial_number": "SYNTH-002",
@@ -131,7 +133,7 @@ def test_meter_batch_is_latest_selected_aggregate_only_and_counter_reset_is_not_
 
 def test_contract_rejects_forbidden_or_detailed_counter_fields():
     payload = build_status_payload(
-        installation_id="install-contract-v52",
+        installation_id="11111111-1111-4111-8111-111111111111",
         app_version="5.2.0",
         platform_name="TestOS",
         architecture="test64",
@@ -141,7 +143,7 @@ def test_contract_rejects_forbidden_or_detailed_counter_fields():
         validate_status_payload(payload)
 
     meter = build_meter_payload(
-        installation_id="install-contract-v52",
+        installation_id="11111111-1111-4111-8111-111111111111",
         observations=[
             {
                 "serial_number": "SYNTH-001",

@@ -245,6 +245,11 @@ class V52RuntimeProcessor:
                 self._schedule("status", 0, now)
                 self._schedule("meter", 0, now)
             elif operation.event_type == "status":
+                if result.installation_token:
+                    self.vault.save(
+                        installation_token_reference(str(state["installation_id"])),
+                        result.installation_token,
+                    )
                 self._schedule("status", result.next_status_after_seconds, now)
             else:
                 self._schedule("meter", result.next_meter_after_seconds, now)

@@ -6,6 +6,7 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Protocol
+from uuid import UUID
 
 from komi_version import APP_VERSION
 from services.contract_adapters.v1_draft import DraftV1SigningAdapter
@@ -13,7 +14,7 @@ from services.registration_envelope import normalize_device_inventory
 
 SCHEMA_VERSION = 3
 CLIENT_ID = "komi-report-desktop"
-CONTRACT_VERSION = "v5.2-draft-2026-08-25"
+CONTRACT_VERSION = "v5.2-shared-2026-08-25-r2"
 CONTRACT_SHA256 = "4884a4a6fb798ef0c36c88daca09cf2ae5df66ff609139f812880ab7322413bd"
 MAX_SELECTED_DEVICES = 3
 
@@ -138,10 +139,18 @@ def _validate_common(value: Mapping[str, object], *, event_type: str) -> None:
         raise ValueError("unsupported schema_version")
     if value.get("event_type") != event_type:
         raise ValueError("unsupported event_type")
-    if not isinstance(value.get("installation_id"), str) or not str(
-        value["installation_id"]
-    ).strip():
-        raise ValueError("installation_id is required")
+    installation_id = value.get("installation_id")
+    if not isinstance(installation_id, str) or not _valid_uuid(installation_id):
+        raise ValueError("installation_id must be UUID")
+
+
+def _valid_uuid(value: str) -> bool:
+    candidate = value.strip()
+    try:
+        parsed = UUID(candidate)
+    except (AttributeError, ValueError):
+        return False
+    return parsed.version in {1, 2, 3, 4, 5} and str(parsed).casefold() == candidate.casefold()
 
 
 @dataclass(frozen=True)

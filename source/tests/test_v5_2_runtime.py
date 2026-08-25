@@ -26,6 +26,7 @@ from services.v5_2_runtime import (
 from services.v5_2_runtime_state import V52RuntimeStateRepository
 
 NOW = datetime(2026, 8, 25, 8, tzinfo=UTC)
+INSTALLATION_ID = "55555555-5555-4555-8555-555555555555"
 
 
 class FakeDevices:
@@ -88,7 +89,7 @@ def _configured(mode: str = "online") -> V52RuntimeStateRepository:
     state.configure(
         mode,
         "Synthetic Company",
-        "install-runtime-v52",
+        INSTALLATION_ID,
         "2026-08-25T08:00:00Z",
         DRAFT_NOTICE_VERSION,
         "2026-08-25T08:00:00Z",
@@ -137,7 +138,7 @@ def test_registration_success_saves_token_only_in_vault_then_schedules_status_me
     assert processor.run_once() is True
     assert client.operations[0].event_type == "register"
     assert client.tokens == [None]
-    assert vault.load(installation_token_reference("install-runtime-v52")) == (
+    assert vault.load(installation_token_reference(INSTALLATION_ID)) == (
         "synthetic-installation-token"
     )
     serialized = json.dumps(state.snapshot(), sort_keys=True)
@@ -149,7 +150,7 @@ def test_registered_runtime_batches_latest_aggregate_meter_and_status():
     state = _configured()
     vault = SessionRegistrationSecretStore()
     vault.save(
-        installation_token_reference("install-runtime-v52"), "synthetic-installation-token"
+        installation_token_reference(INSTALLATION_ID), "synthetic-installation-token"
     )
     client = FakeClient([_success(), _success()])
     processor = _processor(client=client, state=state, vault=vault, devices=FakeDevices(total=321))
@@ -167,6 +168,20 @@ def test_registered_runtime_batches_latest_aggregate_meter_and_status():
         "meter_status": "ok",
     }
     assert client.tokens == ["synthetic-installation-token"] * 2
+
+
+def test_status_success_replaces_rotated_token_in_vault_without_exposing_it():
+    state = _configured()
+    vault = SessionRegistrationSecretStore()
+    reference = installation_token_reference(INSTALLATION_ID)
+    vault.save(reference, "synthetic-installation-token")
+    client = FakeClient([_success(token="rotated-installation-token")])
+    processor = _processor(client=client, state=state, vault=vault)
+
+    assert processor.run_once() is True
+    assert client.operations[0].event_type == "status"
+    assert vault.load(reference) == "rotated-installation-token"
+    assert "rotated-installation-token" not in json.dumps(state.snapshot(), sort_keys=True)
 
 
 def test_restart_recovers_inflight_with_same_idempotency_and_recovery_honors_cooldown():
@@ -191,7 +206,7 @@ def test_startup_recovery_does_not_create_extra_status_or_meter_inside_cooldown(
     state = _configured()
     vault = SessionRegistrationSecretStore()
     vault.save(
-        installation_token_reference("install-runtime-v52"), "synthetic-installation-token"
+        installation_token_reference(INSTALLATION_ID), "synthetic-installation-token"
     )
     outbox = V52OutboxRepository()
     for event_type in ("status", "meter"):
@@ -225,7 +240,7 @@ def test_notice_is_a_hard_online_send_gate():
     state.configure(
         "online",
         "Synthetic Company",
-        "install-runtime-v52",
+        INSTALLATION_ID,
         "2026-08-25T08:00:00Z",
         "",
         "",
@@ -316,7 +331,7 @@ def test_verified_offline_import_exposes_only_expiry_and_bound_devices(tmp_path)
     host = load_or_create_installation_identity(vault, "synthetic-host-license-signer")
     license_payload = {
         "license_version": 1,
-        "license_id": "license-runtime-v52",
+        "license_id": "99999999-9999-4999-8999-999999999999",
         "request_id": request["request_id"],
         "company_name": request["company_name"],
         "installation_id": request["installation_id"],
@@ -329,6 +344,7 @@ def test_verified_offline_import_exposes_only_expiry_and_bound_devices(tmp_path)
         "issued_at": "2026-08-25T08:00:00Z",
         "valid_from": "2026-08-25T08:00:00Z",
         "expires_at": "2031-08-25T08:00:00Z",
+        "algorithm": "Ed25519",
         "kid": "host-test-kid",
     }
     adapter = DraftV1SigningAdapter()

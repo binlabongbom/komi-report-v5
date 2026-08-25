@@ -6,13 +6,13 @@ thread_title: KOMI V5.2 — Production Print & Meter Alert
 dashboard_visible: true
 department: dev
 status: testing
-progress: 66
+progress: 70
 owner: VEGA
-current_phase: Phase D complete — Desktop V5.2 runtime and bilingual registration UX verified locally
-current_task: hold the local-safe Desktop seam while awaiting the Final Host contract bundle
-next_action: replace the draft signing adapter with Final API golden vectors, inject approved Staging transport/Host public keys, then run Joint Staging E2E
-problem: Final V5.2 OpenAPI/auth canonicalization, golden vectors and Host Offline License public key are external gates; customer artifacts remain fail-closed HOLD
-updated_at: 2026-08-25T14:16:03+07:00
+current_phase: Phase D complete — Desktop/API shared Contract R2 compatibility verified locally
+current_task: deliver the corrected eight-file API Pack R2 to the Host/API team
+next_action: API team applies R2 to private Host runtime, deploys separate Staging, returns deployed OpenAPI/public key evidence, then run Joint Staging E2E
+problem: Host runtime/migration/Dashboard and Staging evidence remain external gates; customer artifacts remain fail-closed HOLD
+updated_at: 2026-08-25T14:56:48+07:00
 ---
 
 # KOMI Report V5.2 — Production Print & Meter Alert
@@ -91,7 +91,7 @@ updated_at: 2026-08-25T14:16:03+07:00
 - **Client offline:** Host ไม่ได้รับ heartbeat เกิน threshold; ชี้ไปที่ Desktop/เครือข่าย ไม่สรุปสถานะเครื่องพิมพ์.
 - **Production proof:** หลักฐาน read-only จาก model/device จริงที่มี authority และบันทึกเวลา/วิธีอ่านครบ; synthetic, Lab และ VM เป็น preflight เท่านั้น.
 
-## Progress: 66%
+## Progress: 70%
 
 ### Phase A — Baseline and design ✅
 
@@ -130,6 +130,7 @@ updated_at: 2026-08-25T14:16:03+07:00
 - [x] ทำ scheduler policy 6h+jitter, startup/network cooldown 15m, server clamp และ Retry-After/15m→1h→6h
 - [x] สร้าง signed `.komirequest` และ strict Host-signed `.komilicense` verifier; Offline License ปิด telemetry
 - [x] เชื่อม V5.2 coordinator เข้ากับ first-run/app restart/network recovery/graceful stop และ Wizard/Settings แบบ Online Registration / Offline License พร้อม bilingual status
+- [x] ทำ Shared Contract R2 ให้ Desktop/API ใช้ raw Ed25519 key, canonical golden vector, response fields, token rotation และ Offline License hash/algorithm ตรงกัน
 
 ### Phase E — Host contract and UI
 
@@ -141,6 +142,7 @@ updated_at: 2026-08-25T14:16:03+07:00
 ### Phase F — UAT
 
 - [x] local contract fixture E2E: Register → token vault → Status → aggregate Meter; ไม่มี Production call/shared key
+- [x] local cross-language compatibility: Desktop-signed Registration ผ่าน Node/API verifier และ Node/Host-signed Offline License ผ่าน Desktop verifier
 - [ ] Joint Staging E2E กับ Final Host bundle และ Dashboard read-back
 - [ ] time simulation >24h: unchanged vs offline vs suppressed
 - [ ] reset/replacement/idempotent duplicate/acknowledge/resolve
@@ -155,7 +157,7 @@ updated_at: 2026-08-25T14:16:03+07:00
 
 ## Problem / Blocker
 
-- Final V5.2 OpenAPI/auth canonicalization, signing golden vectors, deployed contract hash และ Host public key/kid สำหรับ Offline License ยังไม่ส่งมา; local code จึงแยกไว้ที่ versioned draft adapter และห้ามเรียก Production/สร้าง customer artifact.
+- Shared Contract R2/OpenAPI/public golden vector พร้อมในชุดส่งทีม API แล้ว แต่ private Host runtime, migration, Dashboard, deployed OpenAPI และ Host public key/kid สำหรับ Offline License ยังต้องให้ทีม API apply/deploy/ส่งหลักฐานจาก separate Staging; ห้ามเรียก Production/สร้าง customer artifact ก่อน Joint Staging E2E.
 - Joint Staging E2E เป็น external gate แยกจาก local focused/full gates; V5.1 API pack ใช้ได้เฉพาะ reference fixture และไม่มีสิทธิ์ทำ automatic downgrade/fallback.
 - C84hc ตอบ identity/Total targeted GET ในรอบแรก แต่ timeout ทั้ง walk และ targeted GET ซ้ำ 3 รอบ จึงเป็น `HOLD — device/network unavailable` ไม่ใช่เครื่องไม่รองรับ.
 - C5070 ตอบ targeted GET ซ้ำ 3/3 แต่ทุก SNMP walk timeout; implementation เดิมจึงล้มเหลวแม้ Total OID ใช้งานได้.
@@ -168,6 +170,7 @@ updated_at: 2026-08-25T14:16:03+07:00
 
 ## Decisions and Changes
 
+- 2026-08-25 — Freeze Shared Contract `v5.2-shared-2026-08-25-r2`: public key ใช้ raw Ed25519 32 bytes แบบ unpadded base64url, hash decoded raw bytes, schema-v3 Registration สำเร็จเป็น `registered`, Meter response ต้องมี `accepted_observations`, Status รองรับ token rotation และ Offline License ต้องมี `algorithm: Ed25519`.
 - 2026-08-25 — ใช้ Desktop local-first + modular Host monolith; ไม่สร้าง microservices.
 - 2026-08-25 — V5.2 เริ่ม `5.2.0`; V5.1 artifacts/evidence เป็น immutable history และไม่ rename ย้อนหลัง.
 - 2026-08-25 — server เป็น authority ของ last heartbeat, last meter changed และ alert state; client ส่งเฉพาะ observation ที่ allow-list.
@@ -239,6 +242,11 @@ updated_at: 2026-08-25T14:16:03+07:00
 | 2026-08-25 14:15 +07 | Changed production-source secret/privacy scan | source ใหม่ห้ามมี credential/private key/token valueหรือ telemetry นอก allow-list | changed production source ผ่าน `release_safety`; strict contract/runtime/UI privacy tests 49 ผ่าน;ไม่มีค่าลับถูกพิมพ์ | PASS — SANITIZED | category-only result; no raw payload/secret output |
 | 2026-08-25 14:18 +07 | Internal project dashboard sync | child workbook เดียวต้องสะท้อน runtime/UX milestone โดยไม่ publish/deploy | sync สำเร็จ 26 projects และ Codex usage snapshot; ไม่มี live publish | PASS — INTERNAL SYNC | `dashboard:quick` |
 | 2026-08-25 14:20 +07 | Verified-learning observation | verified local fix ควรถูกส่งเข้า Knowledge API โดยไม่แต่ง evidence | API ตอบสำเร็จแต่ `observed=false`, `promoted=false`, `notePath=null`; ไม่มี learning ถูก persist และไม่ถือว่าเป็น knowledge promotion | HOLD — KNOWLEDGE BACKEND UNAVAILABLE | `POST /api/knowledge/learnings/observe`; product milestone ไม่ถูกลดระดับ |
+| 2026-08-25 14:42 +07 | Shared Contract R2 fail-first compatibility | API-compliant Meter/Status/Offline License และ raw-key proof ต้องผ่าน Desktop จริง | ก่อนแก้ Meter/Status คืน `contract_invalid`; Offline License ปฏิเสธ `algorithm`; Node SPKI importer ปฏิเสธ Desktop raw key | FAIL-FIRST CONFIRMED | isolated local cross-contract test; no Host/Production call |
+| 2026-08-25 14:49 +07 | API Pack R2 local simulation | revised OpenAPI/auth/hash/response/license rules และ legacy compatibility ต้องผ่าน | API contract `41/41`; serial/privacy `30/30`; syntax/OpenAPI/dry-run ผ่าน | PASS — LOCAL SIMULATION | eight-file Contract/Test pack; not PHP/HTTP/deployed proof |
+| 2026-08-25 14:51 +07 | Desktop/API cross-language proof | Desktop-signed Registration ต้อง verify ด้วย Node/API และ Node/Host License ต้อง verify ด้วย Desktop | Registration proof PASS with raw key 32 bytes; Offline License proof/hash/algorithm PASS | PASS — LOCAL CROSS-LANGUAGE | synthetic ephemeral keys; no private key or token retained/logged |
+| 2026-08-25 14:55 +07 | Full regression after Shared Contract R2 | DB/History/Billing/Excel/Meter/UI/Registration และ release manifest ต้องไม่ถอย | first full run caught stale manifest expectation; corrected test then `589 passed`; one existing Virtual Printer TLS warning | PASS — LOCAL REGRESSION | full offscreen pytest; focused repair `1 passed` |
+| 2026-08-25 14:56 +07 | Static/Web/security gates after R2 | changed Python/Web build/security/dependency gate ต้องผ่าน | Ruff/compileall/diff-check PASS; Web TypeScript, security 2/2, Next build and npm audit 0 passed | PASS — LOCAL | no Host/Production call or customer artifact |
 
 ## Captured Evidence — AccurioPress C5070
 

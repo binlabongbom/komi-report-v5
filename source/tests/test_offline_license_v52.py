@@ -30,7 +30,7 @@ def _host_key() -> Ed25519PrivateKey:
 
 def test_offline_request_is_signed_by_installation_and_contains_no_telemetry():
     identity = load_or_create_installation_identity(
-        SessionRegistrationSecretStore(), "install-offline-v52"
+        SessionRegistrationSecretStore(), "66666666-6666-4666-8666-666666666666"
     )
     request = create_offline_request(
         identity=identity,
@@ -57,7 +57,7 @@ def test_offline_request_is_signed_by_installation_and_contains_no_telemetry():
 
 def test_offline_request_file_is_atomic_and_license_import_uses_bounded_json(tmp_path):
     identity = load_or_create_installation_identity(
-        SessionRegistrationSecretStore(), "install-offline-file-v52"
+        SessionRegistrationSecretStore(), "77777777-7777-4777-8777-777777777777"
     )
     request = create_offline_request(
         identity=identity,
@@ -90,6 +90,7 @@ def test_offline_request_file_is_atomic_and_license_import_uses_bounded_json(tmp
         "issued_at": "2026-08-25T03:01:00Z",
         "valid_from": "2026-08-25T00:00:00Z",
         "expires_at": "2031-08-25T00:00:00Z",
+        "algorithm": "Ed25519",
         "kid": "synthetic-host-test-v1",
     }
     license_payload["signature"] = DraftV1SigningAdapter().sign_envelope(
@@ -110,7 +111,7 @@ def test_offline_request_file_is_atomic_and_license_import_uses_bounded_json(tmp
 
 def test_offline_license_verifies_host_signature_binding_and_five_year_limit():
     identity = load_or_create_installation_identity(
-        SessionRegistrationSecretStore(), "install-offline-v52"
+        SessionRegistrationSecretStore(), "66666666-6666-4666-8666-666666666666"
     )
     request = create_offline_request(
         identity=identity,
@@ -141,6 +142,7 @@ def test_offline_license_verifies_host_signature_binding_and_five_year_limit():
         "issued_at": "2026-08-25T03:01:00Z",
         "valid_from": "2026-08-25T00:00:00Z",
         "expires_at": "2031-08-25T00:00:00Z",
+        "algorithm": "Ed25519",
         "kid": "synthetic-host-test-v1",
     }
     license_payload["signature"] = DraftV1SigningAdapter().sign_envelope(
@@ -173,10 +175,10 @@ def test_offline_license_verifies_host_signature_binding_and_five_year_limit():
 
 def test_offline_license_rejects_tamper_or_another_desktop():
     identity = load_or_create_installation_identity(
-        SessionRegistrationSecretStore(), "install-offline-v52"
+        SessionRegistrationSecretStore(), "66666666-6666-4666-8666-666666666666"
     )
     other = load_or_create_installation_identity(
-        SessionRegistrationSecretStore(), "install-other-v52"
+        SessionRegistrationSecretStore(), "88888888-8888-4888-8888-888888888888"
     )
     request = create_offline_request(
         identity=identity,
@@ -205,6 +207,7 @@ def test_offline_license_rejects_tamper_or_another_desktop():
         "issued_at": "2026-08-25T03:01:00Z",
         "valid_from": "2026-08-25T00:00:00Z",
         "expires_at": "2031-08-25T00:00:00Z",
+        "algorithm": "Ed25519",
         "kid": "synthetic-host-test-v1",
     }
     payload["signature"] = DraftV1SigningAdapter().sign_envelope(

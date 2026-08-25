@@ -10,7 +10,7 @@ NOW = datetime(2026, 8, 25, 3, tzinfo=UTC)
 
 def _status(second: int):
     return build_status_payload(
-        installation_id="install-outbox-v52",
+        installation_id="44444444-4444-4444-8444-444444444444",
         app_version="5.2.0",
         platform_name="TestOS",
         architecture="test64",

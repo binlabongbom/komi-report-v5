@@ -1,7 +1,7 @@
-"""Draft V1 canonical JSON and Ed25519 adapter.
+"""V5.2 shared canonical JSON and raw-key Ed25519 adapter.
 
-Replace this adapter with the Final Contract Bundle implementation after its
-golden vectors are frozen. Business payload builders depend only on this seam.
+The external representation is unpadded base64url of the raw 32-byte Ed25519
+public key. Business payload builders depend only on this seam.
 """
 
 from __future__ import annotations
@@ -27,7 +27,7 @@ def _decode(value: str) -> bytes:
 
 
 class DraftV1SigningAdapter:
-    contract_adapter_version = "v1-draft"
+    contract_adapter_version = "v5.2-shared-r2"
 
     @staticmethod
     def canonical_bytes(

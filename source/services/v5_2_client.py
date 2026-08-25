@@ -200,12 +200,34 @@ class V52ContractClient:
             meter_after = self.policy.clamp_server_interval(payload["next_meter_after_seconds"])
         elif operation.event_type == "status":
             fields = {"schema_version", "installation_id", "received_at", "next_status_after_seconds"}
-            if set(payload) != fields:
+            rotated_fields = fields | {"rotated_installation_token"}
+            if frozenset(payload) not in {frozenset(fields), frozenset(rotated_fields)}:
                 raise ValueError
+            rotated_token = payload.get("rotated_installation_token", "")
+            if not isinstance(rotated_token, str):
+                raise ValueError
+            if "rotated_installation_token" in payload and not rotated_token:
+                raise ValueError
+            token = rotated_token
             status_after = self.policy.clamp_server_interval(payload["next_status_after_seconds"])
         else:
-            fields = {"schema_version", "installation_id", "received_at", "next_meter_after_seconds"}
+            fields = {
+                "schema_version",
+                "installation_id",
+                "received_at",
+                "accepted_observations",
+                "next_meter_after_seconds",
+            }
             if set(payload) != fields:
+                raise ValueError
+            accepted = payload.get("accepted_observations")
+            observations = operation.payload.get("observations")
+            if (
+                type(accepted) is not int
+                or not 0 <= accepted <= 3
+                or not isinstance(observations, list)
+                or accepted != len(observations)
+            ):
                 raise ValueError
             meter_after = self.policy.clamp_server_interval(payload["next_meter_after_seconds"])
         return V52ClientResult(

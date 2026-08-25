@@ -110,7 +110,7 @@ def test_source_release_manifest_contains_traceability_fields(tmp_path, monkeypa
     assert count == manifest["file_count"]
     assert digest == hashlib.sha256(archive.read_bytes()).hexdigest()
     assert manifest["version"] == "5.2.0"
-    assert manifest["contract_version"] == "v5.2-draft-2026-08-25"
+    assert manifest["contract_version"] == "v5.2-shared-2026-08-25-r2"
     assert manifest["contract_sha256"] == "4884a4a6fb798ef0c36c88daca09cf2ae5df66ff609139f812880ab7322413bd"
     assert manifest["artifact"] == archive.name
     assert manifest["artifact_identity"].startswith("komi-report-v5-source-5.2.0-")
