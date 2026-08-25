@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import inspect
 import os
-from datetime import UTC, datetime, time, timedelta
+from datetime import time
 from pathlib import Path
 
 import pytest
@@ -10,16 +10,13 @@ import pytest
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PyQt6.QtCore import QTime
-from PyQt6.QtWidgets import QApplication, QDialog, QWidget
+from PyQt6.QtWidgets import QAbstractButton, QApplication, QDialog, QLabel, QWidget
 
 import database
 import v5_pages
 from i18n import apply_language, set_language
 from pages import PageSettings
 from services.device_config import DeviceConfig, DeviceConfigRepository
-from services.registration_envelope import build_registration_envelope
-from services.registration_policy import REQUIRED_NOTICE_FIELDS, PrivacyNotice, RegistrationRuntimePolicy
-from services.registration_repository import RegistrationRepository
 from services.sync_schedule import default_schedule_windows, load_schedule_windows
 from services.web_access import ACCESS_HASH_KEY, verify_web_access_code
 from services.web_service import WebServiceStatus
@@ -40,6 +37,64 @@ class _LegacySettings(QWidget):
         self.unlock_calls += 1
         self._authenticated = True
         return True
+
+
+class _RegistrationRuntimeDouble:
+    def __init__(self, **overrides) -> None:
+        self.data = {
+            "mode": "online",
+            "status": "not_configured",
+            "last_sent_at": "",
+            "next_attempt_at": "",
+            "support_code": "",
+            "notice_accepted": False,
+            "offline_license": None,
+            **overrides,
+        }
+        self.retry_calls = 0
+        self.accept_calls: list[tuple[str, str]] = []
+        self.request_paths: list[Path] = []
+        self.license_imports: list[tuple[Path, dict[str, str]]] = []
+
+    def snapshot(self) -> dict[str, object]:
+        return dict(self.data)
+
+    def retry_now(self) -> int:
+        self.retry_calls += 1
+        self.data["status"] = "pending"
+        return 1
+
+    def accept_notice(self, version: str, accepted_at: str) -> None:
+        self.accept_calls.append((version, accepted_at))
+        self.data["notice_accepted"] = True
+
+    def set_mode(self, mode: str) -> None:
+        self.data["mode"] = mode
+        self.data["status"] = (
+            "offline_request_required" if mode == "offline" else "waiting_for_internet"
+        )
+
+    def create_offline_request(self, path: Path) -> Path:
+        self.request_paths.append(path)
+        self.data["status"] = "offline_request_ready"
+        return path
+
+    def import_offline_license(
+        self, path: Path, host_public_keys: dict[str, str]
+    ) -> object:
+        self.license_imports.append((path, dict(host_public_keys)))
+        self.data["status"] = "offline_license"
+        self.data["offline_license"] = {
+            "expires_at": "2031-08-25T08:00:00Z",
+            "bound_devices": [
+                {
+                    "model": "Synthetic Printer",
+                    "serial_number": "SYNTH-UI-1",
+                    "device_slot": 1,
+                }
+            ],
+        }
+        return object()
 
 
 class _WebServiceDouble:
@@ -509,50 +564,27 @@ def test_settings_tools_do_not_request_password(tmp_path):
 def test_settings_shows_simple_registration_status_and_manual_retry(tmp_path):
     app = QApplication.instance() or QApplication([])
     original = _database(tmp_path)
-    now = datetime(2026, 8, 22, 1, tzinfo=UTC)
-    repository = RegistrationRepository()
-    envelope = build_registration_envelope(
-        installation_id="install-settings",
-        company_name="KOMI-UAT-SETTINGS",
-        first_started_at="2026-08-22",
-        app_version="5.1.0",
-        devices=[
-            {"serial_number": "SYNTHETIC-1", "model": "bizhub UAT", "selected": True, "device_slot": 1}
-        ],
-        created_at=now.isoformat(),
-    )
-    repository.upsert_profile_and_enqueue_register(
-        envelope,
-        notice_version="",
-        notice_accepted_at="",
-        now=now,
-    )
-    operation = repository.claim_due(now=now)
-    assert operation is not None
-    repository.complete_failure(
-        operation,
-        error_code="offline",
-        retryable=True,
-        next_attempt_at=now + timedelta(minutes=2),
-        http_status=None,
-        retry_after_seconds=None,
-        duration_ms=4,
-        now=now,
+    runtime = _RegistrationRuntimeDouble(
+        status="retrying",
+        next_attempt_at="2026-08-22T01:02:00+00:00",
+        support_code="offline",
     )
     try:
-        page = PageFleetSettings()
+        page = PageFleetSettings(registration_runtime=runtime)
         page.show()
         app.processEvents()
 
-        assert "ออฟไลน์" in page.registration_summary.text()
+        assert "กำลังลองใหม่" in page.registration_summary.text()
         assert page.registration_retry_button.isVisible()
         assert page.registration_retry_button.isEnabled()
         assert page.registration_privacy_button.isVisible()
+        assert page.registration_summary.toolTip() == ""
+        assert page.registration_support_detail.isVisible() is False
 
         page.registration_retry_button.click()
 
         assert "จัดคิวใหม่แล้ว" in page.registration_summary.text()
-        assert RegistrationRepository().summary().status == "pending"
+        assert runtime.retry_calls == 1
         page.close()
         app.processEvents()
     finally:
@@ -570,7 +602,8 @@ def test_registration_settings_copy_switches_to_english(tmp_path):
         app.processEvents()
 
         assert page.registration_privacy_button.text() == "View data sent"
-        assert page.registration_summary.text() == "Not configured"
+        assert page.registration_summary.text().startswith("Not configured")
+        assert "does not claim a printer fault" in page.registration_summary.text()
         assert page.registration_summary.accessibleName() == "Application registration status"
         page.close()
         app.processEvents()
@@ -579,91 +612,137 @@ def test_registration_settings_copy_switches_to_english(tmp_path):
         database.set_db_path(original)
 
 
-def test_settings_can_accept_current_privacy_notice_and_requeue(tmp_path, monkeypatch):
+def test_settings_can_accept_current_privacy_notice_and_requeue(tmp_path):
     app = QApplication.instance() or QApplication([])
     original = _database(tmp_path)
-    now = datetime(2026, 8, 22, 1, tzinfo=UTC)
-    policy = RegistrationRuntimePolicy(
-        base_url="https://staging.invalid.example",
-        environment="staging",
-        bootstrap_mode="vault_header",
-        bootstrap_header="X-Synthetic-Bootstrap",
-        bootstrap_ref="registration-bootstrap-reference",
-        notice=PrivacyNotice(
-            version="notice-2026-08",
-            approved=True,
-            purpose="Synthetic UI notice",
-            fields=REQUIRED_NOTICE_FIELDS,
-            retention="Synthetic retention",
-            deletion_contact="privacy@example.invalid",
-            legal_basis="Synthetic legal basis",
-            access_export="Synthetic access/export",
-            approval_reference="SYNTHETIC-APPROVAL",
-            approved_at=now.isoformat(),
-            approval_owner="Synthetic Approver",
-        ),
-    )
-    monkeypatch.setattr(v5_pages, "load_registration_policy", lambda: policy)
-    repository = RegistrationRepository()
-    envelope = build_registration_envelope(
-        installation_id="install-settings-accept",
-        company_name="KOMI-UAT-SETTINGS",
-        first_started_at="2026-08-22",
-        app_version="5.1.0",
-        devices=[
-            {"serial_number": "SYNTHETIC-1", "model": "bizhub UAT", "selected": True, "device_slot": 1}
-        ],
-        created_at=now.isoformat(),
-    )
-    repository.upsert_profile_and_enqueue_register(
-        envelope, notice_version="", notice_accepted_at="", now=now
-    )
-    operation = repository.claim_due(now=now)
-    assert operation is not None
-    repository.complete_failure(
-        operation,
-        error_code="privacy_notice_not_accepted",
-        retryable=False,
-        next_attempt_at=now,
-        http_status=None,
-        retry_after_seconds=None,
-        duration_ms=0,
-        now=now,
-    )
+    runtime = _RegistrationRuntimeDouble(status="waiting_for_internet")
     try:
-        page = PageFleetSettings()
+        page = PageFleetSettings(registration_runtime=runtime)
         page.show()
         app.processEvents()
 
         assert page.registration_notice_accept.isEnabled()
         page.registration_notice_accept.click()
 
-        profile = RegistrationRepository().profile()
-        assert profile.notice_version == policy.notice.version
-        assert profile.notice_accepted_at
-        assert RegistrationRepository().summary().status == "pending"
+        assert runtime.accept_calls
+        assert runtime.data["notice_accepted"] is True
+        assert "รับทราบข้อมูลการลงทะเบียนแล้ว" in page.registration_summary.text()
         page.close()
         app.processEvents()
     finally:
         database.set_db_path(original)
 
 
-def test_settings_routes_local_enqueue_failure_back_to_setup(tmp_path, monkeypatch):
+def test_settings_routes_local_enqueue_failure_back_to_setup(tmp_path):
     app = QApplication.instance() or QApplication([])
     original = _database(tmp_path)
-    database.set_cfg("registration_status", "action_required")
+    runtime = _RegistrationRuntimeDouble(
+        status="needs_review", support_code="contract_invalid"
+    )
     try:
-        page = PageFleetSettings()
-        opened: list[bool] = []
-        monkeypatch.setattr(page, "_edit_devices", lambda: opened.append(True))
+        page = PageFleetSettings(registration_runtime=runtime)
         page.show()
         app.processEvents()
 
-        assert "ต้องดำเนินการ" in page.registration_summary.text()
-        assert page.registration_retry_button.text() == "ตรวจสอบการตั้งค่า"
+        assert "ต้องตรวจสอบ" in page.registration_summary.text()
+        assert page.registration_retry_button.text() == "ลองส่งอีกครั้ง"
         assert page.registration_retry_button.isEnabled()
         page.registration_retry_button.click()
-        assert opened == [True]
+        assert runtime.retry_calls == 1
+        page.close()
+        app.processEvents()
+    finally:
+        database.set_db_path(original)
+
+
+def test_offline_license_settings_export_import_and_hide_technical_secrets(
+    tmp_path, monkeypatch
+):
+    app = QApplication.instance() or QApplication([])
+    original = _database(tmp_path)
+    runtime = _RegistrationRuntimeDouble(
+        mode="offline", status="offline_request_required"
+    )
+    host_keys = {"synthetic-kid": "synthetic-public-verification-value"}
+    messages: list[str] = []
+    monkeypatch.setattr(
+        v5_pages.QFileDialog,
+        "getSaveFileName",
+        lambda *args, **kwargs: (str(tmp_path / "desktop-request"), ""),
+    )
+    monkeypatch.setattr(
+        v5_pages.QFileDialog,
+        "getOpenFileName",
+        lambda *args, **kwargs: (str(tmp_path / "desktop.komilicense"), ""),
+    )
+    monkeypatch.setattr(
+        v5_pages.QMessageBox,
+        "information",
+        lambda *args: messages.append(" ".join(str(value) for value in args[1:])),
+    )
+    try:
+        page = PageFleetSettings(
+            registration_runtime=runtime,
+            offline_license_public_keys=host_keys,
+        )
+        page.show()
+        app.processEvents()
+
+        assert page.offline_request_button.isVisible()
+        assert page.offline_import_button.isVisible()
+        assert page.registration_retry_button.isVisible() is False
+        visible_copy = " ".join(
+            widget.text()
+            for widget in page.findChildren((QLabel, QAbstractButton))
+            if widget.isVisible()
+        ).casefold()
+        for forbidden in ("api key", "public key", "token", "synthetic-public"):
+            assert forbidden not in visible_copy
+
+        page.offline_request_button.click()
+        page.offline_import_button.click()
+
+        assert runtime.request_paths == [tmp_path / "desktop-request.komirequest"]
+        assert runtime.license_imports == [
+            (tmp_path / "desktop.komilicense", host_keys)
+        ]
+        assert "2031-08-25" in page.offline_license_summary.text()
+        assert messages
+        page.close()
+        app.processEvents()
+    finally:
+        database.set_db_path(original)
+
+
+def test_offline_license_ui_curates_export_error_without_raw_detail(
+    tmp_path, monkeypatch
+):
+    app = QApplication.instance() or QApplication([])
+    original = _database(tmp_path)
+
+    class FailingRuntime(_RegistrationRuntimeDouble):
+        def create_offline_request(self, path: Path) -> Path:
+            raise ValueError("raw-private-key-and-token-detail")
+
+    runtime = FailingRuntime(mode="offline", status="offline_request_required")
+    warnings: list[str] = []
+    monkeypatch.setattr(
+        v5_pages.QFileDialog,
+        "getSaveFileName",
+        lambda *args, **kwargs: (str(tmp_path / "desktop.komirequest"), ""),
+    )
+    monkeypatch.setattr(
+        v5_pages.QMessageBox,
+        "warning",
+        lambda *args: warnings.append(" ".join(str(value) for value in args[1:])),
+    )
+    try:
+        page = PageFleetSettings(registration_runtime=runtime)
+        page.offline_request_button.click()
+
+        assert warnings
+        assert "raw-private-key" not in " ".join(warnings)
+        assert "OS Credential Vault" in " ".join(warnings)
         page.close()
         app.processEvents()
     finally:

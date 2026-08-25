@@ -1,4 +1,3 @@
-import json
 import os
 import secrets
 import sqlite3
@@ -31,7 +30,8 @@ from komi_snmp_profiler.connectors import WebConnectionCertificateError
 from komi_snmp_profiler.models import MeterReading, WebAuthState, WebCounterValue
 from services.device_config import DeviceConfig, DeviceConfigRepository
 from services.pricing import PricingRepository
-from services.registration_repository import RegistrationRepository
+from services.registration_data_notice import DRAFT_NOTICE_VERSION
+from services.v5_2_runtime_state import V52RuntimeStateRepository
 from v5_pages import DeviceTestWorker, NetworkDiscoveryWorker, SetupWizardV5
 
 
@@ -55,6 +55,7 @@ def _add_selected_device(wizard, name: str, host: str, *, total: int = 100) -> N
         },
         select=True,
     )
+    wizard.privacy_notice_accepted.setChecked(True)
 
 
 def _visible_thai_ui_texts(wizard) -> list[str]:
@@ -185,9 +186,9 @@ def test_setup_wizard_uses_the_approved_four_step_flow(tmp_path):
         assert "bizhub C450i × 1" in registration_review
         assert "Serial Number + รุ่นเครื่อง + สถานะเลือกใช้ + Aggregate Total Meter" in registration_review
         assert "IP, MAC, hostname, Credential, Counter รายละเอียด" in registration_review
-        assert wizard.registration_status_label.text() == "ปิดการส่ง"
-        assert wizard.privacy_notice_accepted.isEnabled() is False
-        assert "ยังไม่ได้อนุมัติ" in wizard.privacy_notice_status.text()
+        assert wizard.registration_status_label.text() == "รอบันทึก"
+        assert wizard.privacy_notice_accepted.isEnabled() is True
+        assert DRAFT_NOTICE_VERSION in wizard.privacy_notice_status.text()
         wizard.view_privacy_notice_button.click()
         app.processEvents()
         notice_dialog = wizard._wizard_child_dialogs[-1]
@@ -913,27 +914,24 @@ def test_setup_wizard_shared_price_is_written_to_every_selected_device(tmp_path)
         assert database.get_cfg("waste_paper_pct") == "2.0"
         installation_id = database.get_cfg("installation_id")
         assert installation_id
+        runtime_state = V52RuntimeStateRepository().internal()
+        assert runtime_state is not None
+        assert runtime_state["installation_id"] == installation_id
+        assert runtime_state["company_name"] == "บริษัท ทดสอบ จำกัด"
+        assert runtime_state["mode"] == "online"
+        assert runtime_state["notice_version"] == DRAFT_NOTICE_VERSION
+        assert runtime_state["notice_accepted_at"]
         with database._open(commit=False) as connection:
-            raw_envelope = connection.execute(
-                "SELECT payload_json FROM registration_outbox WHERE event_type='register'"
+            legacy_count = connection.execute(
+                "SELECT COUNT(*) FROM registration_outbox WHERE event_type='register'"
             ).fetchone()[0]
-        envelope = json.loads(raw_envelope)
-        assert envelope["installation_id"] == installation_id
-        assert envelope["company_name"] == "บริษัท ทดสอบ จำกัด"
-        assert envelope["schema_version"] == 2
-        assert envelope["device_inventory"]["konica_discovered_count"] == 4
-        assert envelope["device_inventory"]["devices"] == [
-            {"serial_number": "SN-10", "model": "bizhub C450i", "selected": True, "device_slot": 1},
-            {"serial_number": "SN-11", "model": "bizhub C450i", "selected": True, "device_slot": 2},
-            {"serial_number": "SN-12", "model": "bizhub C650i", "selected": False, "device_slot": None},
-            {"serial_number": "SN-13", "model": "bizhub C450i", "selected": False, "device_slot": None},
-        ]
+        assert legacy_count == 0
         assert database.get_cfg("registration_pending_envelope") == ""
-        assert database.get_cfg("registration_status") == "pending"
-        assert RegistrationRepository().summary().status == "pending"
-        serialized = json.dumps(envelope).lower()
-        for excluded in ("192.0.2.10", "192.0.2.13", "password", "meter", "user", "document", "application_log"):
-            assert excluded not in serialized
+        assert database.get_cfg("registration_status") == "v52_configured"
+        assert [item.serial for item in DeviceConfigRepository().list(enabled_only=True)] == [
+            "SN-10",
+            "SN-11",
+        ]
         wizard.close()
         app.processEvents()
     finally:
@@ -947,11 +945,11 @@ def test_setup_completes_locally_when_registration_enqueue_fails(tmp_path):
         wizard = SetupWizardV5()
         _add_selected_device(wizard, "DMS Printer", "192.0.2.10")
 
-        class FailingRegistrationRepository:
-            def upsert_profile_and_enqueue_register(self, *args, **kwargs):
+        class FailingRuntimeStateRepository:
+            def configure(self, *args, **kwargs):
                 raise RuntimeError("synthetic outbox failure")
 
-        wizard.registration_repository = FailingRegistrationRepository()
+        wizard.registration_state = FailingRuntimeStateRepository()
         wizard._save()
 
         assert wizard.result() == int(QDialog.DialogCode.Accepted)
@@ -963,55 +961,9 @@ def test_setup_completes_locally_when_registration_enqueue_fails(tmp_path):
         database.set_db_path(original_path)
 
 
-def test_setup_records_acknowledgement_only_for_complete_approved_notice(tmp_path, monkeypatch):
+def test_setup_records_current_v52_notice_acknowledgement(tmp_path):
     original_path = _wizard_database(tmp_path)
     app = QApplication.instance() or QApplication([])
-    policy_path = tmp_path / "registration-policy.json"
-    policy_path.write_text(
-        json.dumps(
-            {
-                "base_url": "https://staging.invalid.example",
-                "environment": "staging",
-                "bootstrap": {
-                    "mode": "vault_header",
-                    "header": "X-Synthetic-Bootstrap",
-                    "vault_ref": "registration-bootstrap-reference",
-                },
-                "privacy_notice": {
-                    "version": "notice-2026-08",
-                    "approved": True,
-                    "purpose": "Synthetic registration UI test",
-                    "fields": [
-                        "installation_id",
-                        "company_name",
-                        "client_first_started_at",
-                        "app_version",
-                        "platform",
-                        "architecture",
-                        "serial_number",
-                        "model",
-                        "selected",
-                        "device_slot",
-                            "timestamps",
-                            "status",
-                            "total_meter",
-                            "meter_observed_at",
-                            "meter_status",
-                        ],
-                    "retention": "Synthetic retention",
-                    "deletion_contact": "privacy@example.invalid",
-                    "legal_basis": "Synthetic legal basis",
-                    "access_export": "Synthetic access/export workflow",
-                    "approval_reference": "SYNTHETIC-DPO-TEST-REFERENCE",
-                    "approved_at": "2026-08-22T00:00:00+00:00",
-                    "approval_owner": "Synthetic Test Approver",
-                },
-                "request_timeout_seconds": 15,
-            }
-        ),
-        encoding="utf-8",
-    )
-    monkeypatch.setenv("KOMI_REGISTRATION_POLICY_FILE", str(policy_path))
     try:
         wizard = SetupWizardV5()
         _add_selected_device(wizard, "DMS Printer", "192.0.2.10")
@@ -1020,11 +972,65 @@ def test_setup_records_acknowledgement_only_for_complete_approved_notice(tmp_pat
         wizard.privacy_notice_accepted.setChecked(True)
         wizard._save()
 
-        profile = RegistrationRepository().profile()
-        assert profile is not None
-        assert profile.notice_version == "notice-2026-08"
-        assert profile.notice_accepted_at
-        assert RegistrationRepository().summary().status == "pending"
+        state = V52RuntimeStateRepository().internal()
+        assert state is not None
+        assert state["notice_version"] == DRAFT_NOTICE_VERSION
+        assert state["notice_accepted_at"]
+        assert state["status"] == "waiting_for_internet"
+        wizard.close()
+        app.processEvents()
+    finally:
+        database.set_db_path(original_path)
+
+
+def test_setup_offline_license_mode_saves_without_notice_or_telemetry(tmp_path):
+    original_path = _wizard_database(tmp_path)
+    app = QApplication.instance() or QApplication([])
+    try:
+        wizard = SetupWizardV5()
+        _add_selected_device(wizard, "DMS Printer", "192.0.2.10")
+        wizard.registration_offline_mode.setChecked(True)
+        wizard.privacy_notice_accepted.setChecked(False)
+
+        wizard._save()
+
+        assert wizard.result() == int(QDialog.DialogCode.Accepted)
+        state = V52RuntimeStateRepository().internal()
+        assert state is not None
+        assert state["mode"] == "offline"
+        assert state["notice_version"] == ""
+        assert state["notice_accepted_at"] == ""
+        with database._open(commit=False) as connection:
+            telemetry_count = connection.execute(
+                "SELECT COUNT(*) FROM v52_telemetry_outbox "
+                "WHERE event_type IN ('register','status','meter')"
+            ).fetchone()[0]
+        assert telemetry_count == 0
+        wizard.close()
+        app.processEvents()
+    finally:
+        database.set_db_path(original_path)
+
+
+def test_setup_online_mode_requires_current_data_notice(tmp_path, monkeypatch):
+    original_path = _wizard_database(tmp_path)
+    app = QApplication.instance() or QApplication([])
+    try:
+        wizard = SetupWizardV5()
+        _add_selected_device(wizard, "DMS Printer", "192.0.2.10")
+        wizard.privacy_notice_accepted.setChecked(False)
+        messages: list[tuple[str, str]] = []
+        monkeypatch.setattr(
+            wizard,
+            "_show_wizard_message",
+            lambda title, message: messages.append((title, message)),
+        )
+
+        wizard._save()
+
+        assert wizard.result() == int(QDialog.DialogCode.Rejected)
+        assert DeviceConfigRepository().setup_complete() is False
+        assert messages and "รับทราบ" in messages[0][1]
         wizard.close()
         app.processEvents()
     finally:

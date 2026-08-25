@@ -6,13 +6,13 @@ thread_title: KOMI V5.2 — Production Print & Meter Alert
 dashboard_visible: true
 department: dev
 status: testing
-progress: 58
+progress: 66
 owner: VEGA
-current_phase: Phase D — Desktop V5.2 contract integration
-current_task: complete the Online Registration / Offline License Wizard integration over the verified schema-3 core
-next_action: wire the V5.2 coordinator and bilingual user states, then replace the draft signing adapter with Final API golden vectors and run Joint Staging E2E
+current_phase: Phase D complete — Desktop V5.2 runtime and bilingual registration UX verified locally
+current_task: hold the local-safe Desktop seam while awaiting the Final Host contract bundle
+next_action: replace the draft signing adapter with Final API golden vectors, inject approved Staging transport/Host public keys, then run Joint Staging E2E
 problem: Final V5.2 OpenAPI/auth canonicalization, golden vectors and Host Offline License public key are external gates; customer artifacts remain fail-closed HOLD
-updated_at: 2026-08-25T13:48:45+07:00
+updated_at: 2026-08-25T14:16:03+07:00
 ---
 
 # KOMI Report V5.2 — Production Print & Meter Alert
@@ -91,7 +91,7 @@ updated_at: 2026-08-25T13:48:45+07:00
 - **Client offline:** Host ไม่ได้รับ heartbeat เกิน threshold; ชี้ไปที่ Desktop/เครือข่าย ไม่สรุปสถานะเครื่องพิมพ์.
 - **Production proof:** หลักฐาน read-only จาก model/device จริงที่มี authority และบันทึกเวลา/วิธีอ่านครบ; synthetic, Lab และ VM เป็น preflight เท่านั้น.
 
-## Progress: 58%
+## Progress: 66%
 
 ### Phase A — Baseline and design ✅
 
@@ -129,7 +129,7 @@ updated_at: 2026-08-25T13:48:45+07:00
 - [x] เก็บ latest Status/Meter ใน durable outbox, retry/replay/coalesce/restart แบบ idempotent
 - [x] ทำ scheduler policy 6h+jitter, startup/network cooldown 15m, server clamp และ Retry-After/15m→1h→6h
 - [x] สร้าง signed `.komirequest` และ strict Host-signed `.komilicense` verifier; Offline License ปิด telemetry
-- [ ] เชื่อม V5.2 coordinator เข้ากับ Wizard/Settings แบบ Online Registration / Offline License และ bilingual status
+- [x] เชื่อม V5.2 coordinator เข้ากับ first-run/app restart/network recovery/graceful stop และ Wizard/Settings แบบ Online Registration / Offline License พร้อม bilingual status
 
 ### Phase E — Host contract and UI
 
@@ -192,6 +192,9 @@ updated_at: 2026-08-25T13:48:45+07:00
 - 2026-08-25 — API intake pack SHA-256 `ecbb03e83c64e9df406d6425293f52ec2366a8d166c13da0b9853f576bc2a35a` และ OpenAPI SHA-256 `c0e21b6e63920dcbbb9b5ef1f1115c053e78bb5563a76962779003702609166a` เป็น V5.1 schema 1/2 reference-only; ไม่รัน `curl-examples.sh`, ไม่คัดลอก secret และไม่ใช้เป็น Production config.
 - 2026-08-25 — Draft Meter unavailable serialization ใช้ `status=unavailable` กับ `total_meter=null`; ต้องยืนยันกับ Final golden vectors ก่อน Staging และไม่ทำ silent fallback หากไม่ตรง.
 - 2026-08-25 — Customer artifact builders ของ V5.2 fail-closed จน Final schema-3 vectors และ Joint Staging E2E ได้รับ approval; milestone นี้ไม่สร้าง artifact.
+- 2026-08-25 — Application lifecycle ใช้ `V52RuntimeCoordinator` แบบ explicit-client-only; app start/restart อ่าน durable state, OS network recovery เคารพ cooldown 15 นาที, graceful stop เก็บ outbox สำหรับ restart recovery และ Meter observation ไม่ส่งทันทีแต่รวมใน batch รอบ 6 ชั่วโมง.
+- 2026-08-25 — Offline License mode หยุด scheduler และบล็อก Registration/Status/Meter telemetryจริงโดยไม่ลบ Device/DB/History/Billing; เปลี่ยนกลับ Online ได้โดยใช้ state เดิมและไม่มี legacy schema-2 fallback.
+- 2026-08-25 — Wizard คง 4 ขั้นเดิมและ Settings ใช้ card เดิม เพิ่มเฉพาะ Online/Offline mode, retry, export `.komirequest`, import `.komilicense`, expiry/bound devices และ support detail แบบซ่อน; user UI ไม่แสดง API key, token, public key หรือ raw error.
 
 ## Test Log
 
@@ -230,6 +233,11 @@ updated_at: 2026-08-25T13:48:45+07:00
 | 2026-08-25 13:48 +07 | Web regression/security/build | current Web 5.2 metadata และ security behavior ต้อง build ได้ | TypeScript lint PASS; security 2/2; Next 16.3.2 production build PASS; npm audit 0 vulnerabilities | PASS — LOCAL | npm lint/test/build/audit |
 | 2026-08-25 13:49 +07 | Changed-source secret/privacy scan | ห้ามมี credential/private key/token value, production IP, forbidden customer data หรือ unsafe artifact | 57 changed/untracked source files ผ่าน category-only scan; `git diff --check` ผ่าน | PASS — SANITIZED | `release_safety` + added-line privacy patterns; no secret values printed |
 | 2026-08-25 13:52 +07 | Internal project dashboard sync | child workbook เดียวต้องสะท้อน milestone โดยไม่ publish/deploy | sync สำเร็จ 26 projects และ Codex usage snapshot; ไม่มี live publish | PASS — INTERNAL SYNC | `dashboard:quick` |
+| 2026-08-25 14:12 +07 | V5.2 runtime + bilingual Wizard/Settings focused gates | lifecycle, cooldown, Offline no-telemetry, Notice gate, UI states/actions และ error curation ต้องผ่าน | combined contract/runtime/UI integration subset `101 passed in 8.44s` | PASS — LOCAL | injected client/runtime fixtures only; no external endpoint |
+| 2026-08-25 14:13 +07 | Full Python regression after lifecycle/UX integration | DB/History/Billing/Excel/Meter/UI/Registration ต้องไม่ถอย | `585 passed in 33.09s`; warning เดียวเป็น explicit Virtual Printer TLS compatibility fixture เดิม | PASS — LOCAL REGRESSION | full pytest, offscreen Qt |
+| 2026-08-25 14:14 +07 | Static/version/Web/security gates | changed code compile, V5.2 metadata และ Web build/security ต้องผ่าน | scoped Ruff PASS; compileall/diff-check PASS; version gate `5.2.0` PASS; Web TypeScript/security 2/2/Next build/npm audit 0 ผ่าน | PASS — LOCAL | no artifact or deployment |
+| 2026-08-25 14:15 +07 | Changed production-source secret/privacy scan | source ใหม่ห้ามมี credential/private key/token valueหรือ telemetry นอก allow-list | changed production source ผ่าน `release_safety`; strict contract/runtime/UI privacy tests 49 ผ่าน;ไม่มีค่าลับถูกพิมพ์ | PASS — SANITIZED | category-only result; no raw payload/secret output |
+| 2026-08-25 14:18 +07 | Internal project dashboard sync | child workbook เดียวต้องสะท้อน runtime/UX milestone โดยไม่ publish/deploy | sync สำเร็จ 26 projects และ Codex usage snapshot; ไม่มี live publish | PASS — INTERNAL SYNC | `dashboard:quick` |
 
 ## Captured Evidence — AccurioPress C5070
 

@@ -135,6 +135,7 @@ from PyQt6.QtWidgets import (
     QSystemTrayIcon, QMenu,
 )
 from PyQt6.QtCore import Qt, QTimer        # ค่าคงที่ของ Qt เช่น alignment, cursor shape
+from PyQt6.QtNetwork import QNetworkInformation
 from PyQt6.QtGui  import QAction, QCloseEvent, QFont, QIcon, QPixmap  # QFont = ฟอนต์, QPixmap = รูปภาพ
 
 from config   import *  # สี, ฟอนต์, ขนาด, ค่าคงที่ทั้งหมด — ปรับแก้ที่ config.py
@@ -146,9 +147,7 @@ from pages    import (
 )
 from services.autostart import configure_autostart
 from services.background_polling import BackgroundPollingCoordinator
-from services.registration_worker import RegistrationCoordinator
-from services.registration_bootstrap import provision_registration_bootstrap
-from services.registration_policy import load_registration_policy
+from services.v5_2_runtime import V52RuntimeCoordinator
 from services.desktop_shortcuts import create_desktop_shortcuts
 from services.device_config import DeviceConfigRepository
 from services.instance_guard import SingleInstanceGuard
@@ -351,6 +350,10 @@ class MainWindow(QMainWindow):
         if splash: splash.set_message("กำลังเตรียมฐานข้อมูล...")
         init_db()         # สร้างตาราง SQLite ถ้ายังไม่มี (ทำครั้งแรกครั้งเดียว)
         set_language(get_cfg("ui_language", THAI))
+        # V5.2 has no default network transport.  The coordinator starts as a
+        # local-only durable scheduler unless deployment injects an approved
+        # staging/production client after the external contract gate.
+        self.registration = V52RuntimeCoordinator(parent=self)
 
         if splash: splash.set_message("กำลังสร้างหน้าจอ...")
         self._build_ui()  # สร้าง UI ทั้งหมด: sidebar + stack ของหน้าต่างๆ
@@ -365,13 +368,14 @@ class MainWindow(QMainWindow):
         self._refresh_timer.setInterval(150)
         self._refresh_timer.timeout.connect(self._refresh_all)
         self.polling = BackgroundPollingCoordinator(parent=self)
-        self.registration = RegistrationCoordinator(parent=self)
         self.web_service = web_service_manager()
         self.polling.device_updated.connect(self._device_updated)
         self.polling.reading_saved.connect(lambda _slot: self._schedule_refresh_all())
+        self.polling.reading_saved.connect(self.registration.meter_observed)
         self.pg_import.sync_requested.connect(self.polling.poll_now)
         self.pg_overview.sync_requested.connect(self.polling.poll_now)
         self._build_tray()
+        self._install_network_recovery_monitor()
         apply_language(self)
 
     # ──────────────────────────────────────────────────────
@@ -491,7 +495,9 @@ class MainWindow(QMainWindow):
         # These hidden pages dominate window construction. Build them only
         # when the user first navigates to them.
         self.pg_history  = _DeferredPage(PageHistoryV5)
-        self.pg_settings = _DeferredPage(lambda: PageSettingsV5(PageSettings()))
+        self.pg_settings = _DeferredPage(
+            lambda: PageSettingsV5(PageSettings(), registration_runtime=self.registration)
+        )
         self.pg_manual   = _DeferredPage(PageManual)
 
         pages = [
@@ -566,6 +572,7 @@ class MainWindow(QMainWindow):
         if index == self._settings_index:
             page.changed.connect(self._refresh_all)
             page.changed.connect(self.polling.reload_policy)
+            page.changed.connect(self.registration.configuration_changed)
             page.sync_requested.connect(self.polling.poll_now)
         elif index == self._reports_index:
             page.reading_status_requested.connect(self._open_sync_log)
@@ -614,10 +621,38 @@ class MainWindow(QMainWindow):
             return
         self._background_started = True
         self.polling.start()
+        self.registration.configuration_changed()
         self.registration.start()
         if get_cfg("web_service_enabled", "1") != "0":
             status = self.web_service.start()
             log.info("web service start requested: %s (%s)", status.state, status.detail)
+
+    def _install_network_recovery_monitor(self) -> None:
+        """Wake V5.2 only on an OS-observed connectivity recovery transition."""
+
+        self._network_information = None
+        self._last_network_reachability = QNetworkInformation.Reachability.Unknown
+        try:
+            QNetworkInformation.loadDefaultBackend()
+            information = QNetworkInformation.instance()
+            if information is None:
+                return
+            self._network_information = information
+            self._last_network_reachability = information.reachability()
+            information.reachabilityChanged.connect(self._network_reachability_changed)
+        except (RuntimeError, TypeError):
+            log.info("OS network recovery monitor is unavailable")
+
+    def _network_reachability_changed(self, reachability) -> None:
+        previous = self._last_network_reachability
+        self._last_network_reachability = reachability
+        connected = {
+            QNetworkInformation.Reachability.Local,
+            QNetworkInformation.Reachability.Site,
+            QNetworkInformation.Reachability.Online,
+        }
+        if reachability in connected and previous not in connected:
+            self.registration.network_recovered()
 
     def _device_updated(self, _slot: int):
         # Device and reading signals often arrive together (and once per
@@ -1653,13 +1688,9 @@ if __name__ == "__main__":
         sys.exit(0)
 
     def show_configured_application() -> None:
-        try:
-            bootstrap_state = provision_registration_bootstrap(load_registration_policy())
-            log.info("registration bootstrap state=%s", bootstrap_state)
-        except Exception:
-            # Registration remains fail-closed; local Meter/Billing/Report and
-            # the completed first-run setup must remain available.
-            log.exception("registration bootstrap provisioning is unavailable")
+        # Wizard save is local-first. V5.2 reads the saved mode here and queues
+        # schema 3 work without a network call unless an approved client was
+        # explicitly injected by deployment.
         win.start_background_services()
         splash.close()
         if "--background" in sys.argv:

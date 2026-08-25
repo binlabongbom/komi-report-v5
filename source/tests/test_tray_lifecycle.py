@@ -27,6 +27,19 @@ class _Polling:
         self.stopped += 1
 
 
+class _Registration(_Polling):
+    def __init__(self) -> None:
+        super().__init__()
+        self.configuration_changes = 0
+        self.network_recoveries = 0
+
+    def configuration_changed(self) -> None:
+        self.configuration_changes += 1
+
+    def network_recovered(self) -> None:
+        self.network_recoveries += 1
+
+
 class _Tray:
     def __init__(self) -> None:
         self.messages: list[tuple] = []
@@ -53,7 +66,7 @@ class _WindowDouble:
         self._quitting = False
         self._background_started = False
         self.polling = _Polling()
-        self.registration = _Polling()
+        self.registration = _Registration()
         self.web_service = _WebService()
         self.tray = _Tray()
         self.hidden = 0
@@ -132,8 +145,29 @@ def test_background_start_is_idempotent_and_activation_restores_maximized_window
 
     assert window.polling.started == 1
     assert window.registration.started == 1
+    assert window.registration.configuration_changes == 1
     assert window.web_service.started == 1
     assert (window.maximized, window.raised, window.activated) == (1, 1, 1)
+
+
+def test_os_network_recovery_only_wakes_runtime_on_disconnected_to_connected_transition():
+    window = _WindowDouble()
+    window._last_network_reachability = app.QNetworkInformation.Reachability.Unknown
+
+    app.MainWindow._network_reachability_changed(
+        window, app.QNetworkInformation.Reachability.Online
+    )
+    app.MainWindow._network_reachability_changed(
+        window, app.QNetworkInformation.Reachability.Site
+    )
+    app.MainWindow._network_reachability_changed(
+        window, app.QNetworkInformation.Reachability.Disconnected
+    )
+    app.MainWindow._network_reachability_changed(
+        window, app.QNetworkInformation.Reachability.Local
+    )
+
+    assert window.registration.network_recoveries == 2
 
 
 def test_macos_27_uses_click_only_tray_to_avoid_status_menu_crash(monkeypatch):

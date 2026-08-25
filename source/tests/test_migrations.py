@@ -29,8 +29,8 @@ def test_migration_records_history_and_reporting_indexes(tmp_path):
         ).fetchall()
         version = connection.execute("PRAGMA user_version").fetchone()[0]
 
-    assert applied == [8, 9, 10, 11, 12, CURRENT_SCHEMA_VERSION]
-    assert versions == [(8,), (9,), (10,), (11,), (12,), (CURRENT_SCHEMA_VERSION,)]
+    assert applied == [8, 9, 10, 11, 12, 13, CURRENT_SCHEMA_VERSION]
+    assert versions == [(8,), (9,), (10,), (11,), (12,), (13,), (CURRENT_SCHEMA_VERSION,)]
     assert version == CURRENT_SCHEMA_VERSION
     assert ("idx_daily_meter_period_slot",) in indexes
     assert ("idx_daily_subject_identity",) in indexes
@@ -41,6 +41,7 @@ def test_migration_records_history_and_reporting_indexes(tmp_path):
     assert ("registration_attempt_history",) in tables
     assert ("v52_telemetry_outbox",) in tables
     assert ("v52_telemetry_success",) in tables
+    assert ("v52_runtime_state",) in tables
 
 
 def test_registration_migration_is_additive_and_does_not_change_billing_table(tmp_path):

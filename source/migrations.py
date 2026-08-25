@@ -12,7 +12,7 @@ from contextlib import closing
 from datetime import datetime
 from pathlib import Path
 
-CURRENT_SCHEMA_VERSION = 13
+CURRENT_SCHEMA_VERSION = 14
 
 
 class UnsupportedSchemaVersionError(RuntimeError):
@@ -97,6 +97,28 @@ _REQUIRED_SCHEMA: dict[str, frozenset[str]] = {
         }
     ),
     "v52_telemetry_success": frozenset({"event_type", "last_successful_at"}),
+    "v52_runtime_state": frozenset(
+        {
+            "singleton_id",
+            "mode",
+            "company_name",
+            "installation_id",
+            "first_started_at",
+            "notice_version",
+            "notice_accepted_at",
+            "status",
+            "last_sent_at",
+            "next_status_at",
+            "next_meter_at",
+            "last_error_code",
+            "offline_request_json",
+            "offline_license_id",
+            "offline_license_expires_at",
+            "offline_license_kid",
+            "offline_bound_devices_json",
+            "updated_at",
+        }
+    ),
 }
 
 
@@ -324,6 +346,34 @@ def _migration_013_v52_telemetry_outbox(connection: sqlite3.Connection) -> None:
     )
 
 
+def _migration_014_v52_runtime_state(connection: sqlite3.Connection) -> None:
+    """Persist only public/redacted V5.2 lifecycle and Offline License state."""
+
+    connection.execute(
+        """CREATE TABLE IF NOT EXISTS v52_runtime_state(
+               singleton_id                    INTEGER PRIMARY KEY CHECK(singleton_id = 1),
+               mode                            TEXT NOT NULL DEFAULT 'online'
+                                               CHECK(mode IN ('online','offline')),
+               company_name                    TEXT NOT NULL DEFAULT '',
+               installation_id                 TEXT NOT NULL DEFAULT '',
+               first_started_at                TEXT NOT NULL DEFAULT '',
+               notice_version                  TEXT NOT NULL DEFAULT '',
+               notice_accepted_at              TEXT NOT NULL DEFAULT '',
+               status                          TEXT NOT NULL DEFAULT 'not_configured',
+               last_sent_at                    TEXT NOT NULL DEFAULT '',
+               next_status_at                  TEXT NOT NULL DEFAULT '',
+               next_meter_at                   TEXT NOT NULL DEFAULT '',
+               last_error_code                 TEXT NOT NULL DEFAULT '',
+               offline_request_json            TEXT NOT NULL DEFAULT '',
+               offline_license_id              TEXT NOT NULL DEFAULT '',
+               offline_license_expires_at      TEXT NOT NULL DEFAULT '',
+               offline_license_kid             TEXT NOT NULL DEFAULT '',
+               offline_bound_devices_json      TEXT NOT NULL DEFAULT '[]',
+               updated_at                      TEXT NOT NULL
+           )"""
+    )
+
+
 MIGRATIONS: tuple[tuple[int, str, object], ...] = (
     (8, "record_schema_history_and_reporting_indexes", _migration_008_record_schema_history),
     (9, "add_legacy_usage_history_import_provenance", _migration_009_legacy_history_import),
@@ -331,6 +381,7 @@ MIGRATIONS: tuple[tuple[int, str, object], ...] = (
     (11, "add_verified_or_pinned_printer_tls_policy", _migration_011_printer_tls_policy),
     (12, "add_durable_registration_outbox", _migration_012_registration_outbox),
     (13, "add_v52_status_meter_coalescing_outbox", _migration_013_v52_telemetry_outbox),
+    (14, "add_v52_runtime_state", _migration_014_v52_runtime_state),
 )
 
 

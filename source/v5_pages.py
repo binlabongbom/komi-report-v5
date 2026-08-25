@@ -44,6 +44,7 @@ from PyQt6.QtWidgets import (
     QMessageBox,
     QPlainTextEdit,
     QPushButton,
+    QRadioButton,
     QScrollArea,
     QSizePolicy,
     QSpinBox,
@@ -138,14 +139,12 @@ from services.pipeline_log import PipelineEvent, pipeline_log
 from services.polling import PollingPolicy, ScheduleWindow
 from services.pricing import PriceList, PricingRepository
 from services.reconciliation import ReconciliationReport, reconcile_web_counters
-from services.registration_data_notice import registration_data_notice
+from services.registration_data_notice import DRAFT_NOTICE_VERSION, registration_data_notice
 from services.registration_envelope import (
-    build_registration_envelope,
     normalize_device_models,
     runtime_platform,
 )
-from services.registration_policy import load_registration_policy
-from services.registration_repository import RegistrationRepository
+from services.v5_2_runtime_state import V52RuntimeStateRepository
 from services.report_scope import report_slots
 from services.runtime_snapshots import RuntimeCounterRow, runtime_snapshots
 from services.snmp_probe import PaperTrayStatus, SnmpTotalProbe
@@ -891,11 +890,7 @@ class SetupWizardV5(QDialog):
         install_button_system(QApplication.instance())
         set_language(get_cfg("ui_language", THAI))
         self.repository = DeviceConfigRepository()
-        self.registration_repository = RegistrationRepository()
-        try:
-            self.registration_policy = load_registration_policy()
-        except ValueError:
-            self.registration_policy = None
+        self.registration_state = V52RuntimeStateRepository()
         self.pricing = PricingRepository()
         self.edit_mode = edit_mode
         self.lab_mode = lab_mode
@@ -1355,7 +1350,8 @@ class SetupWizardV5(QDialog):
 
         self.company_notice = QLabel(
             "<b>ขอบเขตข้อมูลที่ปลอดภัย:</b> Registration ส่ง Serial Number, Model และสถานะเลือกใช้ตาม "
-            "ประกาศข้อมูลการลงทะเบียน · ไม่ส่ง IP, MAC, hostname, Credential, Meter, ผู้ใช้, เอกสาร หรือ Log"
+            "ประกาศข้อมูลการลงทะเบียน; Online ส่งเฉพาะ Status และ Aggregate Total Meter · "
+            "ไม่ส่ง IP, MAC, hostname, Credential, Counter รายละเอียด, ผู้ใช้, เอกสาร หรือ Log"
         )
         self.company_notice.setWordWrap(True)
         self.company_notice.setFixedWidth(760)
@@ -1391,25 +1387,71 @@ class SetupWizardV5(QDialog):
         privacy_layout.addLayout(privacy_row)
         self.privacy_notice_accepted = QCheckBox("ฉันได้อ่านและรับทราบข้อมูลการลงทะเบียนฉบับนี้")
         self.privacy_notice_accepted.setAccessibleName("รับทราบประกาศข้อมูลการลงทะเบียน")
-        policy = self.registration_policy
-        notice_ready = bool(policy and policy.notice.complete)
-        self.privacy_notice_accepted.setEnabled(notice_ready)
-        if notice_ready:
-            self.privacy_notice_status.setText(
-                tr(
-                    f"ฉบับ {policy.notice.version} · อนุมัติแล้ว · ต้องรับทราบก่อนส่งข้อมูล",
-                    f"Version {policy.notice.version} · approved · acknowledgement is required before sending",
-                )
+        self.privacy_notice_status.setText(
+            tr(
+                f"ฉบับ {DRAFT_NOTICE_VERSION} · ต้องรับทราบก่อนใช้ Online Registration",
+                f"Version {DRAFT_NOTICE_VERSION} · acknowledgement is required for Online Registration",
             )
-        else:
-            self.privacy_notice_status.setText(
-                tr(
-                    "ยังไม่ได้อนุมัติการส่งข้อมูล · โปรแกรมจะบันทึกในเครื่องและปิดการส่ง Production",
-                    "Data delivery is not approved · local setup remains available and production sending is disabled",
-                )
-            )
+        )
         privacy_layout.addWidget(self.privacy_notice_accepted)
         layout.addWidget(privacy_card, 0, Qt.AlignmentFlag.AlignHCenter)
+
+        mode_card = QFrame()
+        mode_card.setObjectName("registration_mode_card")
+        mode_card.setFixedWidth(760)
+        mode_card.setStyleSheet(
+            "QFrame#registration_mode_card{background:#FFFFFF;border:1px solid #C9D9E8;"
+            "border-radius:8px;} QLabel,QRadioButton{border:none;background:transparent;}"
+        )
+        mode_layout = QVBoxLayout(mode_card)
+        mode_layout.setContentsMargins(14, 12, 14, 12)
+        mode_layout.setSpacing(7)
+        mode_title = QLabel(tr("โหมดการลงทะเบียน", "Registration mode"))
+        mode_title.setFont(fnt(F_MD, True))
+        mode_layout.addWidget(mode_title)
+        self.registration_mode_group = QButtonGroup(self)
+        self.registration_mode_group.setExclusive(True)
+        self.registration_online_mode = QRadioButton(
+            tr("ออนไลน์ · ลงทะเบียนอัตโนมัติ", "Online · automatic registration")
+        )
+        self.registration_online_mode.setAccessibleName(
+            tr("เลือกรับบริการแบบออนไลน์", "Use Online Registration")
+        )
+        self.registration_offline_mode = QRadioButton(
+            tr("ออฟไลน์ · ใช้ไฟล์ License", "Offline · use a license file")
+        )
+        self.registration_offline_mode.setAccessibleName(
+            tr("เลือกใช้งานแบบ Offline License", "Use an Offline License")
+        )
+        self.registration_mode_group.addButton(self.registration_online_mode)
+        self.registration_mode_group.addButton(self.registration_offline_mode)
+        selected_mode = get_cfg("v52_registration_mode", "online")
+        self.registration_offline_mode.setChecked(selected_mode == "offline")
+        self.registration_online_mode.setChecked(selected_mode != "offline")
+        mode_layout.addWidget(self.registration_online_mode)
+        online_hint = QLabel(
+            tr(
+                "ออนไลน์จะส่งสถานะและ Total Meter รวมตามประกาศข้อมูล โดยไม่ให้กรอก API Key",
+                "Online mode sends status and aggregate Total Meter under the Data Notice. No API key is required.",
+            )
+        )
+        online_hint.setWordWrap(True)
+        online_hint.setStyleSheet("color:#52677D;border:none;margin-left:22px;")
+        mode_layout.addWidget(online_hint)
+        mode_layout.addWidget(self.registration_offline_mode)
+        offline_hint = QLabel(
+            tr(
+                "Offline License ไม่ส่ง Registration, Status หรือ Meter ไปยัง Host",
+                "Offline License sends no Registration, Status, or Meter telemetry to the Host.",
+            )
+        )
+        offline_hint.setWordWrap(True)
+        offline_hint.setStyleSheet("color:#52677D;border:none;margin-left:22px;")
+        mode_layout.addWidget(offline_hint)
+        self.registration_online_mode.toggled.connect(self._registration_mode_changed)
+        self.registration_offline_mode.toggled.connect(self._registration_mode_changed)
+        self._registration_mode_changed()
+        layout.addWidget(mode_card, 0, Qt.AlignmentFlag.AlignHCenter)
         if self.lab_mode:
             lab_notice = QLabel(
                 "<b>SETUP LAB</b> · หน้านี้ใช้ Wizard ตัวจริง แต่ใช้ฐานข้อมูลชั่วคราวและ "
@@ -1455,26 +1497,20 @@ class SetupWizardV5(QDialog):
         )
         dialog.resize(680, 520)
         layout = QVBoxLayout(dialog)
-        notice = self.registration_policy.notice if self.registration_policy else None
         text = QPlainTextEdit()
         text.setReadOnly(True)
-        if notice and notice.complete:
-            text.setPlainText(
-                "\n\n".join(
-                    (
-                        registration_data_notice(get_language()),
-                        "Approval evidence / หลักฐานอนุมัติ\n"
-                        f"{notice.approval_reference} · {notice.approval_owner} · {notice.approved_at}",
-                    )
-                )
-            )
-        else:
-            text.setPlainText(registration_data_notice(get_language()))
+        text.setPlainText(registration_data_notice(get_language()))
         layout.addWidget(text)
         close_button = btn(tr("ปิด", "Close"), "primary")
         close_button.clicked.connect(dialog.accept)
         layout.addWidget(close_button, 0, Qt.AlignmentFlag.AlignRight)
         self._open_wizard_child(dialog)
+
+    def _registration_mode_changed(self, _checked: bool = False) -> None:
+        online = self.registration_online_mode.isChecked()
+        self.privacy_notice_accepted.setEnabled(online)
+        if hasattr(self, "review_sections") and self._selected_entries():
+            self._update_review()
 
     def _set_wizard_language(self, language: str) -> None:
         """Apply and persist a language selected on the first setup screen."""
@@ -2174,12 +2210,14 @@ class SetupWizardV5(QDialog):
         self.company_name_input.setText(get_cfg("company_name", "") or "")
         if self.lab_mode and not self.company_name_input.text().strip():
             self.company_name_input.setText("บริษัท ตัวอย่าง จำกัด")
-        registration_profile = self.registration_repository.profile()
-        if self.registration_policy and registration_profile:
-            self.privacy_notice_accepted.setChecked(
-                registration_profile.notice_version == self.registration_policy.notice.version
-                and bool(registration_profile.notice_accepted_at)
-            )
+        registration_snapshot = self.registration_state.snapshot()
+        self.privacy_notice_accepted.setChecked(
+            bool(registration_snapshot.get("notice_accepted"))
+        )
+        saved_mode = str(registration_snapshot.get("mode") or "online")
+        self.registration_offline_mode.setChecked(saved_mode == "offline")
+        self.registration_online_mode.setChecked(saved_mode != "offline")
+        self._registration_mode_changed()
         existing_devices = self.repository.list()
         for device in existing_devices:
             result = {
@@ -3059,23 +3097,34 @@ class SetupWizardV5(QDialog):
         model_text = ", ".join(
             f"{escape(str(row['model']))} × {row['quantity']}" for row in model_rows
         ) or "—"
+        online_mode = self.registration_online_mode.isChecked()
+        delivery_copy = (
+            f"<b>{tr('Online Registration:', 'Online Registration:')}</b> "
+            f"{tr('ลงทะเบียนอัตโนมัติและส่ง Status กับ Aggregate Total Meter ทุก 6 ชั่วโมงโดยประมาณ', 'automatic registration with Status and aggregate Total Meter about every 6 hours')}<br>"
+            if online_mode
+            else f"<b>{tr('Offline License:', 'Offline License:')}</b> "
+            f"{tr('ไม่ส่ง Registration, Status หรือ Meter ไปยัง Host', 'no Registration, Status, or Meter telemetry is sent to the Host')}<br>"
+        )
         self.review_sections["registration"].setText(
-            f"<b>{tr('ข้อมูลที่จะส่งเมื่ออนุมัติ Registration:', 'Data sent after Registration approval:')}</b> "
+            delivery_copy
+            + f"<b>{tr('ข้อมูลที่อนุญาตเมื่อใช้ Online:', 'Allowed data in Online mode:')}</b> "
             f"{tr('ชื่อบริษัท:', 'Company:')} {company} · Version {escape(PACKAGE_VERSION)} · "
             f"{escape(platform_name)} / {escape(architecture)} · "
             f"{tr('Serial Number + รุ่นเครื่อง + สถานะเลือกใช้ + Aggregate Total Meter', 'serial number + printer model + selected state + aggregate Total Meter')} "
             f"({model_text})<br>"
             f"<b>{tr('ไม่ส่ง:', 'Never sent:')}</b> "
             f"{tr('IP, MAC, hostname, Credential, Counter รายละเอียด, ผู้ใช้, เอกสาร, Print Job, Raw SNMP/XML/Error หรือ Log', 'IP, MAC, hostname, credentials, detailed counters, users, documents, print jobs, raw SNMP/XML/errors, or logs')}<br>"
-            f"<b>{tr('สถานะ:', 'Status:')}</b> "
-            f"{tr('บันทึกในเครื่องก่อน · ส่งภายหลังแบบ Background เมื่ออนุมัติ Registration', 'saved locally first · sent later in the background after Registration approval')}"
+            f"<b>{tr('การแจ้งเตือน:', 'Alerts:')}</b> "
+            f"{tr('Host อาจแจ้งว่า Desktop ขาดการเชื่อมต่อหลัง 3 วัน; ข้อความนี้ไม่ใช่หลักฐานว่าเครื่องพิมพ์เสีย', 'the Host may report Desktop connectivity loss after 3 days; this is not proof of a printer fault')}"
         )
-        if self.registration_policy and self.registration_policy.notice.complete:
+        if not online_mode:
+            self.registration_status_label.setText(tr("Offline License", "Offline License"))
+        elif self.privacy_notice_accepted.isChecked():
             self.registration_status_label.setText(
-                tr("รอบันทึก", "Pending") if self.privacy_notice_accepted.isChecked() else tr("รอยอมรับ", "Accept")
+                tr("รอบันทึก", "Pending")
             )
         else:
-            self.registration_status_label.setText(tr("ปิดการส่ง", "Disabled"))
+            self.registration_status_label.setText(tr("รอยอมรับ", "Accept"))
         apply_language(self)
         self._sync_language_switch()
 
@@ -3093,6 +3142,19 @@ class SetupWizardV5(QDialog):
             company_name = " ".join(self.company_name_input.text().split())
             if not company_name:
                 raise ValueError("กรุณากรอกชื่อบริษัท")
+            registration_mode = (
+                "offline" if self.registration_offline_mode.isChecked() else "online"
+            )
+            if registration_mode == "online" and not self.privacy_notice_accepted.isChecked():
+                self._show_wizard_message(
+                    tr("กรุณารับทราบข้อมูล", "Acknowledge the Data Notice"),
+                    tr(
+                        "รับทราบประกาศข้อมูลการลงทะเบียน หรือเลือก Offline License ก่อนบันทึก",
+                        "Acknowledge the Registration Data Notice or select Offline License before saving.",
+                    ),
+                )
+                self.privacy_notice_accepted.setFocus()
+                return
             devices = self._configs()
             if self.lab_mode:
                 self.accept()
@@ -3130,38 +3192,30 @@ class SetupWizardV5(QDialog):
                 set_cfg("client_first_started_at", date.today().isoformat())
             installation_id = get_cfg("installation_id", "") or str(uuid4())
             set_cfg("installation_id", installation_id)
+            set_cfg("v52_registration_mode", registration_mode)
         except Exception as exc:
             self._show_wizard_message("บันทึกไม่สำเร็จ", str(exc))
             return
 
-        # Registration is intentionally second: a transport/outbox problem must
-        # never roll back or misreport the already committed local Setup.
+        # Registration is intentionally second and local-only: configuration
+        # failure must never roll back Device, Billing, History, or Report data.
+        # The lifecycle coordinator queues schema 3 after the Wizard closes;
+        # no transport is called from the dialog.
         try:
-            envelope = build_registration_envelope(
-                installation_id=installation_id,
-                company_name=company_name,
-                first_started_at=get_cfg("client_first_started_at", "") or date.today().isoformat(),
-                app_version=PACKAGE_VERSION,
-                devices=self._registration_devices(),
+            self.registration_state.configure(
+                registration_mode,
+                company_name,
+                installation_id,
+                get_cfg("client_first_started_at", "") or date.today().isoformat(),
+                DRAFT_NOTICE_VERSION if registration_mode == "online" else "",
+                (
+                    datetime.now().astimezone().isoformat(timespec="seconds")
+                    if registration_mode == "online"
+                    else ""
+                ),
             )
-            notice_version = ""
-            notice_accepted_at = ""
-            if (
-                self.registration_policy
-                and self.registration_policy.notice.complete
-                and self.privacy_notice_accepted.isChecked()
-            ):
-                notice_version = self.registration_policy.notice.version
-                notice_accepted_at = datetime.now().astimezone().isoformat(timespec="seconds")
-            operation = self.registration_repository.upsert_profile_and_enqueue_register(
-                envelope,
-                notice_version=notice_version,
-                notice_accepted_at=notice_accepted_at,
-            )
-            # Compatibility status only; the durable payload and idempotency key
-            # live in registration_outbox, never in this settings row.
             set_cfg("registration_pending_envelope", "")
-            set_cfg("registration_status", operation.state)
+            set_cfg("registration_status", "v52_configured")
         except Exception:
             set_cfg("registration_pending_envelope", "")
             set_cfg("registration_status", "action_required")
@@ -9061,14 +9115,17 @@ class PageFleetSettings(QWidget):
     activity_requested = pyqtSignal()
     advanced_tools_requested = pyqtSignal()
 
-    def __init__(self, parent=None) -> None:
+    def __init__(
+        self,
+        parent=None,
+        *,
+        registration_runtime=None,
+        offline_license_public_keys: dict[str, str] | None = None,
+    ) -> None:
         super().__init__(parent)
         self.repository = DeviceConfigRepository()
-        self.registration_repository = RegistrationRepository()
-        try:
-            self.registration_policy = load_registration_policy()
-        except ValueError:
-            self.registration_policy = None
+        self.registration_runtime = registration_runtime
+        self.offline_license_public_keys = dict(offline_license_public_keys or {})
         self.web_service = web_service_manager()
         self._dirty_sections: set[str] = set()
         self._active_editor: str | None = None
@@ -9145,6 +9202,59 @@ class PageFleetSettings(QWidget):
         )
         self.registration_notice_accept.clicked.connect(self._accept_registration_notice)
         registration_card.layout().addWidget(self.registration_notice_accept)
+
+        registration_mode_row = QHBoxLayout()
+        registration_mode_label = QLabel(tr("โหมดการลงทะเบียน", "Registration mode"))
+        registration_mode_label.setStyleSheet("color:#334155;font-weight:700;border:none;")
+        registration_mode_row.addWidget(registration_mode_label)
+        self.registration_mode_group = QButtonGroup(self)
+        self.registration_mode_group.setExclusive(True)
+        self.registration_online_mode = QRadioButton(
+            tr("ออนไลน์ · ลงทะเบียนอัตโนมัติ", "Online · automatic registration")
+        )
+        self.registration_online_mode.setAccessibleName(
+            tr("เลือกรับบริการแบบออนไลน์", "Use Online Registration")
+        )
+        self.registration_offline_mode = QRadioButton(
+            tr("ออฟไลน์ · ใช้ไฟล์ License", "Offline · use a license file")
+        )
+        self.registration_offline_mode.setAccessibleName(
+            tr("เลือกใช้งานแบบ Offline License", "Use an Offline License")
+        )
+        self.registration_mode_group.addButton(self.registration_online_mode)
+        self.registration_mode_group.addButton(self.registration_offline_mode)
+        registration_mode_row.addWidget(self.registration_online_mode)
+        registration_mode_row.addWidget(self.registration_offline_mode)
+        registration_mode_row.addStretch()
+        registration_card.layout().addLayout(registration_mode_row)
+        self.registration_online_mode.clicked.connect(lambda: self._set_registration_mode("online"))
+        self.registration_offline_mode.clicked.connect(lambda: self._set_registration_mode("offline"))
+
+        self.offline_license_summary = QLabel()
+        self.offline_license_summary.setWordWrap(True)
+        self.offline_license_summary.setAccessibleName(
+            tr("สถานะ Offline License", "Offline License status")
+        )
+        self.offline_license_summary.setStyleSheet(
+            "color:#52677D;background:#F8FAFC;border:1px solid #D6E0EA;"
+            "border-radius:6px;padding:8px 10px;"
+        )
+        registration_card.layout().addWidget(self.offline_license_summary)
+        offline_actions = QHBoxLayout()
+        self.offline_request_button = btn(tr("สร้างไฟล์คำขอ…", "Export request…"), "outline")
+        self.offline_request_button.setAccessibleName(
+            tr("สร้างคำขอ Offline License", "Export Offline License request")
+        )
+        self.offline_request_button.clicked.connect(self._export_offline_request)
+        offline_actions.addWidget(self.offline_request_button)
+        self.offline_import_button = btn(tr("นำเข้า License…", "Import license…"), "outline")
+        self.offline_import_button.setAccessibleName(
+            tr("นำเข้าไฟล์ Offline License", "Import Offline License file")
+        )
+        self.offline_import_button.clicked.connect(self._import_offline_license)
+        offline_actions.addWidget(self.offline_import_button)
+        offline_actions.addStretch()
+        registration_card.layout().addLayout(offline_actions)
         layout.addWidget(registration_card)
 
         (
@@ -9460,6 +9570,22 @@ class PageFleetSettings(QWidget):
             "border-radius:6px;padding:8px 10px;"
         )
         support_details_layout.addWidget(self.active_database_path)
+        self.registration_support_detail = QLabel(
+            tr("ยังไม่แสดงรายละเอียดทางเทคนิค", "Technical details are hidden")
+        )
+        self.registration_support_detail.setWordWrap(True)
+        self.registration_support_detail.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+            | Qt.TextInteractionFlag.TextSelectableByKeyboard
+        )
+        self.registration_support_detail.setAccessibleName(
+            tr("รายละเอียดสำหรับ Support", "Support details")
+        )
+        self.registration_support_detail.setStyleSheet(
+            "background:#FFFFFF;color:#52677D;border:1px solid #D6E0EA;"
+            "border-radius:6px;padding:8px 10px;"
+        )
+        support_details_layout.addWidget(self.registration_support_detail)
         shortcut_button = btn("สร้าง Shortcut ใหม่", "outline")
         shortcut_button.clicked.connect(self._create_shortcuts)
         support_details_layout.addWidget(shortcut_button, 0, Qt.AlignmentFlag.AlignLeft)
@@ -9795,92 +9921,121 @@ class PageFleetSettings(QWidget):
         return True
 
     def _refresh_registration_status(self) -> None:
-        summary = self.registration_repository.summary()
-        profile = self.registration_repository.profile()
-        self._registration_needs_setup = bool(
-            summary.status == "not_configured"
-            and get_cfg("registration_status", "") == "action_required"
-        )
-        effective_status = (
-            "action_required" if self._registration_needs_setup else summary.status
-        )
+        runtime = self._registration_service()
+        snapshot = runtime.snapshot()
+        mode = str(snapshot.get("mode") or "online")
+        effective_status = str(snapshot.get("status") or "not_configured")
         labels = {
             "not_configured": tr("ยังไม่ได้ตั้งค่า", "Not configured"),
+            "waiting_for_internet": tr("รออินเทอร์เน็ต", "Waiting for internet"),
             "pending": tr("รอส่งแบบ Background", "Pending background delivery"),
-            "offline_retry": tr("ออฟไลน์ · ระบบจะลองใหม่อัตโนมัติ", "Offline · automatic retry scheduled"),
+            "retrying": tr("กำลังลองใหม่", "Retrying"),
             "registered": tr("ลงทะเบียนแล้ว", "Registered"),
-            "action_required": tr("ต้องดำเนินการก่อนส่ง", "Action required before sending"),
+            "action_required": tr("ต้องตรวจสอบ", "Needs attention"),
+            "needs_review": tr("ต้องตรวจสอบ", "Needs attention"),
+            "offline_request_required": tr(
+                "Offline License · กรุณาสร้างไฟล์คำขอ",
+                "Offline License · export a request file",
+            ),
+            "offline_request_ready": tr(
+                "Offline License · สร้างคำขอแล้ว รอนำเข้า License",
+                "Offline License · request exported, waiting for license import",
+            ),
+            "offline_license": tr("Offline License", "Offline License"),
         }
-        detail = labels[effective_status]
-        if self._registration_needs_setup:
+        detail = labels.get(effective_status, tr("ต้องตรวจสอบ", "Needs attention"))
+        last_sent_at = str(snapshot.get("last_sent_at") or "")
+        if last_sent_at and mode == "online":
             detail += tr(
-                " · เปิดขั้นตอนตั้งค่าเพื่อลองจัดคิวใหม่",
-                " · open Setup to queue registration again",
+                f" · ส่งครั้งล่าสุด {last_sent_at}",
+                f" · last sent {last_sent_at}",
             )
-        if effective_status == "action_required" and summary.last_error_code in {
-            "privacy_notice_unapproved",
-            "privacy_notice_not_accepted",
-            "registration_policy_unavailable",
-            "registration_policy_invalid",
-        }:
+        if mode == "online":
             detail += tr(
-                " · ประกาศข้อมูล/การตั้งค่าการเชื่อมต่อยังไม่พร้อม",
-                " · the Registration Data Notice or connection policy is not ready",
-            )
-        if summary.last_heartbeat_at:
-            detail += tr(
-                f" · Heartbeat ล่าสุด {summary.last_heartbeat_at}",
-                f" · last heartbeat {summary.last_heartbeat_at}",
+                " · Host จะแยก Desktop ขาดการเชื่อมต่อหลัง 3 วัน และไม่สรุปว่าเครื่องพิมพ์เสีย",
+                " · the Host separates Desktop connectivity loss after 3 days and does not claim a printer fault",
             )
         self.registration_summary.setText(detail)
-        self.registration_summary.setToolTip(summary.last_error_code)
+        self.registration_summary.setToolTip("")
+        for control in (self.registration_online_mode, self.registration_offline_mode):
+            control.blockSignals(True)
+        self.registration_online_mode.setChecked(mode == "online")
+        self.registration_offline_mode.setChecked(mode == "offline")
+        for control in (self.registration_online_mode, self.registration_offline_mode):
+            control.blockSignals(False)
         self.registration_retry_button.setVisible(
-            effective_status in {"pending", "offline_retry", "action_required"}
+            mode == "online"
+            and effective_status
+            in {
+                "waiting_for_internet",
+                "pending",
+                "retrying",
+                "action_required",
+                "needs_review",
+            }
         )
-        self.registration_retry_button.setEnabled(
-            effective_status in {"offline_retry", "action_required"}
-        )
-        self.registration_retry_button.setText(
-            tr("ตรวจสอบการตั้งค่า", "Review Setup")
-            if self._registration_needs_setup
-            else tr("ลองส่งอีกครั้ง", "Retry")
-        )
-        notice = self.registration_policy.notice if self.registration_policy else None
-        accepted_current = bool(
-            notice
-            and notice.complete
-            and profile
-            and profile.notice_version == notice.version
-            and profile.notice_accepted_at
-        )
+        self.registration_retry_button.setEnabled(mode == "online")
+        self.registration_retry_button.setText(tr("ลองส่งอีกครั้ง", "Retry"))
+        self.offline_request_button.setVisible(mode == "offline")
+        self.offline_import_button.setVisible(mode == "offline")
+        self.offline_license_summary.setVisible(mode == "offline")
+        license_metadata = snapshot.get("offline_license")
+        if mode == "offline" and isinstance(license_metadata, dict):
+            expires_at = str(license_metadata.get("expires_at") or "—")
+            bound_devices = license_metadata.get("bound_devices")
+            bound_rows = []
+            if isinstance(bound_devices, list):
+                for device in bound_devices:
+                    if not isinstance(device, dict):
+                        continue
+                    bound_rows.append(
+                        f"{device.get('model') or 'Unknown'} · {device.get('serial_number') or '—'} · "
+                        f"Slot {device.get('device_slot') or '—'}"
+                    )
+            self.offline_license_summary.setText(
+                tr(
+                    f"Offline License ใช้งานถึง {expires_at} · ผูกกับ " + ("; ".join(bound_rows) or "—"),
+                    f"Offline License valid until {expires_at} · bound to " + ("; ".join(bound_rows) or "—"),
+                )
+            )
+        elif mode == "offline":
+            self.offline_license_summary.setText(
+                tr(
+                    "ยังไม่มี Offline License · สร้างไฟล์คำขอแล้วนำ License ที่ได้รับกลับเข้ามา",
+                    "No Offline License yet · export a request and import the issued license file",
+                )
+            )
+        accepted_current = bool(snapshot.get("notice_accepted"))
         self.registration_notice_accept.setChecked(accepted_current)
-        self.registration_notice_accept.setEnabled(
-            bool(notice and notice.complete and profile and not accepted_current)
+        self.registration_notice_accept.setVisible(mode == "online")
+        self.registration_notice_accept.setEnabled(mode == "online" and not accepted_current)
+        support_code = str(snapshot.get("support_code") or "none")
+        next_attempt = str(snapshot.get("next_attempt_at") or "—")
+        self.registration_support_detail.setText(
+            tr(
+                f"Registration mode: {mode} · Support code: {support_code} · รอบถัดไป: {next_attempt}",
+                f"Registration mode: {mode} · Support code: {support_code} · next attempt: {next_attempt}",
+            )
         )
 
     def _accept_registration_notice(self, checked: bool) -> None:
-        notice = self.registration_policy.notice if self.registration_policy else None
-        if not checked or not notice or not notice.complete:
+        if not checked:
             self._refresh_registration_status()
             return
-        accepted = self.registration_repository.accept_privacy_notice(
-            notice.version,
-            accepted_at=datetime.now().astimezone().isoformat(timespec="seconds"),
+        self._registration_service().accept_notice(
+            DRAFT_NOTICE_VERSION,
+            datetime.now().astimezone().isoformat(timespec="seconds"),
         )
         self._refresh_registration_status()
-        if accepted:
-            self.registration_summary.setText(
-                tr(
-                    "รับทราบข้อมูลการลงทะเบียนแล้ว · จัดคิว Background ใหม่",
-                    "Registration Data Notice acknowledged · background delivery re-queued",
-                )
+        self.registration_summary.setText(
+            tr(
+                "รับทราบข้อมูลการลงทะเบียนแล้ว · ระบบจะลงทะเบียนอัตโนมัติเมื่อการเชื่อมต่อพร้อม",
+                "Registration Data Notice acknowledged · automatic registration will continue when connectivity is ready",
             )
+        )
 
     def _retry_registration(self) -> None:
-        if getattr(self, "_registration_needs_setup", False):
-            self._edit_devices()
-            return
-        retried = self.registration_repository.manual_retry()
+        retried = self._registration_service().retry_now()
         self._refresh_registration_status()
         if retried:
             self.registration_summary.setText(
@@ -9889,6 +10044,97 @@ class PageFleetSettings(QWidget):
                     "Queued again · background delivery will retry",
                 )
             )
+
+    def _registration_service(self):
+        if self.registration_runtime is None:
+            from services.v5_2_runtime import V52RuntimeCoordinator
+
+            self.registration_runtime = V52RuntimeCoordinator(parent=self)
+        return self.registration_runtime
+
+    def _set_registration_mode(self, mode: str) -> None:
+        try:
+            self._registration_service().set_mode(mode)
+            set_cfg("v52_registration_mode", mode)
+        except (OSError, RuntimeError, ValueError):
+            QMessageBox.warning(
+                self,
+                tr("เปลี่ยนโหมดไม่สำเร็จ", "Could not change mode"),
+                tr(
+                    "การตั้งค่าเดิมยังคงอยู่ กรุณาลองอีกครั้ง",
+                    "The previous setting is unchanged. Please try again.",
+                ),
+            )
+        self._refresh_registration_status()
+        self.changed.emit()
+
+    def _export_offline_request(self) -> None:
+        path, _selected_filter = QFileDialog.getSaveFileName(
+            self,
+            tr("สร้างคำขอ Offline License", "Export Offline License request"),
+            "KOMI-Desktop.komirequest",
+            "KOMI Request (*.komirequest)",
+        )
+        if not path:
+            return
+        destination = Path(path)
+        if destination.suffix.casefold() != ".komirequest":
+            destination = destination.with_suffix(".komirequest")
+        try:
+            self._registration_service().create_offline_request(destination)
+        except (OSError, RuntimeError, ValueError):
+            QMessageBox.warning(
+                self,
+                tr("สร้างคำขอไม่สำเร็จ", "Could not export request"),
+                tr(
+                    "ตรวจสอบว่าได้เลือกเครื่องพิมพ์และ OS Credential Vault พร้อมใช้งาน",
+                    "Check that printers are selected and the OS Credential Vault is available.",
+                ),
+            )
+            return
+        self._refresh_registration_status()
+        QMessageBox.information(
+            self,
+            tr("สร้างคำขอแล้ว", "Request exported"),
+            tr(
+                "บันทึกไฟล์คำขอแล้ว · ไฟล์นี้ไม่มีรหัสผ่านหรือ Token",
+                "The request file was saved. It contains no password or token.",
+            ),
+        )
+
+    def _import_offline_license(self) -> None:
+        path, _selected_filter = QFileDialog.getOpenFileName(
+            self,
+            tr("นำเข้าไฟล์ Offline License", "Import Offline License file"),
+            "",
+            "KOMI License (*.komilicense)",
+        )
+        if not path:
+            return
+        try:
+            self._registration_service().import_offline_license(
+                Path(path), self.offline_license_public_keys
+            )
+        except (OSError, RuntimeError, ValueError):
+            QMessageBox.warning(
+                self,
+                tr("นำเข้า License ไม่สำเร็จ", "Could not import license"),
+                tr(
+                    "ไฟล์ไม่ตรงกับ Desktop นี้ หมดอายุ หรือยังไม่มีข้อมูลยืนยันจาก Host",
+                    "The file does not match this Desktop, has expired, or Host verification data is unavailable.",
+                ),
+            )
+            return
+        self._refresh_registration_status()
+        self.changed.emit()
+        QMessageBox.information(
+            self,
+            tr("นำเข้า License แล้ว", "License imported"),
+            tr(
+                "Offline License พร้อมใช้งาน และไม่มีการส่ง Registration, Status หรือ Meter",
+                "Offline License is active and no Registration, Status, or Meter telemetry is sent.",
+            ),
+        )
 
     def _show_registration_privacy(self) -> None:
         dialog = QDialog(self)
@@ -9899,19 +10145,7 @@ class PageFleetSettings(QWidget):
         layout = QVBoxLayout(dialog)
         text = QPlainTextEdit()
         text.setReadOnly(True)
-        notice = self.registration_policy.notice if self.registration_policy else None
-        if notice and notice.complete:
-            text.setPlainText(
-                "\n\n".join(
-                    (
-                        registration_data_notice(get_language()),
-                        "Approval evidence / หลักฐานอนุมัติ\n"
-                        f"{notice.approval_reference} · {notice.approval_owner} · {notice.approved_at}",
-                    )
-                )
-            )
-        else:
-            text.setPlainText(registration_data_notice(get_language()))
+        text.setPlainText(registration_data_notice(get_language()))
         layout.addWidget(text)
         close_button = btn(tr("ปิด", "Close"), "primary")
         close_button.clicked.connect(dialog.accept)
@@ -10901,10 +11135,20 @@ class PageSettingsV5(QWidget):
     changed = pyqtSignal()
     sync_requested = pyqtSignal()
 
-    def __init__(self, legacy_settings: QWidget, parent=None) -> None:
+    def __init__(
+        self,
+        legacy_settings: QWidget,
+        parent=None,
+        *,
+        registration_runtime=None,
+        offline_license_public_keys: dict[str, str] | None = None,
+    ) -> None:
         super().__init__(parent)
         self.stack = QStackedWidget()
-        self.fleet_content = PageFleetSettings()
+        self.fleet_content = PageFleetSettings(
+            registration_runtime=registration_runtime,
+            offline_license_public_keys=offline_license_public_keys,
+        )
         self.activity = PagePipelineLog()
         self.activity.page_title.hide()
         self.activity.page_note.hide()

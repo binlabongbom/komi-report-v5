@@ -254,6 +254,52 @@ class V52OutboxRepository:
             ).fetchone()
         return int(row[0]) if row else 0
 
+    def active_count(self, event_type: EventType) -> int:
+        with _open(commit=False) as connection:
+            row = connection.execute(
+                """SELECT COUNT(*) FROM v52_telemetry_outbox
+                   WHERE event_type=? AND state IN ('pending','retry','in_flight')""",
+                (event_type,),
+            ).fetchone()
+        return int(row[0]) if row else 0
+
+    def make_due(
+        self,
+        event_type: EventType | None = None,
+        *,
+        now: datetime | None = None,
+    ) -> int:
+        stamp = _iso(now or _now())
+        where = "state IN ('pending','retry')"
+        values: list[object] = [stamp, stamp]
+        if event_type is not None:
+            where += " AND event_type=?"
+            values.append(event_type)
+        with _open() as connection:
+            changed = connection.execute(
+                f"UPDATE v52_telemetry_outbox SET next_attempt_at=?,updated_at=? WHERE {where}",
+                values,
+            )
+            return int(changed.rowcount)
+
+    def cancel_unsent(
+        self,
+        *,
+        reason: str = "offline_mode",
+        now: datetime | None = None,
+    ) -> int:
+        """Terminally close all unsent telemetry when Offline License is selected."""
+
+        stamp = _iso(now or _now())
+        with _open() as connection:
+            changed = connection.execute(
+                """UPDATE v52_telemetry_outbox
+                   SET state='terminal',last_error_code=?,updated_at=?,completed_at=?
+                   WHERE state IN ('pending','retry','in_flight')""",
+                (reason.strip() or "offline_mode", stamp, stamp),
+            )
+            return int(changed.rowcount)
+
     def get(
         self, operation_id: str, *, connection=None
     ) -> V52OutboxOperation | None:
