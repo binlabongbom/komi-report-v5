@@ -8,11 +8,11 @@ department: dev
 status: testing
 progress: 74
 owner: VEGA
-current_phase: Phase G partial — Windows V5.2 RC built and installed in Windows VM
-current_task: preserve the verified Windows RC while waiting for Host/API Joint Staging and remaining release gates
+current_phase: Phase G partial — Windows V5.2 RC and reusable headless Windows VM verified
+current_task: preserve the verified Windows RC and headless VM control while waiting for Host/API Joint Staging and remaining release gates
 next_action: API team deploys R2 to separate Staging, then run Joint Desktop–Staging E2E before customer Production GO; macOS packaging remains separate
 problem: Windows artifact is unsigned and VM evidence is Windows 11 ARM64 x64-emulation preflight, not native x64 or Production GO; Host runtime/Staging remains external
-updated_at: 2026-08-25T15:47:00+07:00
+updated_at: 2026-08-25T16:26:00+07:00
 ---
 
 # KOMI Report V5.2 — Production Print & Meter Alert
@@ -153,6 +153,7 @@ updated_at: 2026-08-25T15:47:00+07:00
 
 - [ ] build Mac/Windows 5.2 artifacts จาก source identity เดียว
 - [x] build Windows V5.2.0 RC จาก clean source archive ภายใน Windows VM พร้อมติดตั้ง/เปิดครั้งแรก/ปิดหน้าต่างไป Tray/เปิดใหม่ และ DB integrity smoke
+- [x] เตรียม Windows VM ให้ Codex สั่ง Start/PowerShell/Shutdown แบบ Headless ผ่าน Guest Control โดยเก็บ credential ใน macOS Keychain และไม่เปิด SSH/WinRM/Network Port
 - [ ] build macOS V5.2 artifact จาก source identity เดียว
 - [ ] manifest/checksum/SBOM/signing/notarization/native labels ตรงหลักฐาน
 - [ ] ตัดสิน GO/HOLD โดยไม่ยกระดับ VM/synthetic/unsigned evidence
@@ -253,6 +254,9 @@ updated_at: 2026-08-25T15:47:00+07:00
 | 2026-08-25 15:35 +07 | Windows V5.2 RC build inside VM | clean source archive ต้องสร้าง Windows x64 installer พร้อม identity/evidence โดยไม่เปิด Registration/Update หรือยกระดับ VM เป็น native | EXE `111,415,182` bytes; SHA-256 `ed502ddf943ecdf7f8a5b88d016ff4f5d5b441215a183d8eeae7582ce42c2571`; version `5.2.0`; source `7299b2049d2c`; inventory `8,587` files; Registration fail-closed; Update absent; `production_go=false` | PASS — WINDOWS 11 ARM64 VM / X64-EMULATION PREFLIGHT | unsigned Authenticode `NotSigned`; not native Windows x64 proof |
 | 2026-08-25 15:41 +07 | Install/first-run/restart/database smoke from actual EXE | installer ต้องติดตั้งสำเร็จ, เปิด V5.2 แบบไม่มี Terminal, ปิด/เปิดใหม่ได้ และไม่ทำให้ฐานข้อมูลเดิมเสีย | installer exit `0`; installed runtime files present; title `ตั้งค่า KOMI Report V5.2.0`; launch/restart process count `1/1`; hidden launcher `wscript.exe → pythonw.exe`; DB integrity ก่อน/หลัง restart `ok`; ปิดหน้าต่างซ่อนไป Tray และเรียกกลับได้ | PASS — VM INSTALLED SMOKE | previous UAT install path preserved as expected upgrade behavior; not native x64/customer proof |
 | 2026-08-25 15:46 +07 | Final Windows delivery folder safety | ไฟล์สำหรับ Bom ต้องอยู่ชุดเดียว, checksum/manifest ตรง และไม่มี customer DB/export/log/credential/secret | checksum verified; release/tree safety PASS; focused Release/Tray suite `32 passed`; root มี EXE + README + checksum และแยก evidence ใน subfolder | PASS — UAT DELIVERY | `/Users/wongsakornu-phonram/Projects/dev/KOMI-Report-V5.2-Installer`; RELEASE HOLD remains |
+| 2026-08-25 16:06 +07 | Dedicated VM automation identity and secret storage | ต้องสั่ง Guest Control ได้โดยไม่มี secret ใน script/source และไม่เพิ่ม network listener | สร้าง local admin `KOMIAutomation`; credential เก็บใน macOS Keychain service `com.bigbom.komi.window-test-vm`; one-time credential file ถูกนำออก; SSH/WinRM/port ใหม่ไม่มี | PASS — LOCAL CONTROL PLANE | setup marker sanitized; no secret value retained or printed |
+| 2026-08-25 16:25 +07 | End-to-end headless VM control | Start จาก poweroff ต้องเป็น Headless, Guest Control ต้องอ่าน identity/share และรัน PowerShell ได้ แล้ว Windows ต้องปิดเป็น poweroff | `SessionName=headless`; Guest Additions run level 3; identity `WINDOWKOMI`/ARM64; project share ready; `HEADLESS_FINAL_RUN_PASS`; graceful shutdown ลงท้าย `VMState=poweroff` | PASS — WINDOWS 11 ARM64 VM HEADLESS PREFLIGHT | helper `/Users/wongsakornu-phonram/Projects/dev/KOMI-Report-V5.2-Installer/VM Control/komi-vmctl.sh`; not native x64 evidence |
+| 2026-08-25 16:26 +07 | Headless helper safety | Script/evidence ต้องไม่มี credential residue, syntax error หรือ forbidden release data | `zsh -n` PASS; macOS Keychain reference PASS; `/tmp/komi-vm-password.*` empty; release/tree safety PASS; helper mode `700`; final VM poweroff | PASS — SANITIZED | `Technical Evidence/WINDOWS_VM_HEADLESS_FINAL.json` |
 
 ## Captured Evidence — AccurioPress C5070
 
