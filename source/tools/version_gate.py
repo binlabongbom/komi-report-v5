@@ -9,7 +9,7 @@ import tomllib
 from pathlib import Path
 
 from komi_version import APP_VERSION, require_v5_2
-from services.v5_2_contract import CONTRACT_SHA256
+from services.v5_2_contract_metadata import CONTRACT_SHA256
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 SOURCE_ROOT = PROJECT_ROOT / "source"

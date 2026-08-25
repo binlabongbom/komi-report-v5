@@ -11,11 +11,11 @@ from uuid import UUID
 from komi_version import APP_VERSION
 from services.contract_adapters.v1_draft import DraftV1SigningAdapter
 from services.registration_envelope import normalize_device_inventory
+from services.v5_2_contract_metadata import CONTRACT_SHA256 as CONTRACT_SHA256
+from services.v5_2_contract_metadata import CONTRACT_VERSION as CONTRACT_VERSION
 
 SCHEMA_VERSION = 3
 CLIENT_ID = "komi-report-desktop"
-CONTRACT_VERSION = "v5.2-shared-2026-08-25-r2"
-CONTRACT_SHA256 = "4884a4a6fb798ef0c36c88daca09cf2ae5df66ff609139f812880ab7322413bd"
 MAX_SELECTED_DEVICES = 3
 
 FORBIDDEN_FIELDS = frozenset(

@@ -10,7 +10,7 @@ import tomllib
 from datetime import datetime
 from pathlib import Path
 
-from services.v5_2_contract import CONTRACT_SHA256, CONTRACT_VERSION
+from services.v5_2_contract_metadata import CONTRACT_SHA256, CONTRACT_VERSION
 from tools.build_local_release import _included_files
 from tools.release_safety import assert_release_safe, assert_zip_safe, git_identity
 from tools.version_gate import assert_v5_2_version_alignment
