@@ -8,11 +8,11 @@ department: dev
 status: testing
 progress: 74
 owner: VEGA
-current_phase: Phase G partial — Windows V5.2 RC and reusable headless Windows VM verified
-current_task: preserve the verified Windows RC and headless VM control while waiting for Host/API Joint Staging and remaining release gates
-next_action: API team deploys R2 to separate Staging, then run Joint Desktop–Staging E2E before customer Production GO; macOS packaging remains separate
-problem: Windows artifact is unsigned and VM evidence is Windows 11 ARM64 x64-emulation preflight, not native x64 or Production GO; Host runtime/Staging remains external
-updated_at: 2026-08-25T16:26:00+07:00
+current_phase: Phase F/G partial — live Staging contract path passed; installed Windows RC is not wired to the API client
+current_task: wire the approved Staging/Production API root into Desktop runtime, improve the unconfigured status text, and rebuild the Windows RC
+next_action: add an explicit V5.2 API-root configuration, run the exact installed Desktop against Staging with Dashboard read-back, then rebuild the Windows V5.2 installer
+problem: direct current-contract Register/Replay/Status/Meter passed on Staging, but the shipped RC creates V52RuntimeCoordinator with client=None and misleadingly displays waiting_for_internet; Dashboard read-back and exact-installed-client proof remain open
+updated_at: 2026-08-25T17:20:00+07:00
 ---
 
 # KOMI Report V5.2 — Production Print & Meter Alert
@@ -257,6 +257,7 @@ updated_at: 2026-08-25T16:26:00+07:00
 | 2026-08-25 16:06 +07 | Dedicated VM automation identity and secret storage | ต้องสั่ง Guest Control ได้โดยไม่มี secret ใน script/source และไม่เพิ่ม network listener | สร้าง local admin `KOMIAutomation`; credential เก็บใน macOS Keychain service `com.bigbom.komi.window-test-vm`; one-time credential file ถูกนำออก; SSH/WinRM/port ใหม่ไม่มี | PASS — LOCAL CONTROL PLANE | setup marker sanitized; no secret value retained or printed |
 | 2026-08-25 16:25 +07 | End-to-end headless VM control | Start จาก poweroff ต้องเป็น Headless, Guest Control ต้องอ่าน identity/share และรัน PowerShell ได้ แล้ว Windows ต้องปิดเป็น poweroff | `SessionName=headless`; Guest Additions run level 3; identity `WINDOWKOMI`/ARM64; project share ready; `HEADLESS_FINAL_RUN_PASS`; graceful shutdown ลงท้าย `VMState=poweroff` | PASS — WINDOWS 11 ARM64 VM HEADLESS PREFLIGHT | helper `/Users/wongsakornu-phonram/Projects/dev/KOMI-Report-V5.2-Installer/VM Control/komi-vmctl.sh`; not native x64 evidence |
 | 2026-08-25 16:26 +07 | Headless helper safety | Script/evidence ต้องไม่มี credential residue, syntax error หรือ forbidden release data | `zsh -n` PASS; macOS Keychain reference PASS; `/tmp/komi-vm-password.*` empty; release/tree safety PASS; helper mode `700`; final VM poweroff | PASS — SANITIZED | `Technical Evidence/WINDOWS_VM_HEADLESS_FINAL.json` |
+| 2026-08-25 17:19 +07 | Bounded live V5.2 Staging smoke | ใช้ current Desktop schema/signature/client parser ส่ง Synthetic เท่านั้นไป Staging; ห้ามแตะ Production หรือพิมพ์ token/private key | `KOMI-STAGING-UAT-20260825T101924Z`; Register `201`, same-operation replay `201`, Status `200`, Meter 3 observations `200`; all client results success; installation `718943ea-75f9-4878-8fce-5bbb4ec20f95` | PASS — LIVE STAGING API / DASHBOARD READ-BACK PENDING | exact Staging root `/api/staging/v1`; one-off transport rewrite required because current client hardcodes `/api/v1`; no Production request |
 
 ## Captured Evidence — AccurioPress C5070
 
