@@ -6,7 +6,11 @@ from services.registration_bootstrap import (
     BUNDLED_BOOTSTRAP_FILENAME,
     provision_registration_bootstrap,
 )
-from services.registration_policy import load_registration_policy
+from services.registration_policy import (
+    REQUIRED_NOTICE_FIELDS,
+    PrivacyNotice,
+    RegistrationRuntimePolicy,
+)
 from services.registration_vault import SessionRegistrationSecretStore
 
 
@@ -21,9 +25,27 @@ class RecordingStore(SessionRegistrationSecretStore):
 
 
 def _production_policy():
-    policy = load_registration_policy({})
-    assert policy is not None
-    return policy
+    return RegistrationRuntimePolicy(
+        base_url="https://legacy-v51.invalid.example",
+        environment="production",
+        bootstrap_mode="vault_header",
+        bootstrap_header="X-Synthetic-Legacy-Bootstrap",
+        bootstrap_ref="registration-bootstrap-reference",
+        notice=PrivacyNotice(
+            version="legacy-v51-test",
+            approved=True,
+            purpose="Synthetic legacy V5.1 bootstrap test",
+            fields=REQUIRED_NOTICE_FIELDS,
+            retention="Synthetic retention",
+            deletion_contact="privacy@example.invalid",
+            legal_basis="Synthetic legacy test",
+            access_export="Synthetic legacy test",
+            approval_reference="SYNTHETIC-LEGACY-TEST",
+            approved_at="2026-08-22T00:00:00Z",
+            approval_owner="Synthetic Test",
+        ),
+        request_timeout_seconds=15,
+    )
 
 
 def test_packaged_bootstrap_is_provisioned_to_vault_without_returning_value(tmp_path: Path):

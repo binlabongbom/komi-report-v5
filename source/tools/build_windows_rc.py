@@ -1,4 +1,4 @@
-"""Build the self-contained Windows x64 5.1.0 Release Candidate.
+"""Build the self-contained Windows x64 5.2.0 Release Candidate.
 
 The command never publishes, signs, enables Registration, or adds an Update
 runtime. Windows ARM VM execution is explicitly a preflight and can never be
@@ -49,8 +49,8 @@ VERSION = tomllib.loads((SOURCE_ROOT / "pyproject.toml").read_text(encoding="utf
 ]
 RELEASE_ROOT = PROJECT_ROOT / "release" / "windows-x64-rc"
 PAYLOAD_NAME = f"KOMI Report V{VERSION}"
-INSTALLER_NAME = "KOMI_Report_V5_1_0_Windows_x64_RC.exe"
-CUSTOMER_INSTALLER_NAME = "KOMI_Report_V5_1_0_Windows_x64_Installer.exe"
+INSTALLER_NAME = "KOMI_Report_V5_2_0_Windows_x64_RC.exe"
+CUSTOMER_INSTALLER_NAME = "KOMI_Report_V5_2_0_Windows_x64_Installer.exe"
 INNO_SCRIPT = PROJECT_ROOT / "packaging" / "windows" / "KOMI_Report_V5.iss"
 NODE_VERSION = "24.18.0"
 NODE_ARCHIVE = f"node-v{NODE_VERSION}-win-x64.zip"
@@ -154,7 +154,7 @@ popd
 exit /b %KOMI_EXIT_CODE%
 """
 
-README = """KOMI Report V5.1.0 — Windows x64 Unsigned Pilot Candidate
+README = """KOMI Report V5.2.0 — Windows x64 Unsigned Pilot Candidate
 
 Target: Windows 10/11 x64
 Runtime: bundled CPython 3.11 x64 and Node.js {node_version} LTS x64
@@ -173,7 +173,7 @@ Follow docs/PILOT_RELEASE_CHECKLIST.md and docs/RELEASE_SUPPORT_AND_RECOVERY.md
 before installation, upgrade, restore, rollback or data cleanup.
 """
 
-CUSTOMER_README = """KOMI Report V5.1.0 — Windows Customer Release Package
+CUSTOMER_README = """KOMI Report V5.2.0 — Windows Customer Release Package
 
 Target runtime: Windows 10/11 x64
 Build evidence: {build_evidence}
@@ -360,6 +360,11 @@ def build_payload(
     build_evidence: str = "not-yet-classified",
     registration_bootstrap_file: Path | None = None,
 ) -> tuple[Path, dict[str, str]]:
+    if customer_release and VERSION.startswith("5.2."):
+        raise ReleaseContractError(
+            "V5.2 customer artifact HOLD: Final schema-3 auth vectors and Joint Staging "
+            "E2E have not been approved"
+        )
     payload_root = output_root / "payload" / PAYLOAD_NAME
     if payload_root.exists():
         shutil.rmtree(payload_root)
@@ -486,9 +491,9 @@ def compile_installer(
     installer_name = CUSTOMER_INSTALLER_NAME if customer_release else INSTALLER_NAME
     output_base = installer_name.removesuffix(".exe")
     description = (
-        "KOMI Report V5.1.0 Customer Release Package"
+        "KOMI Report V5.2.0 Customer Release Package"
         if customer_release
-        else "KOMI Report V5.1.0 Release Candidate"
+        else "KOMI Report V5.2.0 Release Candidate"
     )
     subprocess.run(
         [
@@ -550,7 +555,7 @@ def source_state_is_clean(source_state: str) -> bool:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Build KOMI Report V5.1.0 Windows x64 RC")
+    parser = argparse.ArgumentParser(description="Build KOMI Report V5.2.0 Windows x64 RC")
     parser.add_argument("--output", type=Path, default=RELEASE_ROOT)
     parser.add_argument("--iscc", type=Path)
     parser.add_argument("--virtualized", action="store_true")

@@ -5,6 +5,7 @@ from datetime import datetime
 from typing import Protocol
 
 from database import check_duplicate, save_reading
+from komi_snmp_profiler.meter import MeterReader
 from komi_snmp_profiler.models import MeterReading, WebCounterValue
 
 
@@ -175,8 +176,18 @@ class LiveMeterService:
     def __init__(self, reader: MeterReaderLike) -> None:
         self.reader = reader
 
-    def read(self, host: str, *, machine_name: str | None = None) -> LiveMeterPreview:
-        reading = self.reader.read(host)
+    def read(
+        self,
+        host: str,
+        *,
+        machine_name: str | None = None,
+        model: str = "",
+    ) -> LiveMeterPreview:
+        reading = (
+            self.reader.read(host, model=model)
+            if isinstance(self.reader, MeterReader)
+            else self.reader.read(host)
+        )
         return LiveMeterPreview(reading, meter_reading_to_report(reading, machine_name=machine_name))
 
     def save(self, slot: int, preview: LiveMeterPreview) -> SavedLiveMeter:

@@ -10,6 +10,7 @@ import webbrowser
 from collections.abc import Callable
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor
 from concurrent.futures import wait as wait_futures
+from dataclasses import replace
 from datetime import date, datetime, time, timedelta
 from html import escape
 from pathlib import Path
@@ -95,11 +96,12 @@ from i18n import ENGLISH, THAI, apply_language, get_language, set_language, tr, 
 from komi_snmp_profiler.connectors import (
     AuthenticatedWebConnectionCounterConnector,
     TlsPolicy,
-    WebConnectionCounterConnector,
     WebConnectionCertificateError,
+    WebConnectionCounterConnector,
     server_certificate_fingerprint,
 )
 from komi_snmp_profiler.credential_store import AdminCredential, SessionCredentialStore
+from komi_snmp_profiler.device_profiles import resolve_device_meter_profile
 from komi_snmp_profiler.meter import MeterReader
 from komi_snmp_profiler.models import WebAuthState
 from pages import PageHistory
@@ -318,6 +320,8 @@ class DeviceTestWorker(QObject):
                     mode=tls_mode,
                     fingerprint_sha256=tls_fingerprint,
                 )
+            meter_model = (probe_result.model if probe_result is not None else "") or device.model
+            profile = resolve_device_meter_profile(meter_model)
 
             def read_with_policy(policy: TlsPolicy):
                 reader = MeterReader(
@@ -325,17 +329,34 @@ class DeviceTestWorker(QObject):
                     public_connector=WebConnectionCounterConnector(tls_policy=policy),
                     admin_connector=AuthenticatedWebConnectionCounterConnector(tls_policy=policy),
                 )
-                return reader.read(web_host)
+                if profile.profile_id == "generic":
+                    return reader.read(web_host)
+                return reader.read(web_host, model=meter_model)
 
             try:
                 reading = read_with_policy(tls_policy)
             except WebConnectionCertificateError:
                 if tls_policy.mode != "system":
                     raise
-                tls_fingerprint = server_certificate_fingerprint(web_host)
+                compatibility_policy = replace(
+                    tls_policy,
+                    compatibility=profile.tls_compatibility,
+                )
+                tls_fingerprint = (
+                    server_certificate_fingerprint(web_host)
+                    if profile.profile_id == "generic"
+                    else server_certificate_fingerprint(
+                        web_host,
+                        tls_policy=compatibility_policy,
+                    )
+                )
                 tls_mode = "fingerprint"
                 reading = read_with_policy(
-                    TlsPolicy(mode="fingerprint", fingerprint_sha256=tls_fingerprint)
+                    TlsPolicy(
+                        mode="fingerprint",
+                        fingerprint_sha256=tls_fingerprint,
+                        compatibility=profile.tls_compatibility,
+                    )
                 )
 
             if device.password and reading.auth_state != WebAuthState.ADMIN:
@@ -899,7 +920,7 @@ class SetupWizardV5(QDialog):
         self._scan_thread: QThread | None = None
         self._worker: DeviceTestWorker | None = None
         self._scan_worker: NetworkDiscoveryWorker | None = None
-        self.setWindowTitle("ตั้งค่า KOMI Report V5.1.0")
+        self.setWindowTitle(f"ตั้งค่า KOMI Report V{PACKAGE_VERSION}")
         self.setMinimumSize(800, 520)
         self._build()
         self._load_existing()
@@ -3042,10 +3063,10 @@ class SetupWizardV5(QDialog):
             f"<b>{tr('ข้อมูลที่จะส่งเมื่ออนุมัติ Registration:', 'Data sent after Registration approval:')}</b> "
             f"{tr('ชื่อบริษัท:', 'Company:')} {company} · Version {escape(PACKAGE_VERSION)} · "
             f"{escape(platform_name)} / {escape(architecture)} · "
-            f"{tr('Serial Number + รุ่นเครื่อง + สถานะเลือกใช้', 'serial number + printer model + selected state')} "
+            f"{tr('Serial Number + รุ่นเครื่อง + สถานะเลือกใช้ + Aggregate Total Meter', 'serial number + printer model + selected state + aggregate Total Meter')} "
             f"({model_text})<br>"
             f"<b>{tr('ไม่ส่ง:', 'Never sent:')}</b> "
-            f"{tr('IP, MAC, hostname, Credential, Meter, ผู้ใช้, เอกสาร หรือ Log', 'IP, MAC, hostname, credentials, meters, users, documents, or logs')}<br>"
+            f"{tr('IP, MAC, hostname, Credential, Counter รายละเอียด, ผู้ใช้, เอกสาร, Print Job, Raw SNMP/XML/Error หรือ Log', 'IP, MAC, hostname, credentials, detailed counters, users, documents, print jobs, raw SNMP/XML/errors, or logs')}<br>"
             f"<b>{tr('สถานะ:', 'Status:')}</b> "
             f"{tr('บันทึกในเครื่องก่อน · ส่งภายหลังแบบ Background เมื่ออนุมัติ Registration', 'saved locally first · sent later in the background after Registration approval')}"
         )
@@ -4248,7 +4269,7 @@ class ConnectionInspectorWorker(QObject):
         def read_web() -> tuple[object | None, str, float]:
             started = perf_counter()
             try:
-                return reader.read(self.device.host), "", perf_counter() - started
+                return reader.read(self.device.host, model=self.device.model), "", perf_counter() - started
             except Exception as exc:
                 return None, str(exc), perf_counter() - started
 

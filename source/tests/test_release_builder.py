@@ -75,8 +75,8 @@ def test_release_safety_gate_proves_forbidden_file_and_secret_failures(tmp_path)
     assert [item.category for item in secret_error.value.findings] == ["github-token"]
 
 
-def test_release_versions_are_aligned_to_5_1_0():
-    expected = "5.1.0"
+def test_release_versions_are_aligned_to_5_2_0():
+    expected = "5.2.0"
     config_text = (PROJECT_ROOT / "source" / "config.py").read_text(encoding="utf-8")
     spec_text = (PROJECT_ROOT / "source" / "app.spec").read_text(encoding="utf-8")
     project = tomllib.loads(
@@ -89,14 +89,14 @@ def test_release_versions_are_aligned_to_5_1_0():
         (PROJECT_ROOT / "web" / "package-lock.json").read_text(encoding="utf-8")
     )
 
-    assert re.search(r'APP_VER\s*=\s*"5\.1\.0"', config_text)
-    assert re.search(r'PACKAGE_VERSION\s*=\s*"5\.1\.0"', config_text)
+    assert "APP_VER   = APP_VERSION" in config_text
+    assert "PACKAGE_VERSION = APP_VERSION" in config_text
     assert project["project"]["version"] == expected
     assert web_package["version"] == expected
     assert web_lock["version"] == expected
     assert web_lock["packages"][""]["version"] == expected
-    assert 'CFBundleShortVersionString": "5.1.0"' in spec_text
-    assert 'CFBundleVersion": "50100"' in spec_text
+    assert 'CFBundleShortVersionString": "5.2.0"' in spec_text
+    assert 'CFBundleVersion": "50200"' in spec_text
     assert "KOMI Report V5.1.app" not in spec_text
 
 
@@ -109,9 +109,11 @@ def test_source_release_manifest_contains_traceability_fields(tmp_path, monkeypa
     assert count > 0
     assert count == manifest["file_count"]
     assert digest == hashlib.sha256(archive.read_bytes()).hexdigest()
-    assert manifest["version"] == "5.1.0"
+    assert manifest["version"] == "5.2.0"
+    assert manifest["contract_version"] == "v5.2-draft-2026-08-25"
+    assert manifest["contract_sha256"] == "4884a4a6fb798ef0c36c88daca09cf2ae5df66ff609139f812880ab7322413bd"
     assert manifest["artifact"] == archive.name
-    assert manifest["artifact_identity"].startswith("komi-report-v5-source-5.1.0-")
+    assert manifest["artifact_identity"].startswith("komi-report-v5-source-5.2.0-")
     assert manifest["git_commit"]
     assert manifest["source_state"] in {"clean", "dirty", "uncommitted"}
     assert manifest["build_time"]

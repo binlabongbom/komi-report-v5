@@ -11,6 +11,7 @@ from datetime import datetime, timedelta
 from PyQt6.QtCore import QObject, QTimer, pyqtSignal
 
 from komi_snmp_profiler.credential_store import CredentialStoreError
+from komi_version import APP_VERSION
 from services.registration_client import RegistrationClient, RegistrationClientResult
 from services.registration_policy import RegistrationRuntimePolicy, load_registration_policy
 from services.registration_repository import (
@@ -318,8 +319,16 @@ class RegistrationCoordinator(QObject):
         self.timer.timeout.connect(self.tick)
         self._future: Future | None = None
         self._work_finished.connect(self._after_work)
+        self.legacy_transport_enabled = not APP_VERSION.startswith("5.2.")
 
     def start(self) -> None:
+        if not self.legacy_transport_enabled:
+            log.info(
+                "legacy registration transport disabled for V5.2 contract migration",
+                extra={"event": "registration_worker", "status": "v52_local_only"},
+            )
+            self.status_changed.emit("v52_local_only")
+            return
         self.processor.recover_after_restart()
         self.timer.start()
         QTimer.singleShot(500, self.tick)
@@ -333,12 +342,16 @@ class RegistrationCoordinator(QObject):
         return remaining
 
     def tick(self) -> None:
+        if not self.legacy_transport_enabled:
+            return
         if self._future is not None and not self._future.done():
             return
         self._future = self.executor.submit(self.processor.run_once)
         self._future.add_done_callback(lambda _future: self._work_finished.emit())
 
     def retry_now(self) -> int:
+        if not self.legacy_transport_enabled:
+            return 0
         retried = self.processor.repository.manual_retry()
         self.tick()
         return retried

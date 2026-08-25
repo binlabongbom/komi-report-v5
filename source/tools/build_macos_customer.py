@@ -1,4 +1,4 @@
-"""Build and inspect the macOS KOMI Report V5.1 customer package.
+"""Build and inspect the macOS KOMI Report V5.2 customer package.
 
 The application always uses the production runtime path. Signing, Gatekeeper
 and notarization are evidence gates: an ad-hoc artifact remains useful for
@@ -193,8 +193,8 @@ def inspect_structure(app_bundle: Path) -> dict[str, object]:
 
 def create_archives(app_bundle: Path, output_dir: Path) -> tuple[Path, Path]:
     output_dir.mkdir(parents=True, exist_ok=True)
-    archive = output_dir / "KOMI_Report_V5_1_0_macOS_arm64.zip"
-    dmg = output_dir / "KOMI_Report_V5_1_0_macOS_arm64.dmg"
+    archive = output_dir / "KOMI_Report_V5_2_0_macOS_arm64.zip"
+    dmg = output_dir / "KOMI_Report_V5_2_0_macOS_arm64.dmg"
     archive.unlink(missing_ok=True)
     dmg.unlink(missing_ok=True)
     _run(
@@ -212,7 +212,7 @@ def create_archives(app_bundle: Path, output_dir: Path) -> tuple[Path, Path]:
     )
     assert_zip_safe(archive)
     with tempfile.TemporaryDirectory(prefix="komi-macos-dmg-") as temp:
-        stage = Path(temp) / "KOMI Report V5.1.0"
+        stage = Path(temp) / "KOMI Report V5.2.0"
         stage.mkdir()
         _run(["/usr/bin/ditto", str(app_bundle), str(stage / app_bundle.name)], check=True)
         (stage / "Applications").symlink_to("/Applications")
@@ -224,7 +224,7 @@ def create_archives(app_bundle: Path, output_dir: Path) -> tuple[Path, Path]:
                 "-format",
                 "UDZO",
                 "-volname",
-                "KOMI Report V5.1.0",
+                "KOMI Report V5.2.0",
                 "-srcfolder",
                 str(stage),
                 str(dmg),
@@ -242,6 +242,11 @@ def build_customer_package(
     skip_build: bool = False,
     registration_bootstrap_file: Path | None = None,
 ) -> dict[str, object]:
+    if VERSION.startswith("5.2."):
+        raise MacCustomerBuildError(
+            "V5.2 customer artifact HOLD: Final schema-3 auth vectors and Joint Staging "
+            "E2E have not been approved"
+        )
     require_macos_arm64()
     commit, source_state = require_clean_source(expected_commit)
     if not skip_build:
@@ -253,7 +258,7 @@ def build_customer_package(
         raise MacCustomerBuildError("macOS bundle does not contain exactly one Registration bootstrap")
     structure = inspect_structure(APP_BUNDLE)
     if structure["short_version"] != VERSION or structure["architectures"] != ["arm64"]:
-        raise MacCustomerBuildError("bundle version or architecture does not match V5.1.0 arm64")
+        raise MacCustomerBuildError("bundle version or architecture does not match V5.2.0 arm64")
     smoke = smoke_test(APP_BUNDLE)
     if not smoke["graceful_exit"]:
         raise MacCustomerBuildError("built macOS app failed the isolated smoke test")

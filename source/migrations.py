@@ -12,7 +12,7 @@ from contextlib import closing
 from datetime import datetime
 from pathlib import Path
 
-CURRENT_SCHEMA_VERSION = 12
+CURRENT_SCHEMA_VERSION = 13
 
 
 class UnsupportedSchemaVersionError(RuntimeError):
@@ -80,6 +80,23 @@ _REQUIRED_SCHEMA: dict[str, frozenset[str]] = {
             "duration_ms",
         }
     ),
+    "v52_telemetry_outbox": frozenset(
+        {
+            "operation_id",
+            "event_type",
+            "idempotency_key",
+            "request_fingerprint",
+            "payload_json",
+            "state",
+            "attempt_count",
+            "next_attempt_at",
+            "last_error_code",
+            "created_at",
+            "updated_at",
+            "completed_at",
+        }
+    ),
+    "v52_telemetry_success": frozenset({"event_type", "last_successful_at"}),
 }
 
 
@@ -275,12 +292,45 @@ def _migration_012_registration_outbox(connection: sqlite3.Connection) -> None:
     )
 
 
+def _migration_013_v52_telemetry_outbox(connection: sqlite3.Connection) -> None:
+    """Add V5.2 Status/Meter coalescing without rewriting V5.1 data."""
+
+    connection.execute(
+        """CREATE TABLE IF NOT EXISTS v52_telemetry_outbox(
+               operation_id        TEXT PRIMARY KEY,
+               event_type          TEXT NOT NULL CHECK(event_type IN ('register','status','meter')),
+               idempotency_key     TEXT NOT NULL UNIQUE,
+               request_fingerprint TEXT NOT NULL,
+               payload_json        TEXT NOT NULL,
+               state               TEXT NOT NULL
+                                   CHECK(state IN ('pending','in_flight','retry','terminal','succeeded')),
+               attempt_count       INTEGER NOT NULL DEFAULT 0 CHECK(attempt_count >= 0),
+               next_attempt_at     TEXT NOT NULL,
+               last_error_code     TEXT NOT NULL DEFAULT '',
+               created_at          TEXT NOT NULL,
+               updated_at          TEXT NOT NULL,
+               completed_at        TEXT NOT NULL DEFAULT ''
+           )"""
+    )
+    connection.execute(
+        """CREATE INDEX IF NOT EXISTS idx_v52_telemetry_due
+           ON v52_telemetry_outbox(state,next_attempt_at)"""
+    )
+    connection.execute(
+        """CREATE TABLE IF NOT EXISTS v52_telemetry_success(
+               event_type       TEXT PRIMARY KEY CHECK(event_type IN ('register','status','meter')),
+               last_successful_at TEXT NOT NULL
+           )"""
+    )
+
+
 MIGRATIONS: tuple[tuple[int, str, object], ...] = (
     (8, "record_schema_history_and_reporting_indexes", _migration_008_record_schema_history),
     (9, "add_legacy_usage_history_import_provenance", _migration_009_legacy_history_import),
     (10, "add_os_vault_credential_reference", _migration_010_credential_reference),
     (11, "add_verified_or_pinned_printer_tls_policy", _migration_011_printer_tls_policy),
     (12, "add_durable_registration_outbox", _migration_012_registration_outbox),
+    (13, "add_v52_status_meter_coalescing_outbox", _migration_013_v52_telemetry_outbox),
 )
 
 

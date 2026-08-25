@@ -5,6 +5,7 @@
 
 import sys
 
+from komi_version import APP_VERSION
 from runtime_config import RUNTIME_SETTINGS
 
 
@@ -23,8 +24,8 @@ def _platform_value(default, *, windows=None, macos=None, linux=None):
 
 # ─── ข้อมูลโปรแกรม ────────────────────────────────────────
 APP_TITLE = "KOMI Report"              # ชื่อโปรแกรม (แสดงใน title bar)
-APP_VER   = "5.1.0"                     # เวอร์ชันที่แสดงใน Desktop UI
-PACKAGE_VERSION = "5.1.0"               # เวอร์ชัน build/API (ตรงกับ pyproject.toml)
+APP_VER   = APP_VERSION                  # เวอร์ชันที่แสดงใน Desktop UI
+PACKAGE_VERSION = APP_VERSION            # เวอร์ชัน build/API (ตรงกับ authority)
 LOGO_TEXT = "🖨  KOMI Report"                  # ข้อความโลโก้ใน sidebar
 LOGO_SUB  = "Konica Minolta"               # ข้อความใต้โลโก้
 

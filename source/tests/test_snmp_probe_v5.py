@@ -36,6 +36,29 @@ def test_web_calibrated_oid_wins_over_primary_marker():
     assert selected == (calibrated_oid, 54_321)
 
 
+def test_c12010s_profile_selects_private_total_before_web_calibration():
+    private_oid = "1.3.6.1.4.1.18334.1.1.1.5.7.2.1.1.0"
+
+    selected = SnmpTotalProbe.select_total_for_model(
+        [
+            (SnmpTotalProbe.PRIMARY_TOTAL_OID, 250_132),
+            (private_oid, 250_206),
+        ],
+        "KONICA MINOLTA AccurioPress C12010S",
+    )
+
+    assert selected == (private_oid, 250_206)
+
+
+def test_targeted_core_oids_cover_total_identity_and_serial_without_walk():
+    assert SnmpTotalProbe.required_exact_oids() == (
+        SnmpTotalProbe.PRIMARY_TOTAL_OID,
+        "1.3.6.1.4.1.18334.1.1.1.5.7.2.1.1.0",
+        SnmpTotalProbe.MODEL_OID,
+        SnmpTotalProbe.SERIAL_OID,
+    )
+
+
 def test_toner_levels_are_joined_by_supply_row_and_converted_to_percent():
     levels = SnmpTotalProbe.parse_toner_levels(
         [

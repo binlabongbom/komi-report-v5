@@ -26,16 +26,21 @@ class LiveMeterReadWorker(QObject):
     error = pyqtSignal(str)
     finished = pyqtSignal()
 
-    def __init__(self, service: LiveMeterService, host: str, machine_name: str) -> None:
+    def __init__(self, service: LiveMeterService, host: str, machine_name: str, model: str = "") -> None:
         super().__init__()
         self.service = service
         self.host = host
         self.machine_name = machine_name
+        self.model = model
 
     @pyqtSlot()
     def run(self) -> None:
         try:
-            preview = self.service.read(self.host, machine_name=self.machine_name or None)
+            preview = self.service.read(
+                self.host,
+                machine_name=self.machine_name or None,
+                model=self.model,
+            )
             self.success.emit(preview)
         except Exception as exc:
             self.error.emit(str(exc))
@@ -188,7 +193,16 @@ class PageLiveMeter(QWidget):
         self.status_label.setText("กำลังอ่าน Meter แบบ read-only...")
 
         thread = QThread(self)
-        worker = LiveMeterReadWorker(self.service, host, self.name_input.text().strip())
+        configured = next(
+            (device for device in self.device_repository.list(enabled_only=False) if device.host == host),
+            None,
+        )
+        worker = LiveMeterReadWorker(
+            self.service,
+            host,
+            self.name_input.text().strip(),
+            configured.model if configured is not None else "",
+        )
         worker.moveToThread(thread)
         thread.started.connect(worker.run)
         worker.success.connect(self._show_preview)

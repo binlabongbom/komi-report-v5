@@ -6,6 +6,7 @@ from datetime import UTC, date, datetime
 from PyQt6.QtCore import QCoreApplication
 
 from database import _open, get_cfg, init_db, set_db_path
+from komi_snmp_profiler.connectors import WebConnectionSessionBusyError
 from komi_snmp_profiler.models import Confidence, MeterReading, WebAuthState, WebCounterValue
 from services.background_polling import BackgroundPollingCoordinator
 from services.daily_cache import DailyCacheStore
@@ -103,6 +104,11 @@ class MismatchedReader:
         )
 
 
+class SessionBusyReader:
+    def read(self, _host: str) -> MeterReading:
+        raise WebConnectionSessionBusyError("legacy session busy")
+
+
 def test_poll_device_updates_identity_and_persistent_cache(tmp_path):
     QCoreApplication.instance() or QCoreApplication([])
     set_db_path(tmp_path / "polling.db")
@@ -172,6 +178,30 @@ def test_poll_device_logs_web_reconciliation_warning(tmp_path):
     assert state["source"]["reconciliation"]["profile_id"] == "konica.web_connection.device_meter.v2"
     assert state["source"]["counter_sources"]["counter.total.total"]["source_path"] == "fixture"
     assert any(event.action == "Billing evidence held for review" for event in pipeline_log.snapshot())
+    coordinator.stop()
+
+
+def test_session_busy_keeps_snmp_online_and_does_not_increment_web_failure(tmp_path):
+    QCoreApplication.instance() or QCoreApplication([])
+    set_db_path(tmp_path / "session-busy.db")
+    init_db()
+    repository = DeviceConfigRepository()
+    device = DeviceConfig(0, "Office", "192.0.2.10", last_total=100)
+    repository.replace_all([device])
+    pipeline_log.clear()
+    coordinator = BackgroundPollingCoordinator(
+        repository,
+        probe=FakeProbe(),
+        reader=SessionBusyReader(),
+        cache=DailyCacheStore(tmp_path / "cache"),
+    )
+
+    assert coordinator._poll_device(device, force_web=True) is False
+
+    updated = repository.get(0)
+    assert updated is not None and updated.connection_status == "online"
+    assert coordinator.states[0].web_failures == 0
+    assert any(event.action == "Web Connection session busy" for event in pipeline_log.snapshot())
     coordinator.stop()
 
 

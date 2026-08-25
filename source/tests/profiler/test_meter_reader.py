@@ -8,8 +8,10 @@ import pytest
 from komi_snmp_profiler.app import meter_counter_rows
 from komi_snmp_profiler.connectors import (
     AuthenticatedWebConnectionCounterConnector,
+    LegacyAuthenticatedWebConnectionCounterConnector,
     ReadOnlyWebConnectionSession,
     WebConnectionAuthenticationError,
+    WebConnectionCertificateError,
     WebConnectionCounterConnector,
     WebConnectionError,
     WebCounterCollection,
@@ -141,6 +143,75 @@ def test_admin_login_fields_match_web_connection_contract() -> None:
     }
 
 
+class FakeLegacySession:
+    def __init__(self, _host: str, **kwargs) -> None:
+        self.scheme = kwargs["scheme"]
+        self.calls: list[tuple[str, str]] = []
+        self.cleared = False
+
+    def get_bytes(self, path: str) -> bytes:
+        self.calls.append(("GET", path))
+        if path == "a_system_counter.xml":
+            return b"""<MFP><UserCounterInfo><TotalCounterList>
+            <TotalCounter><Type>Total</Type><Count>243744</Count></TotalCounter>
+            </TotalCounterList></UserCounterInfo></MFP>"""
+        return b"<MFP/>"
+
+    def post_session_form(self, path: str, fields: dict[str, str]) -> bytes:
+        self.calls.append(("POST_FORM", path))
+        if path == "login.cgi":
+            assert fields["R_ADM1"] == "AdminAdmin"
+            assert fields["password"]
+        return b""
+
+    def clear(self) -> None:
+        self.cleared = True
+
+
+def test_legacy_admin_connector_reads_once_then_logs_out_and_clears_session() -> None:
+    sessions: list[FakeLegacySession] = []
+
+    def factory(host: str, **kwargs):
+        session = FakeLegacySession(host, **kwargs)
+        sessions.append(session)
+        return session
+
+    connector = LegacyAuthenticatedWebConnectionCounterConnector(session_factory=factory)
+    result = connector.collect_with_credential(
+        "10.0.0.5",
+        AdminCredential(password=secrets.token_urlsafe(18)),
+    )
+
+    assert result.counters[0].count == 243_744
+    assert sessions[0].scheme == "https"
+    assert sessions[0].calls == [
+        ("GET", "top.xml"),
+        ("POST_FORM", "ulogin.cgi"),
+        ("GET", "login.xml"),
+        ("POST_FORM", "login.cgi"),
+        ("GET", "a_system_counter.xml"),
+        ("POST_FORM", "a_user.cgi"),
+    ]
+    assert sessions[0].cleared is True
+
+
+class LegacyCertificateFailureSession(FakeLegacySession):
+    def get_bytes(self, path: str) -> bytes:
+        raise WebConnectionCertificateError("self-signed")
+
+
+def test_legacy_admin_connector_preserves_certificate_error_for_pinning_flow() -> None:
+    connector = LegacyAuthenticatedWebConnectionCounterConnector(
+        session_factory=lambda host, **kwargs: LegacyCertificateFailureSession(host, **kwargs)
+    )
+
+    with pytest.raises(WebConnectionCertificateError, match="self-signed"):
+        connector.collect_with_credential(
+            "10.0.0.5",
+            AdminCredential(password=secrets.token_urlsafe(18)),
+        )
+
+
 class RejectedSession(FakeSession):
     def post_session_form(self, path: str, _fields: dict[str, str]):
         self.calls.append(("POST_FORM", path))
@@ -242,6 +313,32 @@ class FailingPublicConnector:
         raise WebConnectionError("public session unavailable")
 
 
+class LegacyPublicConnector:
+    def __init__(self) -> None:
+        self.hosts: list[str] = []
+
+    def collect_result(self, host: str, *, scheme: str = "http") -> WebCounterCollection:
+        self.hosts.append(f"{scheme}://{host}")
+        value = WebCounterValue("counter.total.total", "Total", 25_121, "Total", "legacy")
+        return WebCounterCollection((value,), "web_connection_legacy_xml_public", WebAuthState.PUBLIC)
+
+
+class LegacyAdminConnector:
+    def __init__(self) -> None:
+        self.hosts: list[str] = []
+
+    def collect_with_credential(
+        self,
+        host: str,
+        _credential: AdminCredential,
+        *,
+        scheme: str = "https",
+    ) -> WebCounterCollection:
+        self.hosts.append(f"{scheme}://{host}")
+        value = WebCounterValue("counter.total.total", "Total", 243_744, "Total", "legacy-admin")
+        return WebCounterCollection((value,), "web_connection_legacy_xml_admin", WebAuthState.ADMIN)
+
+
 def test_meter_reader_falls_back_to_public_once_and_exports_no_credential(tmp_path) -> None:
     password = secrets.token_urlsafe(18)
     admin = FailingAdminConnector()
@@ -273,6 +370,38 @@ def test_meter_reader_preserves_rejected_admin_error_when_public_is_unavailable(
 
     with pytest.raises(WebConnectionAuthenticationError, match="rejected"):
         reader.read("10.0.0.5")
+
+
+def test_meter_reader_routes_confirmed_press_to_public_legacy_xml_without_admin_login() -> None:
+    public = LegacyPublicConnector()
+    admin = LegacyAdminConnector()
+    reader = MeterReader(
+        MemoryStore(AdminCredential(password=secrets.token_urlsafe(18))),
+        legacy_public_connector=public,
+        legacy_admin_connector=admin,
+    )
+
+    reading = reader.read("10.0.0.5", model="KONICA MINOLTA AccurioPress C5070")
+
+    assert reading.source == "web_connection_legacy_xml_public"
+    assert reading.counters[0].count == 25_121
+    assert public.hosts == ["http://10.0.0.5"]
+    assert admin.hosts == []
+
+
+def test_meter_reader_routes_c458_to_bounded_admin_legacy_xml() -> None:
+    admin = LegacyAdminConnector()
+    reader = MeterReader(
+        MemoryStore(AdminCredential(password=secrets.token_urlsafe(18))),
+        legacy_public_connector=LegacyPublicConnector(),
+        legacy_admin_connector=admin,
+    )
+
+    reading = reader.read("10.0.0.5", model="KONICA MINOLTA bizhub C458")
+
+    assert reading.source == "web_connection_legacy_xml_admin"
+    assert reading.counters[0].count == 243_744
+    assert admin.hosts == ["https://10.0.0.5"]
 
 
 def test_public_connector_still_parses_existing_total_schema() -> None:

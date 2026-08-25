@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-DRAFT_NOTICE_VERSION = "KOMI-REG-2026-08-24"
+DRAFT_NOTICE_VERSION = "KOMI-REG-2026-08-25-V52"
 
-_THAI_NOTICE = f"""ประกาศข้อมูลการลงทะเบียน KOMI Report V5.1
-เวอร์ชัน {DRAFT_NOTICE_VERSION} · ใช้กับ KOMI Report V5.1
+_THAI_NOTICE = f"""ประกาศข้อมูลการลงทะเบียนและ Total Meter ของ KOMI Report V5.2
+เวอร์ชัน {DRAFT_NOTICE_VERSION} · ใช้กับ KOMI Report V5.2
 
 ข้อมูลชุดนี้ออกแบบให้เป็นข้อมูลของนิติบุคคล การติดตั้ง และอุปกรณ์ ไม่ใช่ข้อมูลส่วนบุคคล ผู้ใช้ต้องกรอกเฉพาะชื่อบริษัท/หน่วยงานและห้ามกรอกชื่อบุคคล
 
@@ -15,14 +15,16 @@ _THAI_NOTICE = f"""ประกาศข้อมูลการลงทะเ�
 • วันที่เริ่มใช้งาน Version ของโปรแกรม ระบบปฏิบัติการ และสถาปัตยกรรมเครื่อง
 • วันเวลาลงทะเบียน/Heartbeat และสถานะ Installation
 • จำนวนเครื่อง Konica Minolta ที่ค้นพบ รวมถึง Serial Number, รุ่นเครื่อง, สถานะเลือกใช้งาน และ Slot 1–3 ของเครื่องที่เลือก
+• Aggregate Total Meter ล่าสุดของเครื่องที่เลือก, สถานะอ่านได้/อ่านไม่ได้ และวันเวลาที่อ่าน Meter
 
 2. ข้อมูลที่ไม่ส่ง
-ไม่ส่ง IP address, MAC address, hostname, Username/Password หรือ Credential, Meter/Counter, ชื่อผู้ใช้หรือ Account, ชื่อ/เนื้อหาเอกสาร และ Application log
+ไม่ส่ง IP address, MAC address, hostname, Username/Password หรือ Credential, Counter รายละเอียด เช่น Color/B&W/Copy/Print, ชื่อผู้ใช้หรือ Account, ชื่อ/เนื้อหาเอกสาร, Print Job, Raw SNMP/XML/Error และ Application log
 
 3. วัตถุประสงค์
 • นับจำนวนบริษัทและ Installation ที่ใช้งาน KOMI Report
 • แสดง Version, OS, สถานะ Active 7/30/90 วัน และรุ่นเครื่องสำหรับงาน Support
-• ตรวจสอบความเข้ากันได้และแก้ปัญหาการลงทะเบียนโดยไม่อ่านข้อมูลงานพิมพ์
+• ตรวจสอบความเข้ากันได้และแยกสถานะ Desktop ขาดการเชื่อมต่อ, Meter อ่านไม่ได้ หรือไม่มีการพิมพ์ตาม Aggregate Total Meter
+การที่ Total Meter ไม่เพิ่มเป็นเพียงคำเตือนให้ตรวจสอบ ไม่ใช่หลักฐานว่าเครื่องเสีย
 ข้อมูลจะไม่ถูกขาย ไม่ใช้โฆษณาแบบเจาะจง และไม่ใช้วิเคราะห์ผู้ใช้หรือเนื้อหาเอกสาร
 
 4. การรับทราบ
@@ -33,7 +35,7 @@ KOMI Report เป็นโปรแกรมที่ให้ใช้ร่�
 
 6. ระยะเวลาเก็บที่เสนอ
 • ข้อมูล Installation ปัจจุบันและ Device inventory ล่าสุด: ระหว่างที่ Installation ยัง Active
-• Heartbeat และประวัติสถานะ: ไม่เกิน 12 เดือน
+• Heartbeat, Aggregate Total Meter และประวัติสถานะ: ไม่เกิน 12 เดือน
 • Idempotency/Technical delivery record ที่ไม่มี Token หรือ Raw body: ไม่เกิน 90 วัน
 • เมื่อ Inactive, Deactivated หรือ Revoked: ลบหรือทำให้ไม่สามารถเชื่อมโยงกลับได้ภายใน 12 เดือนนับจาก Last seen
 ระยะเวลานี้ต้องยืนยันกับระบบ Hosting ก่อนเปิดใช้งานจริง
@@ -46,10 +48,10 @@ KOMI Report เป็นโปรแกรมที่ให้ใช้ร่�
 ช่องทาง Support/ขอแก้ไขหรือลบข้อมูล Installation: ติดต่อผู้ส่งมอบโปรแกรม KOMI Report
 ระบบหลังบ้านและพื้นที่จัดเก็บ: https://www.dmskm.com/ ประเทศไทย
 
-ข้อมูลนี้ใช้เฉพาะการลงทะเบียนระบบและงาน Support ตามขอบเขตข้างต้น"""
+ข้อมูลนี้ใช้เฉพาะการลงทะเบียนระบบ การติดตาม Aggregate Total Meter และงาน Support ตามขอบเขตข้างต้น โดย V5.2 Desktop จะไม่เริ่มส่ง Production จนกว่าจะผ่าน Contract/Staging/Deployment gate"""
 
-_ENGLISH_NOTICE = f"""KOMI Report V5.1 Registration Data Notice
-Version {DRAFT_NOTICE_VERSION} · KOMI Report V5.1
+_ENGLISH_NOTICE = f"""KOMI Report V5.2 Registration and Total Meter Data Notice
+Version {DRAFT_NOTICE_VERSION} · KOMI Report V5.2
 
 This dataset is designed to contain organisation, installation, and device information—not personal data. Users must enter a company/organisation name only and must not enter a person's name.
 
@@ -59,14 +61,16 @@ This dataset is designed to contain organisation, installation, and device infor
 • First-use date, application version, operating system, and device architecture
 • Registration/Heartbeat timestamps and Installation status
 • Number of discovered Konica Minolta printers and each printer's serial number, model, selected status, and local Slot 1–3 when selected
+• Latest aggregate Total Meter for selected printers, whether the Meter was readable, and the Meter observation timestamp
 
 2. Data not sent
-The application does not send IP address, MAC address, hostname, username/password or credentials, meter/counter values, user or account names, document names or content, or application logs.
+The application does not send IP address, MAC address, hostname, username/password or credentials, detailed Color/B&W/Copy/Print counters, user or account names, document names or content, print jobs, raw SNMP/XML/errors, or application logs.
 
 3. Purposes
 • Count companies and Installations using KOMI Report
 • Show version, OS, Active 7/30/90-day status, and printer models for Support
-• Check compatibility and diagnose Registration without reading print-job data
+• Distinguish Desktop connectivity loss, an unavailable Meter, and no-print activity using only aggregate Total Meter observations
+An unchanged Total Meter is a warning to investigate, not proof that a printer is faulty.
 The data is not sold, used for targeted advertising, or used to profile users or document content.
 
 4. Acknowledgement
@@ -77,7 +81,7 @@ Access is limited to authorised KOMI Report administrators/Support and the Hosti
 
 6. Proposed retention
 • Current Installation record and latest device inventory: while the Installation remains Active
-• Heartbeat and lifecycle history: no longer than 12 months
+• Heartbeat, aggregate Total Meter, and lifecycle history: no longer than 12 months
 • Idempotency/technical delivery records that exclude tokens and raw bodies: no longer than 90 days
 • After Inactive, Deactivated, or Revoked: delete or de-link within 12 months of Last seen
 These periods must be confirmed against the deployed Hosting system before activation.
@@ -90,7 +94,7 @@ System owner: KOMI Report team
 Support/Installation correction or deletion channel: Contact the KOMI Report software provider
 Back-office system and storage location: https://www.dmskm.com/ — Thailand
 
-This information is used only for system registration and Support within the scope above."""
+This information is used only for system registration, aggregate Total Meter monitoring, and Support within the scope above. V5.2 Desktop will not send to Production until the Contract, Staging, and deployment gates pass."""
 
 
 def registration_data_notice(language: str) -> str:

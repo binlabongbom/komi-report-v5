@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Literal
 
 from config import DEFAULT_SNMP_COMMUNITY
+from komi_snmp_profiler.device_profiles import SnmpWalkPolicy, resolve_device_meter_profile
 from komi_snmp_profiler.km_counter_profile import KM_COUNTER_DEFINITIONS
 
 
@@ -71,6 +72,8 @@ class SnmpTotalProbe:
     INPUT_NAME_ROOT = "1.3.6.1.2.1.43.8.2.1.13"
     ALERT_DESCRIPTION_ROOT = "1.3.6.1.2.1.43.18.1.1.8"
     PRIMARY_TOTAL_OID = f"{MARKER_LIFE_ROOT}.1.1"
+    MODEL_OID = f"{MODEL_ROOT}.1"
+    SERIAL_OID = f"{SERIAL_ROOT}.1"
     PRIVATE_TOTAL_OIDS = tuple(
         definition.oid for definition in KM_COUNTER_DEFINITIONS if definition.canonical_field == "counter.total"
     )
@@ -101,6 +104,21 @@ class SnmpTotalProbe:
             ((oid, value) for oid, value in totals if oid == cls.PRIMARY_TOTAL_OID),
             max(totals, key=lambda item: item[1]),
         )
+
+    @classmethod
+    def select_total_for_model(
+        cls,
+        totals: list[tuple[str, int]],
+        model: str,
+        preferred_oid: str = "",
+    ) -> tuple[str, int]:
+        profile = resolve_device_meter_profile(model)
+        return cls.select_total(totals, preferred_oid or profile.preferred_total_oid)
+
+    @classmethod
+    def required_exact_oids(cls) -> tuple[str, ...]:
+        """Core heartbeat OIDs; a working Total never depends on SNMP walk support."""
+        return (cls.PRIMARY_TOTAL_OID, *cls.PRIVATE_TOTAL_OIDS, cls.MODEL_OID, cls.SERIAL_OID)
 
     @classmethod
     def parse_toner_levels(
@@ -253,33 +271,55 @@ class SnmpTotalProbe:
                         values.append((name.prettyPrint().lstrip("."), value.prettyPrint()))
             return values
 
+        async def get_exact(oid: str) -> list[tuple[str, str]]:
+            error_indication, error_status, _error_index, var_binds = await get_cmd(
+                engine,
+                auth,
+                target,
+                ContextData(),
+                ObjectType(ObjectIdentity(oid)),
+                lookupMib=False,
+            )
+            if error_indication or error_status:
+                return []
+            return [
+                (name.prettyPrint().lstrip("."), value.prettyPrint())
+                for name, value in var_binds
+                if value.__class__.__name__ not in {"NoSuchObject", "NoSuchInstance", "EndOfMibView"}
+            ]
+
         try:
-            raw_totals = await walk(self.MARKER_LIFE_ROOT)
-            known_oids = {oid for oid, _value in raw_totals}
-            for candidate_oid in self.PRIVATE_TOTAL_OIDS:
-                if candidate_oid in known_oids:
-                    continue
-                error_indication, error_status, _error_index, var_binds = await get_cmd(
-                    engine,
-                    auth,
-                    target,
-                    ContextData(),
-                    ObjectType(ObjectIdentity(candidate_oid)),
-                    lookupMib=False,
-                )
-                if error_indication or error_status:
-                    continue
-                for name, value in var_binds:
-                    if value.__class__.__name__ not in {"NoSuchObject", "NoSuchInstance", "EndOfMibView"}:
-                        raw_totals.append((name.prettyPrint().lstrip("."), value.prettyPrint()))
+            exact_values: list[tuple[str, str]] = []
+            for oid in self.required_exact_oids():
+                exact_values.extend(await get_exact(oid))
+            total_oid_set = {self.PRIMARY_TOTAL_OID, *self.PRIVATE_TOTAL_OIDS}
+            raw_totals = [(oid, value) for oid, value in exact_values if oid in total_oid_set]
+            if not raw_totals:
+                try:
+                    raw_totals = await walk(self.MARKER_LIFE_ROOT)
+                except SnmpProbeError:
+                    raw_totals = []
+            models = [(oid, value) for oid, value in exact_values if oid == self.MODEL_OID]
+            serials = [(oid, value) for oid, value in exact_values if oid == self.SERIAL_OID]
+            if not models:
+                try:
+                    models = await walk(self.MODEL_ROOT, 16)
+                except SnmpProbeError:
+                    models = []
+            if not serials:
+                try:
+                    serials = await walk(self.SERIAL_ROOT, 16)
+                except SnmpProbeError:
+                    serials = []
             totals = [
                 (oid, int(value))
                 for oid, value in raw_totals
                 if str(value).lstrip("-").isdigit() and int(value) >= 0
             ]
-            selected_oid, selected_total = self.select_total(totals, preferred_oid)
-            models = await walk(self.MODEL_ROOT, 16)
-            serials = await walk(self.SERIAL_ROOT, 16)
+            model = next((value.strip() for _oid, value in models if value.strip()), "")
+            serial = next((value.strip() for _oid, value in serials if value.strip()), "")
+            profile = resolve_device_meter_profile(model)
+            selected_oid, selected_total = self.select_total_for_model(totals, model, preferred_oid)
             supply_descriptions: list[tuple[str, str]] = []
             supply_capacities: list[tuple[str, str]] = []
             supply_levels: list[tuple[str, str]] = []
@@ -288,28 +328,27 @@ class SnmpTotalProbe:
             input_levels: list[tuple[str, str]] = []
             input_statuses: list[tuple[str, str]] = []
             paper_alerts: list[tuple[str, str]] = []
-            try:
-                supply_descriptions = await walk(self.SUPPLY_DESCRIPTION_ROOT, 64)
-                supply_capacities = await walk(self.SUPPLY_CAPACITY_ROOT, 64)
-                supply_levels = await walk(self.SUPPLY_LEVEL_ROOT, 64)
-            except SnmpProbeError:
-                # Toner is supplementary status; a device without this table
-                # must not turn an otherwise valid heartbeat into offline.
-                pass
-            try:
-                input_names = await walk(self.INPUT_NAME_ROOT, 32)
-                input_capacities = await walk(self.INPUT_CAPACITY_ROOT, 32)
-                input_levels = await walk(self.INPUT_LEVEL_ROOT, 32)
-                input_statuses = await walk(self.INPUT_STATUS_ROOT, 32)
-                paper_alerts = await walk(self.ALERT_DESCRIPTION_ROOT, 32)
-            except SnmpProbeError:
-                # Input tray telemetry is optional and must not make the
-                # total-meter heartbeat fail on older models.
-                pass
+            if profile.snmp_walk_policy == SnmpWalkPolicy.SUPPLEMENTAL:
+                try:
+                    supply_descriptions = await walk(self.SUPPLY_DESCRIPTION_ROOT, 64)
+                    supply_capacities = await walk(self.SUPPLY_CAPACITY_ROOT, 64)
+                    supply_levels = await walk(self.SUPPLY_LEVEL_ROOT, 64)
+                except SnmpProbeError:
+                    # Toner is supplementary status; a device without this table
+                    # must not turn an otherwise valid heartbeat into offline.
+                    pass
+                try:
+                    input_names = await walk(self.INPUT_NAME_ROOT, 32)
+                    input_capacities = await walk(self.INPUT_CAPACITY_ROOT, 32)
+                    input_levels = await walk(self.INPUT_LEVEL_ROOT, 32)
+                    input_statuses = await walk(self.INPUT_STATUS_ROOT, 32)
+                    paper_alerts = await walk(self.ALERT_DESCRIPTION_ROOT, 32)
+                except SnmpProbeError:
+                    # Input tray telemetry is optional and must not make the
+                    # total-meter heartbeat fail on older models.
+                    pass
             toner = self.parse_toner_levels(supply_descriptions, supply_capacities, supply_levels)
             paper_trays = self.parse_paper_trays(input_names, input_capacities, input_levels, input_statuses)
-            model = next((value.strip() for _oid, value in models if value.strip()), "")
-            serial = next((value.strip() for _oid, value in serials if value.strip()), "")
             return SnmpProbeResult(
                 total=selected_total,
                 model=model,

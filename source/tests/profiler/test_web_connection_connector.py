@@ -3,10 +3,13 @@ from __future__ import annotations
 import pytest
 
 from komi_snmp_profiler.connectors import (
+    LegacyWebConnectionCounterConnector,
     ReadOnlyWebConnectionSession,
     TlsPolicy,
     WebConnectionCounterConnector,
+    WebConnectionSessionBusyError,
 )
+from komi_snmp_profiler.device_profiles import TlsCompatibility
 
 
 def test_web_connection_tls_verification_is_default() -> None:
@@ -31,6 +34,46 @@ def test_fingerprint_policy_normalizes_colon_separated_sha256() -> None:
 
     with pytest.raises(ValueError, match="SHA-256"):
         TlsPolicy(mode="fingerprint", fingerprint_sha256="too-short")
+
+
+def test_tls11_legacy_compatibility_is_explicit_and_profile_scoped() -> None:
+    default = ReadOnlyWebConnectionSession("192.0.2.10")
+    legacy = ReadOnlyWebConnectionSession(
+        "192.0.2.10",
+        tls_policy=TlsPolicy(compatibility=TlsCompatibility.TLS11_LEGACY),
+    )
+
+    assert default.tls_policy.compatibility == TlsCompatibility.DEFAULT
+    assert legacy.tls_policy.compatibility == TlsCompatibility.TLS11_LEGACY
+    assert legacy.ssl_context.minimum_version.name == "TLSv1_1"
+    assert legacy.ssl_context.maximum_version.name == "MAXIMUM_SUPPORTED"
+
+
+def test_legacy_xml_parser_extracts_same_canonical_total_contract() -> None:
+    payload = b"""<?xml version='1.0'?>
+    <MFP><LoginMode>PublicUser</LoginMode><UserCounterInfo>
+      <TotalCounterList>
+        <TotalCounter><Type>Total</Type><Count>25121</Count></TotalCounter>
+        <TotalCounter><Type>DuplexTotal</Type><Count>7335</Count></TotalCounter>
+      </TotalCounterList>
+      <CopyCounterList><CopyCounter><Type>Total</Type><Count>5478</Count></CopyCounter></CopyCounterList>
+      <PrintCounterList><PrintCounter><Type>Total</Type><Count>19643</Count></PrintCounter></PrintCounterList>
+    </UserCounterInfo></MFP>"""
+
+    values = LegacyWebConnectionCounterConnector.parse_xml(payload)
+    by_field = {item.canonical_field: item.count for item in values}
+
+    assert by_field["counter.total.total"] == 25_121
+    assert by_field["counter.total.duplex_total"] == 7_335
+    assert by_field["counter.copy.total"] == 5_478
+    assert by_field["counter.print.total"] == 19_643
+
+
+def test_legacy_xml_parser_reports_session_busy_separately() -> None:
+    with pytest.raises(WebConnectionSessionBusyError, match="session"):
+        LegacyWebConnectionCounterConnector.parse_xml(
+            b"<MFP><DirectAccessError>Another user session is active</DirectAccessError></MFP>"
+        )
 
 
 def test_parse_counter_info_extracts_a3_a4_by_color() -> None:

@@ -149,7 +149,7 @@ def test_setup_wizard_uses_the_approved_four_step_flow(tmp_path):
         assert wizard.first_started_input.isReadOnly()
         assert wizard.first_started_input.text() == "20/08/2026"
         assert wizard.version_input.isReadOnly()
-        assert wizard.version_input.text() == "5.1.0"
+        assert wizard.version_input.text() == "5.2.0"
         assert wizard.scan_button.text() == "ค้นหาเครื่องพิมพ์อัตโนมัติ"
         assert wizard.advanced_scan_button.text() == "กำหนดช่วง IP"
         assert wizard.manual_setup_button.text() == "เพิ่ม IP ด้วยตนเอง"
@@ -181,13 +181,13 @@ def test_setup_wizard_uses_the_approved_four_step_flow(tmp_path):
         assert wizard.next_button.text() == "บันทึกและเปิดโปรแกรม"
         assert "พร้อมนำเครื่องพิมพ์เข้าระบบ" in wizard.review_ready_note.text()
         registration_review = wizard.review_sections["registration"].text()
-        assert "Version 5.1.0" in registration_review
+        assert "Version 5.2.0" in registration_review
         assert "bizhub C450i × 1" in registration_review
-        assert "Serial Number + รุ่นเครื่อง + สถานะเลือกใช้" in registration_review
-        assert "IP, MAC, hostname, Credential, Meter" in registration_review
-        assert wizard.registration_status_label.text() == "รอยอมรับ"
-        assert wizard.privacy_notice_accepted.isEnabled() is True
-        assert "อนุมัติแล้ว" in wizard.privacy_notice_status.text()
+        assert "Serial Number + รุ่นเครื่อง + สถานะเลือกใช้ + Aggregate Total Meter" in registration_review
+        assert "IP, MAC, hostname, Credential, Counter รายละเอียด" in registration_review
+        assert wizard.registration_status_label.text() == "ปิดการส่ง"
+        assert wizard.privacy_notice_accepted.isEnabled() is False
+        assert "ยังไม่ได้อนุมัติ" in wizard.privacy_notice_status.text()
         wizard.view_privacy_notice_button.click()
         app.processEvents()
         notice_dialog = wizard._wizard_child_dialogs[-1]
@@ -992,9 +992,12 @@ def test_setup_records_acknowledgement_only_for_complete_approved_notice(tmp_pat
                         "model",
                         "selected",
                         "device_slot",
-                        "timestamps",
-                        "status",
-                    ],
+                            "timestamps",
+                            "status",
+                            "total_meter",
+                            "meter_observed_at",
+                            "meter_status",
+                        ],
                     "retention": "Synthetic retention",
                     "deletion_contact": "privacy@example.invalid",
                     "legal_basis": "Synthetic legal basis",

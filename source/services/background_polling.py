@@ -9,6 +9,10 @@ from time import monotonic
 from PyQt6.QtCore import QObject, QTimer, pyqtSignal
 
 from database import get_cfg, set_cfg
+from komi_snmp_profiler.connectors import (
+    WebConnectionSessionBusyError,
+    WebConnectionUnsupportedError,
+)
 from komi_snmp_profiler.meter import MeterReader
 from services.daily_cache import DailyCacheStore
 from services.device_config import DatabaseCredentialStore, DeviceConfig, DeviceConfigRepository
@@ -504,7 +508,14 @@ class BackgroundPollingCoordinator(QObject):
                 status="request",
                 at=now,
             )
-            reading = self.reader.read(device.host)
+            reading = (
+                self.reader.read(
+                    device.host,
+                    model=(probe_result.model if probe_result is not None else "") or device.model,
+                )
+                if isinstance(self.reader, MeterReader)
+                else self.reader.read(device.host)
+            )
             reconciliation = reconcile_web_counters(
                 {
                     counter.canonical_field: counter.count
@@ -647,6 +658,33 @@ class BackgroundPollingCoordinator(QObject):
                 total=state.last_snmp_total,
             )
             return True
+        except (WebConnectionSessionBusyError, WebConnectionUnsupportedError) as exc:
+            state.next_web_retry_at = now + self.machine.policy.retry_interval
+            status = "checking" if snmp_error else "online"
+            action = (
+                "Web Connection session busy"
+                if isinstance(exc, WebConnectionSessionBusyError)
+                else "Web Connection endpoint unsupported"
+            )
+            pipeline_log.append(
+                stage="WEB",
+                action=action,
+                device_slot=device.slot,
+                device_name=device.name,
+                host=device.host,
+                target="read-only Meter profile",
+                value=str(exc),
+                detail="ไม่เพิ่ม Web failure counter และไม่ใช้เป็นหลักฐานว่าเครื่อง offline",
+                status="warning",
+                at=now,
+            )
+            self.repository.update_runtime(
+                device.slot,
+                status=status,
+                checked_at=now.isoformat(timespec="seconds"),
+                error=str(exc),
+            )
+            return False
         except Exception as exc:
             web_decision = self.machine.web_failure(state, now)
             message = f"SNMP: {snmp_error}; Web: {exc}" if snmp_error else str(exc)

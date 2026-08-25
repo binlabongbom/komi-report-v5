@@ -7,6 +7,10 @@ def test_registration_data_notice_is_bilingual_and_scoped_to_non_personal_data()
 
     assert DRAFT_NOTICE_VERSION in thai
     assert DRAFT_NOTICE_VERSION in english
+    assert "Aggregate Total Meter" in thai
+    assert "aggregate Total Meter" in english
+    assert "Raw SNMP/XML/Error" in thai
+    assert "raw SNMP/XML/errors" in english
     assert "ไม่ใช่ข้อมูลส่วนบุคคล" in thai
     assert "not personal data" in english
     assert "ห้ามกรอกชื่อบุคคล" in thai

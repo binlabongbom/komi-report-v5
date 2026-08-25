@@ -6,12 +6,15 @@ from typing import Protocol
 
 from .connectors import (
     AuthenticatedWebConnectionCounterConnector,
+    LegacyAuthenticatedWebConnectionCounterConnector,
+    LegacyWebConnectionCounterConnector,
     TlsPolicy,
-    WebConnectionCounterConnector,
     WebConnectionAuthenticationError,
+    WebConnectionCounterConnector,
     WebConnectionError,
 )
 from .credential_store import AdminCredential, CredentialStore, CredentialStoreError
+from .device_profiles import WebMeterProtocol, resolve_device_meter_profile
 from .meter_export import (
     MeterCountExportConnector,
     MeterExportKind,
@@ -35,11 +38,15 @@ class MeterReader:
         *,
         public_connector: WebConnectionCounterConnector | None = None,
         admin_connector: AuthenticatedWebConnectionCounterConnector | None = None,
+        legacy_public_connector: LegacyWebConnectionCounterConnector | None = None,
+        legacy_admin_connector: LegacyAuthenticatedWebConnectionCounterConnector | None = None,
         export_reader: MeterExportReaderLike | None = None,
     ) -> None:
         self.credential_store = credential_store
         self.public_connector = public_connector
         self.admin_connector = admin_connector
+        self.legacy_public_connector = legacy_public_connector
+        self.legacy_admin_connector = legacy_admin_connector
         self.export_reader = export_reader
 
     def save_credential(self, host: str, credential: AdminCredential) -> None:
@@ -51,11 +58,13 @@ class MeterReader:
     def has_credential(self, host: str) -> bool:
         return self.credential_store.load(self._host(host)) is not None
 
-    def read(self, host: str) -> MeterReading:
+    def read(self, host: str, *, model: str = "") -> MeterReading:
         host = self._host(host)
         warnings: list[str] = []
+        profile = resolve_device_meter_profile(model)
         policy_provider = getattr(self.credential_store, "tls_policy", None)
         tls_policy = policy_provider(host) if callable(policy_provider) else TlsPolicy()
+        tls_policy = replace(tls_policy, compatibility=profile.tls_compatibility)
         if tls_policy.mode == "insecure":
             warnings.append(
                 "คำเตือน: ปิดการตรวจสอบ TLS certificate แบบ explicit compatibility; "
@@ -70,6 +79,36 @@ class MeterReader:
             credential = self.credential_store.load(host)
         except CredentialStoreError:
             warnings.append("อ่าน session credential ไม่สำเร็จ จึงใช้ public counter เท่านั้น")
+        if profile.web_protocol == WebMeterProtocol.LEGACY_XML_PUBLIC:
+            connector = self.legacy_public_connector or LegacyWebConnectionCounterConnector(
+                tls_policy=tls_policy,
+                scheme=profile.web_scheme,
+            )
+            result = connector.collect_result(host, scheme=profile.web_scheme)
+            return MeterReading.create(
+                host,
+                list(result.counters),
+                result.source,
+                result.auth_state,
+                warnings + list(result.warnings),
+            )
+        if profile.web_protocol == WebMeterProtocol.LEGACY_XML_ADMIN:
+            if credential is None:
+                raise WebConnectionAuthenticationError(
+                    "รุ่นนี้ปิด PublicUser และต้องใช้ bounded Administrator session เพื่ออ่าน Meter"
+                )
+            connector = self.legacy_admin_connector or LegacyAuthenticatedWebConnectionCounterConnector(
+                tls_policy=tls_policy,
+                scheme=profile.web_scheme,
+            )
+            result = connector.collect_with_credential(host, credential, scheme=profile.web_scheme)
+            return MeterReading.create(
+                host,
+                list(result.counters),
+                result.source,
+                result.auth_state,
+                warnings + list(result.warnings),
+            )
         admin_failure: WebConnectionError | None = None
         if credential is not None:
             try:
@@ -92,7 +131,7 @@ class MeterReader:
             result = public_connector.collect_result(host)
         except WebConnectionError:
             if isinstance(admin_failure, WebConnectionAuthenticationError):
-                raise admin_failure
+                raise admin_failure from None
             raise
         auth_state = WebAuthState.PUBLIC_FALLBACK if warnings else WebAuthState.PUBLIC
         return MeterReading.create(

@@ -39,16 +39,11 @@ def _artefact(**overrides):
     return payload
 
 
-def test_approved_production_policy_is_built_in_when_no_override_is_configured():
+def test_v5_2_has_no_legacy_built_in_production_bootstrap_policy():
     policy = load_registration_policy({})
 
-    assert policy is not None
-    assert policy.base_url == "https://www.dmskm.com"
-    assert policy.environment == "production"
-    assert policy.bootstrap_header == "X-Bootstrap-Key"
-    assert policy.bootstrap_ref == "registration-bootstrap-reference"
-    assert policy.notice.version == BUILT_IN_NOTICE_VERSION
-    assert policy.notice.complete is True
+    assert policy is None
+    assert BUILT_IN_NOTICE_VERSION == "KOMI-REG-2026-08-25-V52"
 
 
 def test_diagnostic_environment_can_explicitly_disable_built_in_policy():

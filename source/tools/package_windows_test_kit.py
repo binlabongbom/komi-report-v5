@@ -20,7 +20,9 @@ import zipfile
 from datetime import datetime
 from pathlib import Path
 
+from services.v5_2_contract import CONTRACT_SHA256, CONTRACT_VERSION
 from tools.release_safety import assert_release_safe, assert_tree_safe, assert_zip_safe, git_identity
+from tools.version_gate import assert_v5_2_version_alignment
 
 SOURCE_ROOT = Path(__file__).resolve().parents[1]
 PROJECT_ROOT = SOURCE_ROOT.parent
@@ -40,6 +42,7 @@ ROOT_FILES = (
     "config.py",
     "database.py",
     "i18n.py",
+    "komi_version.py",
     "live_meter_page.py",
     "migrations.py",
     "observability.py",
@@ -282,6 +285,7 @@ def install_windows_dependencies(wheelhouse: Path, destination: Path) -> None:
 
 
 def build_kit(output_root: Path) -> tuple[Path, Path, dict[str, object]]:
+    assert_v5_2_version_alignment()
     output_root.mkdir(parents=True, exist_ok=True)
     kit_root = output_root / KIT_NAME
     if kit_root.exists():
@@ -376,6 +380,8 @@ def build_kit(output_root: Path) -> tuple[Path, Path, dict[str, object]]:
     commit, source_state = git_identity(PROJECT_ROOT)
     manifest = {
         "version": VERSION,
+        "contract_version": CONTRACT_VERSION,
+        "contract_sha256": CONTRACT_SHA256,
         "package": KIT_NAME,
         "artifact": ARCHIVE_NAME,
         "artifact_identity": f"komi-report-v5-windows-x64-{VERSION}-{commit[:12]}",

@@ -10,8 +10,10 @@ import tomllib
 from datetime import datetime
 from pathlib import Path
 
+from services.v5_2_contract import CONTRACT_SHA256, CONTRACT_VERSION
 from tools.build_local_release import _included_files
 from tools.release_safety import assert_release_safe, assert_zip_safe, git_identity
+from tools.version_gate import assert_v5_2_version_alignment
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 VERSION = tomllib.loads(
@@ -25,6 +27,7 @@ MANIFEST = RELEASE_DIR / "MACOS_MANIFEST.json"
 
 
 def package_macos_app() -> tuple[Path, str]:
+    assert_v5_2_version_alignment()
     assert_release_safe(_included_files(), root=PROJECT_ROOT)
     executable = APP_BUNDLE / "Contents" / "MacOS" / f"KOMI Report V{VERSION}"
     info_plist = APP_BUNDLE / "Contents" / "Info.plist"
@@ -53,6 +56,8 @@ def package_macos_app() -> tuple[Path, str]:
     commit, source_state = git_identity(PROJECT_ROOT)
     payload = {
         "version": VERSION,
+        "contract_version": CONTRACT_VERSION,
+        "contract_sha256": CONTRACT_SHA256,
         "artifact": ARCHIVE.name,
         "artifact_identity": f"komi-report-v5-macos-arm64-{VERSION}-{commit[:12]}",
         "git_commit": commit,

@@ -10,14 +10,16 @@ import zipfile
 from datetime import datetime
 from pathlib import Path
 
+from services.v5_2_contract import CONTRACT_SHA256, CONTRACT_VERSION
 from tools.release_safety import assert_release_safe, assert_zip_safe, git_identity
+from tools.version_gate import assert_v5_2_version_alignment
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 PACKAGE_VERSION = tomllib.loads(
     (PROJECT_ROOT / "source" / "pyproject.toml").read_text(encoding="utf-8")
 )["project"]["version"]
 RELEASE_DIR = PROJECT_ROOT / "release"
-ARCHIVE_NAME = "KOMI_Report_V5_1_0_Source.zip"
+ARCHIVE_NAME = f"KOMI_Report_V{PACKAGE_VERSION.replace('.', '_')}_Source.zip"
 INCLUDE_ROOTS = (
     PROJECT_ROOT / "Open KOMI Report Web.command",
     PROJECT_ROOT / "packaging" / "windows" / "KOMI_Report_V5.iss",
@@ -93,6 +95,7 @@ def _included_files() -> list[Path]:
 
 
 def build_source_archive() -> tuple[Path, str, int]:
+    assert_v5_2_version_alignment()
     RELEASE_DIR.mkdir(parents=True, exist_ok=True)
     archive = RELEASE_DIR / ARCHIVE_NAME
     files = _included_files()
@@ -118,6 +121,8 @@ def build_source_archive() -> tuple[Path, str, int]:
     manifest = {
         "version": PACKAGE_VERSION,
         "package_version": PACKAGE_VERSION,
+        "contract_version": CONTRACT_VERSION,
+        "contract_sha256": CONTRACT_SHA256,
         "artifact": archive.name,
         "artifact_identity": artifact_identity,
         "git_commit": commit,

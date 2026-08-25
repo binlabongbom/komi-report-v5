@@ -7,6 +7,7 @@ import re
 import socket
 import ssl
 import warnings
+import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from http.cookiejar import Cookie, CookieJar
 from typing import Protocol
@@ -15,6 +16,7 @@ from urllib.parse import urlencode, urlsplit
 from urllib.request import HTTPCookieProcessor, HTTPSHandler, Request, build_opener
 
 from .credential_store import AdminCredential
+from .device_profiles import TlsCompatibility
 from .models import WebAuthState, WebCounterValue
 
 
@@ -30,10 +32,19 @@ class WebConnectionCertificateError(WebConnectionError):
     """Raised when the printer presents a certificate the operating system does not trust."""
 
 
+class WebConnectionSessionBusyError(WebConnectionError):
+    """Raised when an older single-session Web Connection is already in use."""
+
+
+class WebConnectionUnsupportedError(WebConnectionError):
+    """Raised when the selected read-only Meter endpoint is not supported by the firmware."""
+
+
 @dataclass(frozen=True)
 class TlsPolicy:
     mode: str = "system"
     fingerprint_sha256: str = ""
+    compatibility: TlsCompatibility = TlsCompatibility.DEFAULT
 
     def __post_init__(self) -> None:
         if self.mode not in {"system", "fingerprint", "insecure"}:
@@ -45,7 +56,26 @@ class TlsPolicy:
             raise ValueError("TLS fingerprint ต้องเป็น SHA-256 hex 64 ตัว")
         if self.mode != "fingerprint" and normalized:
             raise ValueError("TLS fingerprint ใช้ได้เฉพาะ fingerprint mode")
+        if self.compatibility not in set(TlsCompatibility):
+            raise ValueError("TLS compatibility profile ไม่ถูกต้อง")
         object.__setattr__(self, "fingerprint_sha256", normalized)
+
+
+def _tls_context(policy: TlsPolicy) -> ssl.SSLContext:
+    context = ssl.create_default_context()
+    if policy.mode in {"fingerprint", "insecure"}:
+        context.check_hostname = False
+        context.verify_mode = ssl.CERT_NONE
+    if policy.compatibility == TlsCompatibility.TLS11_LEGACY:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", DeprecationWarning)
+            context.minimum_version = ssl.TLSVersion.TLSv1_1
+        context.maximum_version = ssl.TLSVersion.MAXIMUM_SUPPORTED
+        legacy_server_connect = getattr(ssl, "OP_LEGACY_SERVER_CONNECT", 0)
+        if legacy_server_connect:
+            context.options |= legacy_server_connect
+        context.set_ciphers("DEFAULT:@SECLEVEL=0")
+    return context
 
 
 class AccountCounterConnector(Protocol):
@@ -64,7 +94,12 @@ class WebCounterCollection:
     warnings: tuple[str, ...] = ()
 
 
-def server_certificate_fingerprint(host: str, *, timeout: float = 5.0) -> str:
+def server_certificate_fingerprint(
+    host: str,
+    *,
+    timeout: float = 5.0,
+    tls_policy: TlsPolicy | None = None,
+) -> str:
     """Read a printer certificate without sending an HTTP request or credential."""
 
     parsed = urlsplit(f"//{host.strip()}")
@@ -76,7 +111,8 @@ def server_certificate_fingerprint(host: str, *, timeout: float = 5.0) -> str:
     except ValueError as err:
         raise WebConnectionCertificateError("Port ของ Web Connection ไม่ถูกต้อง") from err
 
-    context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    policy = tls_policy or TlsPolicy()
+    context = _tls_context(policy)
     context.check_hostname = False
     context.verify_mode = ssl.CERT_NONE
     try:
@@ -122,6 +158,9 @@ class ReadOnlyWebConnectionSession:
         "spa_login.html",
         "login_ex.json",
         "top.xml",
+        "login.xml",
+        "system_counter.xml",
+        "a_system_counter.xml",
         "spa_000_002_IMP000.tmpl.html",
         "spa_000_002_IMP003.tmpl.html",
         "a_system_impexp.json",
@@ -133,7 +172,7 @@ class ReadOnlyWebConnectionSession:
         "api/AppReqGetAuthCounter",
         "api/AppReqGetTrackCounterInfo",
     }
-    SESSION_FORM_PATHS = {"login.cgi", "a_user.cgi"}
+    SESSION_FORM_PATHS = {"ulogin.cgi", "login.cgi", "a_user.cgi"}
     TEMP_EXPORT_FUNCTIONS = {
         "api/AppReqSetCustomMessage/_000_002_IMP003": "PSL_AS_CNL_EXP",
         "api/AppReqSetCustomMessage/_000_002_IMP014": "PSL_AS_CLR_IMP",
@@ -148,32 +187,41 @@ class ReadOnlyWebConnectionSession:
         timeout: float = 5.0,
         tls_policy: TlsPolicy | None = None,
         verify_tls: bool | None = None,
+        scheme: str = "https",
     ) -> None:
         self.timeout = timeout
-        self.base_url = f"https://{host}/wcd"
+        if scheme not in {"http", "https"}:
+            raise ValueError("Web Connection scheme ต้องเป็น http หรือ https")
+        self.scheme = scheme
+        self.base_url = f"{scheme}://{host}/wcd"
         self.cookies = CookieJar()
         if tls_policy is not None and verify_tls is not None:
             raise ValueError("ระบุ tls_policy หรือ verify_tls เพียงแบบเดียว")
         self.tls_policy = tls_policy or TlsPolicy(
             mode="system" if verify_tls is not False else "insecure"
         )
-        context = ssl.create_default_context()
-        if self.tls_policy.mode in {"fingerprint", "insecure"}:
-            context.check_hostname = False
-            context.verify_mode = ssl.CERT_NONE
+        self.ssl_context = _tls_context(self.tls_policy)
         if self.tls_policy.mode == "insecure":
             warnings.warn(
                 "Web Connection TLS verification disabled by explicit compatibility setting",
                 RuntimeWarning,
                 stacklevel=2,
             )
-        self.opener = build_opener(HTTPCookieProcessor(self.cookies), HTTPSHandler(context=context))
+        self.opener = build_opener(
+            HTTPCookieProcessor(self.cookies),
+            HTTPSHandler(context=self.ssl_context),
+        )
 
     def get(self, path: str, *, expect_json: bool = True) -> dict[str, object]:
         if path not in self.GET_PATHS:
             raise WebConnectionError(f"endpoint ไม่อยู่ใน read-only allowlist: {path}")
         raw = self._request(path, method="GET")
         return json.loads(raw) if expect_json else {}
+
+    def get_bytes(self, path: str) -> bytes:
+        if path not in self.GET_PATHS:
+            raise WebConnectionError(f"endpoint ไม่อยู่ใน read-only allowlist: {path}")
+        return self._request(path, method="GET")
 
     def prepare_admin_login(self) -> None:
         """Create the same read-only login context as the Web Connection UI."""
@@ -319,7 +367,7 @@ class ReadOnlyWebConnectionSession:
         request = Request(f"{self.base_url}/{path}", data=data, headers=headers, method=method)
         try:
             with self.opener.open(request, timeout=self.timeout) as response:
-                if self.tls_policy.mode == "fingerprint":
+                if self.scheme == "https" and self.tls_policy.mode == "fingerprint":
                     socket_object = getattr(getattr(getattr(response, "fp", None), "raw", None), "_sock", None)
                     certificate_der = (
                         socket_object.getpeercert(binary_form=True) if socket_object is not None else None
@@ -331,6 +379,10 @@ class ReadOnlyWebConnectionSession:
                         raise WebConnectionError("Web Connection certificate fingerprint ไม่ตรงค่าที่ pin ไว้")
                 return response.read()
         except HTTPError as err:
+            if err.code == 404:
+                raise WebConnectionUnsupportedError(
+                    "Web Connection firmware ไม่รองรับ Meter endpoint ที่เลือก"
+                ) from err
             raise WebConnectionError(f"อ่าน Web Connection ไม่สำเร็จ: HTTP {err.code}") from err
         except URLError as err:
             if isinstance(err.reason, ssl.SSLCertVerificationError):
@@ -342,6 +394,8 @@ class ReadOnlyWebConnectionSession:
             raise WebConnectionCertificateError(
                 "certificate ของเครื่องพิมพ์ยังไม่ได้รับการยืนยัน"
             ) from err
+        except ssl.SSLError as err:
+            raise WebConnectionError(f"อ่าน Web Connection ไม่สำเร็จ: TLS {type(err).__name__}") from err
         except TimeoutError as err:
             raise WebConnectionError("อ่าน Web Connection ไม่สำเร็จ: Timeout") from err
 
@@ -474,6 +528,148 @@ class WebConnectionCounterConnector:
                     source=f"{source_root}.{list_key}.Counter",
                 )
         return counters
+
+
+def _xml_local_name(tag: str) -> str:
+    return tag.rsplit("}", 1)[-1]
+
+
+def _xml_object(element: ET.Element) -> object:
+    children = list(element)
+    if not children:
+        return (element.text or "").strip()
+    grouped: dict[str, list[object]] = {}
+    for child in children:
+        grouped.setdefault(_xml_local_name(child.tag), []).append(_xml_object(child))
+    return {key: values[0] if len(values) == 1 else values for key, values in grouped.items()}
+
+
+class LegacyWebConnectionCounterConnector:
+    """Read the legacy XML Meter endpoint used by confirmed Production Print models."""
+
+    def __init__(
+        self,
+        *,
+        timeout: float = 5.0,
+        tls_policy: TlsPolicy | None = None,
+        session_factory=ReadOnlyWebConnectionSession,
+        scheme: str = "http",
+    ) -> None:
+        self.timeout = timeout
+        self.tls_policy = tls_policy or TlsPolicy()
+        self.session_factory = session_factory
+        self.scheme = scheme
+
+    def collect_result(self, host: str, *, scheme: str | None = None) -> WebCounterCollection:
+        session = self.session_factory(
+            host,
+            timeout=self.timeout,
+            tls_policy=self.tls_policy,
+            scheme=scheme or self.scheme,
+        )
+        try:
+            counters = self.parse_xml(session.get_bytes("system_counter.xml"))
+            return WebCounterCollection(
+                tuple(counters),
+                "web_connection_legacy_xml_public",
+                WebAuthState.PUBLIC,
+            )
+        finally:
+            session.clear()
+
+    @staticmethod
+    def parse_xml(payload: bytes) -> list[WebCounterValue]:
+        lowered = payload.decode("utf-8", errors="ignore").casefold()
+        if "directaccesserror" in lowered or "another user session" in lowered:
+            raise WebConnectionSessionBusyError(
+                "Web Connection session กำลังถูกใช้งาน; ยังไม่สรุปว่าเครื่อง offline หรือไม่รองรับ"
+            )
+        try:
+            root = ET.fromstring(payload)
+        except ET.ParseError as err:
+            raise WebConnectionError("Legacy Web Connection คืน XML ไม่ถูกต้อง") from err
+        info_element = next(
+            (element for element in root.iter() if _xml_local_name(element.tag) == "UserCounterInfo"),
+            None,
+        )
+        if info_element is None:
+            raise WebConnectionError("Legacy Web Connection ไม่คืน UserCounterInfo")
+        info = _xml_object(info_element)
+        if not isinstance(info, dict):
+            raise WebConnectionError("Legacy Web Connection counter schema ไม่ถูกต้อง")
+        counters = WebConnectionCounterConnector._parse_counter_info(info)
+        if not any(counter.canonical_field == "counter.total.total" for counter in counters):
+            raise WebConnectionError("Legacy Web Connection ไม่คืน aggregate Total Meter")
+        return counters
+
+
+class LegacyAuthenticatedWebConnectionCounterConnector(LegacyWebConnectionCounterConnector):
+    """Use one bounded legacy Admin session, then always request logout and clear cookies."""
+
+    def collect_with_credential(
+        self,
+        host: str,
+        credential: AdminCredential,
+        *,
+        scheme: str = "https",
+    ) -> WebCounterCollection:
+        session = self.session_factory(
+            host,
+            timeout=self.timeout,
+            tls_policy=self.tls_policy,
+            scheme=scheme,
+        )
+        login_attempted = False
+        result: WebCounterCollection | None = None
+        failure: Exception | None = None
+        try:
+            session.get_bytes("top.xml")
+            session.post_session_form("ulogin.cgi", {"Mode": "Admin"})
+            session.get_bytes("login.xml")
+            login_attempted = True
+            session.post_session_form("login.cgi", self._legacy_login_fields(credential))
+            counters = self.parse_xml(session.get_bytes("a_system_counter.xml"))
+            result = WebCounterCollection(
+                tuple(counters),
+                "web_connection_legacy_xml_admin",
+                WebAuthState.ADMIN,
+            )
+        except WebConnectionCertificateError as err:
+            failure = err
+        except WebConnectionSessionBusyError as err:
+            failure = err
+        except WebConnectionError as err:
+            failure = WebConnectionAuthenticationError(
+                "Legacy Administrator session อ่าน Meter ไม่สำเร็จหลังลองเพียงหนึ่งครั้ง"
+            )
+            failure.__cause__ = err
+        finally:
+            if login_attempted:
+                try:
+                    session.post_session_form("a_user.cgi", {"func": "PSL_ACO_LGO", "h_token": ""})
+                except WebConnectionError:
+                    if failure is None:
+                        failure = WebConnectionError("อ่าน Meter ได้แต่ logout legacy Admin session ไม่สำเร็จ")
+                    else:
+                        failure.add_note("Legacy Administrator logout request failed; local cookies were cleared")
+            session.clear()
+        if failure is not None:
+            raise failure
+        if result is None:  # pragma: no cover - defensive guard
+            raise WebConnectionError("ไม่ได้ผลลัพธ์จาก legacy Administrator session")
+        return result
+
+    @staticmethod
+    def _legacy_login_fields(credential: AdminCredential) -> dict[str, str]:
+        return {
+            "func": "PSL_LP1_LOG",
+            "AuthType": "MiddleServer",
+            "ExtSvType": "0",
+            "Mode": "",
+            "AuthorityType": "",
+            "R_ADM1": "AdminAdmin",
+            "password": credential.password,
+        }
 
 
 class AuthenticatedWebConnectionCounterConnector(WebConnectionCounterConnector):

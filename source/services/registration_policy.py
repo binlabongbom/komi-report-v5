@@ -17,6 +17,8 @@ from pathlib import Path
 from typing import Literal
 from urllib.parse import urlparse
 
+from komi_version import APP_VERSION
+
 RegistrationEnvironment = Literal["staging", "production"]
 BootstrapMode = Literal["anonymous", "vault_header"]
 
@@ -34,6 +36,9 @@ REQUIRED_NOTICE_FIELDS = frozenset(
         "device_slot",
         "timestamps",
         "status",
+        "total_meter",
+        "meter_observed_at",
+        "meter_status",
     }
 )
 HTTP_HEADER_NAME = re.compile(r"^[!#$%&'*+.^_`|~0-9A-Za-z-]+$")
@@ -50,7 +55,7 @@ RESERVED_BOOTSTRAP_HEADERS = frozenset(
     }
 )
 
-BUILT_IN_NOTICE_VERSION = "KOMI-REG-2026-08-24"
+BUILT_IN_NOTICE_VERSION = "KOMI-REG-2026-08-25-V52"
 BUILT_IN_REGISTRATION_POLICY = {
     "base_url": "https://www.dmskm.com",
     "environment": "production",
@@ -65,7 +70,8 @@ BUILT_IN_REGISTRATION_POLICY = {
         "purpose": (
             "ลงทะเบียนการติดตั้ง KOMI Report ที่ให้ใช้ร่วมกับเครื่อง Konica Minolta "
             "เพื่อดูจำนวนบริษัทและการติดตั้งที่ใช้งาน ตรวจสอบ Version/OS/รุ่นเครื่อง "
-            "และช่วยงาน Support โดยไม่ส่งข้อมูลงานพิมพ์หรือข้อมูลผู้ใช้งาน"
+            "ติดตาม Aggregate Total Meter และช่วยงาน Support โดยไม่ส่ง Counter รายละเอียด "
+            "ข้อมูลงานพิมพ์ หรือข้อมูลผู้ใช้งาน"
         ),
         "fields": sorted(REQUIRED_NOTICE_FIELDS),
         "retention": (
@@ -190,6 +196,11 @@ def load_registration_policy(environ: dict[str, str] | None = None) -> Registrat
     if values.get("KOMI_REGISTRATION_DISABLED", "").strip() == "1":
         return None
     raw_path = values.get("KOMI_REGISTRATION_POLICY_FILE", "").strip()
+    if APP_VERSION.startswith("5.2.") and not raw_path:
+        # V5.2 has no shared/bootstrap credential. Until a Final Contract
+        # staging policy is supplied, the legacy built-in Production policy
+        # is intentionally unreachable.
+        return None
     if raw_path:
         path = Path(raw_path).expanduser()
         try:
