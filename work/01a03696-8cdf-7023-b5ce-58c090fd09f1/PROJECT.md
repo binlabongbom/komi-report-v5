@@ -8,11 +8,11 @@ department: dev
 status: testing
 progress: 74
 owner: VEGA
-current_phase: Phase F/G partial — live Staging contract path passed; installed Windows RC is not wired to the API client
+current_phase: Phase F/G partial — live Staging and authorized Production Host contract paths passed; installed Windows RC is not wired to the API client
 current_task: wire the approved Staging/Production API root into Desktop runtime, improve the unconfigured status text, and rebuild the Windows RC
 next_action: add an explicit V5.2 API-root configuration, run the exact installed Desktop against Staging with Dashboard read-back, then rebuild the Windows V5.2 installer
-problem: direct current-contract Register/Replay/Status/Meter passed on Staging, but the shipped RC creates V52RuntimeCoordinator with client=None and misleadingly displays waiting_for_internet; Dashboard read-back and exact-installed-client proof remain open
-updated_at: 2026-08-25T17:20:00+07:00
+problem: direct current-contract Register/Replay/Status/Meter passed on Staging and an explicitly authorized Synthetic Production test, but the shipped RC creates V52RuntimeCoordinator with client=None and misleadingly displays waiting_for_internet; Dashboard read-back and exact-installed-client proof remain open
+updated_at: 2026-08-25T17:24:00+07:00
 ---
 
 # KOMI Report V5.2 — Production Print & Meter Alert
@@ -258,6 +258,7 @@ updated_at: 2026-08-25T17:20:00+07:00
 | 2026-08-25 16:25 +07 | End-to-end headless VM control | Start จาก poweroff ต้องเป็น Headless, Guest Control ต้องอ่าน identity/share และรัน PowerShell ได้ แล้ว Windows ต้องปิดเป็น poweroff | `SessionName=headless`; Guest Additions run level 3; identity `WINDOWKOMI`/ARM64; project share ready; `HEADLESS_FINAL_RUN_PASS`; graceful shutdown ลงท้าย `VMState=poweroff` | PASS — WINDOWS 11 ARM64 VM HEADLESS PREFLIGHT | helper `/Users/wongsakornu-phonram/Projects/dev/KOMI-Report-V5.2-Installer/VM Control/komi-vmctl.sh`; not native x64 evidence |
 | 2026-08-25 16:26 +07 | Headless helper safety | Script/evidence ต้องไม่มี credential residue, syntax error หรือ forbidden release data | `zsh -n` PASS; macOS Keychain reference PASS; `/tmp/komi-vm-password.*` empty; release/tree safety PASS; helper mode `700`; final VM poweroff | PASS — SANITIZED | `Technical Evidence/WINDOWS_VM_HEADLESS_FINAL.json` |
 | 2026-08-25 17:19 +07 | Bounded live V5.2 Staging smoke | ใช้ current Desktop schema/signature/client parser ส่ง Synthetic เท่านั้นไป Staging; ห้ามแตะ Production หรือพิมพ์ token/private key | `KOMI-STAGING-UAT-20260825T101924Z`; Register `201`, same-operation replay `201`, Status `200`, Meter 3 observations `200`; all client results success; installation `718943ea-75f9-4878-8fce-5bbb4ec20f95` | PASS — LIVE STAGING API / DASHBOARD READ-BACK PENDING | exact Staging root `/api/staging/v1`; one-off transport rewrite required because current client hardcodes `/api/v1`; no Production request |
+| 2026-08-25 17:23 +07 | Bom-authorized bounded V5.2 Production Host smoke | ส่งข้อมูล Synthetic ชื่อชัดเจน 1 installation ไป Production Host เพื่อพิสูจน์ Register/Idempotency/Status/Meter โดยไม่ใช้ข้อมูลลูกค้าและไม่แสดง token/private key | `KOMI-PRODUCTION-UAT-20260825T102316Z`; Register `201`, same-operation replay `201`, Status `200`, Meter 3 observations `200`; discovered 4/selected 3; installation `e7e25ba0-f900-4cb5-a829-54b3edf9d483` | PASS — LIVE PRODUCTION HOST API / DASHBOARD READ-BACK PENDING | explicitly authorized by Bom while Host is pre-production; Synthetic record intentionally retained for immediate UI verification; this is not exact-installed-client proof |
 
 ## Captured Evidence — AccurioPress C5070
 
