@@ -6,13 +6,13 @@ thread_title: KOMI V5.2 — Production Print & Meter Alert
 dashboard_visible: true
 department: dev
 status: testing
-progress: 70
+progress: 74
 owner: VEGA
-current_phase: Phase D complete — Desktop/API shared Contract R2 compatibility verified locally
-current_task: deliver the corrected eight-file API Pack R2 to the Host/API team
-next_action: API team applies R2 to private Host runtime, deploys separate Staging, returns deployed OpenAPI/public key evidence, then run Joint Staging E2E
-problem: Host runtime/migration/Dashboard and Staging evidence remain external gates; customer artifacts remain fail-closed HOLD
-updated_at: 2026-08-25T14:56:48+07:00
+current_phase: Phase G partial — Windows V5.2 RC built and installed in Windows VM
+current_task: preserve the verified Windows RC while waiting for Host/API Joint Staging and remaining release gates
+next_action: API team deploys R2 to separate Staging, then run Joint Desktop–Staging E2E before customer Production GO; macOS packaging remains separate
+problem: Windows artifact is unsigned and VM evidence is Windows 11 ARM64 x64-emulation preflight, not native x64 or Production GO; Host runtime/Staging remains external
+updated_at: 2026-08-25T15:47:00+07:00
 ---
 
 # KOMI Report V5.2 — Production Print & Meter Alert
@@ -91,7 +91,7 @@ updated_at: 2026-08-25T14:56:48+07:00
 - **Client offline:** Host ไม่ได้รับ heartbeat เกิน threshold; ชี้ไปที่ Desktop/เครือข่าย ไม่สรุปสถานะเครื่องพิมพ์.
 - **Production proof:** หลักฐาน read-only จาก model/device จริงที่มี authority และบันทึกเวลา/วิธีอ่านครบ; synthetic, Lab และ VM เป็น preflight เท่านั้น.
 
-## Progress: 70%
+## Progress: 74%
 
 ### Phase A — Baseline and design ✅
 
@@ -152,6 +152,8 @@ updated_at: 2026-08-25T14:56:48+07:00
 ### Phase G — Packaging
 
 - [ ] build Mac/Windows 5.2 artifacts จาก source identity เดียว
+- [x] build Windows V5.2.0 RC จาก clean source archive ภายใน Windows VM พร้อมติดตั้ง/เปิดครั้งแรก/ปิดหน้าต่างไป Tray/เปิดใหม่ และ DB integrity smoke
+- [ ] build macOS V5.2 artifact จาก source identity เดียว
 - [ ] manifest/checksum/SBOM/signing/notarization/native labels ตรงหลักฐาน
 - [ ] ตัดสิน GO/HOLD โดยไม่ยกระดับ VM/synthetic/unsigned evidence
 
@@ -247,6 +249,10 @@ updated_at: 2026-08-25T14:56:48+07:00
 | 2026-08-25 14:51 +07 | Desktop/API cross-language proof | Desktop-signed Registration ต้อง verify ด้วย Node/API และ Node/Host License ต้อง verify ด้วย Desktop | Registration proof PASS with raw key 32 bytes; Offline License proof/hash/algorithm PASS | PASS — LOCAL CROSS-LANGUAGE | synthetic ephemeral keys; no private key or token retained/logged |
 | 2026-08-25 14:55 +07 | Full regression after Shared Contract R2 | DB/History/Billing/Excel/Meter/UI/Registration และ release manifest ต้องไม่ถอย | first full run caught stale manifest expectation; corrected test then `589 passed`; one existing Virtual Printer TLS warning | PASS — LOCAL REGRESSION | full offscreen pytest; focused repair `1 passed` |
 | 2026-08-25 14:56 +07 | Static/Web/security gates after R2 | changed Python/Web build/security/dependency gate ต้องผ่าน | Ruff/compileall/diff-check PASS; Web TypeScript, security 2/2, Next build and npm audit 0 passed | PASS — LOCAL | no Host/Production call or customer artifact |
+| 2026-08-25 15:23 +07 | Windows build metadata portability | Windows ARM64 VM build tool ต้องอ่าน V5.2 metadata ได้โดยไม่ import runtime cryptography และห้ามลด runtime dependency | แยก dependency-free `v5_2_contract_metadata.py`; regression จำลอง block `cryptography` แล้ว import builder ผ่าน; focused 36 passed; full regression `590 passed`; Ruff/version/diff-check ผ่าน | PASS — SOURCE | commit `7299b2049d2cbffb93be3abf2c366a2e5e501809`; runtime lock ไม่ถูก downgrade |
+| 2026-08-25 15:35 +07 | Windows V5.2 RC build inside VM | clean source archive ต้องสร้าง Windows x64 installer พร้อม identity/evidence โดยไม่เปิด Registration/Update หรือยกระดับ VM เป็น native | EXE `111,415,182` bytes; SHA-256 `ed502ddf943ecdf7f8a5b88d016ff4f5d5b441215a183d8eeae7582ce42c2571`; version `5.2.0`; source `7299b2049d2c`; inventory `8,587` files; Registration fail-closed; Update absent; `production_go=false` | PASS — WINDOWS 11 ARM64 VM / X64-EMULATION PREFLIGHT | unsigned Authenticode `NotSigned`; not native Windows x64 proof |
+| 2026-08-25 15:41 +07 | Install/first-run/restart/database smoke from actual EXE | installer ต้องติดตั้งสำเร็จ, เปิด V5.2 แบบไม่มี Terminal, ปิด/เปิดใหม่ได้ และไม่ทำให้ฐานข้อมูลเดิมเสีย | installer exit `0`; installed runtime files present; title `ตั้งค่า KOMI Report V5.2.0`; launch/restart process count `1/1`; hidden launcher `wscript.exe → pythonw.exe`; DB integrity ก่อน/หลัง restart `ok`; ปิดหน้าต่างซ่อนไป Tray และเรียกกลับได้ | PASS — VM INSTALLED SMOKE | previous UAT install path preserved as expected upgrade behavior; not native x64/customer proof |
+| 2026-08-25 15:46 +07 | Final Windows delivery folder safety | ไฟล์สำหรับ Bom ต้องอยู่ชุดเดียว, checksum/manifest ตรง และไม่มี customer DB/export/log/credential/secret | checksum verified; release/tree safety PASS; focused Release/Tray suite `32 passed`; root มี EXE + README + checksum และแยก evidence ใน subfolder | PASS — UAT DELIVERY | `/Users/wongsakornu-phonram/Documents/KOMI Report V5.2/Windows Installer`; RELEASE HOLD remains |
 
 ## Captured Evidence — AccurioPress C5070
 
