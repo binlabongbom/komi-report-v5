@@ -4,9 +4,9 @@ from datetime import date
 from fastapi.testclient import TestClient
 
 import web_api
+from services import peer_sync_authorization
 from services.device_config import DeviceConfig
 from services.monthly_history import MonthlyUsage
-from services import peer_sync_authorization
 from services.subject_history import SubjectPeriodUsage
 
 
@@ -24,7 +24,7 @@ def test_peer_discovery_is_minimal_and_snapshot_is_allow_listed(monkeypatch):
         "ready": True,
         "company_name": "บริษัท ทดสอบ จำกัด",
         "printer_count": 1,
-        "version": "5.2.2",
+        "version": "5.2.3",
     }
     snapshot = {
         "contract": "komi-secondary-setup/v1",

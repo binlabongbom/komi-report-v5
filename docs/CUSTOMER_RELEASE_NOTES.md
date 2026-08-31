@@ -1,4 +1,4 @@
-# KOMI Report V5.2.2 — Customer Release Notes
+# KOMI Report V5.2.3 — Customer Release Notes
 
 ## Package identity
 
@@ -14,7 +14,10 @@ artifact ว่า Production Ready.
 
 ## Runtime behavior
 
-- V5.2.2 แก้การเชื่อมต่อ Web Connection ของเครื่อง Legacy บน Windows ที่ใช้
+- V5.2.3 แยกกรณี Legacy Administrator session ถูกใช้งานออกจากกรณีรหัสผ่านผิด
+  โปรแกรมจะไม่สั่ง Logout session ของผู้ใช้อื่น และจะแสดงปุ่มเปิด Web Connection
+  เพื่อให้ผู้ใช้ Logout ก่อนตรวจสอบใหม่; จะขอรหัสผ่านเฉพาะเมื่อเครื่องปฏิเสธรหัสจริง.
+- สืบทอดการแก้การเชื่อมต่อ Web Connection ของเครื่อง Legacy บน Windows ที่ใช้
   OpenSSL legacy renegotiation โดยเปิด compatibility option เฉพาะ device profile ที่ระบุ
   `TLS11_LEGACY`; เครื่อง Modern และ TLS policy ส่วนกลางไม่ถูกลดระดับ.
 - TLS handshake/certificate failure ถูกแยกจาก authentication failure ชัดเจน จึงไม่แสดง
@@ -27,7 +30,7 @@ artifact ว่า Production Ready.
 - หาก OS vault หรือ API contract ใช้ไม่ได้ ระบบหยุดส่งแบบ fail-closed โดย local Meter, Billing, Report และ
   Excel ยังคงทำงานตามข้อมูลในเครื่อง.
 - ไม่มี Lab/test/demo mode, Virtual Printer auto-injection, mock/`.invalid` endpoint หรือ QA fallback ใน runtime.
-- Production Phase 3 Update ไม่รวมใน V5.2.2: ไม่มี silent/forced update, remote command หรือ Update telemetry.
+- Production Phase 3 Update ไม่รวมใน V5.2.3: ไม่มี silent/forced update, remote command หรือ Update telemetry.
 
 ## Evidence และ Trust state
 

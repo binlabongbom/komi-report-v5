@@ -92,7 +92,7 @@ def require_clean_source(expected_commit: str) -> tuple[str, str]:
 
 def build_app() -> None:
     env = os.environ.copy()
-    # V5.2.2 schema 3 creates an Ed25519 installation identity locally. Never
+    # V5.2.3 schema 3 creates an Ed25519 installation identity locally. Never
     # inherit the legacy shared-bootstrap build hook from an operator shell.
     env.pop("KOMI_REGISTRATION_BOOTSTRAP_BUILD_FILE", None)
     _run(

@@ -1,6 +1,6 @@
 [project]
 name = "komi-report-v5"
-version = "5.2.2"
+version = "5.2.3"
 description = "Desktop-first KOMI Report with file import and live read-only bizhub Meter collection"
 requires-python = ">=3.11"
 dependencies = [

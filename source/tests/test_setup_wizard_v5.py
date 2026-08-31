@@ -184,7 +184,7 @@ def test_setup_wizard_uses_the_approved_four_step_flow(tmp_path):
         assert wizard.first_started_input.isReadOnly()
         assert wizard.first_started_input.text() == "20/08/2026"
         assert wizard.version_input.isReadOnly()
-        assert wizard.version_input.text() == "5.2.2"
+        assert wizard.version_input.text() == "5.2.3"
         assert wizard.scan_button.text() == "ค้นหาเครื่องพิมพ์อัตโนมัติ"
         assert wizard.advanced_scan_button.text() == "กำหนดช่วง IP"
         assert wizard.manual_setup_button.text() == "เพิ่ม IP ด้วยตนเอง"
@@ -216,7 +216,7 @@ def test_setup_wizard_uses_the_approved_four_step_flow(tmp_path):
         assert wizard.next_button.text() == "บันทึกและเปิดโปรแกรม"
         assert "พร้อมนำเครื่องพิมพ์เข้าระบบ" in wizard.review_ready_note.text()
         registration_review = wizard.review_sections["registration"].text()
-        assert "Version 5.2.2" in registration_review
+        assert "Version 5.2.3" in registration_review
         assert "bizhub C450i × 1" in registration_review
         assert "Serial Number + รุ่นเครื่อง + สถานะเลือกใช้ + Aggregate Total Meter" in registration_review
         assert "IP, MAC, hostname, Credential, Counter รายละเอียด" in registration_review
@@ -352,7 +352,7 @@ def test_secondary_setup_persists_received_schedule_only_when_local_value_is_mis
             base_url="https://192.0.2.20:3000",
             company_name="บริษัท เครื่องหลัก จำกัด",
             printer_count=1,
-            version="5.2.2",
+            version="5.2.3",
             certificate_sha256="a" * 64,
         )
         wizard.secondary_snapshot = {
