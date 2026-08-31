@@ -72,6 +72,9 @@ SECRET_PATTERNS = {
     "basic-auth-url": re.compile(rb"https?://[^/\s:@]+:[^@\s/]+@"),
 }
 MAX_SECRET_SCAN_BYTES = 4 * 1024 * 1024
+PACKAGED_RUNTIME_DEPENDENCY_NAMES = frozenset({".next", "node_modules"})
+PACKAGED_RUNTIME_INTERNAL_PARTS = frozenset({".next", "build", "dist", "node_modules"})
+PACKAGED_RUNTIME_CODE_SUFFIXES = frozenset({".cjs", ".js", ".mjs", ".py", ".pyi", ".ts", ".tsx"})
 
 
 @dataclass(frozen=True)
@@ -122,6 +125,71 @@ def _secret_findings(data: bytes, relative_name: str) -> list[SafetyFinding]:
     ]
 
 
+def _normalized_dependency_roots(roots: Iterable[str]) -> tuple[tuple[str, ...], ...]:
+    normalized_roots: list[tuple[str, ...]] = []
+    for raw_root in roots:
+        raw_root = str(raw_root)
+        normalized = PurePosixPath(raw_root)
+        parts = tuple(part.casefold() for part in normalized.parts)
+        forbidden_parts = {part for part in parts if part in FORBIDDEN_PARTS}
+        if (
+            not raw_root
+            or "\\" in raw_root
+            or normalized.is_absolute()
+            or ".." in normalized.parts
+            or raw_root != normalized.as_posix()
+            or normalized.name.casefold() not in PACKAGED_RUNTIME_DEPENDENCY_NAMES
+            or forbidden_parts != {normalized.name.casefold()}
+        ):
+            raise ValueError(f"unsafe packaged runtime dependency root: {raw_root!r}")
+        normalized_roots.append(parts)
+    return tuple(normalized_roots)
+
+
+def _is_allowed_packaged_dependency(
+    relative_name: str,
+    dependency_roots: tuple[tuple[str, ...], ...],
+) -> bool:
+    if not dependency_roots or "\\" in relative_name:
+        return False
+    normalized = PurePosixPath(relative_name)
+    if (
+        normalized.is_absolute()
+        or ".." in normalized.parts
+        or relative_name != normalized.as_posix()
+    ):
+        return False
+    parts = tuple(part.casefold() for part in normalized.parts)
+    for root in dependency_roots:
+        # The allow-list describes a directory root.  A non-directory archive
+        # member whose path equals that root must never inherit the exception.
+        if len(parts) <= len(root) or parts[: len(root)] != root:
+            continue
+        nested_forbidden_parts = {
+            part for part in parts[len(root) :] if part in FORBIDDEN_PARTS
+        }
+        if nested_forbidden_parts.issubset(PACKAGED_RUNTIME_INTERNAL_PARTS):
+            return True
+    return False
+
+
+def _is_appledouble_directory_metadata(
+    relative_name: str,
+    archive_names: set[str],
+) -> bool:
+    """Recognize ``ditto --sequesterRsrc`` metadata for a real directory."""
+
+    normalized = PurePosixPath(relative_name)
+    if (
+        len(normalized.parts) < 3
+        or normalized.parts[0] != "__MACOSX"
+        or not normalized.name.startswith("._")
+    ):
+        return False
+    target = PurePosixPath(*normalized.parts[1:-1], normalized.name[2:]).as_posix()
+    return f"{target}/" in archive_names
+
+
 def scan_files(
     files: Iterable[Path],
     *,
@@ -162,13 +230,55 @@ def assert_tree_safe(root: Path, *, scan_secrets: bool = True) -> None:
     )
 
 
-def assert_zip_safe(archive: Path, *, scan_secrets: bool = True) -> None:
+def assert_zip_safe(
+    archive: Path,
+    *,
+    scan_secrets: bool = True,
+    allowed_packaged_dependency_roots: Iterable[str] = (),
+) -> None:
+    """Validate an archive, with an opt-in exception for native runtime dependencies.
+
+    The default remains the Phase 0 fail-closed policy. Native builders may
+    name exact ``.next`` or ``node_modules`` roots inside their packaged
+    runtime. Only dependency-internal ``.next``, ``node_modules``, ``build``
+    and ``dist`` path findings are waived. Customer/log/cache paths, forbidden
+    file types, credential files and secret content remain blocking.
+    """
+
     findings: list[SafetyFinding] = []
+    dependency_roots = _normalized_dependency_roots(allowed_packaged_dependency_roots)
     with zipfile.ZipFile(archive) as zipped:
-        for info in zipped.infolist():
+        archive_infos = zipped.infolist()
+        archive_names = {info.filename for info in archive_infos}
+        for info in archive_infos:
             if info.is_dir():
                 continue
-            findings.extend(_path_findings(info.filename))
+            packaged_dependency = _is_allowed_packaged_dependency(
+                info.filename,
+                dependency_roots,
+            )
+            code_suffix = PurePosixPath(info.filename).suffix.casefold()
+            apple_double_directory = _is_appledouble_directory_metadata(
+                info.filename,
+                archive_names,
+            )
+            findings.extend(
+                finding
+                for finding in _path_findings(info.filename)
+                if not (
+                    packaged_dependency
+                    and (
+                        finding.category == "forbidden-path"
+                        or (
+                            finding.category == "credential-file"
+                            and (
+                                code_suffix in PACKAGED_RUNTIME_CODE_SUFFIXES
+                                or apple_double_directory
+                            )
+                        )
+                    )
+                )
+            )
             if scan_secrets and info.file_size <= MAX_SECRET_SCAN_BYTES:
                 findings.extend(_secret_findings(zipped.read(info), info.filename))
     if findings:

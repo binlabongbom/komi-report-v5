@@ -23,6 +23,7 @@ from tools.build_local_release import (
     build_source_archive,
     build_source_archive_identity,
 )
+from tools.build_macos_customer import packaged_runtime_dependency_roots
 from tools.build_windows_rc import source_identity
 from tools.package_windows_test_kit import (
     SETUP_CMD,
@@ -105,6 +106,99 @@ def test_offline_license_files_make_release_archives_fail_closed(tmp_path, suffi
     assert [(item.category, item.path) for item in error.value.findings] == [
         ("forbidden-file-type", f"runtime/customer{suffix}")
     ]
+
+
+def test_macos_zip_allows_only_its_exact_packaged_web_runtime_dependencies(tmp_path):
+    archive = tmp_path / "macos-customer.zip"
+    app_bundle = tmp_path / "KOMI Report V5.2.1.app"
+    roots = packaged_runtime_dependency_roots(app_bundle)
+    with zipfile.ZipFile(archive, "w") as zipped:
+        zipped.writestr(
+            f"{app_bundle.name}/Contents/Resources/web-runtime-seed/.next/server/app.js",
+            "export const runtime = true;\n",
+        )
+        zipped.writestr(
+            f"{app_bundle.name}/Contents/Frameworks/web-runtime-seed/node_modules/next/index.js",
+            "export const next = true;\n",
+        )
+        zipped.writestr(
+            f"{app_bundle.name}/Contents/Resources/web-runtime-seed/"
+            ".next/static/chunks/next/dist/build/credential-management.js",
+            "export const browserFeature = true;\n",
+        )
+        zipped.writestr(
+            f"__MACOSX/{app_bundle.name}/Contents/Resources/web-runtime-seed/"
+            "node_modules/next/._index.js",
+            "resource fork metadata\n",
+        )
+        zipped.writestr(
+            f"{app_bundle.name}/Contents/Resources/web-runtime-seed/"
+            "node_modules/next/dist/compiled/jsonwebtoken/",
+            b"",
+        )
+        zipped.writestr(
+            f"__MACOSX/{app_bundle.name}/Contents/Resources/web-runtime-seed/"
+            "node_modules/next/dist/compiled/._jsonwebtoken",
+            b"directory resource fork metadata",
+        )
+
+    with pytest.raises(ReleaseSafetyError, match="forbidden-path"):
+        assert_zip_safe(archive)
+    assert_zip_safe(archive, allowed_packaged_dependency_roots=roots)
+
+
+def test_macos_zip_rejects_node_dependencies_outside_exact_runtime_root(tmp_path):
+    archive = tmp_path / "macos-customer.zip"
+    app_bundle = tmp_path / "KOMI Report V5.2.1.app"
+    with zipfile.ZipFile(archive, "w") as zipped:
+        zipped.writestr(
+            f"{app_bundle.name}/Contents/Resources/other/node_modules/next/index.js",
+            "export const unexpected = true;\n",
+        )
+
+    with pytest.raises(ReleaseSafetyError, match="forbidden-path"):
+        assert_zip_safe(
+            archive,
+            allowed_packaged_dependency_roots=packaged_runtime_dependency_roots(app_bundle),
+        )
+
+
+@pytest.mark.parametrize(
+    ("relative_path", "content", "expected_category"),
+    [
+        ("node_modules/next/customer.db", b"sqlite-like", "forbidden-file-type"),
+        ("node_modules/next/logs/runtime.txt", b"log", "forbidden-path"),
+        ("node_modules/next/customer-data/export.txt", b"customer", "forbidden-path"),
+        ("node_modules/next/.env", b"SETTING=value", "credential-file"),
+        ("node_modules/next/credentials.json", b"{}", "credential-file"),
+        (
+            "node_modules/next/server.js",
+            ("token=" + "gh" + "p_" + ("A" * 32)).encode(),
+            "github-token",
+        ),
+    ],
+)
+def test_macos_runtime_allowance_never_waives_sensitive_content(
+    tmp_path,
+    relative_path,
+    content,
+    expected_category,
+):
+    archive = tmp_path / "macos-customer.zip"
+    app_bundle = tmp_path / "KOMI Report V5.2.1.app"
+    runtime_root = (
+        f"{app_bundle.name}/Contents/Resources/web-runtime-seed/{relative_path}"
+    )
+    with zipfile.ZipFile(archive, "w") as zipped:
+        zipped.writestr(runtime_root, content)
+
+    with pytest.raises(ReleaseSafetyError) as error:
+        assert_zip_safe(
+            archive,
+            allowed_packaged_dependency_roots=packaged_runtime_dependency_roots(app_bundle),
+        )
+
+    assert expected_category in {finding.category for finding in error.value.findings}
 
 
 def test_git_identity_marks_untracked_files_dirty(tmp_path):

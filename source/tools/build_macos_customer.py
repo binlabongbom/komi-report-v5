@@ -18,7 +18,7 @@ import sys
 import tempfile
 import tomllib
 from datetime import datetime
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from services.v5_2_contract_metadata import CONTRACT_SHA256, CONTRACT_VERSION
 from tools.release_evidence import (
@@ -40,6 +40,10 @@ APP_BUNDLE = SOURCE_ROOT / "dist" / f"{APP_NAME}.app"
 DEFAULT_OUTPUT = PROJECT_ROOT / "release" / "macos-customer"
 COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
 LEGACY_REGISTRATION_BOOTSTRAP_FILENAME = "komi-registration-bootstrap.dat"
+WEB_RUNTIME_SEED_ROOTS = (
+    PurePosixPath("Contents/Frameworks/web-runtime-seed"),
+    PurePosixPath("Contents/Resources/web-runtime-seed"),
+)
 
 
 class MacCustomerBuildError(RuntimeError):
@@ -190,6 +194,21 @@ def inspect_structure(app_bundle: Path) -> dict[str, object]:
     }
 
 
+def packaged_runtime_dependency_roots(app_bundle: Path) -> tuple[str, ...]:
+    """Return only the dependency roots produced inside this exact app ZIP."""
+
+    archive_bundle_roots = (
+        PurePosixPath(app_bundle.name),
+        PurePosixPath("__MACOSX") / app_bundle.name,
+    )
+    return tuple(
+        (bundle_root / runtime_root / dependency).as_posix()
+        for bundle_root in archive_bundle_roots
+        for runtime_root in WEB_RUNTIME_SEED_ROOTS
+        for dependency in (".next", "node_modules")
+    )
+
+
 def create_archives(app_bundle: Path, output_dir: Path) -> tuple[Path, Path]:
     output_dir.mkdir(parents=True, exist_ok=True)
     version_tag = VERSION.replace(".", "_")
@@ -210,7 +229,10 @@ def create_archives(app_bundle: Path, output_dir: Path) -> tuple[Path, Path]:
         check=True,
         timeout=1800,
     )
-    assert_zip_safe(archive)
+    assert_zip_safe(
+        archive,
+        allowed_packaged_dependency_roots=packaged_runtime_dependency_roots(app_bundle),
+    )
     with tempfile.TemporaryDirectory(prefix="komi-macos-dmg-") as temp:
         stage = Path(temp) / APP_NAME
         stage.mkdir()
