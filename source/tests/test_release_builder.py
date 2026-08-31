@@ -46,6 +46,8 @@ def test_source_release_excludes_runtime_data_dependencies_and_secrets():
     relative_paths = [path.relative_to(PROJECT_ROOT).as_posix() for path in files]
 
     assert files
+    assert any(path.name == "CUSTOMER_INSTALL_GUIDE.md" for path in files)
+    assert any(path.name == "CUSTOMER_RELEASE_NOTES.md" for path in files)
     assert any(path.name == "RELEASE_RUNBOOK.md" for path in files)
     assert any(path.name == "KOMI_Report_V5.iss" for path in files)
     for path in files:
