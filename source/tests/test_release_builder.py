@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 import shutil
+import stat
 import subprocess
 import sys
 import tomllib
@@ -113,6 +114,12 @@ def test_macos_zip_allows_only_its_exact_packaged_web_runtime_dependencies(tmp_p
     app_bundle = tmp_path / "KOMI Report V5.2.1.app"
     roots = packaged_runtime_dependency_roots(app_bundle)
     with zipfile.ZipFile(archive, "w") as zipped:
+        link = zipfile.ZipInfo(
+            f"{app_bundle.name}/Contents/Frameworks/web-runtime-seed/.next"
+        )
+        link.create_system = 3
+        link.external_attr = (stat.S_IFLNK | 0o755) << 16
+        zipped.writestr(link, "../../Resources/web-runtime-seed/.next")
         zipped.writestr(
             f"{app_bundle.name}/Contents/Resources/web-runtime-seed/.next/server/app.js",
             "export const runtime = true;\n",
@@ -145,6 +152,24 @@ def test_macos_zip_allows_only_its_exact_packaged_web_runtime_dependencies(tmp_p
     with pytest.raises(ReleaseSafetyError, match="forbidden-path"):
         assert_zip_safe(archive)
     assert_zip_safe(archive, allowed_packaged_dependency_roots=roots)
+
+
+def test_macos_zip_rejects_packaged_runtime_symlink_outside_allow_list(tmp_path):
+    archive = tmp_path / "macos-customer.zip"
+    app_bundle = tmp_path / "KOMI Report V5.2.1.app"
+    with zipfile.ZipFile(archive, "w") as zipped:
+        link = zipfile.ZipInfo(
+            f"{app_bundle.name}/Contents/Frameworks/web-runtime-seed/.next"
+        )
+        link.create_system = 3
+        link.external_attr = (stat.S_IFLNK | 0o755) << 16
+        zipped.writestr(link, "../../../../../../outside/.next")
+
+    with pytest.raises(ReleaseSafetyError, match="forbidden-path"):
+        assert_zip_safe(
+            archive,
+            allowed_packaged_dependency_roots=packaged_runtime_dependency_roots(app_bundle),
+        )
 
 
 def test_macos_zip_rejects_node_dependencies_outside_exact_runtime_root(tmp_path):

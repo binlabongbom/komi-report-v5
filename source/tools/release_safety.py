@@ -6,7 +6,9 @@ included in exceptions or command output.
 
 from __future__ import annotations
 
+import posixpath
 import re
+import stat
 import subprocess
 import zipfile
 from collections.abc import Iterable
@@ -173,6 +175,31 @@ def _is_allowed_packaged_dependency(
     return False
 
 
+def _is_allowed_packaged_dependency_symlink(
+    info: zipfile.ZipInfo,
+    data: bytes,
+    dependency_roots: tuple[tuple[str, ...], ...],
+) -> bool:
+    """Allow only builder-created links between two exact allow-listed roots."""
+
+    mode = (info.external_attr >> 16) & 0xFFFF
+    if not stat.S_ISLNK(mode) or not dependency_roots:
+        return False
+    try:
+        target = data.decode("utf-8")
+    except UnicodeDecodeError:
+        return False
+    if not target or "\\" in target or "\x00" in target or target.startswith("/"):
+        return False
+    resolved = posixpath.normpath(
+        posixpath.join(posixpath.dirname(info.filename), target)
+    )
+    if resolved == ".." or resolved.startswith("../") or resolved.startswith("/"):
+        return False
+    resolved_parts = tuple(part.casefold() for part in PurePosixPath(resolved).parts)
+    return resolved_parts in dependency_roots
+
+
 def _is_appledouble_directory_metadata(
     relative_name: str,
     archive_names: set[str],
@@ -253,8 +280,13 @@ def assert_zip_safe(
         for info in archive_infos:
             if info.is_dir():
                 continue
+            data = zipped.read(info)
             packaged_dependency = _is_allowed_packaged_dependency(
                 info.filename,
+                dependency_roots,
+            ) or _is_allowed_packaged_dependency_symlink(
+                info,
+                data,
                 dependency_roots,
             )
             code_suffix = PurePosixPath(info.filename).suffix.casefold()
@@ -280,7 +312,7 @@ def assert_zip_safe(
                 )
             )
             if scan_secrets and info.file_size <= MAX_SECRET_SCAN_BYTES:
-                findings.extend(_secret_findings(zipped.read(info), info.filename))
+                findings.extend(_secret_findings(data, info.filename))
     if findings:
         raise ReleaseSafetyError(findings)
 
