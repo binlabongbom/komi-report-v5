@@ -484,7 +484,7 @@ Verification:
 | 2026-08-31 16:44 +07 | V5.2.2 exact installer, C368 installed-runtime and delivery close | Windows installer SHA-256 `1faa6ab53d8fb5e597fecd3b0a91be25115440f9eeafc7e0c79ec597e8fbfd86`, Authenticode `NotSigned`, inventory `8,594`; exact installed runtime อ่าน C368 `10.244.116.11` สองรอบติดกันผ่าน `web_connection_legacy_xml_admin`, Total `202,265`, Counter `96`, admin session cleanup/repeatability PASS. macOS DMG `f4de4671dfca9afc4a4addbfa6435fff8234c5770436f0452183ce7461b27300`, ZIP `d9be36acf90e5c21c8bf5c4402e469f0b030b06eeb110c65d427a1509bfc328a`; Source ZIP `cf77f3b7babb67df0e8e08f681665a4aac7bdb0c81ff74e2b671048294c347b8`. Word guide 17 หน้า visual QA ครบและแก้หน้า Checklist ไม่ให้ล้น; root/platform checksum และ JSON manifests ผ่านทั้งหมด | PASS — PRODUCTION UNSIGNED / USER-ACCEPTED RISK; Windows ARM64 VM x64-emulation preflight, macOS ad-hoc/not notarized |
 | 2026-08-31 22:10 +07 | Legacy Admin session collision classification | ห้ามตีความ session ชน, malformed XML หรือ endpoint error เป็นรหัสผิด; ต้อง Logout เฉพาะ session ที่ connector ยืนยันว่า Login สำเร็จจาก aggregate counter แล้ว และเปิดทางให้ผู้ใช้ Logout หน้า Web | C458 bounded read ก่อนแก้ผ่านด้วย default credential และอ่านได้ `96` counters; probe ถัดมาพบ Login/Logout timeout จึงหยุดทันทีเพื่อไม่สร้าง retry storm. หลังแก้ tests ครอบคลุม explicit busy โดยไม่ Logout ผู้อื่น, generic DirectAccess context, exact login form, explicit password rejection, unrelated password form, malformed XML, cleanup และ Wizard action; focused `17 passed`; final fresh-process regression 98 files / `734 tests` ผ่าน; one-process rerun พบ native PyQt accumulated-lifetime crash เดิมจึงไม่ใช้เป็น pass gate; scoped Ruff, compileall และ diff-check ผ่าน | PASS — SOURCE / POST-FIX INSTALLED RETEST PENDING | read-only real-device diagnosis + local regression; ไม่เก็บ credential/cookie/raw XML และยังไม่ Build installer |
 
-- [x] Current Desktop/runtime/build metadata รายงาน `5.2.2` จาก authority เดียว และ validator ปฏิเสธ non-5.2.x
+- [x] Current Desktop/runtime/build metadata รายงาน `5.2.3` จาก authority เดียว และ validator ปฏิเสธ non-5.2.x
 - [x] UI, config, pyproject, Web metadata, PyInstaller/Inno และ API-reported version ใน current source ตรงกัน; customer artifact builder fail-closed ก่อน external gates
 - [x] V5.1 artifacts/commits/evidence ไม่ถูก rename หรือแก้เป็น V5.2 ย้อนหลัง
 - [x] Production Print profile ที่รองรับมี read-only model/OID/Web Meter evidence จากเครื่องจริง; unknown model fail-closed โดยไม่เดา
@@ -496,3 +496,28 @@ Verification:
 - [ ] Dashboard เรียง severity และแสดง last heartbeat, last meter change, allowed model/serial, acknowledge/resolve พร้อม audit
 - [ ] Migration/rollback และ regression DB/History/Billing/Excel ผ่าน; ไม่มี forced updater เพิ่มเข้ามา
 - [ ] Current-client E2E และ real-device acceptance ผ่านตาม label; packaging Mac/Windows มี manifest/checksum/SBOM และ GO/HOLD ตามหลักฐานจริง
+
+## V5.2.3 Windows Unsigned Build and VM Staging — 2026-08-31
+
+Outcome:
+
+- สร้าง Windows x64 customer-production-behavior installer จาก source archive ที่ยืนยัน commit แล้วภายใน VM `Window Test for KOMI` สำเร็จ
+- วางชุดพร้อมติดตั้งไว้ที่ `C:\Users\Admin\Desktop\KOMI_Report_V5_2_3_Installers` แล้ว แต่ยังไม่รัน installer ตามขอบเขต “เตรียมติดตั้ง”
+- สำรองชุดเดียวกันไว้ที่ `/Users/wongsakornu-phonram/Projects/dev/KOMI-Report-V5.2-Installers/V5.2.3/windows` และ source archive ที่ `.../V5.2.3/source`
+- V5.2.2 ที่ติดตั้งอยู่และข้อมูลลูกค้าเดิมไม่ถูกแตะ: DB ยังคง `290,816` bytes, SHA-256 `c7efe8edc81eb6965eff079ac63c26ee66ccb3dcdae0f179721a10b1c4bd6e19`; Log และ Web runtime ยังอยู่; ไม่มี KOMI process ทำงานระหว่าง staging
+
+Evidence:
+
+- Exact source commit: `926772e40ead7fc0feea6fb266b7c85c1577b18f`; source state `archive-clean`
+- Source ZIP SHA-256: `394c3d94a78642a16225a797ad6141ed5d50ecb894cbe6be22a0620ba2393cf8`
+- Installer: `KOMI_Report_V5_2_3_Windows_x64_Installer.exe`, `111,525,665` bytes
+- Installer SHA-256: `1de75a4451cfc8072389bcea66e08b2f59f14ea7a41c25db0c169cd681f72fa6`; ตรงกันใน EXE, `CHECKSUMS.sha256` และ `WINDOWS_MANIFEST.json`
+- File/Product version: `5.2.3.0` / `5.2.3`; inventory `8,596` files; SBOM/Inventory/Manifest/Checksum ครบ
+- Pre-build gates: Python fresh-process `734 passed`; focused version/release `148 passed`; scoped Ruff, compileall, version gate `5.2.3`, Web lint/security `4/4`/Next production build/npm audit 0 และ source-archive identity ผ่าน
+- Authenticode: `NotSigned`; build environment: `windows-arm64-vm-preflight`; target: Windows 10/11 x64
+- Internal Dashboard quick sync สำเร็จ `27 projects`; ไม่มีการ publish/deploy live จากงานนี้
+
+Decision boundary:
+
+- `PASS — BUILD + VM STAGING`; ยังไม่ใช่ installed-runtime acceptance ของ V5.2.3 และยังไม่ใช่ native Windows x64 UAT
+- Platform manifest คง `production_go=false` / `release_decision=HOLD` ตาม evidence gate เพราะ unsigned, VM ไม่ใช่ native x64, Joint Staging E2E และ Offline License public key ไม่ครบ; ไม่มีการแก้ผลย้อนหลังหรืออ้าง Signed build
