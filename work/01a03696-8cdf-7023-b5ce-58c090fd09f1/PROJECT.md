@@ -6,13 +6,13 @@ thread_title: KOMI V5.2 — Production Print & Meter Alert
 dashboard_visible: true
 department: dev
 status: testing
-progress: 97
+progress: 98
 owner: VEGA
-current_phase: V5.2.1 unsigned release readiness — reviewed source and documentation gates passed; exact-source packaging in progress
-current_task: Freeze the reviewed source identity, generate V5.2.1 macOS and Windows ARM64-VM unsigned candidates, and verify manifest/checksum/SBOM identity
-next_action: Build both unsigned candidates from the exact clean source archive and record artifact evidence without promoting HOLD to Production GO
+current_phase: V5.2.1 unsigned customer-behavior artifacts assembled — RELEASE HOLD
+current_task: Exact-source macOS and Windows artifacts, guide, manifest, checksum, inventory and SBOM are organized in one verified delivery folder
+next_action: Bom reviews the unsigned artifacts and external gates remain fail-closed; do not promote HOLD to Production GO without separate approval and missing evidence
 problem: Signing/notarization is intentionally deferred; Offline License Host public verification key and Joint Desktop-Staging E2E evidence are unavailable, while 950i/C84hc were current device-availability HOLD during the final bounded probe
-updated_at: 2026-08-31T13:42:00+07:00
+updated_at: 2026-08-31T14:12:00+07:00
 ---
 
 # KOMI Report V5.2 — Production Print & Meter Alert
@@ -151,12 +151,12 @@ updated_at: 2026-08-31T13:42:00+07:00
 
 ### Phase G — Packaging
 
-- [ ] build Mac/Windows 5.2 artifacts จาก source identity เดียว
+- [x] build Mac/Windows 5.2.1 artifacts จาก source identity เดียว
 - [x] build Windows V5.2.0 RC จาก clean source archive ภายใน Windows VM พร้อมติดตั้ง/เปิดครั้งแรก/ปิดหน้าต่างไป Tray/เปิดใหม่ และ DB integrity smoke
 - [x] เตรียม Windows VM ให้ Codex สั่ง Start/PowerShell/Shutdown แบบ Headless ผ่าน Guest Control โดยเก็บ credential ใน macOS Keychain และไม่เปิด SSH/WinRM/Network Port
-- [ ] build macOS V5.2 artifact จาก source identity เดียว
-- [ ] manifest/checksum/SBOM/signing/notarization/native labels ตรงหลักฐาน
-- [ ] ตัดสิน GO/HOLD โดยไม่ยกระดับ VM/synthetic/unsigned evidence
+- [x] build macOS V5.2.1 artifact จาก source identity เดียว
+- [x] manifest/checksum/SBOM/signing/notarization/native labels ตรงหลักฐาน
+- [x] ตัดสิน GO/HOLD โดยไม่ยกระดับ VM/synthetic/unsigned evidence — `RELEASE HOLD`
 
 ### Phase H — Main UI, Legacy Report, Advanced Settings and Customer Guide
 
@@ -476,8 +476,9 @@ Verification:
 | 2026-08-26 22:47 +07 | In-app Guide typography review | ลดขนาดตัวอักษรทุกระดับเฉพาะหน้า Guide ลง 20% รวมหัวข้อ, เนื้อหา, step badge, caption, หมายเหตุ, สารบัญขวาและ responsive combo โดยไม่กระทบหน้าอื่น; focused Manual `3 passed`, diff-check ผ่าน และเปิด Source Guide ชุดใหม่ค้างไว้ให้ Bom ตรวจ | LOCAL SOURCE REVIEW — minimal focused check ตามคำสั่ง; ยังไม่ Build EXE/installer |
 | 2026-08-26 23:56 +07 | V5.2 macOS/Windows installation candidate packaging | ปรับ Diagram คู่มือให้ตรง runtime V5.2 และ `test_manual_diagrams.py` ผ่าน; full Python `636 passed`, Web lint/security `3/3`/Next build/npm audit 0 และ packaged Web integration ผ่าน. macOS arm64 DMG SHA-256 `fc317c982a8640587209951ed811a2bbd0908842bd90ffe26c02ebc0da1a6b47`, ZIP `6c003a4dd9df0b2c66c428edee79b7265236206ce2e7b1eaaf2bb628c8a2413e`; app smoke/DB/codesign strict ad-hoc ผ่าน แต่ไม่ notarized. Windows x64 RC สร้างใน Windows 11 ARM64 VM ผ่าน x64 emulation, exit 0, SHA-256 `693c18761fe9d021ac83043b663c2de717af37d99fde389219a4336322238036`, manifest/SBOM/inventory/checksum ครบ; Guest Control ยัง login ไม่ผ่านจึงใช้ GUI PowerShell โดยไม่ปิด Smart App Control | INSTALLATION CANDIDATE — Windows unsigned/build environment เป็น ARM64 VM preflight และ macOS ไม่มี Developer ID/notarization; `production_go=false`, ไม่อ้าง native Windows x64 UAT หรือ Production GO |
 | 2026-08-31 13:42 +07 | V5.2.1 final reviewed-source gate before unsigned packaging | ปิด P1 local-first registration retry, multi-interface/Manual Primary discovery, Excel formula injection และ exact-source archive identity; macOS packaged Web runtime ใช้ scoped allow-list เฉพาะ `.next`/`node_modules` ภายใน App bundle และยอมเฉพาะ symlink ที่ resolve ไปยัง runtime root ใน allow-list เดียวกัน โดย DB/log/customer-data/.env/credential/secret ยังคง fail-closed; targeted `181 passed`; release-focused `59 passed`; Python fresh-process ครบ 98 files / `723 passed`; one-process rerun พบ native PyQt accumulated-lifetime crash เดิมจึงไม่ใช้เป็น pass gate; version gate `5.2.1`; Web lint/security `4/4`/Next build/npm audit 0; Python lock audit 0; critical Ruff/compileall/diff-check ผ่าน; tracked 321/0 และ staged 129/0 safety findings | PASS — EXACT REVIEWED SOURCE / PACKAGING NOT YET BUILT |
+| 2026-08-31 14:12 +07 | V5.2.1 exact-source unsigned packaging and delivery verification | macOS ZIP `6fd1fc9ee3da03b9f3be73aed256d33f0c6847348e0f516af981b265ff06451f`, DMG `4c73ad5465dfcbec239890f5c4f4fd1e430df32c60f46c94d23a7263ee7f8fd6`; Windows x64 Installer `f98978b019a594e8e783f8143e06a758c0d68c318862fc5035ca1105cf0f52b9`; Source ZIP `ded0476268262a1062e07ad94bbc184eb36439097ade64d5442f23531e76d3b1`; Thai guide `15e848162462b921754fb3780a3d63a49c1122af9025914835ee3624cec1662e`. Windows built in Windows 11 ARM64 VM, exact payload inventory `8,594/8,594`, checksum PASS and live Authenticode `NotSigned`; macOS native arm64 smoke/checksum passed but ad-hoc/not notarized and Gatekeeper rejected. Root cross-platform checksum verified and delivery folder contains README, guide, manifests, inventories and SBOMs | PASS — ARTIFACT ASSEMBLY / RELEASE HOLD; `production_go=false`; Windows evidence is x64-emulation preflight, not native x64 UAT |
 
-- [x] Current Desktop/runtime/build metadata รายงาน `5.2.0` จาก authority เดียว และ validator ปฏิเสธ non-5.2.x
+- [x] Current Desktop/runtime/build metadata รายงาน `5.2.1` จาก authority เดียว และ validator ปฏิเสธ non-5.2.x
 - [x] UI, config, pyproject, Web metadata, PyInstaller/Inno และ API-reported version ใน current source ตรงกัน; customer artifact builder fail-closed ก่อน external gates
 - [x] V5.1 artifacts/commits/evidence ไม่ถูก rename หรือแก้เป็น V5.2 ย้อนหลัง
 - [ ] Production Print profile ที่รองรับมี read-only model/OID/Web Meter evidence จากเครื่องจริง; unknown model fail-closed โดยไม่เดา
