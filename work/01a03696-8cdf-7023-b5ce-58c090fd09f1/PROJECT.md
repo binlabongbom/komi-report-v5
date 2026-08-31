@@ -5,14 +5,14 @@ thread_id: 01a03696-8cdf-7023-b5ce-58c090fd09f1
 thread_title: KOMI V5.2 — Production Print & Meter Alert
 dashboard_visible: true
 department: dev
-status: testing
-progress: 98
+status: active
+progress: 99
 owner: VEGA
-current_phase: V5.2.1 unsigned customer-behavior artifacts assembled — RELEASE HOLD
-current_task: Exact-source macOS and Windows artifacts, guide, manifest, checksum, inventory and SBOM are organized in one verified delivery folder
-next_action: Bom reviews the unsigned artifacts and external gates remain fail-closed; do not promote HOLD to Production GO without separate approval and missing evidence
-problem: Signing/notarization is intentionally deferred; Offline License Host public verification key and Joint Desktop-Staging E2E evidence are unavailable, while 950i/C84hc were current device-availability HOLD during the final bounded probe
-updated_at: 2026-08-31T14:12:00+07:00
+current_phase: V5.2.1 Production Unsigned — Product Owner approved release with accepted signing risk
+current_task: Release the exact verified Windows/macOS artifacts through the Production Unsigned channel without changing the binaries or build evidence
+next_action: Install on the first customer machine and confirm first-run Online Registration, selected printer read and LAN Web behavior
+problem: Accepted limitations: Smart App Control/Gatekeeper may block unsigned artifacts; Offline License is not included until the Host public key is supplied; 950i/C84hc are not certified by the final bounded probe
+updated_at: 2026-08-31T14:20:34+07:00
 ---
 
 # KOMI Report V5.2 — Production Print & Meter Alert
@@ -247,6 +247,7 @@ updated_at: 2026-08-31T14:12:00+07:00
 
 ## Decisions and Changes
 
+- 2026-08-31 — Bom อนุมัติปล่อย V5.2.1 เป็น `Production Unsigned` โดยยอมรับความเสี่ยงที่ Smart App Control/Gatekeeper อาจบล็อกไฟล์ และคงหลักฐาน Platform Manifest เดิมไว้โดยไม่แก้ย้อนหลัง. เพิ่ม `PRODUCTION_RELEASE_MANIFEST.json` เป็นอำนาจตัดสิน Release ระดับบนด้วย `GO_UNSIGNED_USER_ACCEPTED` / `production_go=true`; Online Registration อยู่ในขอบเขต Production ส่วน Offline License ยังไม่นับรวมจนได้ Host public verification key.
 - 2026-08-31 — Bom กำหนด release target ใหม่เป็น `5.2.1` และยอมรับตัวติดตั้ง Windows/macOS แบบ Unsigned. การไม่ Signed ต้องแสดงเป็น accepted distribution risk และอาจถูก Smart App Control/Gatekeeper บล็อก; ห้ามรายงาน signing/notarization ว่า PASS.
 - 2026-08-31 — ก่อน freeze/Build 5.2.1 ต้องตรวจ dirty source ทั้งหมด, full regression/Web/release safety/dependency gates และทำ bounded read-only acceptance ทุกโมเดลที่มี authority โดยอ่าน Identity/Total ก่อน แล้วค่อย Web/Toner/Tray/User Authentication/Account Track ตาม capability; ห้าม write, retry storm หรือวน credential.
 - 2026-08-31 — Supersede policy เดิมเฉพาะ C7090/C12010S: หลังมีหลักฐาน Toner/Paper Tray จริง ให้ใช้ exact Total เป็น primary และ Printer-MIB walk เป็น `SUPPLEMENTAL`; optional status ล้มเหลวต้องไม่ทำให้ Total หรือสถานะเครื่องกลายเป็น Offline. C5070 ยังคง `TARGETED_ONLY` เพราะ walk timeout ซ้ำจากเครื่องจริง.
@@ -477,6 +478,7 @@ Verification:
 | 2026-08-26 23:56 +07 | V5.2 macOS/Windows installation candidate packaging | ปรับ Diagram คู่มือให้ตรง runtime V5.2 และ `test_manual_diagrams.py` ผ่าน; full Python `636 passed`, Web lint/security `3/3`/Next build/npm audit 0 และ packaged Web integration ผ่าน. macOS arm64 DMG SHA-256 `fc317c982a8640587209951ed811a2bbd0908842bd90ffe26c02ebc0da1a6b47`, ZIP `6c003a4dd9df0b2c66c428edee79b7265236206ce2e7b1eaaf2bb628c8a2413e`; app smoke/DB/codesign strict ad-hoc ผ่าน แต่ไม่ notarized. Windows x64 RC สร้างใน Windows 11 ARM64 VM ผ่าน x64 emulation, exit 0, SHA-256 `693c18761fe9d021ac83043b663c2de717af37d99fde389219a4336322238036`, manifest/SBOM/inventory/checksum ครบ; Guest Control ยัง login ไม่ผ่านจึงใช้ GUI PowerShell โดยไม่ปิด Smart App Control | INSTALLATION CANDIDATE — Windows unsigned/build environment เป็น ARM64 VM preflight และ macOS ไม่มี Developer ID/notarization; `production_go=false`, ไม่อ้าง native Windows x64 UAT หรือ Production GO |
 | 2026-08-31 13:42 +07 | V5.2.1 final reviewed-source gate before unsigned packaging | ปิด P1 local-first registration retry, multi-interface/Manual Primary discovery, Excel formula injection และ exact-source archive identity; macOS packaged Web runtime ใช้ scoped allow-list เฉพาะ `.next`/`node_modules` ภายใน App bundle และยอมเฉพาะ symlink ที่ resolve ไปยัง runtime root ใน allow-list เดียวกัน โดย DB/log/customer-data/.env/credential/secret ยังคง fail-closed; targeted `181 passed`; release-focused `59 passed`; Python fresh-process ครบ 98 files / `723 passed`; one-process rerun พบ native PyQt accumulated-lifetime crash เดิมจึงไม่ใช้เป็น pass gate; version gate `5.2.1`; Web lint/security `4/4`/Next build/npm audit 0; Python lock audit 0; critical Ruff/compileall/diff-check ผ่าน; tracked 321/0 และ staged 129/0 safety findings | PASS — EXACT REVIEWED SOURCE / PACKAGING NOT YET BUILT |
 | 2026-08-31 14:12 +07 | V5.2.1 exact-source unsigned packaging and delivery verification | macOS ZIP `6fd1fc9ee3da03b9f3be73aed256d33f0c6847348e0f516af981b265ff06451f`, DMG `4c73ad5465dfcbec239890f5c4f4fd1e430df32c60f46c94d23a7263ee7f8fd6`; Windows x64 Installer `f98978b019a594e8e783f8143e06a758c0d68c318862fc5035ca1105cf0f52b9`; Source ZIP `ded0476268262a1062e07ad94bbc184eb36439097ade64d5442f23531e76d3b1`; Thai guide `15e848162462b921754fb3780a3d63a49c1122af9025914835ee3624cec1662e`. Windows built in Windows 11 ARM64 VM, exact payload inventory `8,594/8,594`, checksum PASS and live Authenticode `NotSigned`; macOS native arm64 smoke/checksum passed but ad-hoc/not notarized and Gatekeeper rejected. Root cross-platform checksum verified and delivery folder contains README, guide, manifests, inventories and SBOMs | PASS — ARTIFACT ASSEMBLY / RELEASE HOLD; `production_go=false`; Windows evidence is x64-emulation preflight, not native x64 UAT |
+| 2026-08-31 14:20 +07 | Production Unsigned approval and live contract read-back | Bom อนุมัติ `Production Unsigned`; เพิ่ม top-level release manifest `GO_UNSIGNED_USER_ACCEPTED` / `production_go=true` โดยไม่เปลี่ยนไบนารีหรือแก้ Platform Build Manifest ย้อนหลัง. Live read-only Host health ตอบ `status=ok`, schema `1/2/3`, API `1.2.0`, contract `v5.2-shared-2026-08-25-r2`, database `ok`; deployed OpenAPI ระบุ contract/hash ตรง Desktop. Runtime/contract/setup focused regression `76 passed`; root checksum รวม Production manifest ผ่าน | PASS — PRODUCTION UNSIGNED DECISION; accepted distribution risk, Online Registration scope, Offline License excluded |
 
 - [x] Current Desktop/runtime/build metadata รายงาน `5.2.1` จาก authority เดียว และ validator ปฏิเสธ non-5.2.x
 - [x] UI, config, pyproject, Web metadata, PyInstaller/Inno และ API-reported version ใน current source ตรงกัน; customer artifact builder fail-closed ก่อน external gates
