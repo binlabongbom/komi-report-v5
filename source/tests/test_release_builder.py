@@ -49,6 +49,8 @@ def test_source_release_excludes_runtime_data_dependencies_and_secrets():
     assert any(path.name == "CUSTOMER_GUIDE_V5_2.md" for path in files)
     assert any(path.name == "CUSTOMER_INSTALL_GUIDE.md" for path in files)
     assert any(path.name == "CUSTOMER_RELEASE_NOTES.md" for path in files)
+    assert any(path.name == "V5_2_HOST_API_IMPLEMENTATION_REQUEST.md" for path in files)
+    assert any(path.name == "build_customer_guide_v52.py" for path in files)
     assert any(path.name == "RELEASE_RUNBOOK.md" for path in files)
     assert any(path.name == "KOMI_Report_V5.iss" for path in files)
     for path in files:

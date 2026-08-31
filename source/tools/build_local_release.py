@@ -28,6 +28,8 @@ INCLUDE_ROOTS = (
     PROJECT_ROOT / "docs" / "CUSTOMER_GUIDE_V5_2.md",
     PROJECT_ROOT / "docs" / "CUSTOMER_INSTALL_GUIDE.md",
     PROJECT_ROOT / "docs" / "CUSTOMER_RELEASE_NOTES.md",
+    PROJECT_ROOT / "docs" / "V5_2_HOST_API_IMPLEMENTATION_REQUEST.md",
+    PROJECT_ROOT / "docs" / "customer-guide" / "build_customer_guide_v52.py",
     PROJECT_ROOT / "docs" / "PILOT_RELEASE_CHECKLIST.md",
     PROJECT_ROOT / "docs" / "REGISTRATION_DATA_NOTICE.md",
     PROJECT_ROOT / "docs" / "RELEASE_RUNBOOK.md",
