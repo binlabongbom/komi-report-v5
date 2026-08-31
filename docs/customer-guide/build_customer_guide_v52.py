@@ -202,11 +202,16 @@ def checklist(doc, rows: list[str]) -> None:
     table = doc.add_table(rows=1, cols=2)
     table.alignment = WD_TABLE_ALIGNMENT.CENTER
     table.autofit = False
-    table.columns[0].width = Inches(0.55)
-    table.columns[1].width = Inches(5.75)
+    widths = (Inches(0.65), Inches(5.65))
+    table.columns[0].width = widths[0]
+    table.columns[1].width = widths[1]
+    layout = OxmlElement("w:tblLayout")
+    layout.set(qn("w:type"), "fixed")
+    table._tbl.tblPr.append(layout)
     for index, (cell, value) in enumerate(
         zip(table.rows[0].cells, ("ตรวจ", "รายการ"), strict=True)
     ):
+        cell.width = widths[index]
         shade(cell, NAVY)
         cell_margins(cell, 70)
         paragraph = cell.paragraphs[0]
@@ -215,6 +220,8 @@ def checklist(doc, rows: list[str]) -> None:
     repeat_header(table.rows[0])
     for value in rows:
         cells = table.add_row().cells
+        cells[0].width = widths[0]
+        cells[1].width = widths[1]
         cells[0].vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
         cells[0].paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
         style_run(cells[0].paragraphs[0].add_run("☐"), size=11, color=BLUE)
