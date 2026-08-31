@@ -682,14 +682,24 @@ class LegacyAuthenticatedWebConnectionCounterConnector(LegacyWebConnectionCounte
             tls_policy=self.tls_policy,
             scheme=scheme,
         )
-        login_attempted = False
+        session_owned = False
         result: WebCounterCollection | None = None
         failure: Exception | None = None
         try:
             session.prepare_legacy_admin_login()
-            login_attempted = True
-            session.post_session_form("login.cgi", self._legacy_login_fields(credential))
-            counters = self.parse_xml(session.get_bytes("a_system_counter.xml"))
+            login_response = session.post_session_form(
+                "login.cgi",
+                self._legacy_login_fields(credential),
+            )
+            self._raise_for_legacy_login_response(login_response)
+            counters = self._parse_authenticated_xml(
+                session.get_bytes("a_system_counter.xml")
+            )
+            # A valid aggregate counter response is the first unambiguous
+            # proof that this connector owns the Administrator session.  Never
+            # send a server-side logout for a rejected/busy/ambiguous session,
+            # because some legacy firmware has only one global Admin session.
+            session_owned = True
             result = WebCounterCollection(
                 tuple(counters),
                 "web_connection_legacy_xml_admin",
@@ -701,14 +711,16 @@ class LegacyAuthenticatedWebConnectionCounterConnector(LegacyWebConnectionCounte
             failure = err
         except WebConnectionSessionBusyError as err:
             failure = err
+        except WebConnectionAuthenticationError as err:
+            failure = err
         except WebConnectionError as err:
-            failure = WebConnectionAuthenticationError(
-                "Legacy Administrator session อ่าน Meter ไม่สำเร็จหลังลองเพียงหนึ่งครั้ง: "
-                f"{err}"
-            )
-            failure.__cause__ = err
+            # A counter endpoint, XML parser or network failure after login is
+            # not evidence that the password was rejected.  Preserve the real
+            # category so the Wizard never asks for a customer password when
+            # the printer is merely busy or its counter page failed.
+            failure = err
         finally:
-            if login_attempted:
+            if session_owned:
                 try:
                     session.post_session_form("a_user.cgi", {"func": "PSL_ACO_LGO", "h_token": ""})
                 except WebConnectionError:
@@ -722,6 +734,62 @@ class LegacyAuthenticatedWebConnectionCounterConnector(LegacyWebConnectionCounte
         if result is None:  # pragma: no cover - defensive guard
             raise WebConnectionError("ไม่ได้ผลลัพธ์จาก legacy Administrator session")
         return result
+
+    @staticmethod
+    def _raise_for_legacy_login_response(payload: bytes) -> None:
+        """Classify only explicit legacy login-page responses without retaining payloads."""
+
+        if not payload:
+            return
+        lowered = payload.decode("utf-8", errors="ignore").casefold()
+        if "another user session" in lowered:
+            raise WebConnectionSessionBusyError(
+                "Web Connection กำลังถูกใช้งาน กรุณา Logout หน้าเครื่องพิมพ์แล้วลองอีกครั้ง"
+            )
+        if "directaccesserror" in lowered:
+            raise WebConnectionError(
+                "Legacy Web Connection ไม่สร้าง Administrator context หลังเปิดหน้าล็อกอิน"
+            )
+        explicit_rejection = any(
+            marker in lowered
+            for marker in (
+                "authentication failed",
+                "incorrect password",
+                "invalid password",
+                "login failed",
+                "password error",
+            )
+        )
+        form_actions = [
+            quoted or unquoted
+            for quoted, unquoted in re.findall(
+                r"<form\b[^>]*\baction\s*=\s*(?:['\"]([^'\"]+)['\"]|([^\s>]+))",
+                lowered,
+            )
+        ]
+        returned_login_form = (
+            any(urlsplit(action).path.rsplit("/", 1)[-1] == "login.cgi" for action in form_actions)
+            and re.search(
+                r"<input\b[^>]*(?:type|name)\s*=\s*['\"]?password\b",
+                lowered,
+            )
+            is not None
+        )
+        if explicit_rejection or returned_login_form:
+            raise WebConnectionAuthenticationError(
+                "Legacy Administrator ปฏิเสธรหัสที่ส่งไป"
+            )
+
+    @classmethod
+    def _parse_authenticated_xml(cls, payload: bytes) -> list[WebCounterValue]:
+        """Parse Admin XML while keeping context errors separate from session contention."""
+
+        lowered = payload.decode("utf-8", errors="ignore").casefold()
+        if "another user session" in lowered:
+            raise WebConnectionSessionBusyError(
+                "Web Connection กำลังถูกใช้งาน กรุณา Logout หน้าเครื่องพิมพ์แล้วลองอีกครั้ง"
+            )
+        return cls.parse_xml(payload)
 
     @staticmethod
     def _legacy_login_fields(credential: AdminCredential) -> dict[str, str]:

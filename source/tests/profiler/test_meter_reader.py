@@ -14,6 +14,7 @@ from komi_snmp_profiler.connectors import (
     WebConnectionCertificateError,
     WebConnectionCounterConnector,
     WebConnectionError,
+    WebConnectionSessionBusyError,
     WebConnectionTlsError,
     WebCounterCollection,
 )
@@ -249,6 +250,134 @@ def test_legacy_admin_connector_preserves_tls_error_without_calling_it_bad_passw
             "10.0.0.5",
             AdminCredential(password=secrets.token_urlsafe(18)),
         )
+
+
+class LegacyBusyCounterSession(FakeLegacySession):
+    def get_bytes(self, path: str) -> bytes:
+        self.calls.append(("GET", path))
+        if path == "a_system_counter.xml":
+            return b"<MFP><DirectAccessError>Another user session is active</DirectAccessError></MFP>"
+        return b"<MFP/>"
+
+
+def test_legacy_admin_connector_reports_explicit_session_busy_without_logging_out_other_user() -> None:
+    session = LegacyBusyCounterSession("10.0.0.5", scheme="https")
+    connector = LegacyAuthenticatedWebConnectionCounterConnector(
+        session_factory=lambda *_args, **_kwargs: session
+    )
+
+    with pytest.raises(WebConnectionSessionBusyError, match="Logout"):
+        connector.collect_with_credential(
+            "10.0.0.5",
+            AdminCredential(password=secrets.token_urlsafe(18)),
+        )
+
+    assert session.calls.count(("POST_FORM", "login.cgi")) == 1
+    assert ("POST_FORM", "a_user.cgi") not in session.calls
+    assert session.cleared is True
+
+
+class LegacyMalformedCounterSession(FakeLegacySession):
+    def get_bytes(self, path: str) -> bytes:
+        self.calls.append(("GET", path))
+        return b"not-xml"
+
+
+def test_legacy_admin_connector_does_not_call_parser_failure_bad_password() -> None:
+    session = LegacyMalformedCounterSession("10.0.0.5", scheme="https")
+    connector = LegacyAuthenticatedWebConnectionCounterConnector(
+        session_factory=lambda *_args, **_kwargs: session
+    )
+
+    with pytest.raises(WebConnectionError, match="XML") as raised:
+        connector.collect_with_credential(
+            "10.0.0.5",
+            AdminCredential(password=secrets.token_urlsafe(18)),
+        )
+
+    assert not isinstance(raised.value, WebConnectionAuthenticationError)
+    assert ("POST_FORM", "a_user.cgi") not in session.calls
+    assert session.cleared is True
+
+
+class LegacyRejectedLoginPageSession(FakeLegacySession):
+    def post_session_form(self, path: str, fields: dict[str, str]) -> bytes:
+        self.calls.append(("POST_FORM", path))
+        if path == "login.cgi":
+            assert fields["password"]
+            return b"<html><form action='login.cgi'><input type='password' name='password'></form></html>"
+        return b""
+
+
+def test_legacy_admin_connector_calls_only_explicit_login_page_bad_password() -> None:
+    session = LegacyRejectedLoginPageSession("10.0.0.5", scheme="https")
+    connector = LegacyAuthenticatedWebConnectionCounterConnector(
+        session_factory=lambda *_args, **_kwargs: session
+    )
+
+    with pytest.raises(WebConnectionAuthenticationError, match="ปฏิเสธรหัส"):
+        connector.collect_with_credential(
+            "10.0.0.5",
+            AdminCredential(password=secrets.token_urlsafe(18)),
+        )
+
+    assert session.calls.count(("POST_FORM", "login.cgi")) == 1
+    assert ("POST_FORM", "a_user.cgi") not in session.calls
+    assert session.cleared is True
+
+
+class LegacyContextFailureSession(FakeLegacySession):
+    def post_session_form(self, path: str, fields: dict[str, str]) -> bytes:
+        self.calls.append(("POST_FORM", path))
+        if path == "login.cgi":
+            assert fields["password"]
+            return b"<MFP><DirectAccessError><Redirect>/wcd/index.html</Redirect></DirectAccessError></MFP>"
+        return b""
+
+
+def test_legacy_admin_connector_keeps_direct_access_context_error_separate_from_busy() -> None:
+    session = LegacyContextFailureSession("10.0.0.5", scheme="https")
+    connector = LegacyAuthenticatedWebConnectionCounterConnector(
+        session_factory=lambda *_args, **_kwargs: session
+    )
+
+    with pytest.raises(WebConnectionError, match="context") as raised:
+        connector.collect_with_credential(
+            "10.0.0.5",
+            AdminCredential(password=secrets.token_urlsafe(18)),
+        )
+
+    assert not isinstance(raised.value, WebConnectionSessionBusyError)
+    assert ("POST_FORM", "a_user.cgi") not in session.calls
+    assert session.cleared is True
+
+
+class LegacyAdminPageWithPasswordSettingSession(FakeLegacySession):
+    def post_session_form(self, path: str, fields: dict[str, str]) -> bytes:
+        self.calls.append(("POST_FORM", path))
+        if path == "login.cgi":
+            assert fields["password"]
+            return (
+                b"<html><form action='change_login.cgi'><input type='password'></form>"
+                b"<form action='notlogin.cgi'><input name='password'></form></html>"
+            )
+        return b""
+
+
+def test_legacy_admin_connector_does_not_reject_unrelated_password_setting_form() -> None:
+    session = LegacyAdminPageWithPasswordSettingSession("10.0.0.5", scheme="https")
+    connector = LegacyAuthenticatedWebConnectionCounterConnector(
+        session_factory=lambda *_args, **_kwargs: session
+    )
+
+    result = connector.collect_with_credential(
+        "10.0.0.5",
+        AdminCredential(password=secrets.token_urlsafe(18)),
+    )
+
+    assert result.counters[0].count == 243_744
+    assert session.calls[-1] == ("POST_FORM", "a_user.cgi")
+    assert session.cleared is True
 
 
 class RejectedSession(FakeSession):

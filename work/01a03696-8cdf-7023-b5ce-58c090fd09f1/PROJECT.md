@@ -9,10 +9,10 @@ status: active
 progress: 99
 owner: VEGA
 current_phase: V5.2.2 Production Unsigned — delivery complete
-current_task: Await Product Owner customer-install acceptance of the exact V5.2.2 package
-next_action: Install from the V5.2.2 delivery folder and confirm the first customer scenario
+current_task: Legacy Admin session collision source fix complete
+next_action: Build/reinstall only when Bom requests, then retest session collision on the exact installed runtime
 problem: none
-updated_at: 2026-08-31T16:44:05+07:00
+updated_at: 2026-08-31T22:10:00+07:00
 ---
 
 # KOMI Report V5.2 — Production Print & Meter Alert
@@ -287,6 +287,7 @@ updated_at: 2026-08-31T16:44:05+07:00
 - 2026-08-25 — Offline License mode หยุด scheduler และบล็อก Registration/Status/Meter telemetryจริงโดยไม่ลบ Device/DB/History/Billing; เปลี่ยนกลับ Online ได้โดยใช้ state เดิมและไม่มี legacy schema-2 fallback.
 - 2026-08-25 — Wizard คง 4 ขั้นเดิมและ Settings ใช้ card เดิม เพิ่มเฉพาะ Online/Offline mode, retry, export `.komirequest`, import `.komilicense`, expiry/bound devices และ support detail แบบซ่อน; user UI ไม่แสดง API key, token, public key หรือ raw error.
 - 2026-08-26 — Bom เลือกให้ Secondary Sync จาก Primary บน trusted LAN โดยไม่กรอกรหัส: ผู้ใช้ยังต้องกด `Sync จากเครื่องหลัก`, client pin certificate แบบ TOFU และรับเฉพาะ setup allow-list; Web Report/API อื่นยังคงต้อง Login และ Password/Token/History/Log ไม่ถูกเปิดเผย.
+- 2026-08-31 — Legacy Admin Web ต้องแยก `session_busy` ออกจากรหัสผิด: โปรแกรม Logout เฉพาะ session ที่ตนเปิดและล้าง cookie ทุกครั้ง แต่ห้ามบังคับตัด session ของผู้ใช้อื่น. เมื่อพบ session ชน Wizard แสดงสถานะสีเหลืองและปุ่ม `เปิด Web` เพื่อให้ผู้ใช้ Logout จากหน้าเครื่องก่อนกดตรวจสอบใหม่; จะแสดง `ใส่รหัส` เฉพาะเมื่อเครื่องตอบปฏิเสธ credential อย่างชัดเจน.
 
 ## Test Log
 
@@ -481,6 +482,7 @@ Verification:
 | 2026-08-31 14:20 +07 | Production Unsigned approval and live contract read-back | Bom อนุมัติ `Production Unsigned`; เพิ่ม top-level release manifest `GO_UNSIGNED_USER_ACCEPTED` / `production_go=true` โดยไม่เปลี่ยนไบนารีหรือแก้ Platform Build Manifest ย้อนหลัง. Live read-only Host health ตอบ `status=ok`, schema `1/2/3`, API `1.2.0`, contract `v5.2-shared-2026-08-25-r2`, database `ok`; deployed OpenAPI ระบุ contract/hash ตรง Desktop. Runtime/contract/setup focused regression `76 passed`; root checksum รวม Production manifest ผ่าน | PASS — PRODUCTION UNSIGNED DECISION; accepted distribution risk, Online Registration scope, Offline License excluded |
 | 2026-08-31 15:41 +07 | V5.2.2 Legacy Windows TLS source gate | Root cause ของ C368 บน packaged Windows คือ Python/OpenSSL รองรับ legacy server-connect แต่ Python build ไม่ expose ชื่อ `OP_LEGACY_SERVER_CONNECT`; เพิ่ม stable OpenSSL option bit เฉพาะ `TLS11_LEGACY` profile และแยก TLS failure ออกจาก bad-password UI. New focused regression `4 passed`; full Python `727 passed`; Web lint/security `4/4`/Next build/npm audit 0; Ruff/compileall/version gate `5.2.2`/diff-check ผ่าน. Fresh read-only C368 source check ผ่าน `web_connection_legacy_xml_admin`, Total `202,254`, `96` counters และ certificate pin มีอยู่ | PASS — SOURCE + REAL DEVICE; exact Windows installer verification pending |
 | 2026-08-31 16:44 +07 | V5.2.2 exact installer, C368 installed-runtime and delivery close | Windows installer SHA-256 `1faa6ab53d8fb5e597fecd3b0a91be25115440f9eeafc7e0c79ec597e8fbfd86`, Authenticode `NotSigned`, inventory `8,594`; exact installed runtime อ่าน C368 `10.244.116.11` สองรอบติดกันผ่าน `web_connection_legacy_xml_admin`, Total `202,265`, Counter `96`, admin session cleanup/repeatability PASS. macOS DMG `f4de4671dfca9afc4a4addbfa6435fff8234c5770436f0452183ce7461b27300`, ZIP `d9be36acf90e5c21c8bf5c4402e469f0b030b06eeb110c65d427a1509bfc328a`; Source ZIP `cf77f3b7babb67df0e8e08f681665a4aac7bdb0c81ff74e2b671048294c347b8`. Word guide 17 หน้า visual QA ครบและแก้หน้า Checklist ไม่ให้ล้น; root/platform checksum และ JSON manifests ผ่านทั้งหมด | PASS — PRODUCTION UNSIGNED / USER-ACCEPTED RISK; Windows ARM64 VM x64-emulation preflight, macOS ad-hoc/not notarized |
+| 2026-08-31 22:10 +07 | Legacy Admin session collision classification | ห้ามตีความ session ชน, malformed XML หรือ endpoint error เป็นรหัสผิด; ต้อง Logout เฉพาะ session ที่ connector ยืนยันว่า Login สำเร็จจาก aggregate counter แล้ว และเปิดทางให้ผู้ใช้ Logout หน้า Web | C458 bounded read ก่อนแก้ผ่านด้วย default credential และอ่านได้ `96` counters; probe ถัดมาพบ Login/Logout timeout จึงหยุดทันทีเพื่อไม่สร้าง retry storm. หลังแก้ tests ครอบคลุม explicit busy โดยไม่ Logout ผู้อื่น, generic DirectAccess context, exact login form, explicit password rejection, unrelated password form, malformed XML, cleanup และ Wizard action; focused `17 passed`; final fresh-process regression 98 files / `734 tests` ผ่าน; one-process rerun พบ native PyQt accumulated-lifetime crash เดิมจึงไม่ใช้เป็น pass gate; scoped Ruff, compileall และ diff-check ผ่าน | PASS — SOURCE / POST-FIX INSTALLED RETEST PENDING | read-only real-device diagnosis + local regression; ไม่เก็บ credential/cookie/raw XML และยังไม่ Build installer |
 
 - [x] Current Desktop/runtime/build metadata รายงาน `5.2.2` จาก authority เดียว และ validator ปฏิเสธ non-5.2.x
 - [x] UI, config, pyproject, Web metadata, PyInstaller/Inno และ API-reported version ใน current source ตรงกัน; customer artifact builder fail-closed ก่อน external gates

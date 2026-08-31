@@ -29,7 +29,11 @@ from PyQt6.QtWidgets import (
 
 import database
 import v5_pages
-from komi_snmp_profiler.connectors import WebConnectionCertificateError, WebConnectionTlsError
+from komi_snmp_profiler.connectors import (
+    WebConnectionCertificateError,
+    WebConnectionSessionBusyError,
+    WebConnectionTlsError,
+)
 from komi_snmp_profiler.credential_store import PUBLIC_FACTORY_ADMIN_PASSWORDS
 from komi_snmp_profiler.models import MeterReading, WebAuthState, WebCounterValue
 from services.device_config import DeviceConfig, DeviceConfigRepository
@@ -1079,6 +1083,39 @@ def test_device_test_worker_does_not_request_customer_password_for_tls_failure(m
     assert "TLS compatibility failed" in result["error"]
 
 
+def test_device_test_worker_reports_session_busy_without_requesting_password(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "v5_pages.SnmpTotalProbe.read",
+        lambda _probe, _host: SimpleNamespace(
+            model="KONICA MINOLTA bizhub C458",
+            serial="C458-SERIAL",
+            total=243_744,
+            total_oid="1.2.3",
+            oid_values=(("1.2.3", "243744"),),
+        ),
+    )
+    monkeypatch.setattr(
+        "v5_pages.MeterReader.read",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            WebConnectionSessionBusyError("legacy session busy")
+        ),
+    )
+    device = DeviceConfig(
+        0,
+        "bizhub C458",
+        "192.0.2.16",
+        model="KONICA MINOLTA bizhub C458",
+    )
+
+    result = DeviceTestWorker([device])._test(device)
+
+    assert result["online"] is True
+    assert result["web_ok"] is False
+    assert result["session_busy"] is True
+    assert result["credential_required"] is False
+    assert "session busy" in result["error"]
+
+
 def test_device_test_worker_accepts_public_meter_for_public_capable_press_even_if_password_was_entered(monkeypatch) -> None:
     monkeypatch.setattr(
         "v5_pages.SnmpTotalProbe.read",
@@ -1187,6 +1224,49 @@ def test_setup_wizard_marks_customer_password_required_without_exposing_a_defaul
         assert "กรุณาใส่รหัสของลูกค้า" in wizard.device_table.item(0, 4).text()
         assert wizard.device_table.item(0, 5).text() == "ใส่รหัส"
         assert wizard.discovered_devices[0]["password"] == ""
+        wizard.close()
+        app.processEvents()
+    finally:
+        database.set_db_path(original_path)
+
+
+def test_setup_wizard_marks_session_busy_and_opens_printer_web_instead_of_password(
+    tmp_path,
+    monkeypatch,
+):
+    original_path = _wizard_database(tmp_path)
+    app = QApplication.instance() or QApplication([])
+    opened: list[str] = []
+    monkeypatch.setattr(v5_pages.webbrowser, "open", opened.append)
+    try:
+        wizard = SetupWizardV5()
+        _add_selected_device(wizard, "KONICA MINOLTA bizhub C458", "192.0.2.16")
+        wizard.discovered_devices[0]["model"] = "KONICA MINOLTA bizhub C458"
+        wizard._test_generation = 9
+
+        wizard._test_result(
+            DeviceTestResult(
+                generation=9,
+                host="192.0.2.16",
+                slot=0,
+                payload={
+                    "online": True,
+                    "web_ok": False,
+                    "session_busy": True,
+                    "credential_required": False,
+                    "error": "Web Connection session busy",
+                },
+            )
+        )
+
+        assert "Logout" in wizard.device_table.item(0, 4).text()
+        assert wizard.device_table.item(0, 5).text() == "เปิด Web"
+        assert "รหัส" not in wizard.device_table.item(0, 4).text()
+        assert wizard.device_table.item(0, 4).foreground().color().name() == "#b45309"
+        assert "Logout" in wizard.device_table.item(0, 5).toolTip()
+
+        wizard._device_table_action(0, 5)
+        assert opened == ["https://192.0.2.16/wcd/"]
         wizard.close()
         app.processEvents()
     finally:

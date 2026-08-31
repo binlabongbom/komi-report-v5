@@ -103,6 +103,7 @@ from komi_snmp_profiler.connectors import (
     WebConnectionAuthenticationError,
     WebConnectionCertificateError,
     WebConnectionCounterConnector,
+    WebConnectionSessionBusyError,
     server_certificate_fingerprint,
 )
 from komi_snmp_profiler.credential_store import (
@@ -317,6 +318,7 @@ class DeviceTestWorker(QObject):
         tls_mode = device.tls_mode
         tls_fingerprint = device.tls_fingerprint
         credential_required = False
+        session_busy = False
         credential_default_index: int | None = None
         pipeline_log.append(
             stage="POLICY",
@@ -465,6 +467,18 @@ class DeviceTestWorker(QObject):
                 value="customer credential required",
                 status="warning",
             )
+        except WebConnectionSessionBusyError as exc:
+            session_busy = True
+            errors.append(f"Web: {exc}")
+            pipeline_log.append(
+                stage="WEB",
+                action="Setup Web Connection session busy",
+                device_slot=device.slot,
+                device_name=device.name,
+                host=device.host,
+                value="logout printer web session then retry",
+                status="warning",
+            )
         except Exception as exc:
             errors.append(f"Web: {exc}")
             pipeline_log.append(
@@ -496,6 +510,7 @@ class DeviceTestWorker(QObject):
             "tls_fingerprint": tls_fingerprint,
             "web_auth_state": reading.auth_state.value if reading is not None else "",
             "credential_required": credential_required,
+            "session_busy": session_busy,
             "credential_default_index": credential_default_index,
         }
 
@@ -2229,7 +2244,6 @@ class SetupWizardV5(QDialog):
         header.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)
         self.device_table.setAccessibleName("รายการเครื่องพิมพ์ที่ค้นพบ")
         self.device_table.cellClicked.connect(self._device_table_action)
-        self.device_table.cellActivated.connect(self._device_table_action)
         layout.addWidget(self.device_table, 1)
         actions = QHBoxLayout()
         hint = QLabel("เลือกเครื่อง → ตรวจสอบ → สถานะพร้อมใช้งาน จึงกดถัดไปได้")
@@ -2879,6 +2893,12 @@ class SetupWizardV5(QDialog):
             prefix = "● VIRTUAL · " if entry.get("is_virtual") else "● "
             status, color = f"{prefix}พร้อมใช้งาน · SNMP + Web ผ่าน", C_GREEN
             background = QColor("#EDF8F2") if selected else None
+        elif result.get("session_busy"):
+            status, color = (
+                "● Web กำลังถูกใช้งาน · Logout หน้าเครื่องแล้วตรวจสอบอีกครั้ง",
+                "#B45309",
+            )
+            background = QColor("#FFF7E6") if selected else None
         elif result.get("credential_required"):
             status, color = "● ต้องใส่รหัส · กรุณาใส่รหัสของลูกค้า", C_RED
             background = QColor("#FDECEC") if selected else None
@@ -2923,16 +2943,29 @@ class SetupWizardV5(QDialog):
                 item.setForeground(QColor(color))
             if background is not None:
                 item.setBackground(background)
-            if result.get("tested") and not (result.get("online") and result.get("web_ok")):
+            if (
+                result.get("tested")
+                and not result.get("session_busy")
+                and not (result.get("online") and result.get("web_ok"))
+            ):
                 item.setForeground(QColor(C_RED) if column == 4 else QColor("#7F1D1D"))
             item.setToolTip(str(value))
             self.device_table.setItem(row, column, item)
-        credential_item = QTableWidgetItem(
-            "ใส่รหัส" if result.get("credential_required") else "ตั้งค่า"
-        )
+        if result.get("session_busy"):
+            action_text = "เปิด Web"
+        elif result.get("credential_required"):
+            action_text = "ใส่รหัส"
+        else:
+            action_text = "ตั้งค่า"
+        credential_item = QTableWidgetItem(action_text)
         credential_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
         credential_item.setForeground(QColor("#1769AA"))
-        credential_item.setToolTip(f"ตั้งค่า Username / Password สำหรับ {entry['name']}")
+        if result.get("session_busy"):
+            credential_item.setToolTip(
+                f"เปิด Web Connection ของ {entry['name']} เพื่อ Logout แล้วตรวจสอบใหม่"
+            )
+        else:
+            credential_item.setToolTip(f"ตั้งค่า Username / Password สำหรับ {entry['name']}")
         if background is not None:
             credential_item.setBackground(background)
         self.device_table.setItem(row, 5, credential_item)
@@ -2940,7 +2973,14 @@ class SetupWizardV5(QDialog):
     def _device_table_action(self, row: int, column: int) -> None:
         if column != 5 or row >= len(self.discovered_devices):
             return
-        self._open_credentials(str(self.discovered_devices[row]["host"]))
+        entry = self.discovered_devices[row]
+        if entry.get("result", {}).get("session_busy"):
+            profile = resolve_device_meter_profile(
+                str(entry.get("model") or entry.get("name") or "")
+            )
+            webbrowser.open(f"{profile.web_scheme}://{entry['host']}/wcd/")
+            return
+        self._open_credentials(str(entry["host"]))
 
     def _open_credentials(self, host: str) -> None:
         entry = next((item for item in self.discovered_devices if item["host"] == host), None)
