@@ -93,7 +93,7 @@ def _customer_candidates(tmp_path: Path, commit: str) -> tuple[Path, Path]:
 
 
 def test_windows_customer_profile_is_not_labelled_pilot_or_lab():
-    assert CUSTOMER_INSTALLER_NAME == "KOMI_Report_V5_2_1_Windows_x64_Installer.exe"
+    assert CUSTOMER_INSTALLER_NAME == "KOMI_Report_V5_2_2_Windows_x64_Installer.exe"
     assert "customer release package" in CUSTOMER_README.casefold()
     assert "production Desktop" in CUSTOMER_README
     assert "Unsigned Pilot Candidate" not in CUSTOMER_README

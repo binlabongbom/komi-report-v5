@@ -1,8 +1,8 @@
-# KOMI Report V5.2.1 — คู่มือผู้ใช้งาน
+# KOMI Report V5.2.2 — คู่มือผู้ใช้งาน
 
 สถานะเอกสาร: Customer Review · อัปเดต 31 สิงหาคม 2569
 
-> **สถานะชุดติดตั้ง V5.2.1:** ชุดติดตั้งที่ไม่มี Authenticode/Developer ID ต้องแสดงว่าเป็น **UNSIGNED INSTALLATION CANDIDATE** ผู้ใช้ต้องตรวจ SHA-256 กับ `CHECKSUMS.sha256` ก่อนติดตั้ง Windows อาจแสดง Unknown Publisher และ Smart App Control อาจบล็อกโดยไม่มี Run anyway; macOS Gatekeeper อาจปฏิเสธแอปที่ไม่ notarized หากระบบปฏิเสธให้หยุดและติดต่อผู้ส่งมอบ/ฝ่าย IT ห้ามปิดหรือหลบระบบความปลอดภัย รายละเอียดอยู่ใน `CUSTOMER_INSTALL_GUIDE.md`
+> **สถานะชุดติดตั้ง V5.2.2:** ชุดติดตั้งที่ไม่มี Authenticode/Developer ID ต้องแสดงว่าเป็น **UNSIGNED INSTALLATION CANDIDATE** ผู้ใช้ต้องตรวจ SHA-256 กับ `CHECKSUMS.sha256` ก่อนติดตั้ง Windows อาจแสดง Unknown Publisher และ Smart App Control อาจบล็อกโดยไม่มี Run anyway; macOS Gatekeeper อาจปฏิเสธแอปที่ไม่ notarized หากระบบปฏิเสธให้หยุดและติดต่อผู้ส่งมอบ/ฝ่าย IT ห้ามปิดหรือหลบระบบความปลอดภัย รายละเอียดอยู่ใน `CUSTOMER_INSTALL_GUIDE.md`
 
 ## 1. ภาพรวม
 
@@ -126,7 +126,7 @@ Offline License จะหยุด Registration, Status และ Meter telemetr
 
 ## 10. การอัปเดตโปรแกรม
 
-V5.2.1 ไม่มีระบบ Update อัตโนมัติ, Forced Update หรือ Remote Command เมื่อได้รับรุ่นใหม่ ให้ Exit โปรแกรม สร้าง Backup Database ตรวจ SHA-256 และติดตั้งด้วยไฟล์ชุดใหม่ที่ผู้ส่งมอบอนุมัติ
+V5.2.2 ไม่มีระบบ Update อัตโนมัติ, Forced Update หรือ Remote Command เมื่อได้รับรุ่นใหม่ ให้ Exit โปรแกรม สร้าง Backup Database ตรวจ SHA-256 และติดตั้งด้วยไฟล์ชุดใหม่ที่ผู้ส่งมอบอนุมัติ
 
 ## 11. ปิดโปรแกรมและแก้ปัญหาเบื้องต้น
 

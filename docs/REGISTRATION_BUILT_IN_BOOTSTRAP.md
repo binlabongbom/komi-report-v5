@@ -1,6 +1,6 @@
-# KOMI Report V5.2.1 — Registration Identity (ไม่มี Built-in Bootstrap)
+# KOMI Report V5.2.2 — Registration Identity (ไม่มี Built-in Bootstrap)
 
-> ชื่อไฟล์นี้คงไว้เพื่อไม่ให้ลิงก์เอกสารเดิมเสีย แต่ V5.2.1 **ไม่ใช้และไม่บรรจุ**
+> ชื่อไฟล์นี้คงไว้เพื่อไม่ให้ลิงก์เอกสารเดิมเสีย แต่ V5.2.2 **ไม่ใช้และไม่บรรจุ**
 > `komi-registration-bootstrap.dat`, shared API key หรือ master key ในตัวติดตั้งแล้ว
 
 ## การทำงานของ Schema 3
@@ -8,7 +8,7 @@
 1. เมื่อติดตั้งครั้งแรก Desktop สร้าง Ed25519 key pair เฉพาะ Installation ภายในเครื่องลูกค้า.
 2. Private key เก็บใน macOS Keychain หรือ Windows Credential Manager และห้ามส่งออกจากเครื่อง.
 3. Registration ส่งเฉพาะ public key, proof ที่เซ็นด้วย private key และข้อมูลตาม allow-list ของ
-   contract V5.2.1.
+   contract V5.2.2.
 4. Host ตรวจ proof แล้วออก scoped installation token; token เก็บใน OS vault เช่นกัน.
 5. Status และ Meter ใช้ installation token ตามขอบเขตที่กำหนด. ไม่มี key กลางที่ลูกค้าหลายรายใช้ร่วมกัน.
 

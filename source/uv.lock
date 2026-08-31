@@ -398,7 +398,7 @@ wheels = [
 
 [[package]]
 name = "komi-report-v5"
-version = "5.2.1"
+version = "5.2.2"
 source = { virtual = "." }
 dependencies = [
     { name = "cryptography" },

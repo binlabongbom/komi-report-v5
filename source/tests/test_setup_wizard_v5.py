@@ -29,7 +29,7 @@ from PyQt6.QtWidgets import (
 
 import database
 import v5_pages
-from komi_snmp_profiler.connectors import WebConnectionCertificateError
+from komi_snmp_profiler.connectors import WebConnectionCertificateError, WebConnectionTlsError
 from komi_snmp_profiler.credential_store import PUBLIC_FACTORY_ADMIN_PASSWORDS
 from komi_snmp_profiler.models import MeterReading, WebAuthState, WebCounterValue
 from services.device_config import DeviceConfig, DeviceConfigRepository
@@ -180,7 +180,7 @@ def test_setup_wizard_uses_the_approved_four_step_flow(tmp_path):
         assert wizard.first_started_input.isReadOnly()
         assert wizard.first_started_input.text() == "20/08/2026"
         assert wizard.version_input.isReadOnly()
-        assert wizard.version_input.text() == "5.2.1"
+        assert wizard.version_input.text() == "5.2.2"
         assert wizard.scan_button.text() == "ค้นหาเครื่องพิมพ์อัตโนมัติ"
         assert wizard.advanced_scan_button.text() == "กำหนดช่วง IP"
         assert wizard.manual_setup_button.text() == "เพิ่ม IP ด้วยตนเอง"
@@ -212,7 +212,7 @@ def test_setup_wizard_uses_the_approved_four_step_flow(tmp_path):
         assert wizard.next_button.text() == "บันทึกและเปิดโปรแกรม"
         assert "พร้อมนำเครื่องพิมพ์เข้าระบบ" in wizard.review_ready_note.text()
         registration_review = wizard.review_sections["registration"].text()
-        assert "Version 5.2.1" in registration_review
+        assert "Version 5.2.2" in registration_review
         assert "bizhub C450i × 1" in registration_review
         assert "Serial Number + รุ่นเครื่อง + สถานะเลือกใช้ + Aggregate Total Meter" in registration_review
         assert "IP, MAC, hostname, Credential, Counter รายละเอียด" in registration_review
@@ -348,7 +348,7 @@ def test_secondary_setup_persists_received_schedule_only_when_local_value_is_mis
             base_url="https://192.0.2.20:3000",
             company_name="บริษัท เครื่องหลัก จำกัด",
             printer_count=1,
-            version="5.2.1",
+            version="5.2.2",
             certificate_sha256="a" * 64,
         )
         wizard.secondary_snapshot = {
@@ -1045,6 +1045,38 @@ def test_device_test_worker_passes_pinned_policy_to_legacy_admin_connector(monke
     assert result["tls_mode"] == "fingerprint"
     assert result["tls_fingerprint"] == fingerprint
     assert result["web_auth_state"] == "admin"
+
+
+def test_device_test_worker_does_not_request_customer_password_for_tls_failure(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "v5_pages.SnmpTotalProbe.read",
+        lambda _probe, _host: SimpleNamespace(
+            model="KONICA MINOLTA bizhub C368",
+            serial="C368-SERIAL",
+            total=202_254,
+            total_oid="1.2.3",
+            oid_values=(("1.2.3", "202254"),),
+        ),
+    )
+    monkeypatch.setattr(
+        "v5_pages.MeterReader.read",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            WebConnectionTlsError("TLS compatibility failed")
+        ),
+    )
+    device = DeviceConfig(
+        0,
+        "bizhub C368",
+        "192.0.2.11",
+        model="KONICA MINOLTA bizhub C368",
+    )
+
+    result = DeviceTestWorker([device])._test(device)
+
+    assert result["online"] is True
+    assert result["web_ok"] is False
+    assert result["credential_required"] is False
+    assert "TLS compatibility failed" in result["error"]
 
 
 def test_device_test_worker_accepts_public_meter_for_public_capable_press_even_if_password_was_entered(monkeypatch) -> None:

@@ -1,4 +1,4 @@
-# KOMI Report V5.2.1 — Customer Release Notes
+# KOMI Report V5.2.2 — Customer Release Notes
 
 ## Package identity
 
@@ -14,6 +14,11 @@ artifact ว่า Production Ready.
 
 ## Runtime behavior
 
+- V5.2.2 แก้การเชื่อมต่อ Web Connection ของเครื่อง Legacy บน Windows ที่ใช้
+  OpenSSL legacy renegotiation โดยเปิด compatibility option เฉพาะ device profile ที่ระบุ
+  `TLS11_LEGACY`; เครื่อง Modern และ TLS policy ส่วนกลางไม่ถูกลดระดับ.
+- TLS handshake/certificate failure ถูกแยกจาก authentication failure ชัดเจน จึงไม่แสดง
+  “ต้องใส่รหัส” เมื่อรหัสยังไม่ได้ถูกตรวจจริง.
 - Desktop เป็นศูนย์ควบคุม local-first สำหรับเครื่องพิมพ์สูงสุด 3 เครื่อง; Web เป็น LAN report viewer แบบ HTTPS.
 - Database, logs, Web security material, Ed25519 private key และ scoped installation token อยู่ใน data/runtime
   path หรือ OS vault ของเครื่องลูกค้า ไม่อยู่ในโฟลเดอร์ติดตั้งหรือ manifest.
@@ -22,7 +27,7 @@ artifact ว่า Production Ready.
 - หาก OS vault หรือ API contract ใช้ไม่ได้ ระบบหยุดส่งแบบ fail-closed โดย local Meter, Billing, Report และ
   Excel ยังคงทำงานตามข้อมูลในเครื่อง.
 - ไม่มี Lab/test/demo mode, Virtual Printer auto-injection, mock/`.invalid` endpoint หรือ QA fallback ใน runtime.
-- Production Phase 3 Update ไม่รวมใน V5.2.1: ไม่มี silent/forced update, remote command หรือ Update telemetry.
+- Production Phase 3 Update ไม่รวมใน V5.2.2: ไม่มี silent/forced update, remote command หรือ Update telemetry.
 
 ## Evidence และ Trust state
 

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import ssl
+
 import pytest
 
 from komi_snmp_profiler.connectors import (
@@ -9,6 +11,8 @@ from komi_snmp_profiler.connectors import (
     WebConnectionCounterConnector,
     WebConnectionError,
     WebConnectionSessionBusyError,
+    WebConnectionTlsError,
+    _tls_context,
 )
 from komi_snmp_profiler.device_profiles import TlsCompatibility
 
@@ -48,6 +52,34 @@ def test_tls11_legacy_compatibility_is_explicit_and_profile_scoped() -> None:
     assert legacy.tls_policy.compatibility == TlsCompatibility.TLS11_LEGACY
     assert legacy.ssl_context.minimum_version.name == "TLSv1_1"
     assert legacy.ssl_context.maximum_version.name == "MAXIMUM_SUPPORTED"
+
+
+def test_tls11_legacy_uses_openssl_fallback_when_python_hides_option(monkeypatch) -> None:
+    monkeypatch.delattr("komi_snmp_profiler.connectors.ssl.OP_LEGACY_SERVER_CONNECT", raising=False)
+
+    default_context = _tls_context(TlsPolicy())
+    legacy_context = _tls_context(
+        TlsPolicy(compatibility=TlsCompatibility.TLS11_LEGACY)
+    )
+
+    assert default_context.options & 0x4 == 0
+    assert legacy_context.options & 0x4 == 0x4
+
+
+def test_request_reports_tls_handshake_failure_separately_from_password(monkeypatch) -> None:
+    session = ReadOnlyWebConnectionSession(
+        "192.0.2.10",
+        tls_policy=TlsPolicy(compatibility=TlsCompatibility.TLS11_LEGACY),
+    )
+
+    class FailingOpener:
+        def open(self, *_args, **_kwargs):
+            raise ssl.SSLError("unsafe legacy renegotiation disabled")
+
+    monkeypatch.setattr(session, "opener", FailingOpener())
+
+    with pytest.raises(WebConnectionTlsError, match="TLS"):
+        session.get_bytes("index.html")
 
 
 def test_legacy_xml_parser_extracts_same_canonical_total_contract() -> None:

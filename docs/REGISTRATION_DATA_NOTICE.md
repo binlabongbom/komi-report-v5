@@ -1,4 +1,4 @@
-# KOMI Report V5.2.1 — Registration, Status and Aggregate Total Meter Data Notice
+# KOMI Report V5.2.2 — Registration, Status and Aggregate Total Meter Data Notice
 
 สถานะ: ข้อความฉบับปัจจุบันที่ใช้กับ Desktop schema 3
 เวอร์ชันประกาศ: `KOMI-REG-2026-08-25-V52`

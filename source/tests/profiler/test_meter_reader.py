@@ -14,6 +14,7 @@ from komi_snmp_profiler.connectors import (
     WebConnectionCertificateError,
     WebConnectionCounterConnector,
     WebConnectionError,
+    WebConnectionTlsError,
     WebCounterCollection,
 )
 from komi_snmp_profiler.credential_store import (
@@ -227,6 +228,23 @@ def test_legacy_admin_connector_preserves_certificate_error_for_pinning_flow() -
     )
 
     with pytest.raises(WebConnectionCertificateError, match="self-signed"):
+        connector.collect_with_credential(
+            "10.0.0.5",
+            AdminCredential(password=secrets.token_urlsafe(18)),
+        )
+
+
+class LegacyTlsFailureSession(FakeLegacySession):
+    def prepare_legacy_admin_login(self) -> None:
+        raise WebConnectionTlsError("TLS compatibility failed")
+
+
+def test_legacy_admin_connector_preserves_tls_error_without_calling_it_bad_password() -> None:
+    connector = LegacyAuthenticatedWebConnectionCounterConnector(
+        session_factory=lambda host, **kwargs: LegacyTlsFailureSession(host, **kwargs)
+    )
+
+    with pytest.raises(WebConnectionTlsError, match="TLS compatibility"):
         connector.collect_with_credential(
             "10.0.0.5",
             AdminCredential(password=secrets.token_urlsafe(18)),

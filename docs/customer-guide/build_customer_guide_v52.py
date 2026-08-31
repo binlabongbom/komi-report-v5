@@ -280,7 +280,7 @@ def cover(doc: Document) -> None:
          size=11.5, color=MUTED, after=18)
     callout(
         doc,
-        "คู่มือสำหรับชุดติดตั้ง V5.2.1",
+        f"คู่มือสำหรับชุดติดตั้ง V{VERSION}",
         "ภาพหน้าจอใช้ข้อมูลตัวอย่างและไม่มีข้อมูลลูกค้า รหัสผ่าน หรือ Token "
         "ชุดติดตั้งที่ไม่มี Authenticode/Developer ID เป็น Unsigned Installation Candidate "
         "ต้องตรวจ SHA-256 ก่อนเปิดไฟล์",

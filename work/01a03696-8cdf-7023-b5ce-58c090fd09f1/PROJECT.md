@@ -8,18 +8,18 @@ department: dev
 status: active
 progress: 99
 owner: VEGA
-current_phase: V5.2.1 Production Unsigned — Product Owner approved release with accepted signing risk
-current_task: Release the exact verified Windows/macOS artifacts through the Production Unsigned channel without changing the binaries or build evidence
-next_action: Install on the first customer machine and confirm first-run Online Registration, selected printer read and LAN Web behavior
-problem: Accepted limitations: Smart App Control/Gatekeeper may block unsigned artifacts; Offline License is not included until the Host public key is supplied; 950i/C84hc are not certified by the final bounded probe
-updated_at: 2026-08-31T14:20:34+07:00
+current_phase: V5.2.2 Legacy Windows TLS Hotfix — exact installer verification in progress
+current_task: Build the unsigned Windows/macOS V5.2.2 artifacts and prove C368 through the installed Windows runtime
+next_action: Build in the Windows VM, install V5.2.2, and repeat the read-only C368 Web Meter check through the exact packaged runtime
+problem: Source and macOS real-device checks pass; customer delivery remains pending exact Windows-installer C368 verification. Smart App Control/Gatekeeper remain accepted unsigned-distribution limitations
+updated_at: 2026-08-31T15:41:22+07:00
 ---
 
 # KOMI Report V5.2 — Production Print & Meter Alert
 
 ## Goal
 
-ยกระดับ Build ใหม่เป็น KOMI Report `5.2.1` จาก source identity เดียว และเพิ่มการส่ง Total Meter แบบ aggregate ต่อเครื่องเพื่อให้ Host แยกคำเตือน “ไม่มีการพิมพ์เกิน 1 วัน — ควรตรวจสอบ” ออกจาก “Desktop/การเชื่อมต่อขาดหาย” โดยไม่เดาว่าเครื่องเสียและไม่ขยายข้อมูลเกิน Privacy boundary ที่อนุมัติ.
+ยกระดับ Build ใหม่เป็น KOMI Report `5.2.2` จาก source identity เดียว แก้ Legacy Web TLS บน Windows แบบ profile-scoped และเพิ่มการส่ง Total Meter แบบ aggregate ต่อเครื่องเพื่อให้ Host แยกคำเตือน “ไม่มีการพิมพ์เกิน 1 วัน — ควรตรวจสอบ” ออกจาก “Desktop/การเชื่อมต่อขาดหาย” โดยไม่เดาว่าเครื่องเสียและไม่ขยายข้อมูลเกิน Privacy boundary ที่อนุมัติ.
 
 ## Scope
 
@@ -479,8 +479,9 @@ Verification:
 | 2026-08-31 13:42 +07 | V5.2.1 final reviewed-source gate before unsigned packaging | ปิด P1 local-first registration retry, multi-interface/Manual Primary discovery, Excel formula injection และ exact-source archive identity; macOS packaged Web runtime ใช้ scoped allow-list เฉพาะ `.next`/`node_modules` ภายใน App bundle และยอมเฉพาะ symlink ที่ resolve ไปยัง runtime root ใน allow-list เดียวกัน โดย DB/log/customer-data/.env/credential/secret ยังคง fail-closed; targeted `181 passed`; release-focused `59 passed`; Python fresh-process ครบ 98 files / `723 passed`; one-process rerun พบ native PyQt accumulated-lifetime crash เดิมจึงไม่ใช้เป็น pass gate; version gate `5.2.1`; Web lint/security `4/4`/Next build/npm audit 0; Python lock audit 0; critical Ruff/compileall/diff-check ผ่าน; tracked 321/0 และ staged 129/0 safety findings | PASS — EXACT REVIEWED SOURCE / PACKAGING NOT YET BUILT |
 | 2026-08-31 14:12 +07 | V5.2.1 exact-source unsigned packaging and delivery verification | macOS ZIP `6fd1fc9ee3da03b9f3be73aed256d33f0c6847348e0f516af981b265ff06451f`, DMG `4c73ad5465dfcbec239890f5c4f4fd1e430df32c60f46c94d23a7263ee7f8fd6`; Windows x64 Installer `f98978b019a594e8e783f8143e06a758c0d68c318862fc5035ca1105cf0f52b9`; Source ZIP `ded0476268262a1062e07ad94bbc184eb36439097ade64d5442f23531e76d3b1`; Thai guide `15e848162462b921754fb3780a3d63a49c1122af9025914835ee3624cec1662e`. Windows built in Windows 11 ARM64 VM, exact payload inventory `8,594/8,594`, checksum PASS and live Authenticode `NotSigned`; macOS native arm64 smoke/checksum passed but ad-hoc/not notarized and Gatekeeper rejected. Root cross-platform checksum verified and delivery folder contains README, guide, manifests, inventories and SBOMs | PASS — ARTIFACT ASSEMBLY / RELEASE HOLD; `production_go=false`; Windows evidence is x64-emulation preflight, not native x64 UAT |
 | 2026-08-31 14:20 +07 | Production Unsigned approval and live contract read-back | Bom อนุมัติ `Production Unsigned`; เพิ่ม top-level release manifest `GO_UNSIGNED_USER_ACCEPTED` / `production_go=true` โดยไม่เปลี่ยนไบนารีหรือแก้ Platform Build Manifest ย้อนหลัง. Live read-only Host health ตอบ `status=ok`, schema `1/2/3`, API `1.2.0`, contract `v5.2-shared-2026-08-25-r2`, database `ok`; deployed OpenAPI ระบุ contract/hash ตรง Desktop. Runtime/contract/setup focused regression `76 passed`; root checksum รวม Production manifest ผ่าน | PASS — PRODUCTION UNSIGNED DECISION; accepted distribution risk, Online Registration scope, Offline License excluded |
+| 2026-08-31 15:41 +07 | V5.2.2 Legacy Windows TLS source gate | Root cause ของ C368 บน packaged Windows คือ Python/OpenSSL รองรับ legacy server-connect แต่ Python build ไม่ expose ชื่อ `OP_LEGACY_SERVER_CONNECT`; เพิ่ม stable OpenSSL option bit เฉพาะ `TLS11_LEGACY` profile และแยก TLS failure ออกจาก bad-password UI. New focused regression `4 passed`; full Python `727 passed`; Web lint/security `4/4`/Next build/npm audit 0; Ruff/compileall/version gate `5.2.2`/diff-check ผ่าน. Fresh read-only C368 source check ผ่าน `web_connection_legacy_xml_admin`, Total `202,254`, `96` counters และ certificate pin มีอยู่ | PASS — SOURCE + REAL DEVICE; exact Windows installer verification pending |
 
-- [x] Current Desktop/runtime/build metadata รายงาน `5.2.1` จาก authority เดียว และ validator ปฏิเสธ non-5.2.x
+- [x] Current Desktop/runtime/build metadata รายงาน `5.2.2` จาก authority เดียว และ validator ปฏิเสธ non-5.2.x
 - [x] UI, config, pyproject, Web metadata, PyInstaller/Inno และ API-reported version ใน current source ตรงกัน; customer artifact builder fail-closed ก่อน external gates
 - [x] V5.1 artifacts/commits/evidence ไม่ถูก rename หรือแก้เป็น V5.2 ย้อนหลัง
 - [ ] Production Print profile ที่รองรับมี read-only model/OID/Web Meter evidence จากเครื่องจริง; unknown model fail-closed โดยไม่เดา

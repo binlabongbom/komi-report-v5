@@ -111,7 +111,7 @@ def test_offline_license_files_make_release_archives_fail_closed(tmp_path, suffi
 
 def test_macos_zip_allows_only_its_exact_packaged_web_runtime_dependencies(tmp_path):
     archive = tmp_path / "macos-customer.zip"
-    app_bundle = tmp_path / "KOMI Report V5.2.1.app"
+    app_bundle = tmp_path / "KOMI Report V5.2.2.app"
     roots = packaged_runtime_dependency_roots(app_bundle)
     with zipfile.ZipFile(archive, "w") as zipped:
         link = zipfile.ZipInfo(
@@ -156,7 +156,7 @@ def test_macos_zip_allows_only_its_exact_packaged_web_runtime_dependencies(tmp_p
 
 def test_macos_zip_rejects_packaged_runtime_symlink_outside_allow_list(tmp_path):
     archive = tmp_path / "macos-customer.zip"
-    app_bundle = tmp_path / "KOMI Report V5.2.1.app"
+    app_bundle = tmp_path / "KOMI Report V5.2.2.app"
     with zipfile.ZipFile(archive, "w") as zipped:
         link = zipfile.ZipInfo(
             f"{app_bundle.name}/Contents/Frameworks/web-runtime-seed/.next"
@@ -174,7 +174,7 @@ def test_macos_zip_rejects_packaged_runtime_symlink_outside_allow_list(tmp_path)
 
 def test_macos_zip_rejects_node_dependencies_outside_exact_runtime_root(tmp_path):
     archive = tmp_path / "macos-customer.zip"
-    app_bundle = tmp_path / "KOMI Report V5.2.1.app"
+    app_bundle = tmp_path / "KOMI Report V5.2.2.app"
     with zipfile.ZipFile(archive, "w") as zipped:
         zipped.writestr(
             f"{app_bundle.name}/Contents/Resources/other/node_modules/next/index.js",
@@ -210,7 +210,7 @@ def test_macos_runtime_allowance_never_waives_sensitive_content(
     expected_category,
 ):
     archive = tmp_path / "macos-customer.zip"
-    app_bundle = tmp_path / "KOMI Report V5.2.1.app"
+    app_bundle = tmp_path / "KOMI Report V5.2.2.app"
     runtime_root = (
         f"{app_bundle.name}/Contents/Resources/web-runtime-seed/{relative_path}"
     )
@@ -338,7 +338,7 @@ def test_release_safety_gate_proves_forbidden_file_and_secret_failures(tmp_path)
     assert [item.category for item in secret_error.value.findings] == ["github-token"]
 
 
-def test_release_versions_are_aligned_to_5_2_1():
+def test_release_versions_are_aligned_to_5_2_2():
     expected = APP_VERSION
     config_text = (PROJECT_ROOT / "source" / "config.py").read_text(encoding="utf-8")
     spec_text = (PROJECT_ROOT / "source" / "app.spec").read_text(encoding="utf-8")
@@ -359,7 +359,7 @@ def test_release_versions_are_aligned_to_5_2_1():
     assert web_lock["version"] == expected
     assert web_lock["packages"][""]["version"] == expected
     assert f'CFBundleShortVersionString": "{expected}"' in spec_text
-    assert 'CFBundleVersion": "50201"' in spec_text
+    assert 'CFBundleVersion": "50202"' in spec_text
     assert "KOMI Report V5.1.app" not in spec_text
 
 

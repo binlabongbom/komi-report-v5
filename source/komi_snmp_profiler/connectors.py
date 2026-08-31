@@ -32,6 +32,10 @@ class WebConnectionCertificateError(WebConnectionError):
     """Raised when the printer presents a certificate the operating system does not trust."""
 
 
+class WebConnectionTlsError(WebConnectionError):
+    """Raised when a profile-scoped TLS handshake cannot be completed."""
+
+
 class WebConnectionSessionBusyError(WebConnectionError):
     """Raised when an older single-session Web Connection is already in use."""
 
@@ -71,9 +75,13 @@ def _tls_context(policy: TlsPolicy) -> ssl.SSLContext:
             warnings.simplefilter("ignore", DeprecationWarning)
             context.minimum_version = ssl.TLSVersion.TLSv1_1
         context.maximum_version = ssl.TLSVersion.MAXIMUM_SUPPORTED
-        legacy_server_connect = getattr(ssl, "OP_LEGACY_SERVER_CONNECT", 0)
-        if legacy_server_connect:
-            context.options |= legacy_server_connect
+        # OpenSSL defines SSL_OP_LEGACY_SERVER_CONNECT as bit 2.  Some Windows
+        # Python runtimes are linked against an OpenSSL build that supports the
+        # option but does not expose ssl.OP_LEGACY_SERVER_CONNECT.  Apply the
+        # stable OpenSSL value only inside an explicitly selected legacy device
+        # profile; modern/default profiles retain the system TLS policy.
+        legacy_server_connect = getattr(ssl, "OP_LEGACY_SERVER_CONNECT", 1 << 2)
+        context.options |= legacy_server_connect
         context.set_ciphers("DEFAULT:@SECLEVEL=0")
     return context
 
@@ -411,13 +419,19 @@ class ReadOnlyWebConnectionSession:
                 raise WebConnectionCertificateError(
                     "certificate ของเครื่องพิมพ์ยังไม่ได้รับการยืนยัน"
                 ) from err
+            if isinstance(err.reason, ssl.SSLError):
+                raise WebConnectionTlsError(
+                    f"TLS ของเครื่องพิมพ์เชื่อมต่อไม่สำเร็จ: {type(err.reason).__name__}"
+                ) from err
             raise WebConnectionError(f"อ่าน Web Connection ไม่สำเร็จ: {type(err.reason).__name__}") from err
         except ssl.SSLCertVerificationError as err:
             raise WebConnectionCertificateError(
                 "certificate ของเครื่องพิมพ์ยังไม่ได้รับการยืนยัน"
             ) from err
         except ssl.SSLError as err:
-            raise WebConnectionError(f"อ่าน Web Connection ไม่สำเร็จ: TLS {type(err).__name__}") from err
+            raise WebConnectionTlsError(
+                f"TLS ของเครื่องพิมพ์เชื่อมต่อไม่สำเร็จ: {type(err).__name__}"
+            ) from err
         except TimeoutError as err:
             raise WebConnectionError("อ่าน Web Connection ไม่สำเร็จ: Timeout") from err
 
@@ -682,6 +696,8 @@ class LegacyAuthenticatedWebConnectionCounterConnector(LegacyWebConnectionCounte
                 WebAuthState.ADMIN,
             )
         except WebConnectionCertificateError as err:
+            failure = err
+        except WebConnectionTlsError as err:
             failure = err
         except WebConnectionSessionBusyError as err:
             failure = err
