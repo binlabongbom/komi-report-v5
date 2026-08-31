@@ -137,7 +137,7 @@ class SnmpTotalProbe:
         capacity_by_row = by_suffix(capacities, cls.SUPPLY_CAPACITY_ROOT)
         level_by_row = by_suffix(levels, cls.SUPPLY_LEVEL_ROOT)
         color_tokens = (("cyan", "C"), ("yellow", "Y"), ("magenta", "M"), ("black", "K"))
-        result: dict[str, int] = {}
+        candidates: dict[str, tuple[int, int]] = {}
         for row, description in description_by_row.items():
             normalized = description.casefold()
             if "toner" not in normalized:
@@ -150,10 +150,25 @@ class SnmpTotalProbe:
                 capacity = int(capacity_by_row[row])
             except (KeyError, TypeError, ValueError):
                 continue
-            if level < 0 or capacity <= 0:
+            if level < 0:
                 continue
-            result[color] = max(0, min(100, round(level * 100 / capacity)))
-        return result
+            if capacity > 0:
+                percentage = max(0, min(100, round(level * 100 / capacity)))
+                priority = 1
+            elif "detail" in normalized and 0 <= level <= 100:
+                # Confirmed AccurioPress firmware exposes
+                # ``Toner bottle detail(Color)`` as a direct percentage while
+                # Printer-MIB capacity uses the sentinel value -2.  This is
+                # different from the generic toner row whose negative values
+                # still mean unknown and must never be shown as a percentage.
+                percentage = level
+                priority = 2
+            else:
+                continue
+            current = candidates.get(color)
+            if current is None or priority > current[0]:
+                candidates[color] = (priority, percentage)
+        return {color: value for color, (_priority, value) in candidates.items()}
 
     @staticmethod
     def _oid_rows(values: list[tuple[str, str]], root: str) -> dict[str, str]:
@@ -178,7 +193,12 @@ class SnmpTotalProbe:
         capacities_by_row = cls._oid_rows(capacities, cls.INPUT_CAPACITY_ROOT)
         levels_by_row = cls._oid_rows(levels, cls.INPUT_LEVEL_ROOT)
         statuses_by_row = cls._oid_rows(statuses, cls.INPUT_STATUS_ROOT)
-        rows = sorted(set(names_by_row) | set(capacities_by_row) | set(levels_by_row) | set(statuses_by_row))
+        rows = sorted(
+            set(names_by_row) | set(capacities_by_row) | set(levels_by_row) | set(statuses_by_row),
+            key=lambda value: tuple(
+                int(part) if part.isdigit() else part for part in value.split(".")
+            ),
+        )
         trays: list[PaperTrayStatus] = []
         for row in rows:
             label = names_by_row.get(row, "").strip() or f"Tray {row.rsplit('.', 1)[-1]}"
@@ -208,16 +228,22 @@ class SnmpTotalProbe:
             for tray in trays
             if tray.level == 0 and (tray.capacity is None or tray.capacity > 0)
         )
-        if explicit_alerts or empty:
-            return PaperAvailability("empty", empty)
-        unavailable = tuple(tray.name for tray in trays if tray.status == 6)
-        if unavailable:
-            return PaperAvailability("attention", unavailable)
         available = any(
             tray.level is not None and (tray.level > 0 or tray.level == -3)
             or tray.status in {3, 4, 5}
             for tray in trays
         )
+        # A fleet commonly leaves the bypass tray empty while one or more
+        # cassette trays are ready.  Treat that as attention for the named
+        # tray, not as a machine-wide out-of-paper state.  ``empty`` is
+        # reserved for explicit evidence when no usable tray remains.
+        if explicit_alerts or empty:
+            if available:
+                return PaperAvailability("attention", empty)
+            return PaperAvailability("empty", empty)
+        unavailable = tuple(tray.name for tray in trays if tray.status == 6)
+        if unavailable:
+            return PaperAvailability("attention", unavailable)
         return PaperAvailability("available" if available else "unknown")
 
     def read(self, host: str, *, preferred_oid: str = "") -> SnmpProbeResult:

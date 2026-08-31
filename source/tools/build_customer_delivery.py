@@ -1,4 +1,4 @@
-"""Assemble the cross-platform V5.1 customer delivery with a fail-closed decision."""
+"""Assemble the current cross-platform customer delivery with a fail-closed decision."""
 
 from __future__ import annotations
 
@@ -6,17 +6,24 @@ import argparse
 import hashlib
 import json
 import shutil
+import tomllib
 import zipfile
 from datetime import datetime
 from pathlib import Path
 
+from services.v5_2_contract_metadata import CONTRACT_SHA256, CONTRACT_VERSION
 from tools.release_safety import assert_zip_safe
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-VERSION = "5.1.0"
+SOURCE_ROOT = PROJECT_ROOT / "source"
+VERSION = tomllib.loads((SOURCE_ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"][
+    "version"
+]
+VERSION_TAG = VERSION.replace(".", "_")
 DOCS = (
     "CUSTOMER_RELEASE_NOTES.md",
     "CUSTOMER_INSTALL_GUIDE.md",
+    "CUSTOMER_GUIDE_V5_2.md",
     "RELEASE_SUPPORT_AND_RECOVERY.md",
     "REGISTRATION_DATA_NOTICE.md",
 )
@@ -50,6 +57,17 @@ def verify_macos(root: Path, expected_commit: str) -> tuple[dict[str, object], l
         raise CustomerDeliveryError("macOS manifest source/version mismatch")
     if manifest.get("release_profile") != "customer-production-behavior":
         raise CustomerDeliveryError("macOS artifact is not the customer production-behavior profile")
+    if (
+        manifest.get("registration_runtime")
+        != "schema3-ed25519-public-client-no-shared-bootstrap"
+        or manifest.get("registration_bootstrap") != "not-applicable-schema3"
+    ):
+        raise CustomerDeliveryError("macOS manifest contains a legacy Registration bootstrap contract")
+    if (
+        manifest.get("contract_version") != CONTRACT_VERSION
+        or manifest.get("contract_sha256") != CONTRACT_SHA256
+    ):
+        raise CustomerDeliveryError("macOS manifest shared-contract identity mismatch")
     artifacts = manifest.get("artifacts")
     if not isinstance(artifacts, list) or not artifacts:
         raise CustomerDeliveryError("macOS artifacts are missing")
@@ -67,6 +85,9 @@ def verify_macos(root: Path, expected_commit: str) -> tuple[dict[str, object], l
     smoke = manifest.get("smoke")
     if not isinstance(smoke, dict) or smoke.get("graceful_exit") is not True:
         blockers.append("macOS bundle smoke/graceful exit did not pass")
+    joint_e2e = manifest.get("joint_staging_e2e")
+    if not isinstance(joint_e2e, dict) or joint_e2e.get("verified") is not True:
+        blockers.append("macOS Joint Desktop-Staging E2E evidence is missing or did not pass")
     return manifest, blockers
 
 
@@ -76,6 +97,17 @@ def verify_windows(root: Path, expected_commit: str) -> tuple[dict[str, object],
         raise CustomerDeliveryError("Windows manifest source/version mismatch")
     if manifest.get("release_profile") != "customer-production-behavior":
         raise CustomerDeliveryError("Windows artifact is not the customer production-behavior profile")
+    if (
+        manifest.get("registration_runtime")
+        != "schema3-ed25519-public-client-no-shared-bootstrap"
+        or manifest.get("registration_bootstrap") != "not-applicable-schema3"
+    ):
+        raise CustomerDeliveryError("Windows manifest contains a legacy Registration bootstrap contract")
+    if (
+        manifest.get("contract_version") != CONTRACT_VERSION
+        or manifest.get("contract_sha256") != CONTRACT_SHA256
+    ):
+        raise CustomerDeliveryError("Windows manifest shared-contract identity mismatch")
     artifact = root / str(manifest.get("artifact", ""))
     if not artifact.is_file() or _sha256(artifact) != manifest.get("artifact_sha256"):
         raise CustomerDeliveryError("Windows installer checksum mismatch")
@@ -104,6 +136,9 @@ def verify_windows(root: Path, expected_commit: str) -> tuple[dict[str, object],
             blockers.append("Windows UAT incomplete: " + ", ".join(failed))
         if uat.get("native_x64") is not True:
             blockers.append("Windows UAT evidence is VM/ARM preflight, not native x64")
+    joint_e2e = manifest.get("joint_staging_e2e")
+    if not isinstance(joint_e2e, dict) or joint_e2e.get("verified") is not True:
+        blockers.append("Windows Joint Desktop-Staging E2E evidence is missing or did not pass")
     return manifest, blockers
 
 
@@ -122,7 +157,8 @@ def build_delivery(
     blockers = macos_blockers + windows_blockers
     if registration_blocker:
         blockers.append(registration_blocker)
-    decision = "RELEASE READY" if not blockers else "HOLD"
+    blockers.append("Production GO requires explicit external approval; packaging never self-promotes")
+    decision = "HOLD"
     staging = output_root / "staging"
     if staging.exists():
         shutil.rmtree(staging)
@@ -144,18 +180,32 @@ def build_delivery(
         "schema_version": 1,
         "product": "KOMI Report V5",
         "version": VERSION,
+        "contract_version": CONTRACT_VERSION,
+        "contract_sha256": CONTRACT_SHA256,
         "source_commit": expected_commit,
         "approved_phase5_source_gate": approved_source_gate or expected_commit,
         "assembly_commit": assembly_commit or expected_commit,
         "release_profile": "customer-production-behavior",
         "macos_artifact_identity": macos_manifest.get("artifact_identity"),
         "windows_artifact_identity": windows_manifest.get("artifact_identity"),
-        "registration_runtime": "external-approved-policy-required-fail-closed",
+        "registration_runtime": "schema3-ed25519-public-client-no-shared-bootstrap",
         "registration_endpoint": "https://www.dmskm.com",
-        "registration_decision": "hold" if registration_blocker else "passed",
+        "registration_decision": (
+            "passed"
+            if not registration_blocker
+            and isinstance(macos_manifest.get("joint_staging_e2e"), dict)
+            and macos_manifest["joint_staging_e2e"].get("verified") is True
+            and isinstance(windows_manifest.get("joint_staging_e2e"), dict)
+            and windows_manifest["joint_staging_e2e"].get("verified") is True
+            else "hold"
+        ),
+        "joint_staging_e2e": {
+            "macos": macos_manifest.get("joint_staging_e2e"),
+            "windows": windows_manifest.get("joint_staging_e2e"),
+        },
         "update_runtime": "absent-phase-3-deferred",
         "release_decision": decision,
-        "production_go": decision == "RELEASE READY",
+        "production_go": False,
         "blockers": blockers,
         "assembled_at": datetime.now().astimezone().isoformat(timespec="seconds"),
     }
@@ -163,7 +213,9 @@ def build_delivery(
         json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
     )
     output_root.mkdir(parents=True, exist_ok=True)
-    archive = output_root / f"KOMI_Report_V5_1_0_Customer_Release_{decision.replace(' ', '_')}.zip"
+    archive = output_root / (
+        f"KOMI_Report_V{VERSION_TAG}_Customer_Release_{decision.replace(' ', '_')}.zip"
+    )
     archive.unlink(missing_ok=True)
     with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as zipped:
         for path in sorted(staging.rglob("*"), key=lambda item: item.as_posix()):
@@ -183,7 +235,7 @@ def build_delivery(
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Assemble the V5.1 customer delivery")
+    parser = argparse.ArgumentParser(description=f"Assemble the V{VERSION} customer delivery")
     parser.add_argument("--macos", type=Path, required=True)
     parser.add_argument("--windows", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)

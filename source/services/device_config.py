@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import json
 import secrets
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import datetime
 from ipaddress import ip_address
@@ -14,6 +16,7 @@ from komi_snmp_profiler.credential_store import (
     CredentialStoreError,
     platform_credential_store,
 )
+from services.registration_envelope import normalize_device_inventory
 
 
 @dataclass(frozen=True)
@@ -151,7 +154,12 @@ class DeviceConfigRepository:
             ).fetchone()
         return self._from_row(row) if row else None
 
-    def replace_all(self, devices: list[DeviceConfig]) -> None:
+    def replace_all(
+        self,
+        devices: list[DeviceConfig],
+        *,
+        registration_devices: Iterable[Mapping[str, object]] | None = None,
+    ) -> None:
         if not 1 <= len(devices) <= 3:
             raise ValueError("ต้องตั้งค่าเครื่องอย่างน้อย 1 และไม่เกิน 3 เครื่อง")
         slots = [item.slot for item in devices]
@@ -160,6 +168,12 @@ class DeviceConfigRepository:
             raise ValueError("slot และ IP address ห้ามซ้ำกัน")
         self._ensure_migrated()
         now = datetime.now().astimezone().isoformat(timespec="seconds")
+        registration_inventory_json: str | None = None
+        if registration_devices is not None:
+            inventory = normalize_device_inventory(registration_devices)
+            registration_inventory_json = json.dumps(
+                inventory["devices"], ensure_ascii=False, sort_keys=True
+            )
         staged: list[tuple[str, AdminCredential | None]] = []
         try:
             with _open() as conn:
@@ -212,6 +226,15 @@ class DeviceConfigRepository:
                             now,
                         ),
                     )
+                if registration_inventory_json is not None:
+                    changed = conn.execute(
+                        """UPDATE v52_runtime_state
+                           SET registration_inventory_json=?,updated_at=?
+                           WHERE singleton_id=1""",
+                        (registration_inventory_json, now),
+                    )
+                    if changed.rowcount != 1:
+                        raise ValueError("V5.2 runtime is not configured")
         except Exception:
             for reference, previous in reversed(staged):
                 try:

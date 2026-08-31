@@ -49,7 +49,18 @@ from services.runtime_snapshots import runtime_snapshots
 from services import web_service
 
 
-VIEWPORTS = ((1024, 768), (1280, 800), (1440, 900))
+VIEWPORTS = tuple(
+    tuple(int(part) for part in value.lower().split("x", 1))
+    for value in os.environ.get(
+        "KOMI_UI_QA_VIEWPORTS", "1024x768,1280x800,1440x900"
+    ).split(",")
+    if value.strip()
+)
+DEVICE_COUNTS = tuple(
+    int(value)
+    for value in os.environ.get("KOMI_UI_QA_DEVICE_COUNTS", "1,2,3").split(",")
+    if value.strip()
+)
 PAGE_NAMES = ("Overview", "Import", "Reports", "Settings", "Manual")
 OUTPUT_DIR = Path(
     os.environ.get(
@@ -360,7 +371,7 @@ def main() -> None:
     )
     results: list[tuple[int, str, str]] = []
     try:
-        for device_count in (1, 2, 3):
+        for device_count in DEVICE_COUNTS:
             current_count["value"] = device_count
             db_path = temp_root / f"devices-{device_count}.sqlite3"
             database.set_db_path(db_path)
@@ -434,7 +445,7 @@ def main() -> None:
                             assert window.pg_history.report_period_note.isHidden()
                         if device_count == 3 and width in (1024, 1440):
                             for tab_index, slug in enumerate(
-                                ("overview", "users", "printers", "usage")
+                                ("overview", "users", "printers", "usage", "legacy")
                             ):
                                 window.pg_history.report_center_tabs.setCurrentIndex(tab_index)
                                 app.processEvents()
@@ -457,15 +468,26 @@ def main() -> None:
                     elif page_name == "Settings":
                         assert window.pg_settings.fleet.horizontalScrollBar().maximum() == 0
                         assert str(db_path) in window.pg_settings.fleet_content.active_database_path.text()
-                    elif page_name == "Manual" and QA_LANGUAGE == "th":
-                        tab_bar = window.pg_manual.tabs.tabBar()
-                        assert tab_bar.elideMode() == Qt.TextElideMode.ElideNone
-                        assert all(
-                            tab_bar.fontMetrics().horizontalAdvance(
-                                window.pg_manual.tabs.tabText(index)
-                            ) <= tab_bar.tabRect(index).width()
-                            for index in range(window.pg_manual.tabs.count())
-                        )
+                    elif page_name == "Manual":
+                        assert window.pg_manual.manual_scroll.horizontalScrollBar().maximum() == 0
+                        if device_count == 3 and width == 1024:
+                            assert not window.pg_manual.manual_toc_frame.isVisible()
+                            assert window.pg_manual.manual_toc_combo.isVisible()
+                            for section_index, slug in enumerate(
+                                ("start", "workflow", "reports", "settings", "system")
+                            ):
+                                window.pg_manual._scroll_to_manual_section(section_index)
+                                app.processEvents()
+                                assert not _visible_clips(
+                                    window,
+                                    root=window.pg_manual,
+                                ), (slug, _visible_clips(window, root=window.pg_manual))
+                                window.grab().save(
+                                    str(OUTPUT_DIR / f"v5-1024-3dev-manual-{slug}.png"),
+                                    "PNG",
+                                )
+                            window.pg_manual._scroll_to_manual_section(0)
+                            app.processEvents()
                     capture = window.grab().toImage()
                     captures.append((page_name, capture))
                     if device_count == 3 and (width, height) == (1024, 768):
@@ -477,7 +499,7 @@ def main() -> None:
                             settings_scroll = window.pg_settings.fleet
                             settings_bar = settings_scroll.verticalScrollBar()
                             settings_content = window.pg_settings.fleet_content
-                            for task_key in ("billing", "schedule", "web", "support"):
+                            for task_key in ("billing", "schedule", "support"):
                                 assert settings_content._set_active_editor(task_key)
                                 settings_scroll.ensureWidgetVisible(
                                     settings_content._task_editors[task_key],
@@ -486,11 +508,20 @@ def main() -> None:
                                 )
                                 app.processEvents()
                                 assert settings_content._active_editor == task_key
+                                visibility = {
+                                    key: editor.isVisibleTo(window)
+                                    for key, editor in settings_content._task_editors.items()
+                                }
                                 assert all(
                                     editor.isVisibleTo(window) == (key == task_key)
                                     for key, editor in settings_content._task_editors.items()
+                                ), (task_key, visibility)
+                                assert settings_scroll.horizontalScrollBar().maximum() == 0, (
+                                    task_key,
+                                    settings_scroll.horizontalScrollBar().maximum(),
+                                    settings_content.sizeHint().width(),
+                                    settings_scroll.viewport().width(),
                                 )
-                                assert settings_scroll.horizontalScrollBar().maximum() == 0
                                 assert not _visible_clips(
                                     window,
                                     root=settings_content,
@@ -500,7 +531,10 @@ def main() -> None:
                                         f"Settings {task_key} editor",
                                         _visible_thai(settings_content, window),
                                     )
-                                    assert not _visible_thai_metadata(settings_content, window)
+                                    assert not _visible_thai_metadata(settings_content, window), (
+                                        f"Settings {task_key} metadata",
+                                        _visible_thai_metadata(settings_content, window),
+                                    )
                                 window.grab().save(
                                     str(
                                         OUTPUT_DIR
@@ -534,14 +568,60 @@ def main() -> None:
                                         "PNG",
                                     )
                                     settings_content.advanced_schedule_button.setChecked(False)
+                                if task_key == "support":
+                                    assert settings_content._set_active_editor("web")
+                                    settings_scroll.ensureWidgetVisible(
+                                        settings_content.web_task_editor,
+                                        12,
+                                        12,
+                                    )
+                                    app.processEvents()
+                                    assert settings_content.support_task_editor.isVisibleTo(window)
+                                    assert settings_content.web_task_editor.isVisibleTo(window)
+                                    assert not settings_content.billing_editor.isVisibleTo(window)
+                                    assert not settings_content.schedule_editor.isVisibleTo(window)
+                                    assert settings_scroll.horizontalScrollBar().maximum() == 0
+                                    assert not _visible_clips(
+                                        window,
+                                        root=settings_content,
+                                    ), _visible_clips(window, root=settings_content)
+                                    window.grab().save(
+                                        str(
+                                            OUTPUT_DIR
+                                            / "v5-1024-3dev-settings-advanced-lan.png"
+                                        ),
+                                        "PNG",
+                                    )
+                                    assert settings_content._set_active_editor("support")
+                                    app.processEvents()
                             settings_content._set_active_editor(None, force=True)
                             settings_bar.setValue(0)
                             app.processEvents()
-                            settings_bar.setValue(settings_bar.maximum())
+                            # Collapsing the large inline Advanced section changes
+                            # the scroll range in a second layout pass on Qt/macOS.
+                            # Re-anchor twice so the button itself, not a stale
+                            # pre-collapse coordinate, is what we capture.
+                            for _layout_pass in range(2):
+                                app.processEvents()
+                                toggle_y = settings_content.support_section_toggle.mapTo(
+                                    settings_scroll.viewport(), QPoint(0, 0)
+                                ).y()
+                                settings_bar.setValue(
+                                    max(0, settings_bar.value() + toggle_y - 20)
+                                )
                             app.processEvents()
                             assert _visible_in_scroll(
                                 settings_scroll,
                                 window.pg_settings.fleet_content.support_section_toggle,
+                            ), (
+                                settings_content.support_section_toggle.isVisibleTo(window),
+                                settings_content.support_section_toggle.isHidden(),
+                                settings_content.support_section_toggle.mapTo(
+                                    settings_scroll.viewport(), QPoint(0, 0)
+                                ),
+                                settings_content.support_section_toggle.size(),
+                                settings_bar.value(),
+                                settings_bar.maximum(),
                             )
                             window.grab().save(
                                 str(OUTPUT_DIR / "v5-1024-3dev-settings-bottom.png"),

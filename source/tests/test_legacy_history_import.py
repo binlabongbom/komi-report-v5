@@ -210,9 +210,9 @@ def test_setup_wizard_exposes_history_import_once_on_company_step(tmp_path):
     assert wizard.stack.count() == 4
     assert wizard.stack.currentIndex() == 0
     assert not wizard.legacy_import_button.isHidden()
-    assert wizard.legacy_import_button.text() == "นำเข้าฐานข้อมูลเดิม…"
+    assert wizard.legacy_import_button.text() == "Import"
     assert wizard.legacy_import_button.parent() is wizard.database_path_container
-    assert "Meter/Usage History" in wizard.database_path_status.text()
+    assert wizard.database_path_status.isHidden()
     assert not hasattr(wizard, "legacy_card")
 
     dialog = LegacyHistoryImportDialog(wizard)
@@ -266,9 +266,33 @@ def test_cloud_reports_exposes_imported_v46_history_without_cost(tmp_path):
         for column in range(widget.legacy_history_table.columnCount())
     )
     assert widget.usage_monthly_table.rowCount() == 2
-    assert widget.usage_monthly_table.item(0, 0).text() == "02/2025"
-    assert widget.usage_monthly_table.item(0, 6).text() == "90"
-    assert widget.usage_monthly_table.item(0, 7).text() == "—"
+    assert widget.usage_monthly_table.item(0, 0).text() == "Meter เริ่มต้น"
+    headers = [
+        widget.usage_monthly_table.horizontalHeaderItem(column).text()
+        for column in range(widget.usage_monthly_table.columnCount())
+    ]
+    assert widget.usage_monthly_table.item(0, headers.index("รวม")).text() == "300"
+    assert widget.usage_monthly_table.item(0, headers.index("Scan")).text() == "—"
+    assert (
+        widget.usage_monthly_table.item(
+            0, headers.index("ค่าใช้จ่ายโดยประมาณ")
+        ).text()
+        == "—"
+    )
+    assert all(
+        widget.usage_monthly_table.item(0, headers.index(label)).text() == "—"
+        for label in headers
+        if label.startswith(("Print ", "Copy "))
+    )
+    assert widget.usage_monthly_table.item(1, 0).text() == "02/2025"
+    assert widget.usage_monthly_table.item(1, headers.index("รวม")).text() == "90"
+    assert widget.usage_monthly_table.item(1, headers.index("Scan")).text() == "0"
+    assert (
+        widget.usage_monthly_table.item(
+            1, headers.index("ค่าใช้จ่ายโดยประมาณ")
+        ).text()
+        == "—"
+    )
     widget.close()
     app.processEvents()
 
@@ -335,8 +359,8 @@ def test_legacy_usage_follows_slot_but_never_calculates_across_replacement():
 
     records = build_legacy_usage_intervals(snapshots)
 
-    assert [record.billing_month for record in records] == ["2025-01", "2025-02", "2025-04"]
-    assert [record.total for record in records] == [300, 90, 40]
+    assert [record.billing_month for record in records] == ["2025-02", "2025-04"]
+    assert [record.total for record in records] == [90, 40]
     assert {record.device_identity for record in records} == {"slot:0"}
     assert all(record.cost_available is False for record in records)
 
@@ -391,9 +415,13 @@ def test_usage_timeline_keeps_one_slot_across_v46_and_v5_serials():
     )
 
     matrix = widget.usage_by_printer_table
-    assert matrix.columnCount() == 8
+    assert matrix.columnCount() == 14
     assert matrix.groupedHeaderItem(0, 1).text() == "Slot 1 · แผนกบัญชี"
     assert widget.usage_monthly_table.rowCount() == 2
+    assert widget.usage_monthly_table.item(0, 0).text() == "Meter เริ่มต้น"
+    assert widget.usage_monthly_table.item(0, 12).text() == "300"
+    assert widget.usage_monthly_table.item(0, 13).text() == "—"
+    assert widget.usage_monthly_table.item(1, 12).text() == "40"
     assert widget.usage_timeline_chart.chart().series()
     widget.close()
     app.processEvents()

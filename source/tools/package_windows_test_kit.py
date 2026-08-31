@@ -30,7 +30,7 @@ VERSION = tomllib.loads((SOURCE_ROOT / "pyproject.toml").read_text(encoding="utf
 RELEASE_ROOT = PROJECT_ROOT / "release"
 WINDOWS_REQUIREMENTS = SOURCE_ROOT / "requirements-windows-x64.lock.txt"
 KIT_NAME = "KOMI Report V5 Windows Portable"
-ARCHIVE_NAME = "KOMI_Report_V5_Windows_x64_Portable.zip"
+ARCHIVE_NAME = f"KOMI_Report_V{VERSION.replace('.', '_')}_Windows_x64_Portable.zip"
 PYTHON_VERSION = "3.11.9"
 PYTHON_EMBED_ARCHIVE = f"python-{PYTHON_VERSION}-embed-amd64.zip"
 PYTHON_EMBED_URL = (
@@ -63,7 +63,12 @@ ROOT_FILES = (
     "RELEASE_NOTES.txt",
 )
 PACKAGE_DIRS = ("services", "komi_snmp_profiler", "ui")
-TOOL_FILES = ("__init__.py", "check_parser.py", "default_profiles.json")
+TOOL_FILES = (
+    "__init__.py",
+    "check_parser.py",
+    "db_recovery.py",
+    "default_profiles.json",
+)
 DOC_FILES = (
     "PILOT_RELEASE_CHECKLIST.md",
     "RELEASE_RUNBOOK.md",

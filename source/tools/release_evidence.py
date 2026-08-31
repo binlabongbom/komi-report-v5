@@ -11,6 +11,7 @@ from collections.abc import Iterable
 from datetime import datetime
 from pathlib import Path
 
+from services.v5_2_contract_metadata import CONTRACT_SHA256, CONTRACT_VERSION
 from tools.release_safety import ReleaseSafetyError, scan_files
 
 WINDOWS_X64_MACHINES = frozenset({"amd64", "x86_64"})
@@ -57,6 +58,88 @@ def sha256_file(path: Path) -> str:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def load_joint_e2e_evidence(
+    path: Path | None,
+    *,
+    version: str,
+    source_commit: str,
+) -> dict[str, object]:
+    """Load a sanitized Joint Desktop-Staging E2E release-gate result.
+
+    A missing file is an explicit HOLD state so an unsigned/internal candidate
+    can still be assembled. A supplied file is treated as release evidence and
+    therefore must match the exact product, source and shared-contract identity;
+    malformed or mismatched evidence is rejected instead of being downgraded to
+    a warning.
+
+    The input deliberately contains no token, request/response body, customer
+    data or endpoint credential. Only the result summary and its SHA-256 are
+    copied into artifact manifests.
+    """
+
+    base: dict[str, object] = {
+        "schema_version": 1,
+        "state": "missing-blocked",
+        "verified": False,
+        "environment": "staging",
+        "product_version": version,
+        "source_commit": source_commit,
+        "contract_version": CONTRACT_VERSION,
+        "contract_sha256": CONTRACT_SHA256,
+        "evidence_sha256": None,
+        "checks": {
+            "joint_e2e_passed": False,
+            "dashboard_readback_passed": False,
+            "cleanup_deactivate_passed": False,
+        },
+    }
+    if path is None:
+        return base
+    try:
+        raw = path.read_bytes()
+        payload = json.loads(raw.decode("utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ReleaseContractError("Joint E2E evidence is unreadable or invalid JSON") from exc
+    if not isinstance(payload, dict):
+        raise ReleaseContractError("Joint E2E evidence must be a JSON object")
+
+    expected_identity = {
+        "schema_version": 1,
+        "product_version": version,
+        "source_commit": source_commit,
+        "contract_version": CONTRACT_VERSION,
+        "contract_sha256": CONTRACT_SHA256,
+        "environment": "staging",
+    }
+    mismatches = [
+        key for key, expected in expected_identity.items() if payload.get(key) != expected
+    ]
+    if mismatches:
+        raise ReleaseContractError(
+            "Joint E2E evidence identity mismatch: " + ", ".join(sorted(mismatches))
+        )
+
+    check_names = (
+        "joint_e2e_passed",
+        "dashboard_readback_passed",
+        "cleanup_deactivate_passed",
+    )
+    invalid_checks = [name for name in check_names if not isinstance(payload.get(name), bool)]
+    if invalid_checks:
+        raise ReleaseContractError(
+            "Joint E2E evidence check must be boolean: " + ", ".join(invalid_checks)
+        )
+    checks = {name: bool(payload[name]) for name in check_names}
+    verified = all(checks.values())
+    return {
+        **base,
+        "state": "verified" if verified else "failed-blocked",
+        "verified": verified,
+        "evidence_sha256": hashlib.sha256(raw).hexdigest(),
+        "checks": checks,
+    }
 
 
 def require_windows_x64(
@@ -125,6 +208,7 @@ def assert_registration_fail_closed_payload(root: Path) -> None:
         "registration_policy.json",
         "registration-bootstrap.json",
         "registration_bootstrap.json",
+        "komi-registration-bootstrap.dat",
     }
     findings = [
         path.relative_to(root).as_posix()
@@ -286,6 +370,8 @@ def write_release_evidence(
         "schema_version": 1,
         "product": "KOMI Report V5",
         "version": version,
+        "contract_version": CONTRACT_VERSION,
+        "contract_sha256": CONTRACT_SHA256,
         "artifact": artifact.name,
         "artifact_identity": f"{artifact_identity_prefix}-{version}-{source_commit[:12]}",
         "artifact_sha256": artifact_sha256,

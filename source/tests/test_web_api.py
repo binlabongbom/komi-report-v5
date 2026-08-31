@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 import web_api
 from services.device_config import DeviceConfig
 from services.monthly_history import MonthlyUsage
+from services import peer_sync_authorization
 from services.subject_history import SubjectPeriodUsage
 
 
@@ -15,6 +16,87 @@ def test_health_never_exposes_credentials(monkeypatch):
     assert response.status_code == 200
     assert response.json()["device_count"] == 0
     assert "password" not in response.text.casefold()
+
+
+def test_peer_discovery_is_minimal_and_snapshot_is_allow_listed(monkeypatch):
+    discovery = {
+        "contract": "komi-secondary-setup/v1",
+        "ready": True,
+        "company_name": "บริษัท ทดสอบ จำกัด",
+        "printer_count": 1,
+        "version": "5.2.1",
+    }
+    snapshot = {
+        "contract": "komi-secondary-setup/v1",
+        "generated_at": "2026-08-26T10:00:00+07:00",
+        "organization": {
+            "company_name": "บริษัท ทดสอบ จำกัด",
+            "first_started_at": "2026-08-26",
+            "primary_installation_id": "primary-id",
+        },
+        "settings": {
+            "pricing_mode": "shared",
+            "billing_day": 31,
+            "waste_paper_pct": 2.0,
+            "work_start": "08:00",
+            "work_end": "17:00",
+            "sync_schedule_windows": "",
+        },
+        "devices": [
+            {
+                "slot": 0,
+                "name": "บัญชี",
+                "host": "192.0.2.10",
+                "model": "bizhub C450i",
+                "serial": "SER-001",
+                "tls_mode": "system",
+                "tls_fingerprint": "",
+                "prices": {
+                    "a3_color": 4.0,
+                    "a3_bw": 1.0,
+                    "a4_color": 2.0,
+                    "a4_bw": 0.2,
+                },
+            }
+        ],
+    }
+    monkeypatch.setattr(web_api, "primary_discovery_payload", lambda: discovery)
+    monkeypatch.setattr(web_api, "primary_setup_snapshot", lambda: snapshot)
+    monkeypatch.setattr(
+        web_api,
+        "get_cfg",
+        lambda key, default="": "primary-id" if key == "installation_id" else default,
+    )
+    state_path = __import__("pathlib").Path(
+        __import__("tempfile").mkdtemp()
+    ) / "peer-sync.json"
+    monkeypatch.setenv("KOMI_PEER_SYNC_STATE_FILE", str(state_path))
+    client = TestClient(web_api.app)
+
+    assert client.get("/api/v1/peer/discovery").json() == discovery
+    assert client.get("/api/v1/peer/setup-snapshot").status_code == 401
+
+    token = "a" * 43
+    assert client.post("/api/v1/peer/claim", json={"token": token}).status_code == 423
+    peer_sync_authorization.open_pairing_window("primary-id")
+    claim = client.post("/api/v1/peer/claim", json={"token": token})
+    assert claim.status_code == 202
+    response = client.get(
+        "/api/v1/peer/setup-snapshot",
+        headers={"X-KOMI-Peer-Sync-Token": token},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == snapshot
+    assert "password" not in response.text.casefold()
+    assert "token" not in response.text.casefold()
+    assert (
+        client.get(
+            "/api/v1/peer/setup-snapshot",
+            headers={"X-KOMI-Peer-Sync-Token": token},
+        ).status_code
+        == 401
+    )
 
 
 def test_empty_overview_is_explicit(monkeypatch):
@@ -53,8 +135,17 @@ def test_openapi_endpoints_have_concrete_response_schemas():
 
     assert api_paths
     for path in api_paths:
-        response_schema = schema["paths"][path]["get"]["responses"]["200"]["content"]["application/json"]["schema"]
-        assert response_schema.get("$ref") or response_schema.get("type") not in (None, "object")
+        for operation in schema["paths"][path].values():
+            successful = next(
+                response
+                for code, response in operation["responses"].items()
+                if str(code).startswith("2")
+            )
+            response_schema = successful["content"]["application/json"]["schema"]
+            assert response_schema.get("$ref") or response_schema.get("type") not in (
+                None,
+                "object",
+            )
 
 
 def _monthly_identity(

@@ -80,6 +80,17 @@ def test_registration_policy_artefact_is_never_packaged(tmp_path):
         assert_registration_fail_closed_payload(tmp_path)
 
 
+def test_legacy_registration_bootstrap_is_never_packaged(tmp_path):
+    (tmp_path / "runtime-config").mkdir()
+    (tmp_path / "runtime-config" / "komi-registration-bootstrap.dat").write_text(
+        "legacy-shared-bootstrap",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ReleaseContractError, match="must not enable Registration"):
+        assert_registration_fail_closed_payload(tmp_path)
+
+
 def test_inventory_is_sorted_and_hashes_each_payload_file(tmp_path):
     payload = tmp_path / "payload"
     payload.mkdir()
@@ -225,14 +236,13 @@ def test_hidden_launcher_is_ascii_without_utf8_bom(tmp_path):
     assert b"shell.Run command, 0, False\r\n" in raw
 
 
-def test_archived_source_commit_must_match_explicit_identity(tmp_path, monkeypatch):
+def test_archived_source_commit_is_not_trusted_without_content_identity(tmp_path, monkeypatch):
     commit = "a" * 40
     (tmp_path / "SOURCE_COMMIT.txt").write_text(commit + "\n", encoding="ascii")
     monkeypatch.setattr("tools.build_windows_rc.PROJECT_ROOT", tmp_path)
 
-    assert source_identity(commit) == (commit, "archive-clean")
-    with pytest.raises(ReleaseContractError, match="does not match"):
-        source_identity("b" * 40)
+    with pytest.raises(ReleaseContractError, match="identity verification failed"):
+        source_identity(commit)
 
 
 def test_verified_source_archive_is_a_clean_build_input():
@@ -249,12 +259,16 @@ def test_forbidden_dependency_assets_are_removed_before_packaging(tmp_path):
     (package / "test-data.csv").write_text("synthetic,data\n", encoding="utf-8")
     (package / "compressed.csv.gz").write_text("synthetic,data\n", encoding="utf-8")
     (package / "debug.log").write_text("synthetic\n", encoding="utf-8")
+    (package / "customer.komirequest").write_text("opaque\n", encoding="utf-8")
+    (package / "customer.komilicense").write_text("opaque\n", encoding="utf-8")
 
-    assert remove_forbidden_dependency_assets(payload) == 3
+    assert remove_forbidden_dependency_assets(payload) == 5
     assert (package / "runtime.py").is_file()
     assert not (package / "test-data.csv").exists()
     assert not (package / "compressed.csv.gz").exists()
     assert not (package / "debug.log").exists()
+    assert not (package / "customer.komirequest").exists()
+    assert not (package / "customer.komilicense").exists()
 
 
 def test_node_build_tooling_is_removed_after_standalone_build(tmp_path):

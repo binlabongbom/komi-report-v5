@@ -188,7 +188,7 @@ def test_fleet_settings_groups_fields_and_live_schedule(tmp_path, monkeypatch, f
         assert "SERIAL-1" in page.device_summary.toolTip()
         assert "192.0.2.1:3000" in page.web_service_url.text()
         assert "127.0.0.1:3000" not in page.web_service_url.text()
-        assert "ฐานข้อมูลที่กำลังใช้งาน (อ่านอย่างเดียว):" in page.active_database_path.text()
+        assert "ฐานข้อมูลที่กำลังใช้งาน:" in page.active_database_path.text()
         assert str(database.get_db_path()) in page.active_database_path.text()
         assert page.autostart.isChecked()
         assert page.web_service_enabled.isChecked()
@@ -228,7 +228,7 @@ def test_fleet_settings_groups_fields_and_live_schedule(tmp_path, monkeypatch, f
         assert "127.0.0.1" not in page.web_service_url.text()
 
         page._save_schedule()
-        assert (True, True) in planned
+        assert all(apply is False for _enabled, apply in planned)
         stored_windows = load_schedule_windows(database.get_cfg("sync_schedule_windows"))
         assert stored_windows is not None
         assert [item.label for item in stored_windows] == ["Lazyload", "Active", "Standard", "Active", "Lazyload"]
@@ -290,8 +290,8 @@ def test_compact_settings_opens_one_editor_and_preserves_dirty_draft(
             lambda _enabled, *, apply=True: registration,
         )
         monkeypatch.setattr(
-            v5_pages.QMessageBox,
-            "information",
+            v5_pages,
+            "show_compact_information",
             lambda _parent, title, message: notices.append((title, message)),
         )
         database.set_cfg("waste_paper_pct", "2")
@@ -474,10 +474,12 @@ def test_fleet_autostart_reflects_missing_os_registration(tmp_path, monkeypatch)
         assert not page.autostart.isChecked()
         assert "ไม่พบ OS registration" in page.autostart_status.text()
         assert not page.schedule_save_button.isEnabled()
+        assert not page.autostart_save_button.isEnabled()
 
         page.autostart.setChecked(True)
-        assert page.schedule_save_button.isEnabled()
-        page._cancel_section("schedule")
+        assert page.autostart_save_button.isEnabled()
+        assert not page.schedule_save_button.isEnabled()
+        page._cancel_section("autostart")
 
         database.set_cfg("autostart_enabled", "1")
         page.refresh_from_config()
@@ -490,7 +492,7 @@ def test_fleet_autostart_reflects_missing_os_registration(tmp_path, monkeypatch)
         database.set_db_path(original)
 
 
-def test_v5_database_path_is_active_read_only_and_migration_is_disabled(tmp_path):
+def test_v5_database_path_tools_are_available_without_replacing_active_database(tmp_path):
     app = QApplication.instance() or QApplication([])
     original = _database(tmp_path)
     stale_path = tmp_path / "configured-but-not-active.sqlite3"
@@ -503,14 +505,14 @@ def test_v5_database_path_is_active_read_only_and_migration_is_disabled(tmp_path
         app.processEvents()
 
         active_path = str(database.get_db_path())
-        assert legacy._btn_change_db_path.isHidden()
+        assert not legacy._btn_change_db_path.isHidden()
         assert not legacy._v5_db_migration_note.isHidden()
-        assert "ยังไม่รองรับ" in legacy._v5_db_migration_note.text()
+        assert "ฐานข้อมูลที่กำลังใช้จะไม่ถูกทับ" in legacy._v5_db_migration_note.text()
         assert active_path in legacy.db_lbl.text()
         assert str(stale_path) not in legacy.db_lbl.text()
         assert active_path in page.fleet_content.active_database_path.text()
         assert str(stale_path) not in page.fleet_content.active_database_path.text()
-        assert "อ่านอย่างเดียว" in page.fleet_content.active_database_path.text()
+        assert "เปลี่ยน Path" in page.fleet_content.active_database_path.text()
         page.close()
         app.processEvents()
     finally:
@@ -552,7 +554,9 @@ def test_settings_tools_do_not_request_password(tmp_path):
 
         page.setCurrentWidget(page.legacy)
         assert legacy.unlock_calls == 0
-        assert page.currentWidget() is page.legacy
+        # Advanced settings now expands inline on the main Settings page;
+        # there is no password gate and no separate navigation page.
+        assert page.currentWidget() is page.fleet
         assert page.ensure_unlocked()
         assert legacy.unlock_calls == 0
         page.close()
@@ -760,10 +764,7 @@ def test_settings_v5_routes_support_details_without_exposing_top_level_tabs(tmp_
         assert page.fleet_content.support_details.isHidden()
         assert page.count() == 4
 
-        page.fleet_content.support_toggle.setChecked(True)
-        assert not page.fleet_content.support_details.isHidden()
-        assert "ซ่อนข้อมูลสำหรับเจ้าหน้าที่" in page.fleet_content.support_toggle.text()
-        page.fleet_content.support_toggle.setChecked(False)
+        assert page.fleet_content.support_toggle.isHidden()
         assert page.fleet_content.support_details.isHidden()
 
         page.fleet_content.billing_audit_requested.emit()
@@ -775,8 +776,95 @@ def test_settings_v5_routes_support_details_without_exposing_top_level_tabs(tmp_
 
         page.show_main()
         page.fleet_content.advanced_tools_requested.emit()
-        assert page.currentWidget() is page.legacy
+        assert page.currentWidget() is page.fleet
         assert legacy.unlock_calls == 0
+        assert not page.fleet_content.support_task_editor.isHidden()
+        assert page.fleet_content.autostart_program_card.parent() is (
+            page.fleet_content.support_task_editor
+        )
+        assert page.fleet_content.web_program_card.parent() is (
+            page.fleet_content.support_task_editor
+        )
+        assert page.legacy_content.parent() is page.fleet_content.support_task_editor
+        page.close()
+        app.processEvents()
+    finally:
+        database.set_db_path(original)
+
+
+def test_advanced_settings_and_nested_lan_stay_inline_without_horizontal_scroll(tmp_path):
+    app = QApplication.instance() or QApplication([])
+    original = _database(tmp_path)
+    try:
+        legacy = PageSettings()
+        page = PageSettingsV5(legacy)
+        # This matches the content width left by the sidebar at the supported
+        # 1024-pixel desktop viewport.
+        page.resize(805, 720)
+        page.show()
+        page.show_advanced()
+        app.processEvents()
+
+        content = page.fleet_content
+        assert page.currentWidget() is page.fleet
+        assert content.support_task_editor.isVisibleTo(page)
+        assert page.fleet.horizontalScrollBar().maximum() == 0
+
+        # Exercise the real nested LAN toggle. The parent Advanced section
+        # must remain visible, otherwise the LAN form is hidden by its parent.
+        content.web_toggle.click()
+        app.processEvents()
+        assert content._active_editor == "web"
+        assert content.support_task_editor.isVisibleTo(page)
+        assert content.web_task_editor.isVisibleTo(page)
+        assert page.fleet.horizontalScrollBar().maximum() == 0
+
+        assert content.web_report_passwordless_warning.isHidden()
+        content.web_report_passwordless.setChecked(True)
+        app.processEvents()
+        assert content.web_report_passwordless_warning.isVisibleTo(page)
+        assert "เครือข่าย LAN เดียวกัน" in content.web_report_passwordless_warning.text()
+        content._dirty_sections.discard("web")
+
+        content.web_toggle.click()
+        app.processEvents()
+        assert content._active_editor == "support"
+        assert content.support_task_editor.isVisibleTo(page)
+        assert content.web_task_editor.isHidden()
+        page.close()
+        app.processEvents()
+    finally:
+        database.set_db_path(original)
+
+
+def test_schedule_delete_button_is_compact_and_removes_only_its_row(tmp_path):
+    app = QApplication.instance() or QApplication([])
+    original = _database(tmp_path)
+    try:
+        page = PageFleetSettings()
+        page.resize(805, 720)
+        page.show()
+        assert page._set_active_editor("schedule")
+        page.advanced_schedule_button.setChecked(True)
+        app.processEvents()
+
+        before = page.schedule_windows_table.rowCount()
+        delete_buttons = [
+            button
+            for button in page.schedule_windows_table.findChildren(QAbstractButton)
+            if button.text() == "✕"
+        ]
+        assert len(delete_buttons) == before
+        assert all(
+            button.fontMetrics().horizontalAdvance(button.text()) + 8
+            <= button.maximumWidth()
+            for button in delete_buttons
+        )
+
+        delete_buttons[-1].click()
+        app.processEvents()
+        assert page.schedule_windows_table.rowCount() == before - 1
+        assert len(page._schedule_row_controls) == before - 1
         page.close()
         app.processEvents()
     finally:

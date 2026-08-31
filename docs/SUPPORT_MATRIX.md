@@ -5,7 +5,7 @@
 | Windows 10/11 x64 | Release target — RC blocked until native/signing/UAT evidence closes | Desktop, polling, SQLite, OS vault, LAN Web HTTPS, per-user installer | Native x64 clean install/upgrade/restore/uninstall, signed artifact and controlled printer/billing proof |
 | Windows 11 ARM64 VM | Preflight only | x64-emulated package/install/launch checks and Windows behavior triage | Must remain labelled VM/ARM; never substitutes for Windows x64 native acceptance |
 | macOS Apple Silicon | Internal UAT | Desktop local bundle, polling, SQLite, LAN Web HTTPS | Native bundle/tray/printer/restore UAT; customer Production blocked until signing/notarization |
-| Linux x64 | Deferred | No Production claim in V5.1.0 | A later approved phase must choose package format and run native UAT |
+| Linux x64 | Deferred | No Production claim in V5.2.1 | A later approved phase must choose package format and run native UAT |
 
 ## Release gates
 

@@ -5,10 +5,12 @@ from __future__ import annotations
 import hashlib
 import json
 import stat
+import subprocess
 import tomllib
 import zipfile
 from datetime import datetime
-from pathlib import Path
+from pathlib import Path, PurePosixPath
+from typing import Any
 
 from services.v5_2_contract_metadata import CONTRACT_SHA256, CONTRACT_VERSION
 from tools.release_safety import assert_release_safe, assert_zip_safe, git_identity
@@ -55,6 +57,8 @@ EXCLUDED_SUFFIXES = {
     ".csv",
     ".env",
     ".key",
+    ".komilicense",
+    ".komirequest",
     ".log",
     ".p12",
     ".pem",
@@ -74,6 +78,298 @@ EXCLUDED_NAMES = {
     "status.css",  # retired; globals.css owns the live styles
 }
 ZIP_TIMESTAMP = (2026, 1, 1, 0, 0, 0)
+SOURCE_COMMIT_NAME = "SOURCE_COMMIT.txt"
+SOURCE_ARCHIVE_IDENTITY_NAME = "SOURCE_ARCHIVE_IDENTITY.json"
+SOURCE_ARCHIVE_IDENTITY_SCHEMA = 1
+ARCHIVE_BUILD_GENERATED_PARTS = {
+    ".next",
+    ".pytest_cache",
+    ".ruff_cache",
+    ".venv",
+    "__pycache__",
+    "build",
+    "dist",
+    "node_modules",
+    "runtime-cache",
+}
+ARCHIVE_BUILD_GENERATED_NAMES = {".DS_Store", "next-env.d.ts"}
+ARCHIVE_BUILD_GENERATED_SUFFIXES = {".pyc", ".pyo", ".tsbuildinfo"}
+
+
+class SourceArchiveIdentityError(RuntimeError):
+    """Raised when release source cannot be tied to one clean Git tree."""
+
+
+def _git_output(project_root: Path, *arguments: str, binary: bool = False) -> bytes | str:
+    try:
+        result = subprocess.run(
+            ["git", *arguments],
+            cwd=project_root,
+            check=True,
+            capture_output=True,
+            text=not binary,
+        )
+    except (OSError, subprocess.CalledProcessError) as exc:
+        raise SourceArchiveIdentityError("Git source identity cannot be verified") from exc
+    return result.stdout
+
+
+def _git_tree_entries(project_root: Path, commit: str) -> tuple[str, str, dict[str, tuple[str, str]]]:
+    object_format = str(_git_output(project_root, "rev-parse", "--show-object-format")).strip()
+    if object_format not in hashlib.algorithms_available:
+        raise SourceArchiveIdentityError("Git object format is not supported by this builder")
+    git_tree = str(_git_output(project_root, "rev-parse", f"{commit}^{{tree}}")).strip().casefold()
+    raw_tree = bytes(
+        _git_output(project_root, "ls-tree", "-r", "-z", "--full-tree", commit, binary=True)
+    )
+    entries: dict[str, tuple[str, str]] = {}
+    for record in raw_tree.split(b"\0"):
+        if not record:
+            continue
+        try:
+            metadata, encoded_path = record.split(b"\t", 1)
+            mode, object_type, object_id = metadata.decode("ascii").split(" ", 2)
+            relative_path = encoded_path.decode("utf-8")
+        except (UnicodeDecodeError, ValueError) as exc:
+            raise SourceArchiveIdentityError("Git tree contains an invalid path record") from exc
+        if object_type != "blob":
+            continue
+        entries[relative_path] = (mode, object_id.casefold())
+    return object_format, git_tree, entries
+
+
+def _git_blob_id(data: bytes, object_format: str) -> str:
+    digest = hashlib.new(object_format)
+    digest.update(f"blob {len(data)}\0".encode("ascii"))
+    digest.update(data)
+    return digest.hexdigest()
+
+
+def _archive_tree_digest(entries: list[dict[str, Any]]) -> str:
+    canonical = json.dumps(
+        entries,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return hashlib.sha256(canonical).hexdigest()
+
+
+def build_source_archive_identity(
+    files: list[Path],
+    *,
+    project_root: Path,
+    commit: str,
+) -> dict[str, Any]:
+    """Bind every packaged file to the selected clean Git commit."""
+
+    object_format, git_tree, git_entries = _git_tree_entries(project_root, commit)
+    manifest_entries: list[dict[str, Any]] = []
+    for path in files:
+        relative_path = path.relative_to(project_root).as_posix()
+        tracked = git_entries.get(relative_path)
+        if tracked is None:
+            raise SourceArchiveIdentityError(
+                f"Release input is not tracked by Git: {relative_path}"
+            )
+        mode, expected_blob = tracked
+        if mode not in {"100644", "100755"} or path.is_symlink():
+            raise SourceArchiveIdentityError(
+                f"Release input has an unsupported Git mode: {relative_path}"
+            )
+        data = path.read_bytes()
+        actual_blob = _git_blob_id(data, object_format)
+        if actual_blob != expected_blob:
+            raise SourceArchiveIdentityError(
+                f"Release input differs from Git commit: {relative_path}"
+            )
+        manifest_entries.append(
+            {
+                "path": relative_path,
+                "git_mode": mode,
+                "git_blob_oid": expected_blob,
+                "size": len(data),
+                "sha256": hashlib.sha256(data).hexdigest(),
+            }
+        )
+    identity = {
+        "schema_version": SOURCE_ARCHIVE_IDENTITY_SCHEMA,
+        "git_commit": commit,
+        "git_tree": git_tree,
+        "git_object_format": object_format,
+        "file_count": len(manifest_entries),
+        "files": manifest_entries,
+    }
+    identity["archive_tree_sha256"] = _archive_tree_digest(manifest_entries)
+    return identity
+
+
+def _safe_identity_path(raw_path: object) -> str:
+    if not isinstance(raw_path, str):
+        raise SourceArchiveIdentityError("Source archive identity contains a non-string path")
+    normalized = PurePosixPath(raw_path)
+    if (
+        not raw_path
+        or raw_path != normalized.as_posix()
+        or normalized.is_absolute()
+        or ".." in normalized.parts
+        or "\\" in raw_path
+    ):
+        raise SourceArchiveIdentityError("Source archive identity contains an unsafe path")
+    return raw_path
+
+
+def _validated_identity_entries(identity: dict[str, Any]) -> list[dict[str, Any]]:
+    if identity.get("schema_version") != SOURCE_ARCHIVE_IDENTITY_SCHEMA:
+        raise SourceArchiveIdentityError("Source archive identity schema is unsupported")
+    object_format = identity.get("git_object_format")
+    if object_format not in {"sha1", "sha256"}:
+        raise SourceArchiveIdentityError("Source archive Git object format is invalid")
+    object_id_length = 40 if object_format == "sha1" else 64
+    for field in ("git_commit", "git_tree"):
+        object_id = identity.get(field)
+        if (
+            not isinstance(object_id, str)
+            or len(object_id) != object_id_length
+            or not all(char in "0123456789abcdef" for char in object_id)
+        ):
+            raise SourceArchiveIdentityError(f"Source archive {field} is invalid")
+    raw_entries = identity.get("files")
+    if not isinstance(raw_entries, list) or not raw_entries:
+        raise SourceArchiveIdentityError("Source archive identity has no file entries")
+    entries: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for raw_entry in raw_entries:
+        if not isinstance(raw_entry, dict):
+            raise SourceArchiveIdentityError("Source archive identity contains an invalid entry")
+        path = _safe_identity_path(raw_entry.get("path"))
+        if path in seen:
+            raise SourceArchiveIdentityError("Source archive identity contains duplicate paths")
+        seen.add(path)
+        mode = raw_entry.get("git_mode")
+        blob = raw_entry.get("git_blob_oid")
+        size = raw_entry.get("size")
+        sha256 = raw_entry.get("sha256")
+        if mode not in {"100644", "100755"}:
+            raise SourceArchiveIdentityError("Source archive identity contains an invalid Git mode")
+        if not isinstance(blob, str) or len(blob) != object_id_length or not all(
+            char in "0123456789abcdef" for char in blob
+        ):
+            raise SourceArchiveIdentityError("Source archive identity contains an invalid Git blob")
+        if not isinstance(size, int) or isinstance(size, bool) or size < 0:
+            raise SourceArchiveIdentityError("Source archive identity contains an invalid file size")
+        if not isinstance(sha256, str) or len(sha256) != 64 or not all(
+            char in "0123456789abcdef" for char in sha256
+        ):
+            raise SourceArchiveIdentityError("Source archive identity contains an invalid SHA-256")
+        entries.append(
+            {
+                "path": path,
+                "git_mode": mode,
+                "git_blob_oid": blob,
+                "size": size,
+                "sha256": sha256,
+            }
+        )
+    if entries != sorted(entries, key=lambda item: item["path"]):
+        raise SourceArchiveIdentityError("Source archive identity file entries are not sorted")
+    if identity.get("file_count") != len(entries):
+        raise SourceArchiveIdentityError("Source archive identity file count is invalid")
+    if identity.get("archive_tree_sha256") != _archive_tree_digest(entries):
+        raise SourceArchiveIdentityError("Source archive tree digest does not match its file entries")
+    return entries
+
+
+def assert_source_archive_zip_identity(archive: Path) -> dict[str, Any]:
+    """Verify the bytes written to the ZIP against the Git-derived identity."""
+
+    with zipfile.ZipFile(archive) as zipped:
+        names = [info.filename for info in zipped.infolist() if not info.is_dir()]
+        if len(names) != len(set(names)):
+            raise SourceArchiveIdentityError("Source archive contains duplicate paths")
+        required = {SOURCE_COMMIT_NAME, SOURCE_ARCHIVE_IDENTITY_NAME}
+        if not required.issubset(names):
+            raise SourceArchiveIdentityError("Source archive identity files are missing")
+        try:
+            identity = json.loads(zipped.read(SOURCE_ARCHIVE_IDENTITY_NAME))
+        except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+            raise SourceArchiveIdentityError("Source archive identity JSON is invalid") from exc
+        if not isinstance(identity, dict):
+            raise SourceArchiveIdentityError("Source archive identity JSON must be an object")
+        entries = _validated_identity_entries(identity)
+        expected_names = {entry["path"] for entry in entries} | required
+        if set(names) != expected_names:
+            raise SourceArchiveIdentityError("Source archive contents do not match its identity")
+        for entry in entries:
+            data = zipped.read(entry["path"])
+            if len(data) != entry["size"] or hashlib.sha256(data).hexdigest() != entry["sha256"]:
+                raise SourceArchiveIdentityError(
+                    f"Source archive file does not match its identity: {entry['path']}"
+                )
+        commit = zipped.read(SOURCE_COMMIT_NAME).decode("ascii").strip().casefold()
+        if commit != identity.get("git_commit"):
+            raise SourceArchiveIdentityError("Source archive commit identities do not match")
+        return identity
+
+
+def assert_extracted_source_archive_identity(project_root: Path) -> dict[str, Any]:
+    """Verify an extracted archive before any target-OS packaging begins."""
+
+    commit_path = project_root / SOURCE_COMMIT_NAME
+    identity_path = project_root / SOURCE_ARCHIVE_IDENTITY_NAME
+    if (
+        commit_path.is_symlink()
+        or identity_path.is_symlink()
+        or not commit_path.is_file()
+        or not identity_path.is_file()
+    ):
+        raise SourceArchiveIdentityError("Source archive identity files are missing")
+    try:
+        commit = commit_path.read_text(encoding="ascii").strip().casefold()
+        identity = json.loads(identity_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise SourceArchiveIdentityError("Source archive identity cannot be read") from exc
+    if not isinstance(identity, dict):
+        raise SourceArchiveIdentityError("Source archive identity JSON must be an object")
+    entries = _validated_identity_entries(identity)
+    if commit != identity.get("git_commit"):
+        raise SourceArchiveIdentityError("Source archive commit identities do not match")
+
+    expected_paths = {entry["path"] for entry in entries}
+    actual_paths: set[str] = set()
+    ignored_names = {SOURCE_COMMIT_NAME, SOURCE_ARCHIVE_IDENTITY_NAME}
+    for path in project_root.rglob("*"):
+        relative = path.relative_to(project_root)
+        if (
+            any(part in ARCHIVE_BUILD_GENERATED_PARTS for part in relative.parts)
+            or path.name in ARCHIVE_BUILD_GENERATED_NAMES
+            or path.suffix.casefold() in ARCHIVE_BUILD_GENERATED_SUFFIXES
+        ):
+            continue
+        if path.is_symlink():
+            raise SourceArchiveIdentityError(
+                f"Extracted source contains a symbolic link: {relative.as_posix()}"
+            )
+        if not path.is_file():
+            continue
+        if path.name in ignored_names and len(relative.parts) == 1:
+            continue
+        actual_paths.add(relative.as_posix())
+    if actual_paths != expected_paths:
+        raise SourceArchiveIdentityError("Extracted source contents do not match archive identity")
+
+    for entry in entries:
+        path = project_root / PurePosixPath(entry["path"])
+        if not path.is_file() or path.is_symlink():
+            raise SourceArchiveIdentityError(
+                f"Extracted source file is missing: {entry['path']}"
+            )
+        data = path.read_bytes()
+        if len(data) != entry["size"] or hashlib.sha256(data).hexdigest() != entry["sha256"]:
+            raise SourceArchiveIdentityError(
+                f"Extracted source file does not match archive identity: {entry['path']}"
+            )
+    return identity
 
 
 def _included_files() -> list[Path]:
@@ -88,7 +384,7 @@ def _included_files() -> list[Path]:
                 continue
             if path.name in EXCLUDED_NAMES or path.name.startswith(".env."):
                 continue
-            if any(path.name.endswith(suffix) for suffix in EXCLUDED_SUFFIXES):
+            if any(path.name.casefold().endswith(suffix) for suffix in EXCLUDED_SUFFIXES):
                 continue
             files.append(path)
     return sorted(set(files), key=lambda item: item.relative_to(PROJECT_ROOT).as_posix())
@@ -96,11 +392,20 @@ def _included_files() -> list[Path]:
 
 def build_source_archive() -> tuple[Path, str, int]:
     assert_v5_2_version_alignment()
-    RELEASE_DIR.mkdir(parents=True, exist_ok=True)
-    archive = RELEASE_DIR / ARCHIVE_NAME
+    commit, source_state = git_identity(PROJECT_ROOT)
+    if source_state != "clean":
+        raise SourceArchiveIdentityError(
+            "Source release requires a clean Git tree with no modified or untracked files"
+        )
     files = _included_files()
     assert_release_safe(files, root=PROJECT_ROOT)
-    commit, source_state = git_identity(PROJECT_ROOT)
+    identity = build_source_archive_identity(
+        files,
+        project_root=PROJECT_ROOT,
+        commit=commit,
+    )
+    RELEASE_DIR.mkdir(parents=True, exist_ok=True)
+    archive = RELEASE_DIR / ARCHIVE_NAME
     with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as output:
         for path in files:
             relative = path.relative_to(PROJECT_ROOT).as_posix()
@@ -109,11 +414,24 @@ def build_source_archive() -> tuple[Path, str, int]:
             info.external_attr = (stat.S_IMODE(mode) & 0xFFFF) << 16
             info.compress_type = zipfile.ZIP_DEFLATED
             output.writestr(info, path.read_bytes(), compresslevel=9)
-        identity_info = zipfile.ZipInfo("SOURCE_COMMIT.txt", ZIP_TIMESTAMP)
+        identity_info = zipfile.ZipInfo(SOURCE_COMMIT_NAME, ZIP_TIMESTAMP)
         identity_info.external_attr = 0o644 << 16
         identity_info.compress_type = zipfile.ZIP_DEFLATED
         output.writestr(identity_info, f"{commit}\n".encode("ascii"), compresslevel=9)
+        archive_identity_info = zipfile.ZipInfo(SOURCE_ARCHIVE_IDENTITY_NAME, ZIP_TIMESTAMP)
+        archive_identity_info.external_attr = 0o644 << 16
+        archive_identity_info.compress_type = zipfile.ZIP_DEFLATED
+        output.writestr(
+            archive_identity_info,
+            (json.dumps(identity, ensure_ascii=False, indent=2) + "\n").encode("utf-8"),
+            compresslevel=9,
+        )
     assert_zip_safe(archive)
+    assert_source_archive_zip_identity(archive)
+    final_commit, final_state = git_identity(PROJECT_ROOT)
+    if final_commit != commit or final_state != "clean":
+        archive.unlink(missing_ok=True)
+        raise SourceArchiveIdentityError("Git source changed while the archive was being created")
     digest = hashlib.sha256(archive.read_bytes()).hexdigest()
     checksum = archive.with_suffix(archive.suffix + ".sha256")
     checksum.write_text(f"{digest}  {archive.name}\n", encoding="utf-8")
@@ -128,7 +446,9 @@ def build_source_archive() -> tuple[Path, str, int]:
         "git_commit": commit,
         "source_state": source_state,
         "sha256": digest,
-        "file_count": len(files) + 1,
+        "file_count": len(files) + 2,
+        "source_git_tree": identity["git_tree"],
+        "source_archive_tree_sha256": identity["archive_tree_sha256"],
         "build_time": datetime.now().astimezone().isoformat(timespec="seconds"),
         "publish_state": "local-only",
     }
@@ -136,7 +456,7 @@ def build_source_archive() -> tuple[Path, str, int]:
         json.dumps(manifest, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
-    return archive, digest, len(files) + 1
+    return archive, digest, len(files) + 2
 
 
 if __name__ == "__main__":

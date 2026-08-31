@@ -1,25 +1,41 @@
-# KOMI Report V5.1 — Built-in Registration Bootstrap
+# KOMI Report V5.2.1 — Registration Identity (ไม่มี Built-in Bootstrap)
 
-## เป้าหมาย
+> ชื่อไฟล์นี้คงไว้เพื่อไม่ให้ลิงก์เอกสารเดิมเสีย แต่ V5.2.1 **ไม่ใช้และไม่บรรจุ**
+> `komi-registration-bootstrap.dat`, shared API key หรือ master key ในตัวติดตั้งแล้ว
 
-ลูกค้าติดตั้งโปรแกรมแล้วใช้งานได้โดยไม่ต้องรับไฟล์ API config หรือกรอกรหัส Registration เอง. แอปมี Production policy ที่ชี้ไป `https://www.dmskm.com` และแสดงประกาศ `KOMI-REG-2026-08-24` ใน Setup/Settings.
+## การทำงานของ Schema 3
 
-## การทำงาน
+1. เมื่อติดตั้งครั้งแรก Desktop สร้าง Ed25519 key pair เฉพาะ Installation ภายในเครื่องลูกค้า.
+2. Private key เก็บใน macOS Keychain หรือ Windows Credential Manager และห้ามส่งออกจากเครื่อง.
+3. Registration ส่งเฉพาะ public key, proof ที่เซ็นด้วย private key และข้อมูลตาม allow-list ของ
+   contract V5.2.1.
+4. Host ตรวจ proof แล้วออก scoped installation token; token เก็บใน OS vault เช่นกัน.
+5. Status และ Meter ใช้ installation token ตามขอบเขตที่กำหนด. ไม่มี key กลางที่ลูกค้าหลายรายใช้ร่วมกัน.
 
-1. Customer build รับ bootstrap เดิมจากช่องทาง OS vault ที่อนุญาต ณ เวลา build; ค่าไม่ถูกเขียนลง Git, manifest, checksum output หรือ log.
-2. Installer บรรจุค่าในชื่อ resource คงที่ `komi-registration-bootstrap.dat`.
-3. เมื่อเปิดแอปหลัง Setup โปรแกรมตรวจ OS vault ก่อน ถ้ามีค่าเดิมจะไม่ overwrite.
-4. ถ้ายังไม่มี โปรแกรมอ่าน resource แล้วบันทึกที่ `KOMI Report V5 Registration Credentials / registration-bootstrap-reference` ใน macOS Keychain หรือ Windows Credential Manager.
-5. Register สำเร็จแล้ว Server ต้องออก scoped installation token; token นี้อยู่ใน OS vault และ SQLite เก็บเฉพาะ reference.
+Contract identity ที่ต้องตรงกันทุก artifact และทุกหลักฐานคือ:
+
+- Contract version: `v5.2-shared-2026-08-25-r2`
+- Contract SHA-256: `4884a4a6fb798ef0c36c88daca09cf2ae5df66ff609139f812880ab7322413bd`
 
 ## Security boundary
 
-bootstrap ที่มากับ installer ถือเป็น **limited public bootstrap identifier** เพราะผู้รับ installer สามารถ extract ได้ จึงต้องไม่มีสิทธิ์ Admin/Dashboard, อ่านรายการลูกค้ารายอื่น, delete/deactivate, Update, remote command หรือเข้าถึงฐานข้อมูล. Server ต้องใช้ payload allow-list, rate limit, idempotency และออก token แยกต่อ Installation.
+- ห้ามฝัง shared/master bootstrap key, private key, token หรือ customer payload ใน EXE/APP/manifest/log.
+- Registration payload ต้องใช้ allow-list; ห้ามส่ง IP, MAC, hostname, Credential, User/Account,
+  Document, Print Job, raw SNMP/XML, raw error หรือ application log.
+- หาก OS vault, signature verification หรือ API contract ใช้ไม่ได้ ให้หยุดส่งแบบ fail-closed โดยไม่ลบ
+  Database, History, Billing หรือ Excel ภายในเครื่อง.
+- Offline License เป็น no-send gate: เมื่อใช้งานโหมด Offline ต้องไม่ส่ง Registration, Status หรือ Meter.
 
-ห้ามบันทึก IP, MAC, hostname, Credential, Meter/Counter, User/Account, Document หรือ Application log ใน Registration payload. หาก bootstrap/OS vault/API ไม่พร้อม Registration จะ fail-closed แต่ Setup, Meter, Billing, Report และ Excel ภายในเครื่องยังทำงาน.
+## Joint Staging E2E evidence สำหรับ Packaging
 
-## Live contract evidence — 2026-08-24
+ตัว Builder รับไฟล์ JSON ผ่าน `--joint-e2e-evidence`. ไฟล์นี้เป็นเพียงสรุปผลทดสอบที่ผ่านการ sanitize
+ไม่ใช่ credential และไม่ถูกบรรจุ raw file ลงตัวติดตั้ง. ต้องระบุ identity ตรงกับ version, source commit และ
+contract ข้างต้น พร้อมผล boolean ต่อไปนี้:
 
-Desktop built-in policy และ bootstrap เดิมเข้าถึง canonical endpoint ได้ แต่ current schema-v2 request ตอบ `HTTP 422 VALIDATION_ERROR`: `device_inventory.devices.0.serial_number` is not accepted by the deployed privacy allow-list. จึงยังห้ามเรียก Registration ว่า Production-ready.
+- `joint_e2e_passed`
+- `dashboard_readback_passed`
+- `cleanup_deactivate_passed`
 
-ปลด blocker เมื่อ API deploy allow-list/persistence/Dashboard ที่รับ `serial_number` แล้ว rerun current Desktop register, idempotent replay, heartbeat, Dashboard read-back และ deactivate/cleanup สำเร็จ.
+ถ้าไม่ส่งไฟล์นี้ Builder ยังสร้าง **unsigned HOLD candidate** สำหรับตรวจภายในได้ แต่ manifest ต้องระบุ
+`verified=false`, `release_decision=HOLD` และ `production_go=false`. หากส่งไฟล์ผิดรูปแบบหรือ identity ไม่ตรง
+Builder ต้องหยุดทันทีและห้ามลดระดับเป็น warning.

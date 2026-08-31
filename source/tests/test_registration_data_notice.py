@@ -1,12 +1,15 @@
-from services.registration_data_notice import DRAFT_NOTICE_VERSION, registration_data_notice
+from services.registration_data_notice import (
+    REGISTRATION_NOTICE_VERSION,
+    registration_data_notice,
+)
 
 
 def test_registration_data_notice_is_bilingual_and_scoped_to_non_personal_data():
     thai = registration_data_notice("th")
     english = registration_data_notice("en")
 
-    assert DRAFT_NOTICE_VERSION in thai
-    assert DRAFT_NOTICE_VERSION in english
+    assert REGISTRATION_NOTICE_VERSION in thai
+    assert REGISTRATION_NOTICE_VERSION in english
     assert "Aggregate Total Meter" in thai
     assert "aggregate Total Meter" in english
     assert "Raw SNMP/XML/Error" in thai
@@ -21,9 +24,14 @@ def test_registration_data_notice_matches_payload_and_exclusions():
     thai = registration_data_notice("th")
     english = registration_data_notice("en")
 
-    for expected in ("Installation ID", "Serial Number", "Version", "12 เดือน", "90 วัน"):
+    for expected in ("Installation ID", "Serial Number", "Version", "ตลอดระยะเวลาที่ใช้งาน"):
         assert expected in thai
-    for expected in ("Installation ID", "serial number", "application version", "12 months", "90 days"):
+    for expected in (
+        "Installation ID",
+        "serial number",
+        "application version",
+        "throughout the period in which KOMI Report is used",
+    ):
         assert expected in english
 
     assert "ไม่ส่ง IP address" in thai

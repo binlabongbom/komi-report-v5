@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import inspect
+from types import SimpleNamespace
 
 from PyQt6.QtWidgets import QDialog
 
@@ -10,6 +11,16 @@ import app
 class _CompletedRepository:
     def setup_complete(self) -> bool:
         return True
+
+
+class _EligibleRuntime:
+    def usage_eligibility(self) -> tuple[bool, str]:
+        return True, "registered"
+
+
+class _IneligibleRuntime:
+    def usage_eligibility(self) -> tuple[bool, str]:
+        return False, "offline_license_expired"
 
 
 class _Signal:
@@ -27,7 +38,7 @@ class _Signal:
 class _AcceptedWizard:
     constructed_parent = object()
 
-    def __init__(self, parent) -> None:
+    def __init__(self, parent, **_kwargs) -> None:
         type(self).constructed_parent = parent
         self.finished = _Signal()
         self.opened = False
@@ -64,8 +75,9 @@ def test_first_setup_registers_default_background_autostart(monkeypatch):
 
     completed = []
     cancelled = []
+    parent = SimpleNamespace(registration=_EligibleRuntime())
     dialog = app._open_v5_setup(
-        None,
+        parent,
         on_complete=lambda: completed.append(True),
         on_cancel=lambda: cancelled.append(True),
     )
@@ -97,5 +109,22 @@ def test_existing_setup_does_not_rewrite_autostart(monkeypatch):
     monkeypatch.setattr(app, "configure_autostart", lambda enabled, *, apply: calls.append((enabled, apply)))
     monkeypatch.setattr(app, "get_cfg", lambda key, default="": "บริษัท ทดสอบ จำกัด" if key == "company_name" else default)
 
-    assert app._check_v5_setup(None) is True
+    parent = SimpleNamespace(registration=_EligibleRuntime())
+    assert app._check_v5_setup(parent) is True
     assert calls == []
+
+
+def test_existing_setup_fails_closed_without_eligible_registration(monkeypatch):
+    monkeypatch.setattr(app, "DeviceConfigRepository", _CompletedRepository)
+    monkeypatch.setattr(
+        app,
+        "get_cfg",
+        lambda key, default="": "บริษัท ทดสอบ จำกัด"
+        if key == "company_name"
+        else default,
+    )
+
+    assert app._check_v5_setup(None) is False
+    assert app._check_v5_setup(
+        SimpleNamespace(registration=_IneligibleRuntime())
+    ) is False

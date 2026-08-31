@@ -13,7 +13,6 @@ import os
 import platform
 import plistlib
 import re
-import shutil
 import subprocess
 import sys
 import tempfile
@@ -21,7 +20,14 @@ import tomllib
 from datetime import datetime
 from pathlib import Path
 
-from tools.release_evidence import cyclonedx_sbom, file_inventory, sha256_file
+from services.v5_2_contract_metadata import CONTRACT_SHA256, CONTRACT_VERSION
+from tools.release_evidence import (
+    ReleaseContractError,
+    cyclonedx_sbom,
+    file_inventory,
+    load_joint_e2e_evidence,
+    sha256_file,
+)
 from tools.release_safety import assert_zip_safe, git_identity
 
 SOURCE_ROOT = Path(__file__).resolve().parents[1]
@@ -33,7 +39,7 @@ APP_NAME = f"KOMI Report V{VERSION}"
 APP_BUNDLE = SOURCE_ROOT / "dist" / f"{APP_NAME}.app"
 DEFAULT_OUTPUT = PROJECT_ROOT / "release" / "macos-customer"
 COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
-REGISTRATION_BOOTSTRAP_FILENAME = "komi-registration-bootstrap.dat"
+LEGACY_REGISTRATION_BOOTSTRAP_FILENAME = "komi-registration-bootstrap.dat"
 
 
 class MacCustomerBuildError(RuntimeError):
@@ -80,25 +86,18 @@ def require_clean_source(expected_commit: str) -> tuple[str, str]:
     return commit, source_state
 
 
-def build_app(registration_bootstrap_file: Path) -> None:
-    if not registration_bootstrap_file.is_file():
-        raise MacCustomerBuildError("authorized Registration bootstrap build input is unavailable")
-    raw_bootstrap = registration_bootstrap_file.read_bytes()
-    if not raw_bootstrap.strip() or len(raw_bootstrap) > 4096 or b"\x00" in raw_bootstrap:
-        raise MacCustomerBuildError("Registration bootstrap build input is invalid")
-    with tempfile.TemporaryDirectory(prefix="komi-registration-build-") as temp:
-        staged = Path(temp) / REGISTRATION_BOOTSTRAP_FILENAME
-        shutil.copyfile(registration_bootstrap_file, staged)
-        staged.chmod(0o600)
-        env = os.environ.copy()
-        env["KOMI_REGISTRATION_BOOTSTRAP_BUILD_FILE"] = str(staged)
-        _run(
-            [sys.executable, "-m", "PyInstaller", "--noconfirm", "--clean", "app.spec"],
-            cwd=SOURCE_ROOT,
-            env=env,
-            check=True,
-            timeout=1800,
-        )
+def build_app() -> None:
+    env = os.environ.copy()
+    # V5.2.1 schema 3 creates an Ed25519 installation identity locally. Never
+    # inherit the legacy shared-bootstrap build hook from an operator shell.
+    env.pop("KOMI_REGISTRATION_BOOTSTRAP_BUILD_FILE", None)
+    _run(
+        [sys.executable, "-m", "PyInstaller", "--noconfirm", "--clean", "app.spec"],
+        cwd=SOURCE_ROOT,
+        env=env,
+        check=True,
+        timeout=1800,
+    )
 
 
 def _main_executable(app_bundle: Path) -> Path:
@@ -193,8 +192,9 @@ def inspect_structure(app_bundle: Path) -> dict[str, object]:
 
 def create_archives(app_bundle: Path, output_dir: Path) -> tuple[Path, Path]:
     output_dir.mkdir(parents=True, exist_ok=True)
-    archive = output_dir / "KOMI_Report_V5_2_0_macOS_arm64.zip"
-    dmg = output_dir / "KOMI_Report_V5_2_0_macOS_arm64.dmg"
+    version_tag = VERSION.replace(".", "_")
+    archive = output_dir / f"KOMI_Report_V{version_tag}_macOS_arm64.zip"
+    dmg = output_dir / f"KOMI_Report_V{version_tag}_macOS_arm64.dmg"
     archive.unlink(missing_ok=True)
     dmg.unlink(missing_ok=True)
     _run(
@@ -212,7 +212,7 @@ def create_archives(app_bundle: Path, output_dir: Path) -> tuple[Path, Path]:
     )
     assert_zip_safe(archive)
     with tempfile.TemporaryDirectory(prefix="komi-macos-dmg-") as temp:
-        stage = Path(temp) / "KOMI Report V5.2.0"
+        stage = Path(temp) / APP_NAME
         stage.mkdir()
         _run(["/usr/bin/ditto", str(app_bundle), str(stage / app_bundle.name)], check=True)
         (stage / "Applications").symlink_to("/Applications")
@@ -224,7 +224,7 @@ def create_archives(app_bundle: Path, output_dir: Path) -> tuple[Path, Path]:
                 "-format",
                 "UDZO",
                 "-volname",
-                "KOMI Report V5.2.0",
+                APP_NAME,
                 "-srcfolder",
                 str(stage),
                 str(dmg),
@@ -240,25 +240,31 @@ def build_customer_package(
     *,
     expected_commit: str = "",
     skip_build: bool = False,
-    registration_bootstrap_file: Path | None = None,
+    joint_e2e_evidence_file: Path | None = None,
 ) -> dict[str, object]:
-    if VERSION.startswith("5.2."):
-        raise MacCustomerBuildError(
-            "V5.2 customer artifact HOLD: Final schema-3 auth vectors and Joint Staging "
-            "E2E have not been approved"
-        )
     require_macos_arm64()
     commit, source_state = require_clean_source(expected_commit)
+    try:
+        joint_e2e = load_joint_e2e_evidence(
+            joint_e2e_evidence_file,
+            version=VERSION,
+            source_commit=commit,
+        )
+    except ReleaseContractError as exc:
+        raise MacCustomerBuildError(str(exc)) from exc
     if not skip_build:
-        if registration_bootstrap_file is None:
-            raise MacCustomerBuildError("--registration-bootstrap-file is required")
-        build_app(registration_bootstrap_file)
-    packaged_bootstrap = tuple(APP_BUNDLE.rglob(REGISTRATION_BOOTSTRAP_FILENAME))
-    if len(packaged_bootstrap) != 1:
-        raise MacCustomerBuildError("macOS bundle does not contain exactly one Registration bootstrap")
+        build_app()
+    packaged_bootstrap = tuple(APP_BUNDLE.rglob(LEGACY_REGISTRATION_BOOTSTRAP_FILENAME))
+    if packaged_bootstrap:
+        raise MacCustomerBuildError("macOS bundle contains a forbidden legacy Registration bootstrap")
+    packaged_offline_public_keys = tuple(
+        APP_BUNDLE.rglob("public-verification-keys.json")
+    )
     structure = inspect_structure(APP_BUNDLE)
     if structure["short_version"] != VERSION or structure["architectures"] != ["arm64"]:
-        raise MacCustomerBuildError("bundle version or architecture does not match V5.2.0 arm64")
+        raise MacCustomerBuildError(
+            f"bundle version or architecture does not match V{VERSION} arm64"
+        )
     smoke = smoke_test(APP_BUNDLE)
     if not smoke["graceful_exit"]:
         raise MacCustomerBuildError("built macOS app failed the isolated smoke test")
@@ -292,11 +298,19 @@ def build_customer_package(
         f"spctl -a -vv\n{signing['gatekeeper_details']}\n"
     )
     (output_dir / "SIGNING_EVIDENCE.txt").write_text(signing_evidence, encoding="utf-8")
-    release_ready = signing["state"] == "developer-id-notarized-verified"
+    blockers = ["Production GO requires explicit external approval; packaging never self-promotes"]
+    if signing["state"] != "developer-id-notarized-verified":
+        blockers.append("macOS Developer ID signing/notarization is not verified")
+    if joint_e2e["verified"] is not True:
+        blockers.append("Joint Desktop-Staging E2E evidence is missing or did not pass")
+    if not packaged_offline_public_keys:
+        blockers.append("Host Offline License public verification key is not bundled")
     manifest = {
         "schema_version": 1,
         "product": "KOMI Report V5",
         "version": VERSION,
+        "contract_version": CONTRACT_VERSION,
+        "contract_sha256": CONTRACT_SHA256,
         "release_profile": "customer-production-behavior",
         "source_commit": commit,
         "source_state": source_state,
@@ -316,12 +330,19 @@ def build_customer_package(
         "gatekeeper": "accepted" if signing["gatekeeper_exit"] == 0 else "rejected-blocked",
         "structure": structure,
         "smoke": smoke,
-        "registration_runtime": "built-in-production-policy-os-vault-provisioned-limited-bootstrap",
-        "registration_bootstrap": "packaged-limited-public-bootstrap-identifier",
+        "registration_runtime": "schema3-ed25519-public-client-no-shared-bootstrap",
+        "registration_bootstrap": "not-applicable-schema3",
+        "offline_license_public_keys": (
+            "bundled-public-only"
+            if packaged_offline_public_keys
+            else "absent-online-only"
+        ),
+        "joint_staging_e2e": joint_e2e,
         "update_runtime": "absent-phase-3-deferred",
         "built_at": datetime.now().astimezone().isoformat(timespec="seconds"),
-        "release_decision": "RELEASE READY" if release_ready else "HOLD",
-        "production_go": release_ready,
+        "release_decision": "HOLD",
+        "production_go": False,
+        "blockers": blockers,
     }
     (output_dir / "MACOS_MANIFEST.json").write_text(
         json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
@@ -330,21 +351,23 @@ def build_customer_package(
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Build KOMI Report V5.1 macOS customer package")
+    parser = argparse.ArgumentParser(
+        description=f"Build KOMI Report V{VERSION} macOS customer package"
+    )
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument("--expected-source-commit", default="")
     parser.add_argument("--skip-build", action="store_true")
     parser.add_argument(
-        "--registration-bootstrap-file",
+        "--joint-e2e-evidence",
         type=Path,
-        help="Authorized build-time bootstrap input; value is never written to Git or logs",
+        help="Sanitized Joint Desktop-Staging E2E JSON; missing evidence produces a HOLD candidate",
     )
     args = parser.parse_args()
     manifest = build_customer_package(
         args.output.resolve(),
         expected_commit=args.expected_source_commit,
         skip_build=args.skip_build,
-        registration_bootstrap_file=args.registration_bootstrap_file,
+        joint_e2e_evidence_file=args.joint_e2e_evidence,
     )
     for artifact in manifest["artifacts"]:
         print(f"artifact={artifact['name']} size={artifact['size']} sha256={artifact['sha256']}")

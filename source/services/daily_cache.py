@@ -294,6 +294,35 @@ class DailyCacheStore:
                 state["duplicate_sample_count"] = int(state.get("duplicate_sample_count", 0)) + 1
                 self._atomic_write(self.path(slot, day), state)
                 return state
+
+        previous_source = state.get("source")
+        previous_schema = (
+            str(previous_source.get("schema_version") or "")
+            if isinstance(previous_source, dict)
+            else ""
+        )
+        if (
+            loaded is not None
+            and int(state.get("sample_count", 0)) > 0
+            and previous_schema
+            and previous_schema != reading.schema_version
+        ):
+            # A parser override (or any other normalization schema) changed
+            # after this day's baseline was captured.  Mixing the two counter
+            # sets could turn an absolute meter from the new schema into usage
+            # and could reuse a billing-safe attestation from the old schema.
+            # Start a fresh zero-delta baseline and keep the day fail-closed.
+            state["normalization_rebaseline"] = {
+                "at": incoming_stamp,
+                "from_schema": previous_schema,
+                "to_schema": reading.schema_version,
+            }
+            state["unsafe_reconciliation_seen"] = True
+            state["opening"] = current
+            state["latest"] = current
+            state["delta"] = {key: 0 for key in current}
+            state["resets"] = []
+            previous = current
         delta = state.setdefault("delta", {})
         for key, value in current.items():
             old = previous.get(key)

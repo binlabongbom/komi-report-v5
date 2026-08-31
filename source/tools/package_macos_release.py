@@ -21,7 +21,7 @@ VERSION = tomllib.loads(
 )["project"]["version"]
 APP_BUNDLE = PROJECT_ROOT / "source" / "dist" / f"KOMI Report V{VERSION}.app"
 RELEASE_DIR = PROJECT_ROOT / "release"
-ARCHIVE = RELEASE_DIR / "KOMI_Report_V5_macOS_arm64_Local.zip"
+ARCHIVE = RELEASE_DIR / f"KOMI_Report_V{VERSION.replace('.', '_')}_macOS_arm64_Local.zip"
 CHECKSUM = ARCHIVE.with_suffix(ARCHIVE.suffix + ".sha256")
 MANIFEST = RELEASE_DIR / "MACOS_MANIFEST.json"
 

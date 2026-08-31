@@ -107,6 +107,63 @@ def test_monthly_usage_aggregates_daily_records_with_effective_price(tmp_path):
         database.set_db_path(original_path)
 
 
+def test_fallback_total_includes_print_and_copy_other_sizes(tmp_path):
+    original_path = database.get_db_path()
+    try:
+        database.set_db_path(tmp_path / "other-fallback.sqlite3")
+        database.init_db()
+        database.set_cfg("billing_day", "31")
+        DeviceConfigRepository().replace_all(
+            [DeviceConfig(0, "Printer 1", "192.0.2.10", serial="SER-001")]
+        )
+        PricingRepository().set_prices(0, date(2026, 7, 1), PriceList())
+        now = datetime.now().astimezone().isoformat(timespec="seconds")
+        deltas = {
+            "mapped.print.other.total": 4,
+            "mapped.copy.other.total": 6,
+        }
+        with database._open() as connection:
+            record_id = connection.execute(
+                """INSERT INTO daily_meter_records(
+                       device_slot,record_date,opening_json,closing_json,delta_json,
+                       category_json,source_json,first_success,last_success,
+                       sample_count,error_count,incomplete,created_at
+                   ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (
+                    0,
+                    "2026-07-15",
+                    "{}",
+                    "{}",
+                    json.dumps(deltas),
+                    json.dumps({key: "no_charge" for key in deltas}),
+                    json.dumps(
+                        {
+                            "device_identity": {
+                                "name": "Printer 1",
+                                "serial": "SER-001",
+                            },
+                            "reconciliation": {"billing_safe": True},
+                        }
+                    ),
+                    now,
+                    now,
+                    2,
+                    0,
+                    0,
+                    now,
+                ),
+            ).lastrowid
+
+        post_daily_record(record_id)
+        record = load_monthly_usage([0], today=date(2026, 7, 16))[0]
+
+        assert record.print_other == 4
+        assert record.copy_other == 6
+        assert record.total == 10
+    finally:
+        database.set_db_path(original_path)
+
+
 def test_monthly_usage_keeps_slot_reuse_identities_as_separate_rows(tmp_path):
     original_path = database.get_db_path()
     try:

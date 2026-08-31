@@ -146,9 +146,11 @@ def test_overview_metric_cards_are_compact_and_style_a3_a4_details(monkeypatch):
     card = page.card_color_print
     margins = card.layout().contentsMargins()
     assert card.height() == 56
-    assert margins.left() == 20
+    # The compact 14 px horizontal inset keeps long metric values visible at
+    # the supported 1024 px minimum window width.
+    assert margins.left() == 14
     assert margins.top() == 5
-    assert margins.right() == 20
+    assert margins.right() == 14
     assert margins.bottom() == 5
     assert card.findChild(QLabel, "overview_metric_title") is card.lbl_title
     assert card.findChild(QLabel, "overview_metric_detail") is card.lbl_diff

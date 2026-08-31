@@ -19,9 +19,9 @@
 
 import json
 import logging
-import sys
 import os
 import platform
+import sys
 from datetime import datetime
 from pathlib import Path
 
@@ -127,32 +127,65 @@ def validate_parser_json(path: str) -> list:
 #   QFrame         — กล่องที่ใส่ border หรือ background ได้
 #   QStackedWidget — ซ้อนหลาย Widget ไว้แต่แสดงทีละอัน (ใช้สลับหน้า)
 #   QScrollArea    — ห่อ Widget ให้เลื่อน scroll ได้ถ้าเนื้อหายาวเกิน
-from PyQt6.QtWidgets import (
-    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-    QLabel, QPushButton, QFrame, QStackedWidget, QScrollArea,
-    QDialog, QFileDialog, QMessageBox, QLineEdit,
-    QComboBox, QDoubleSpinBox, QSpinBox, QGridLayout, QSizePolicy,
-    QSystemTrayIcon, QMenu,
-)
-from PyQt6.QtCore import Qt, QTimer        # ค่าคงที่ของ Qt เช่น alignment, cursor shape
+from PyQt6.QtCore import Qt, QTimer  # ค่าคงที่ของ Qt เช่น alignment, cursor shape
+from PyQt6.QtGui import QAction, QCloseEvent, QFont, QIcon, QPixmap  # QFont = ฟอนต์, QPixmap = รูปภาพ
 from PyQt6.QtNetwork import QNetworkInformation
-from PyQt6.QtGui  import QAction, QCloseEvent, QFont, QIcon, QPixmap  # QFont = ฟอนต์, QPixmap = รูปภาพ
+from PyQt6.QtWidgets import (
+    QApplication,
+    QComboBox,
+    QDialog,
+    QDoubleSpinBox,
+    QFileDialog,
+    QFrame,
+    QGridLayout,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QMainWindow,
+    QMenu,
+    QMessageBox,
+    QPushButton,
+    QScrollArea,
+    QSizePolicy,
+    QSpinBox,
+    QStackedWidget,
+    QSystemTrayIcon,
+    QVBoxLayout,
+    QWidget,
+)
 
-from config   import *  # สี, ฟอนต์, ขนาด, ค่าคงที่ทั้งหมด — ปรับแก้ที่ config.py
-from database import init_db, get_last_two, compute_diff, get_latest_read_date, get_db_path, set_cfg, get_cfg, get_price, get_billing_day, get_waste_paper_pct  # ฟังก์ชันฐานข้อมูลที่ใช้ที่นี่
-from widgets  import fnt  # fnt(size, bold) — สร้าง QFont อย่างสั้น
-from pages    import (
-    PageOverview, PageImport,
-    PageSettings, PageManual                # หน้าตั้งค่า + คู่มือ
+from config import *  # สี, ฟอนต์, ขนาด, ค่าคงที่ทั้งหมด — ปรับแก้ที่ config.py
+from database import (  # ฟังก์ชันฐานข้อมูลที่ใช้ที่นี่
+    compute_diff,
+    get_billing_day,
+    get_cfg,
+    get_db_path,
+    get_last_two,
+    get_latest_read_date,
+    get_price,
+    get_waste_paper_pct,
+    init_db,
+    set_cfg,
+)
+from i18n import ENGLISH, THAI, apply_language, get_language, set_language, tr
+from pages import (
+    PageImport,
+    PageManual,
+    PageOverview,
+    PageSettings,  # หน้าตั้งค่า + คู่มือ
 )
 from services.autostart import configure_autostart
 from services.background_polling import BackgroundPollingCoordinator
-from services.v5_2_runtime import V52RuntimeCoordinator
 from services.desktop_shortcuts import create_desktop_shortcuts
 from services.device_config import DeviceConfigRepository
 from services.instance_guard import SingleInstanceGuard
+from services.offline_license_keys import (
+    OfflineLicensePublicKeyConfigurationError,
+    load_offline_license_public_keys,
+)
+from services.v5_2_client import V52ContractClient, V52RuntimeConfig
+from services.v5_2_runtime import V52RuntimeCoordinator
 from services.web_service import web_service_manager
-from i18n import ENGLISH, THAI, apply_language, get_language, set_language, tr
 from ui_consistency import install_button_system
 from v5_pages import (
     PageHistoryV5,
@@ -160,7 +193,7 @@ from v5_pages import (
     PageSettingsV5,
     SetupWizardV5,
 )
-
+from widgets import fnt  # fnt(size, bold) — สร้าง QFont อย่างสั้น
 
 # หน้าที่ผู้ใช้เปิดได้จาก Sidebar ตามลำดับที่แสดงจริง
 SIDEBAR_NAV_ITEMS: tuple[tuple[str, str], ...] = (
@@ -350,10 +383,23 @@ class MainWindow(QMainWindow):
         if splash: splash.set_message("กำลังเตรียมฐานข้อมูล...")
         init_db()         # สร้างตาราง SQLite ถ้ายังไม่มี (ทำครั้งแรกครั้งเดียว)
         set_language(get_cfg("ui_language", THAI))
-        # V5.2 has no default network transport.  The coordinator starts as a
-        # local-only durable scheduler unless deployment injects an approved
-        # staging/production client after the external contract gate.
-        self.registration = V52RuntimeCoordinator(parent=self)
+        # V5.2 Registration uses per-installation Ed25519 proof and receives a
+        # short-lived installation token from the Host. No shared Desktop API
+        # key or customer credential is embedded here.
+        self.registration = V52RuntimeCoordinator(
+            V52ContractClient(
+                V52RuntimeConfig(
+                    base_url="https://www.dmskm.com",
+                    environment="production",
+                )
+            ),
+            parent=self,
+        )
+        try:
+            self.offline_license_public_keys = load_offline_license_public_keys()
+        except OfflineLicensePublicKeyConfigurationError:
+            log.exception("Offline License public verification keys are invalid")
+            self.offline_license_public_keys = {}
 
         if splash: splash.set_message("กำลังสร้างหน้าจอ...")
         self._build_ui()  # สร้าง UI ทั้งหมด: sidebar + stack ของหน้าต่างๆ
@@ -496,7 +542,11 @@ class MainWindow(QMainWindow):
         # when the user first navigates to them.
         self.pg_history  = _DeferredPage(PageHistoryV5)
         self.pg_settings = _DeferredPage(
-            lambda: PageSettingsV5(PageSettings(), registration_runtime=self.registration)
+            lambda: PageSettingsV5(
+                PageSettings(),
+                registration_runtime=self.registration,
+                offline_license_public_keys=self.offline_license_public_keys,
+            )
         )
         self.pg_manual   = _DeferredPage(PageManual)
 
@@ -517,7 +567,10 @@ class MainWindow(QMainWindow):
             self._manual_index: ("pg_manual", self.pg_manual),
         }
         # หน้าที่ใช้ Tab / ตารางภายในจัดการ scroll เอง → ไม่ต้องห่อ QScrollArea
-        no_scroll = {self.pg_history, self.pg_settings}
+        # Reports, Settings and Manual own their internal scrolling.  Keeping
+        # Manual out of this wrapper lets its right-side table of contents stay
+        # fixed while the guide itself scrolls as one continuous document.
+        no_scroll = {self.pg_history, self.pg_settings, self.pg_manual}
         for pg in pages:
             if pg in no_scroll:
                 # ใส่ตรงๆ ใน stack — เนื้อหาภายในจัดการ scroll เอง
@@ -574,6 +627,7 @@ class MainWindow(QMainWindow):
             page.changed.connect(self.polling.reload_policy)
             page.changed.connect(self.registration.configuration_changed)
             page.sync_requested.connect(self.polling.poll_now)
+            page.parser_read_requested.connect(self.polling.poll_now)
         elif index == self._reports_index:
             page.reading_status_requested.connect(self._open_sync_log)
         apply_language(page)
@@ -730,16 +784,24 @@ class MainWindow(QMainWindow):
         if not self._confirm_discard_settings_on_exit():
             return
         self._quitting = True
+        hide_tray = getattr(self.tray, "hide", None)
+        if callable(hide_tray):
+            hide_tray()
         self.polling.stop()
         self.registration.stop()
         self.web_service.stop()
         QApplication.instance().quit()
 
     def closeEvent(self, event: QCloseEvent):
-        if self._quitting or not QSystemTrayIcon.isSystemTrayAvailable():
+        close_to_tray = get_cfg("close_to_tray", "1") != "0"
+        if self._quitting or not close_to_tray or not QSystemTrayIcon.isSystemTrayAvailable():
             if not self._quitting and not self._confirm_discard_settings_on_exit():
                 event.ignore()
                 return
+            self._quitting = True
+            hide_tray = getattr(self.tray, "hide", None)
+            if callable(hide_tray):
+                hide_tray()
             self.polling.stop()
             self.registration.stop()
             self.web_service.stop()
@@ -830,19 +892,26 @@ class MainWindow(QMainWindow):
             if _dt:
                 _thai_months = {1:"ม.ค.",2:"ก.พ.",3:"มี.ค.",4:"เม.ย.",5:"พ.ค.",6:"มิ.ย.",
                                 7:"ก.ค.",8:"ส.ค.",9:"ก.ย.",10:"ต.ค.",11:"พ.ย.",12:"ธ.ค."}
-                _date_str = f"{_dt.day} {_thai_months[_dt.month]} {_dt.year + 543}"
-                self.status_lbl.setText(f"{tr('ฐานข้อมูลล่าสุด', 'Latest database')}\n{_date_str}")
+                _date_str = (
+                    f"{_dt.day} {_thai_months[_dt.month]} {_dt.year + 543} "
+                    f"{_dt:%H:%M} น."
+                )
+                self.status_lbl.setText(f"{tr('อ่านล่าสุด', 'Last read')}\n{_date_str}")
             else:
-                self.status_lbl.setText(f"{tr('ฐานข้อมูลล่าสุด', 'Latest database')}\n{_latest}")
+                self.status_lbl.setText(f"{tr('อ่านล่าสุด', 'Last read')}\n{_latest}")
         else:
-            self.status_lbl.setText(tr("ยังไม่มีข้อมูล", "No data yet"))
+            self.status_lbl.setText(
+                tr("ยังไม่มีประวัติการอ่าน", "No reading history yet")
+            )
 
 
 # ══════════════════════════════════════════════════════════
 # PARSER DROP ZONE — Drag & Drop zone สำหรับนำเข้า Parser
 # ══════════════════════════════════════════════════════════
 from PyQt6.QtCore import pyqtSignal as _pyqtSignal
-from PyQt6.QtGui import QDragEnterEvent as _DragEnterEvent, QDropEvent as _DropEvent
+from PyQt6.QtGui import QDragEnterEvent as _DragEnterEvent
+from PyQt6.QtGui import QDropEvent as _DropEvent
+
 
 class _ParserDropZone(QFrame):
     """Drag & Drop zone สำหรับนำเข้า Parser Profile (.json) — รูปสี่เหลี่ยมจตุรัส"""
@@ -1447,7 +1516,7 @@ class SetupWizard(QDialog):
 
     # ── บันทึกค่าทั้งหมด ──────────────────────────────────
     def _do_save(self):
-        from tools.check_parser import load_profiles, save_profiles, _empty_profile
+        from tools.check_parser import _empty_profile, load_profiles, save_profiles
 
         try:
             existing = load_profiles()
@@ -1540,19 +1609,31 @@ def _check_parser_setup(parent_win, splash=None):
 _active_v5_setup_dialog: SetupWizardV5 | None = None
 
 
-def _v5_setup_is_complete(repository: DeviceConfigRepository | None = None) -> bool:
+def _v5_setup_is_complete(
+    repository: DeviceConfigRepository | None = None,
+    registration_runtime=None,
+) -> bool:
     repository = repository or DeviceConfigRepository()
-    return repository.setup_complete() and bool(
+    local_setup_complete = repository.setup_complete() and bool(
         (get_cfg("company_name", "") or "").strip()
     )
+    if not local_setup_complete or registration_runtime is None:
+        return False
+    try:
+        eligible, _reason = registration_runtime.usage_eligibility()
+    except Exception:
+        log.exception("cannot verify V5.2 registration usage eligibility")
+        return False
+    return bool(eligible)
 
 
 def _finish_v5_first_setup(
     repository: DeviceConfigRepository | None = None,
+    registration_runtime=None,
 ) -> bool:
     """Validate persisted setup and apply one-time post-setup integration."""
     repository = repository or DeviceConfigRepository()
-    complete = _v5_setup_is_complete(repository)
+    complete = _v5_setup_is_complete(repository, registration_runtime)
     if not complete:
         return False
     # First setup is an explicit user action. Register the default background
@@ -1588,14 +1669,23 @@ def _open_v5_setup(
     # maximized, that made first-run setup look like a smaller page floating
     # inside a second full-screen window.  First-run setup is its own window;
     # retain it globally and keep it application-modal instead.
-    dialog = SetupWizardV5(None)
+    dialog = SetupWizardV5(
+        None,
+        registration_runtime=getattr(parent_win, "registration", None),
+        offline_license_public_keys=getattr(
+            parent_win, "offline_license_public_keys", None
+        ),
+    )
     dialog.setWindowModality(Qt.WindowModality.ApplicationModal)
     _active_v5_setup_dialog = dialog
 
     def setup_finished(result: int) -> None:
         if (
             result == int(QDialog.DialogCode.Accepted)
-            and _finish_v5_first_setup(repository)
+            and _finish_v5_first_setup(
+                repository,
+                getattr(parent_win, "registration", None),
+            )
         ):
             on_complete()
             return
@@ -1610,8 +1700,10 @@ def _open_v5_setup(
 
 def _check_v5_setup(parent_win=None, splash=None) -> bool:
     """Read-only setup gate retained for existing installations and tests."""
-    del parent_win, splash
-    return _v5_setup_is_complete()
+    del splash
+    return _v5_setup_is_complete(
+        registration_runtime=getattr(parent_win, "registration", None),
+    )
 
 
 def _setup_logging():
@@ -1688,9 +1780,8 @@ if __name__ == "__main__":
         sys.exit(0)
 
     def show_configured_application() -> None:
-        # Wizard save is local-first. V5.2 reads the saved mode here and queues
-        # schema 3 work without a network call unless an approved client was
-        # explicitly injected by deployment.
+        # The Wizard has already completed mandatory Online Registration or a
+        # valid Offline License before this callback can open the workspace.
         win.start_background_services()
         splash.close()
         if "--background" in sys.argv:
@@ -1708,7 +1799,7 @@ if __name__ == "__main__":
     # creates a nested loop and has repeatedly crashed inside macOS 27
     # Accessibility hit-testing; QDialog.open() avoids that re-entrancy.
     splash.set_message("ตรวจสอบการตั้งค่า...")
-    if _check_v5_setup():
+    if _check_v5_setup(win):
         show_configured_application()
     else:
         _open_v5_setup(

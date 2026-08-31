@@ -1,7 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyWebAccessCode, webAccessConfigured } from "../../../lib/access-credential";
 import { loginDecision, recordLoginFailure, recordLoginSuccess } from "../../../lib/login-guard";
-import { createSessionToken, sessionLifetimeSeconds, webUser } from "../../../lib/session";
+import {
+  createSessionToken,
+  sessionLifetimeSeconds,
+  verifySessionToken,
+  webUser,
+} from "../../../lib/session";
+import { passwordlessReportsEnabled } from "../../../lib/report-access";
+
+export async function GET(request: NextRequest) {
+  const actual = request.cookies.get("komi_session")?.value ?? "";
+  return NextResponse.json({
+    authenticated: Boolean(actual && verifySessionToken(actual)),
+    reportPasswordless: passwordlessReportsEnabled(),
+  });
+}
 
 export async function POST(request: NextRequest) {
   const body = await request.json().catch(() => ({}));

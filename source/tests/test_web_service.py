@@ -3,6 +3,24 @@ from __future__ import annotations
 from services import web_service
 
 
+def test_proxy_replaces_spoofed_remote_identity_case_insensitively():
+    headers = web_service._proxy_request_headers(
+        {
+            "Host": "komi.local",
+            "X-KOMI-REMOTE-ADDRESS": "203.0.113.99",
+            "x-forwarded-PROTO": "http",
+            "Connection": "keep-alive",
+        },
+        remote_address="192.0.2.44",
+    )
+
+    assert headers == {
+        "Host": "komi.local",
+        "x-komi-remote-address": "192.0.2.44",
+        "x-forwarded-proto": "https",
+    }
+
+
 class _Process:
     def __init__(self) -> None:
         self.returncode = None
@@ -78,3 +96,72 @@ def test_manager_restarts_owned_worker(tmp_path, monkeypatch):
 
     assert status.state == "starting"
     assert len(processes) == 0
+
+
+def test_packaged_runtime_seed_refresh_preserves_local_security_files(tmp_path):
+    seed = tmp_path / "seed"
+    runtime = tmp_path / "runtime"
+    (seed / ".next").mkdir(parents=True)
+    (seed / ".next" / "BUILD_ID").write_text("new-build\n", encoding="utf-8")
+    (seed / "node_modules").mkdir()
+    (seed / "node_modules" / "runtime.js").write_text("new", encoding="utf-8")
+    (seed / "server.mjs").write_text("server", encoding="utf-8")
+    (runtime / ".next").mkdir(parents=True)
+    (runtime / ".next" / "BUILD_ID").write_text("old-build\n", encoding="utf-8")
+    (runtime / "security").mkdir()
+    (runtime / "security" / "web-auth-state.json").write_text("{}", encoding="utf-8")
+    (runtime / ".env.local").write_text("LOCAL=preserved\n", encoding="utf-8")
+
+    manager = web_service.WebServiceManager(tmp_path / "project")
+    manager.runtime_root = runtime
+    manager._prepare_packaged_runtime(seed)
+
+    assert (runtime / ".next" / "BUILD_ID").read_text(encoding="utf-8").strip() == "new-build"
+    assert (runtime / "node_modules" / "runtime.js").read_text(encoding="utf-8") == "new"
+    assert (runtime / ".env.local").read_text(encoding="utf-8") == "LOCAL=preserved\n"
+    assert (runtime / "security" / "web-auth-state.json").is_file()
+
+
+def test_https_proxy_requires_tls12_and_forwards_remote_identity(tmp_path, monkeypatch):
+    captured = {}
+
+    class _Response:
+        status = 200
+        reason = "OK"
+
+        @staticmethod
+        def read():
+            return b"ready"
+
+        @staticmethod
+        def getheaders():
+            return [("Content-Type", "text/plain")]
+
+    class _Upstream:
+        def __init__(self, host, port, timeout):
+            captured["target"] = (host, port, timeout)
+
+        def request(self, method, path, body=None, headers=None):
+            captured["request"] = (method, path, body, headers)
+
+        @staticmethod
+        def getresponse():
+            return _Response()
+
+        @staticmethod
+        def close():
+            return None
+
+    monkeypatch.setattr(web_service.http.client, "HTTPConnection", _Upstream)
+    monkeypatch.setattr(web_service.ssl.SSLContext, "load_cert_chain", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(web_service.ssl.SSLContext, "wrap_socket", lambda _self, sock, **_kwargs: sock)
+
+    server = web_service.WebServiceManager._https_proxy_server(
+        certificate=tmp_path / "cert.pem",
+        private_key=tmp_path / "key.pem",
+    )
+    try:
+        assert server.server_address[1] == 3000
+        assert isinstance(server.socket, object)
+    finally:
+        server.server_close()

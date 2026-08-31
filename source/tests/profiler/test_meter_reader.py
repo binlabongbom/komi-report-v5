@@ -16,7 +16,10 @@ from komi_snmp_profiler.connectors import (
     WebConnectionError,
     WebCounterCollection,
 )
-from komi_snmp_profiler.credential_store import AdminCredential
+from komi_snmp_profiler.credential_store import (
+    PUBLIC_FACTORY_ADMIN_PASSWORDS,
+    AdminCredential,
+)
 from komi_snmp_profiler.exporter import export_meter_csv, export_meter_json
 from komi_snmp_profiler.meter import MeterReader
 from komi_snmp_profiler.meter_export import (
@@ -103,6 +106,9 @@ def test_authenticated_connector_logs_out_and_clears_session() -> None:
 
     assert result.auth_state == WebAuthState.ADMIN
     assert result.counters[0].count == 2339
+    assert result.warnings == (
+        "User Authentication และ Account Track ยังไม่ได้เปิดใช้งานบนเครื่อง",
+    )
     assert ("POST_FORM", "login.cgi") in sessions[0].calls
     assert sessions[0].calls[-1] == ("POST_FORM", "a_user.cgi")
     assert sessions[0].cleared is True
@@ -157,10 +163,13 @@ class FakeLegacySession:
             </TotalCounterList></UserCounterInfo></MFP>"""
         return b"<MFP/>"
 
+    def prepare_legacy_admin_login(self) -> None:
+        self.calls.append(("PREPARE", "legacy_admin"))
+
     def post_session_form(self, path: str, fields: dict[str, str]) -> bytes:
         self.calls.append(("POST_FORM", path))
         if path == "login.cgi":
-            assert fields["R_ADM1"] == "AdminAdmin"
+            assert fields["R_ADM"] == "AdminAdmin"
             assert fields["password"]
         return b""
 
@@ -185,14 +194,26 @@ def test_legacy_admin_connector_reads_once_then_logs_out_and_clears_session() ->
     assert result.counters[0].count == 243_744
     assert sessions[0].scheme == "https"
     assert sessions[0].calls == [
-        ("GET", "top.xml"),
-        ("POST_FORM", "ulogin.cgi"),
-        ("GET", "login.xml"),
+        ("PREPARE", "legacy_admin"),
         ("POST_FORM", "login.cgi"),
         ("GET", "a_system_counter.xml"),
         ("POST_FORM", "a_user.cgi"),
     ]
     assert sessions[0].cleared is True
+
+
+def test_legacy_admin_login_fields_match_web_connection_contract() -> None:
+    password = secrets.token_urlsafe(18)
+
+    fields = LegacyAuthenticatedWebConnectionCounterConnector._legacy_login_fields(
+        AdminCredential(password=password)
+    )
+
+    assert fields["func"] == "PSL_LP1_LOG"
+    assert fields["AuthType"] == "MiddleServer"
+    assert fields["R_ADM"] == "AdminAdmin"
+    assert "R_ADM1" not in fields
+    assert fields["password"] == password
 
 
 class LegacyCertificateFailureSession(FakeLegacySession):
@@ -297,7 +318,12 @@ class FailingAdminConnector:
     def __init__(self) -> None:
         self.attempts = 0
 
-    def collect_with_credential(self, _host: str, _credential: AdminCredential):
+    def collect_with_credential(
+        self,
+        _host: str,
+        _credential: AdminCredential,
+        **_kwargs,
+    ):
         self.attempts += 1
         raise WebConnectionAuthenticationError("rejected")
 
@@ -311,6 +337,11 @@ class PublicConnector:
 class FailingPublicConnector:
     def collect_result(self, _host: str) -> WebCounterCollection:
         raise WebConnectionError("public session unavailable")
+
+
+class AdminRequiredPublicConnector:
+    def collect_result(self, _host: str) -> WebCounterCollection:
+        raise WebConnectionAuthenticationError("administrator required")
 
 
 class LegacyPublicConnector:
@@ -337,6 +368,24 @@ class LegacyAdminConnector:
         self.hosts.append(f"{scheme}://{host}")
         value = WebCounterValue("counter.total.total", "Total", 243_744, "Total", "legacy-admin")
         return WebCounterCollection((value,), "web_connection_legacy_xml_admin", WebAuthState.ADMIN)
+
+
+class SecondFactoryPasswordLegacyAdminConnector(LegacyAdminConnector):
+    def __init__(self) -> None:
+        super().__init__()
+        self.passwords: list[str] = []
+
+    def collect_with_credential(
+        self,
+        host: str,
+        credential: AdminCredential,
+        *,
+        scheme: str = "https",
+    ) -> WebCounterCollection:
+        self.passwords.append(credential.password)
+        if credential.password != PUBLIC_FACTORY_ADMIN_PASSWORDS[1]:
+            raise WebConnectionAuthenticationError("rejected")
+        return super().collect_with_credential(host, credential, scheme=scheme)
 
 
 def test_meter_reader_falls_back_to_public_once_and_exports_no_credential(tmp_path) -> None:
@@ -372,6 +421,20 @@ def test_meter_reader_preserves_rejected_admin_error_when_public_is_unavailable(
         reader.read("10.0.0.5")
 
 
+def test_meter_reader_does_not_retry_factory_passwords_after_customer_password_fails() -> None:
+    admin = FailingAdminConnector()
+    reader = MeterReader(
+        MemoryStore(AdminCredential(password=secrets.token_urlsafe(18))),
+        public_connector=AdminRequiredPublicConnector(),
+        admin_connector=admin,
+    )
+
+    with pytest.raises(WebConnectionAuthenticationError, match="rejected"):
+        reader.read("10.0.0.5")
+
+    assert admin.attempts == 1
+
+
 def test_meter_reader_routes_confirmed_press_to_public_legacy_xml_without_admin_login() -> None:
     public = LegacyPublicConnector()
     admin = LegacyAdminConnector()
@@ -387,6 +450,7 @@ def test_meter_reader_routes_confirmed_press_to_public_legacy_xml_without_admin_
     assert reading.counters[0].count == 25_121
     assert public.hosts == ["http://10.0.0.5"]
     assert admin.hosts == []
+    assert any("ไม่เปิดเผยสถานะ User Authentication" in warning for warning in reading.warnings)
 
 
 def test_meter_reader_routes_c458_to_bounded_admin_legacy_xml() -> None:
@@ -402,6 +466,39 @@ def test_meter_reader_routes_c458_to_bounded_admin_legacy_xml() -> None:
     assert reading.source == "web_connection_legacy_xml_admin"
     assert reading.counters[0].count == 243_744
     assert admin.hosts == ["https://10.0.0.5"]
+
+
+def test_meter_reader_tries_two_public_factory_passwords_in_order_and_remembers_success() -> None:
+    store = MemoryStore(None)
+    admin = SecondFactoryPasswordLegacyAdminConnector()
+    reader = MeterReader(
+        store,
+        legacy_public_connector=LegacyPublicConnector(),
+        legacy_admin_connector=admin,
+    )
+
+    reading = reader.read("10.0.0.5", model="KONICA MINOLTA bizhub C458")
+
+    assert admin.passwords == list(PUBLIC_FACTORY_ADMIN_PASSWORDS)
+    assert reading.auth_state == WebAuthState.ADMIN
+    assert store.credential is not None
+    assert store.credential.password == PUBLIC_FACTORY_ADMIN_PASSWORDS[1]
+
+
+def test_meter_reader_requests_customer_password_after_both_public_factory_passwords_fail() -> None:
+    admin = FailingAdminConnector()
+    reader = MeterReader(
+        MemoryStore(None),
+        legacy_admin_connector=admin,
+    )
+
+    with pytest.raises(
+        WebConnectionAuthenticationError,
+        match="รหัสเริ่มต้นของเครื่องทั้ง 2 แบบไม่ผ่าน",
+    ):
+        reader.read("10.0.0.5", model="KONICA MINOLTA bizhub C458")
+
+    assert admin.attempts == 2
 
 
 def test_public_connector_still_parses_existing_total_schema() -> None:
@@ -513,6 +610,18 @@ def test_meter_reader_enriches_missing_user_name_from_ram_export() -> None:
     assert reading.counters[0].subject_id == "1"
     assert reading.counters[0].subject_name == "DMS"
     assert export_reader.calls == [("10.0.0.5", "User")]
+
+
+def test_meter_reader_does_not_start_name_export_without_explicit_reader() -> None:
+    reader = MeterReader(
+        MemoryStore(AdminCredential(password=secrets.token_urlsafe(18))),
+        admin_connector=AdminConnectorWithUnnamedUser(),
+    )
+
+    reading = reader.read("10.0.0.5")
+
+    assert reading.counters[0].subject_id == "1"
+    assert reading.counters[0].subject_name == ""
 
 
 class FakeMeterExportSession(FakeSession):

@@ -14,6 +14,7 @@ ACCESS_HASH_KEY = "KOMI_WEB_ACCESS_HASH"
 ACCESS_CONFIGURED_KEY = "KOMI_WEB_ACCESS_CONFIGURED"
 AUTH_EPOCH_KEY = "KOMI_WEB_AUTH_EPOCH"
 LEGACY_ACCESS_CODE_KEY = "KOMI_WEB_ACCESS_CODE"
+REPORT_PASSWORDLESS_KEY = "KOMI_WEB_REPORT_PASSWORDLESS"
 SESSION_SECRET_KEY = "KOMI_WEB_SESSION_SECRET"
 USER_KEY = "KOMI_WEB_USER"
 
@@ -31,6 +32,7 @@ _PRIMARY_KEYS = (
     ACCESS_CONFIGURED_KEY,
     SESSION_SECRET_KEY,
     AUTH_EPOCH_KEY,
+    REPORT_PASSWORDLESS_KEY,
 )
 
 
@@ -38,6 +40,7 @@ _PRIMARY_KEYS = (
 class WebAccessStatus:
     user: str
     configured: bool
+    report_passwordless: bool = False
 
 
 def _read_values(path: Path | None) -> dict[str, str]:
@@ -167,6 +170,7 @@ def ensure_web_access(env_path: Path, *, migrate_from: Path | None = None) -> di
     values.setdefault(USER_KEY, "admin")
     values.setdefault(SESSION_SECRET_KEY, secrets.token_hex(32))
     values.setdefault(AUTH_EPOCH_KEY, secrets.token_hex(16))
+    values.setdefault(REPORT_PASSWORDLESS_KEY, "0")
 
     if not values.get(ACCESS_HASH_KEY):
         if legacy_code:
@@ -190,7 +194,33 @@ def web_access_status(env_path: Path) -> WebAccessStatus:
     configured = (
         values.get(ACCESS_CONFIGURED_KEY) == "1" and bool(values.get(ACCESS_HASH_KEY))
     ) or legacy_configured
-    return WebAccessStatus(user=values.get(USER_KEY, "admin"), configured=configured)
+    return WebAccessStatus(
+        user=values.get(USER_KEY, "admin"),
+        configured=configured,
+        report_passwordless=values.get(REPORT_PASSWORDLESS_KEY, "0") == "1",
+    )
+
+
+def set_web_report_passwordless(
+    env_path: Path,
+    enabled: bool,
+) -> WebAccessStatus:
+    """Toggle anonymous read-only report access and revoke existing sessions.
+
+    The Web proxy owns the allow-list.  This flag never grants access to
+    Settings, support diagnostics, authentication management or mutation APIs.
+    """
+
+    values = _read_values(env_path.expanduser().resolve())
+    if not values:
+        values.update(ensure_web_access(env_path))
+    target = "1" if enabled else "0"
+    if values.get(REPORT_PASSWORDLESS_KEY, "0") == target:
+        return web_access_status(env_path)
+    values[REPORT_PASSWORDLESS_KEY] = target
+    values[AUTH_EPOCH_KEY] = secrets.token_hex(16)
+    _write_values(env_path, values)
+    return web_access_status(env_path)
 
 
 def set_web_access_code(env_path: Path, access_code: str) -> WebAccessStatus:
@@ -207,4 +237,8 @@ def set_web_access_code(env_path: Path, access_code: str) -> WebAccessStatus:
     values[ACCESS_CONFIGURED_KEY] = "1"
     values[AUTH_EPOCH_KEY] = secrets.token_hex(16)
     _write_values(env_path, values)
-    return WebAccessStatus(user=values[USER_KEY], configured=True)
+    return WebAccessStatus(
+        user=values[USER_KEY],
+        configured=True,
+        report_passwordless=values.get(REPORT_PASSWORDLESS_KEY, "0") == "1",
+    )

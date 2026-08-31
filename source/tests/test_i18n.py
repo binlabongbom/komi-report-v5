@@ -85,6 +85,8 @@ def test_import_dynamic_messages_are_fully_english():
         "ตอนนี้อยู่ในช่วง Normal · SNMP ทุก 5 นาที": "Current schedule window: Normal · SNMP every 5 minutes",
         "กำลังเริ่มต้นการอ่าน 1 เครื่อง": "Starting readings for 1 printers",
         "รอ Scheduler เริ่มรอบแรก หรือกดอ่านข้อมูลตอนนี้": "Waiting for the first scheduler cycle, or select Read now",
+        "Meter เริ่มต้น": "Opening meter",
+        "ค่า Meter ครั้งแรกที่บันทึกไว้ ใช้เป็นข้อมูลอ้างอิงเท่านั้น ไม่รวมในยอดใช้งาน กราฟ หรือค่าใช้จ่าย": "The first recorded meter is for reference only and is excluded from usage, charts, and cost.",
     }
     for source, expected in samples.items():
         assert translate_text(source) == expected

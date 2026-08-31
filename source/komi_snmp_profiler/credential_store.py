@@ -7,6 +7,14 @@ from typing import Protocol
 
 DEFAULT_ADMIN_USERNAME = "administrator"
 
+# Public factory defaults documented for the customer fleet.  They are not
+# customer secrets: the application tries them only in this exact order after
+# read-only Web capability detection, then asks for the customer-set password.
+PUBLIC_FACTORY_ADMIN_PASSWORDS = (
+    "1234567812345678",
+    "12345678",
+)
+
 
 class CredentialStoreError(RuntimeError):
     """Raised when a credential store cannot be used."""

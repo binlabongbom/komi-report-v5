@@ -12,7 +12,7 @@ from contextlib import closing
 from datetime import datetime
 from pathlib import Path
 
-CURRENT_SCHEMA_VERSION = 14
+CURRENT_SCHEMA_VERSION = 19
 
 
 class UnsupportedSchemaVersionError(RuntimeError):
@@ -32,6 +32,40 @@ _REQUIRED_SCHEMA: dict[str, frozenset[str]] = {
     "daily_meter_records": frozenset({"id", "device_slot", "record_date", "source_json"}),
     "billing_ledger": frozenset({"id", "entry_kind", "source_hash", "idempotency_key"}),
     "daily_subject_records": frozenset({"id", "device_slot", "subject_type", "subject_id"}),
+    "daily_raw_counter_records": frozenset(
+        {
+            "id",
+            "device_slot",
+            "record_date",
+            "canonical_field",
+            "label",
+            "subject_type",
+            "subject_id",
+            "opening_value",
+            "closing_value",
+            "delta_value",
+        }
+    ),
+    "parser_mapping_overrides": frozenset(
+        {
+            "device_serial",
+            "raw_key",
+            "source_field",
+            "source_path",
+            "target_field",
+            "updated_at",
+        }
+    ),
+    "parser_mapping_change_log": frozenset(
+        {
+            "id",
+            "device_serial",
+            "raw_key",
+            "old_target",
+            "new_target",
+            "changed_at",
+        }
+    ),
     "legacy_history_imports": frozenset({"id", "source_sha256", "imported_rows"}),
     "legacy_history_items": frozenset({"id", "reading_id", "row_fingerprint"}),
     "registration_profile": frozenset(
@@ -116,6 +150,9 @@ _REQUIRED_SCHEMA: dict[str, frozenset[str]] = {
             "offline_license_expires_at",
             "offline_license_kid",
             "offline_bound_devices_json",
+            "registration_inventory_json",
+            "last_registered_inventory_json",
+            "last_registration_terminal_inventory_json",
             "updated_at",
         }
     ),
@@ -374,6 +411,203 @@ def _migration_014_v52_runtime_state(connection: sqlite3.Connection) -> None:
     )
 
 
+def _migration_015_v52_registration_inventory(connection: sqlite3.Connection) -> None:
+    """Keep the complete redacted discovery inventory separate from selected devices."""
+
+    columns = {
+        str(row[1]) for row in connection.execute("PRAGMA table_info(v52_runtime_state)")
+    }
+    if "registration_inventory_json" not in columns:
+        connection.execute(
+            "ALTER TABLE v52_runtime_state "
+            "ADD COLUMN registration_inventory_json TEXT NOT NULL DEFAULT '[]'"
+        )
+
+
+def _migration_019_v52_registration_inventory_baseline(
+    connection: sqlite3.Connection,
+) -> None:
+    """Remember accepted and terminal inventories for safe re-registration.
+
+    The current discovery inventory remains separate from these baselines.  A
+    changed inventory can therefore create one new signed register operation,
+    while an unchanged terminal response (including HTTP 409) is not retried on
+    every scheduler tick.
+    """
+
+    columns = {
+        str(row[1]) for row in connection.execute("PRAGMA table_info(v52_runtime_state)")
+    }
+    if not columns:
+        # A deliberately partial legacy fixture is allowed to advance its
+        # recorded history; the normal schema validator still rejects a
+        # production database that is missing the runtime table.
+        return
+    if "last_registered_inventory_json" not in columns:
+        connection.execute(
+            "ALTER TABLE v52_runtime_state "
+            "ADD COLUMN last_registered_inventory_json TEXT NOT NULL DEFAULT '[]'"
+        )
+    if "last_registration_terminal_inventory_json" not in columns:
+        connection.execute(
+            "ALTER TABLE v52_runtime_state "
+            "ADD COLUMN last_registration_terminal_inventory_json "
+            "TEXT NOT NULL DEFAULT '[]'"
+        )
+
+
+def _migration_016_daily_raw_counter_history(connection: sqlite3.Connection) -> None:
+    """Persist exact Web counter names and values for the Legacy report.
+
+    This table is deliberately report-only.  It does not replace normalized
+    daily meter rows, subject totals, pricing, or the append-only billing
+    ledger.
+    """
+
+    connection.execute(
+        """CREATE TABLE IF NOT EXISTS daily_raw_counter_records(
+               id                     INTEGER PRIMARY KEY AUTOINCREMENT,
+               device_slot            INTEGER NOT NULL,
+               record_date            TEXT NOT NULL,
+               canonical_field        TEXT NOT NULL,
+               label                  TEXT NOT NULL,
+               source_path            TEXT NOT NULL DEFAULT '',
+               subject_type           TEXT NOT NULL DEFAULT '',
+               subject_id             TEXT NOT NULL DEFAULT '',
+               subject_name           TEXT NOT NULL DEFAULT '',
+               opening_value          REAL NOT NULL,
+               closing_value          REAL NOT NULL,
+               delta_value            REAL NOT NULL DEFAULT 0,
+               reset_count            INTEGER NOT NULL DEFAULT 0,
+               sample_count           INTEGER NOT NULL DEFAULT 0,
+               first_success          TEXT NOT NULL DEFAULT '',
+               last_success           TEXT NOT NULL DEFAULT '',
+               source_name            TEXT NOT NULL DEFAULT '',
+               device_name_snapshot   TEXT NOT NULL DEFAULT '',
+               device_serial_snapshot TEXT NOT NULL DEFAULT '',
+               incomplete             INTEGER NOT NULL DEFAULT 0,
+               created_at             TEXT NOT NULL,
+               updated_at             TEXT NOT NULL,
+               UNIQUE(
+                   device_slot,device_serial_snapshot,record_date,
+                   canonical_field,source_path,
+                   subject_type,subject_id
+               )
+           )"""
+    )
+    connection.execute(
+        """CREATE INDEX IF NOT EXISTS idx_daily_raw_counter_period
+           ON daily_raw_counter_records(
+               record_date,device_slot,device_serial_snapshot,
+               subject_type,subject_id,canonical_field
+           )"""
+    )
+
+
+def _migration_017_parser_mapping_overrides(connection: sqlite3.Connection) -> None:
+    """Add reversible, per-device parser overrides without rewriting history.
+
+    Overrides are keyed by printer Serial Number plus the exact raw source
+    identity.  They are applied only to future normalized reads; the exact
+    Legacy counter table and append-only Billing Ledger remain untouched.
+    """
+
+    connection.execute(
+        """CREATE TABLE IF NOT EXISTS parser_mapping_overrides(
+               device_serial TEXT NOT NULL,
+               raw_key       TEXT NOT NULL,
+               source_field  TEXT NOT NULL,
+               source_path   TEXT NOT NULL DEFAULT '',
+               target_field  TEXT NOT NULL,
+               updated_at    TEXT NOT NULL,
+               PRIMARY KEY(device_serial,raw_key)
+           )"""
+    )
+    connection.execute(
+        """CREATE TABLE IF NOT EXISTS parser_mapping_change_log(
+               id            INTEGER PRIMARY KEY AUTOINCREMENT,
+               device_serial TEXT NOT NULL,
+               raw_key       TEXT NOT NULL,
+               old_target    TEXT NOT NULL DEFAULT '',
+               new_target    TEXT NOT NULL DEFAULT '',
+               changed_at    TEXT NOT NULL
+           )"""
+    )
+    connection.execute(
+        """CREATE INDEX IF NOT EXISTS idx_parser_mapping_log_serial
+           ON parser_mapping_change_log(device_serial,id DESC)"""
+    )
+
+
+def _migration_018_raw_counter_device_identity(connection: sqlite3.Connection) -> None:
+    """Make printer Serial Number part of every Raw Counter daily identity.
+
+    A Slot is a customer location, not a permanent printer identity.  Reusing
+    a Slot for a replacement printer must create a new zero-delta baseline;
+    otherwise the replacement's absolute meter could be recorded as usage.
+    SQLite cannot alter a UNIQUE constraint in place, so rebuild this
+    report-only table transactionally while preserving every existing row/id.
+    """
+
+    connection.execute("DROP TABLE IF EXISTS daily_raw_counter_records_v18")
+    connection.execute(
+        """CREATE TABLE daily_raw_counter_records_v18(
+               id                     INTEGER PRIMARY KEY AUTOINCREMENT,
+               device_slot            INTEGER NOT NULL,
+               record_date            TEXT NOT NULL,
+               canonical_field        TEXT NOT NULL,
+               label                  TEXT NOT NULL,
+               source_path            TEXT NOT NULL DEFAULT '',
+               subject_type           TEXT NOT NULL DEFAULT '',
+               subject_id             TEXT NOT NULL DEFAULT '',
+               subject_name           TEXT NOT NULL DEFAULT '',
+               opening_value          REAL NOT NULL,
+               closing_value          REAL NOT NULL,
+               delta_value            REAL NOT NULL DEFAULT 0,
+               reset_count            INTEGER NOT NULL DEFAULT 0,
+               sample_count           INTEGER NOT NULL DEFAULT 0,
+               first_success          TEXT NOT NULL DEFAULT '',
+               last_success           TEXT NOT NULL DEFAULT '',
+               source_name            TEXT NOT NULL DEFAULT '',
+               device_name_snapshot   TEXT NOT NULL DEFAULT '',
+               device_serial_snapshot TEXT NOT NULL DEFAULT '',
+               incomplete             INTEGER NOT NULL DEFAULT 0,
+               created_at             TEXT NOT NULL,
+               updated_at             TEXT NOT NULL,
+               UNIQUE(
+                   device_slot,device_serial_snapshot,record_date,
+                   canonical_field,source_path,subject_type,subject_id
+               )
+           )"""
+    )
+    connection.execute(
+        """INSERT INTO daily_raw_counter_records_v18(
+               id,device_slot,record_date,canonical_field,label,source_path,
+               subject_type,subject_id,subject_name,opening_value,closing_value,
+               delta_value,reset_count,sample_count,first_success,last_success,
+               source_name,device_name_snapshot,device_serial_snapshot,
+               incomplete,created_at,updated_at
+           )
+           SELECT id,device_slot,record_date,canonical_field,label,source_path,
+                  subject_type,subject_id,subject_name,opening_value,closing_value,
+                  delta_value,reset_count,sample_count,first_success,last_success,
+                  source_name,device_name_snapshot,device_serial_snapshot,
+                  incomplete,created_at,updated_at
+           FROM daily_raw_counter_records"""
+    )
+    connection.execute("DROP TABLE daily_raw_counter_records")
+    connection.execute(
+        "ALTER TABLE daily_raw_counter_records_v18 RENAME TO daily_raw_counter_records"
+    )
+    connection.execute(
+        """CREATE INDEX idx_daily_raw_counter_period
+           ON daily_raw_counter_records(
+               record_date,device_slot,device_serial_snapshot,
+               subject_type,subject_id,canonical_field
+           )"""
+    )
+
+
 MIGRATIONS: tuple[tuple[int, str, object], ...] = (
     (8, "record_schema_history_and_reporting_indexes", _migration_008_record_schema_history),
     (9, "add_legacy_usage_history_import_provenance", _migration_009_legacy_history_import),
@@ -382,6 +616,11 @@ MIGRATIONS: tuple[tuple[int, str, object], ...] = (
     (12, "add_durable_registration_outbox", _migration_012_registration_outbox),
     (13, "add_v52_status_meter_coalescing_outbox", _migration_013_v52_telemetry_outbox),
     (14, "add_v52_runtime_state", _migration_014_v52_runtime_state),
+    (15, "add_v52_registration_inventory", _migration_015_v52_registration_inventory),
+    (16, "add_exact_daily_raw_counter_history", _migration_016_daily_raw_counter_history),
+    (17, "add_per_serial_parser_mapping_overrides", _migration_017_parser_mapping_overrides),
+    (18, "separate_raw_counter_history_by_printer_serial", _migration_018_raw_counter_device_identity),
+    (19, "add_v52_registration_inventory_baselines", _migration_019_v52_registration_inventory_baseline),
 )
 
 

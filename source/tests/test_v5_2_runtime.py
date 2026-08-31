@@ -11,7 +11,7 @@ from PyQt6.QtCore import QCoreApplication
 from database import _open
 from services.contract_adapters.v1_draft import DraftV1SigningAdapter
 from services.installation_identity import load_or_create_installation_identity
-from services.registration_data_notice import DRAFT_NOTICE_VERSION
+from services.registration_data_notice import REGISTRATION_NOTICE_VERSION
 from services.registration_vault import (
     SessionRegistrationSecretStore,
     installation_token_reference,
@@ -84,6 +84,20 @@ def _failure(*, retryable: bool, code: str) -> V52ClientResult:
     )
 
 
+def _inventory(
+    serial: str = "SYNTH-RUNTIME-1",
+    model: str = "Synthetic Printer",
+) -> list[dict[str, object]]:
+    return [
+        {
+            "serial_number": serial,
+            "model": model,
+            "selected": True,
+            "device_slot": 1,
+        }
+    ]
+
+
 def _configured(mode: str = "online") -> V52RuntimeStateRepository:
     state = V52RuntimeStateRepository()
     state.configure(
@@ -91,7 +105,7 @@ def _configured(mode: str = "online") -> V52RuntimeStateRepository:
         "Synthetic Company",
         INSTALLATION_ID,
         "2026-08-25T08:00:00Z",
-        DRAFT_NOTICE_VERSION,
+        REGISTRATION_NOTICE_VERSION,
         "2026-08-25T08:00:00Z",
         now=NOW,
     )
@@ -129,6 +143,61 @@ def test_missing_client_is_fail_closed_and_never_attempts_network():
     assert state.snapshot()["support_code"] == "client_not_configured"
 
 
+def test_default_empty_terminal_baseline_does_not_block_initial_registration():
+    state = _configured()
+    outbox = V52OutboxRepository()
+    devices = FakeDevices()
+    devices.items = []
+    processor = _processor(
+        client=None,
+        state=state,
+        outbox=outbox,
+        devices=devices,
+    )
+
+    assert processor.prepare_due() == 1
+    operation = outbox.claim_due(now=NOW)
+    assert operation is not None
+    assert operation.event_type == "register"
+    assert operation.payload["device_inventory"]["devices"] == []
+
+
+def test_registration_uses_complete_discovery_inventory_and_marks_selected_devices():
+    state = V52RuntimeStateRepository()
+    state.configure(
+        "online",
+        "Synthetic Company",
+        INSTALLATION_ID,
+        "2026-08-25T08:00:00Z",
+        REGISTRATION_NOTICE_VERSION,
+        "2026-08-25T08:00:00Z",
+        registration_devices=[
+            {
+                "serial_number": "DISCOVERED-1",
+                "model": "Synthetic Selected",
+                "selected": True,
+                "device_slot": 1,
+            },
+            {
+                "serial_number": "DISCOVERED-2",
+                "model": "Synthetic Unselected",
+                "selected": False,
+                "device_slot": None,
+            },
+        ],
+        now=NOW,
+    )
+    outbox = V52OutboxRepository()
+    processor = _processor(client=None, state=state, outbox=outbox)
+
+    assert processor.run_once() is False
+    operation = outbox.claim_due(now=NOW)
+    assert operation is not None
+    devices = operation.payload["device_inventory"]["devices"]
+    assert len(devices) == 2
+    assert [item["selected"] for item in devices] == [True, False]
+
+
 def test_registration_success_saves_token_only_in_vault_then_schedules_status_meter():
     state = _configured()
     vault = SessionRegistrationSecretStore()
@@ -146,8 +215,116 @@ def test_registration_success_saves_token_only_in_vault_then_schedules_status_me
     assert state.snapshot()["status"] == "registered"
 
 
+def test_inventory_change_reregisters_same_installation_with_new_idempotency_and_keeps_token():
+    state = V52RuntimeStateRepository()
+    state.configure(
+        "online",
+        "Synthetic Company",
+        INSTALLATION_ID,
+        "2026-08-25T08:00:00Z",
+        REGISTRATION_NOTICE_VERSION,
+        "2026-08-25T08:00:00Z",
+        registration_devices=_inventory(),
+        now=NOW,
+    )
+    vault = SessionRegistrationSecretStore()
+    reference = installation_token_reference(INSTALLATION_ID)
+    client = FakeClient(
+        [
+            _success(token="initial-installation-token"),
+            # A successful inventory update may retain the existing token.
+            _success(token=""),
+        ]
+    )
+    processor = _processor(client=client, state=state, vault=vault)
+
+    assert processor.run_once() is True
+    first = client.operations[0]
+    assert vault.load(reference) == "initial-installation-token"
+    assert json.loads(str(state.internal()["last_registered_inventory_json"])) == _inventory()
+
+    replacement = _inventory("SYNTH-RUNTIME-2", "Replacement Printer")
+    state.update_registration_devices(replacement, now=NOW)
+    assert processor.run_once() is True
+    second = client.operations[1]
+
+    assert second.event_type == "register"
+    assert second.payload["installation_id"] == INSTALLATION_ID
+    assert second.idempotency_key != first.idempotency_key
+    assert second.payload["device_inventory"]["devices"] == replacement
+    assert client.tokens == [None, None]
+    assert vault.load(reference) == "initial-installation-token"
+    assert json.loads(str(state.internal()["last_registered_inventory_json"])) == replacement
+    assert state.internal()["last_registration_terminal_inventory_json"] == "[]"
+
+
+def test_terminal_registration_conflict_is_not_requeued_until_inventory_changes():
+    state = V52RuntimeStateRepository()
+    original = _inventory()
+    state.configure(
+        "online",
+        "Synthetic Company",
+        INSTALLATION_ID,
+        "2026-08-25T08:00:00Z",
+        REGISTRATION_NOTICE_VERSION,
+        "2026-08-25T08:00:00Z",
+        registration_devices=original,
+        now=NOW,
+    )
+    vault = SessionRegistrationSecretStore()
+    reference = installation_token_reference(INSTALLATION_ID)
+    conflict = V52ClientResult(
+        success=False,
+        http_status=409,
+        error_code="conflict",
+        retryable=False,
+        retry_after_seconds=None,
+        installation_token="",
+        next_status_after_seconds=21_600,
+        next_meter_after_seconds=21_600,
+    )
+    client = FakeClient([_success(token="existing-token"), conflict])
+    outbox = V52OutboxRepository()
+    processor = _processor(
+        client=client,
+        state=state,
+        outbox=outbox,
+        vault=vault,
+    )
+
+    assert processor.run_once() is True
+    baseline = str(state.internal()["last_registered_inventory_json"])
+    rejected = _inventory("SYNTH-RUNTIME-2", "Replacement Printer")
+    state.update_registration_devices(rejected, now=NOW)
+    assert processor.run_once() is True
+    terminal_operation = client.operations[-1]
+
+    assert outbox.get(terminal_operation.operation_id).state == "terminal"
+    assert state.snapshot()["support_code"] == "registration_conflict"
+    assert str(state.internal()["last_registered_inventory_json"]) == baseline
+    assert json.loads(
+        str(state.internal()["last_registration_terminal_inventory_json"])
+    ) == rejected
+    assert vault.load(reference) == "existing-token"
+
+    # The same rejected body stays terminal instead of being regenerated every tick.
+    assert processor.run_once() is False
+    assert len(client.operations) == 2
+
+    # A real inventory correction is a new signed registration attempt.
+    state.update_registration_devices(
+        _inventory("SYNTH-RUNTIME-3", "Corrected Printer"), now=NOW
+    )
+    assert processor.prepare_due() == 1
+    next_operation = outbox.claim_due(now=NOW)
+    assert next_operation is not None
+    assert next_operation.event_type == "register"
+    assert next_operation.idempotency_key != terminal_operation.idempotency_key
+
+
 def test_registered_runtime_batches_latest_aggregate_meter_and_status():
     state = _configured()
+    state.mark_registration_succeeded(_inventory(), now=NOW)
     vault = SessionRegistrationSecretStore()
     vault.save(
         installation_token_reference(INSTALLATION_ID), "synthetic-installation-token"
@@ -172,6 +349,7 @@ def test_registered_runtime_batches_latest_aggregate_meter_and_status():
 
 def test_status_success_replaces_rotated_token_in_vault_without_exposing_it():
     state = _configured()
+    state.mark_registration_succeeded(_inventory(), now=NOW)
     vault = SessionRegistrationSecretStore()
     reference = installation_token_reference(INSTALLATION_ID)
     vault.save(reference, "synthetic-installation-token")
@@ -204,6 +382,7 @@ def test_restart_recovers_inflight_with_same_idempotency_and_recovery_honors_coo
 
 def test_startup_recovery_does_not_create_extra_status_or_meter_inside_cooldown():
     state = _configured()
+    state.mark_registration_succeeded(_inventory(), now=NOW)
     vault = SessionRegistrationSecretStore()
     vault.save(
         installation_token_reference(INSTALLATION_ID), "synthetic-installation-token"
@@ -368,3 +547,167 @@ def test_verified_offline_import_exposes_only_expiry_and_bound_devices(tmp_path)
     assert "host-test-kid" not in serialized
     assert request["installation_public_key"] not in serialized
     coordinator.stop()
+
+
+def test_usage_eligibility_requires_registered_state_and_vault_token():
+    state = _configured()
+    vault = SessionRegistrationSecretStore()
+    coordinator = V52RuntimeCoordinator(
+        None,
+        state_repository=state,
+        vault=vault,
+        device_repository=FakeDevices(),
+        clock=lambda: NOW,
+        random_unit=lambda: 0.5,
+    )
+
+    assert coordinator.usage_eligibility() == (False, "registration_required")
+    state.update_registration_devices(_inventory(), now=NOW)
+    state.mark_registration_succeeded(_inventory(), now=NOW)
+    assert coordinator.usage_eligibility() == (
+        False,
+        "installation_token_unavailable",
+    )
+    vault.save(
+        installation_token_reference(INSTALLATION_ID),
+        "synthetic-installation-token",
+    )
+    assert coordinator.usage_eligibility() == (True, "registered")
+    coordinator.stop()
+
+
+def test_registered_runtime_stays_local_first_during_transient_retry_and_restart():
+    state = _configured()
+    state.update_registration_devices(_inventory(), now=NOW)
+    state.mark_registration_succeeded(_inventory(), now=NOW)
+    vault = SessionRegistrationSecretStore()
+    vault.save(
+        installation_token_reference(INSTALLATION_ID),
+        "synthetic-installation-token",
+    )
+    client = FakeClient([_failure(retryable=True, code="offline")])
+    processor = _processor(client=client, state=state, vault=vault)
+
+    assert processor.run_once() is True
+    assert client.operations[0].event_type == "status"
+    assert state.snapshot()["status"] == "retrying"
+
+    restarted = V52RuntimeCoordinator(
+        None,
+        state_repository=V52RuntimeStateRepository(),
+        vault=vault,
+        device_repository=FakeDevices(),
+        clock=lambda: NOW,
+        random_unit=lambda: 0.5,
+    )
+    assert restarted.usage_eligibility() == (True, "registered")
+    state.mark_status("waiting_for_internet", error_code="offline", now=NOW)
+    assert restarted.usage_eligibility() == (True, "registered")
+    restarted.stop()
+
+
+def test_registered_runtime_still_blocks_terminal_and_inventory_mismatch():
+    state = _configured()
+    state.update_registration_devices(_inventory(), now=NOW)
+    state.mark_registration_succeeded(_inventory(), now=NOW)
+    vault = SessionRegistrationSecretStore()
+    vault.save(
+        installation_token_reference(INSTALLATION_ID),
+        "synthetic-installation-token",
+    )
+    coordinator = V52RuntimeCoordinator(
+        None,
+        state_repository=state,
+        vault=vault,
+        device_repository=FakeDevices(),
+        clock=lambda: NOW,
+        random_unit=lambda: 0.5,
+    )
+
+    state.mark_status(
+        "needs_review",
+        error_code="installation_token_unavailable",
+        now=NOW,
+    )
+    assert coordinator.usage_eligibility() == (False, "registration_required")
+
+    state.mark_status("registered", now=NOW)
+    state.update_registration_devices(
+        _inventory("SYNTH-RUNTIME-2", "Replacement Printer"),
+        now=NOW,
+    )
+    assert coordinator.usage_eligibility() == (False, "registration_required")
+    coordinator.stop()
+
+
+def test_expired_or_invalid_offline_license_is_a_fail_closed_usage_gate():
+    state = _configured("offline")
+    bound_devices = [
+        {
+            "serial_number": "SYNTH-RUNTIME-1",
+            "model": "Synthetic Printer",
+            "device_slot": 1,
+        }
+    ]
+    state.update_registration_devices(
+        [
+            {
+                **bound_devices[0],
+                "selected": True,
+            }
+        ],
+        now=NOW,
+    )
+    state.save_offline_license(
+        license_id="offline-license",
+        expires_at="2026-08-25T07:59:59Z",
+        kid="host-test-kid",
+        bound_devices=bound_devices,
+        now=NOW,
+    )
+
+    assert state.usage_eligibility(now=NOW) == (
+        False,
+        "offline_license_expired",
+    )
+    snapshot = state.snapshot(now=NOW)
+    assert snapshot["status"] == "offline_license_expired"
+    assert snapshot["support_code"] == "offline_license_expired"
+
+    state.save_offline_license(
+        license_id="offline-license",
+        expires_at="not-a-timestamp",
+        kid="host-test-kid",
+        bound_devices=bound_devices,
+        now=NOW,
+    )
+    assert state.usage_eligibility(now=NOW) == (
+        False,
+        "offline_license_expired",
+    )
+
+    state.save_offline_license(
+        license_id="offline-license",
+        expires_at="2026-08-25T08:00:01Z",
+        kid="host-test-kid",
+        bound_devices=bound_devices,
+        now=NOW,
+    )
+    assert state.usage_eligibility(now=NOW) == (True, "offline_license")
+
+    state.update_registration_devices(
+        [
+            {
+                "serial_number": "REPLACEMENT-2",
+                "model": "Replacement Printer",
+                "selected": True,
+                "device_slot": 1,
+            }
+        ],
+        now=NOW,
+    )
+    assert state.usage_eligibility(now=NOW) == (
+        False,
+        "offline_license_device_mismatch",
+    )
+    assert state.snapshot(now=NOW)["status"] == "offline_license_device_mismatch"

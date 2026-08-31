@@ -40,10 +40,24 @@ KM_PRIVATE_TOTAL_OID = "1.3.6.1.4.1.18334.1.1.1.5.7.2.1.1.0"
 
 CONFIRMED_DEVICE_PROFILES = (
     DeviceMeterProfile(
+        profile_id="accuriopress-c84hc-public-legacy-xml",
+        model_tokens=("accuriopress", "c84hc"),
+        preferred_total_oid=PRINTER_MIB_TOTAL_OID,
+        # The current device proves exact Total and public legacy XML.  Keep
+        # optional walks off because this model has also shown intermittent
+        # response timeouts; status detail can be added after a bounded read.
+        snmp_walk_policy=SnmpWalkPolicy.TARGETED_ONLY,
+        web_protocol=WebMeterProtocol.LEGACY_XML_PUBLIC,
+        web_scheme="http",
+    ),
+    DeviceMeterProfile(
         profile_id="accuriopress-c12010s-public-legacy-xml",
         model_tokens=("accuriopress", "c12010s"),
         preferred_total_oid=KM_PRIVATE_TOTAL_OID,
-        snmp_walk_policy=SnmpWalkPolicy.TARGETED_ONLY,
+        # Real-device Printer-MIB evidence confirms direct toner percentage
+        # rows and paper-input levels.  These optional walks run only after
+        # the calibrated exact Total GET and can never make Total fail.
+        snmp_walk_policy=SnmpWalkPolicy.SUPPLEMENTAL,
         web_protocol=WebMeterProtocol.LEGACY_XML_PUBLIC,
         web_scheme="http",
     ),
@@ -51,7 +65,7 @@ CONFIRMED_DEVICE_PROFILES = (
         profile_id="accuriopress-c7090-public-legacy-xml",
         model_tokens=("accuriopress", "c7090"),
         preferred_total_oid=PRINTER_MIB_TOTAL_OID,
-        snmp_walk_policy=SnmpWalkPolicy.TARGETED_ONLY,
+        snmp_walk_policy=SnmpWalkPolicy.SUPPLEMENTAL,
         web_protocol=WebMeterProtocol.LEGACY_XML_PUBLIC,
         web_scheme="http",
     ),
@@ -67,10 +81,38 @@ CONFIRMED_DEVICE_PROFILES = (
         profile_id="bizhub-c458-admin-legacy-xml",
         model_tokens=("bizhub", "c458"),
         preferred_total_oid=PRINTER_MIB_TOTAL_OID,
-        snmp_walk_policy=SnmpWalkPolicy.TARGETED_ONLY,
+        # Real-device verification confirms that this legacy Admin family
+        # exposes standard Printer-MIB supply and input-tray tables.  Keep the
+        # exact Total GET as the billing-safe primary read, then collect these
+        # optional tables for Toner/Paper UI.  A supplemental failure never
+        # changes the Total Meter result or marks the device offline.
+        snmp_walk_policy=SnmpWalkPolicy.SUPPLEMENTAL,
         web_protocol=WebMeterProtocol.LEGACY_XML_ADMIN,
         web_scheme="https",
         tls_compatibility=TlsCompatibility.TLS11_LEGACY,
+    ),
+    DeviceMeterProfile(
+        profile_id="bizhub-c368-admin-legacy-xml",
+        model_tokens=("bizhub", "c368"),
+        preferred_total_oid=PRINTER_MIB_TOTAL_OID,
+        # Use the same optional supply/tray capability as the confirmed C458
+        # Web Connection family.  Future LEGACY_XML_ADMIN profiles inherit
+        # SUPPLEMENTAL by default unless real-device evidence requires a
+        # targeted-only exception.
+        snmp_walk_policy=SnmpWalkPolicy.SUPPLEMENTAL,
+        web_protocol=WebMeterProtocol.LEGACY_XML_ADMIN,
+        web_scheme="https",
+        # The real device negotiates TLS 1.2 but requires legacy server
+        # connection support. This remains isolated to the C368 profile.
+        tls_compatibility=TlsCompatibility.TLS11_LEGACY,
+    ),
+    DeviceMeterProfile(
+        profile_id="bizhub-c3350i-public-modern-http",
+        model_tokens=("bizhub", "c3350i"),
+        preferred_total_oid=PRINTER_MIB_TOTAL_OID,
+        snmp_walk_policy=SnmpWalkPolicy.SUPPLEMENTAL,
+        web_protocol=WebMeterProtocol.MODERN_JSON,
+        web_scheme="http",
     ),
 )
 

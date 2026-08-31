@@ -16,7 +16,7 @@ from datetime import date, datetime, time, timedelta
 from typing import Literal
 from uuid import uuid4
 
-from fastapi import FastAPI, Query, Request
+from fastapi import FastAPI, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict
 
 from config import PACKAGE_VERSION
@@ -29,6 +29,16 @@ from services.polling import PollingPolicy
 from services.pricing import PricingRepository
 from services.report_scope import report_slots
 from services.reporting_facade import ReportReadService
+from services.peer_sync_authorization import (
+    PeerSyncAuthorizationError,
+    claim_pairing_window,
+    consume_pairing_token,
+)
+from services.secondary_setup import (
+    PEER_SYNC_TOKEN_HEADER,
+    primary_discovery_payload,
+    primary_setup_snapshot,
+)
 from services.subject_history import load_subject_history
 from services.sync_schedule import build_daily_timeline, load_schedule_windows
 from services.usage import current_device_identity
@@ -63,6 +73,64 @@ class DeviceOut(ApiModel):
 
 class DeviceListResponse(ApiModel):
     items: list[DeviceOut]
+
+
+class PeerDiscoveryResponse(ApiModel):
+    contract: str
+    ready: bool
+    company_name: str
+    printer_count: int
+    version: str
+
+
+class PeerPriceOut(ApiModel):
+    a3_color: float
+    a3_bw: float
+    a4_color: float
+    a4_bw: float
+
+
+class PeerDeviceOut(ApiModel):
+    slot: int
+    name: str
+    host: str
+    model: str
+    serial: str
+    tls_mode: str
+    tls_fingerprint: str
+    prices: PeerPriceOut
+
+
+class PeerOrganizationOut(ApiModel):
+    company_name: str
+    first_started_at: str
+    primary_installation_id: str
+
+
+class PeerSettingsOut(ApiModel):
+    pricing_mode: str
+    billing_day: int
+    waste_paper_pct: float
+    work_start: str
+    work_end: str
+    sync_schedule_windows: str = ""
+
+
+class PeerClaimRequest(ApiModel):
+    token: str
+
+
+class PeerClaimResponse(ApiModel):
+    accepted: bool
+    expires_in_seconds: int
+
+
+class PeerSetupSnapshotResponse(ApiModel):
+    contract: str
+    generated_at: str
+    organization: PeerOrganizationOut
+    settings: PeerSettingsOut
+    devices: list[PeerDeviceOut]
 
 
 class PeriodOut(ApiModel):
@@ -116,18 +184,22 @@ class UsageOut(ApiModel):
     print_a4_color: float
     print_a3_bw: float
     print_a4_bw: float
+    print_other: float
     copy_a3_color: float
     copy_a4_color: float
     copy_a3_bw: float
     copy_a4_bw: float
+    copy_other: float
     provisional_print_a3_color: float
     provisional_print_a4_color: float
     provisional_print_a3_bw: float
     provisional_print_a4_bw: float
+    provisional_print_other: float
     provisional_copy_a3_color: float
     provisional_copy_a4_color: float
     provisional_copy_a3_bw: float
     provisional_copy_a4_bw: float
+    provisional_copy_other: float
     print_available: bool
     copy_available: bool
 
@@ -489,6 +561,53 @@ def health() -> dict:
 @app.get("/api/devices", response_model=DeviceListResponse)
 def devices() -> dict:
     return {"items": [_device_payload(device) for device in _devices()]}
+
+
+@app.get("/api/v1/peer/discovery", response_model=PeerDiscoveryResponse)
+def peer_discovery() -> dict:
+    """Minimal LAN beacon used by a Secondary Desktop."""
+
+    return primary_discovery_payload()
+
+
+def _peer_requester_ip(request: Request) -> str:
+    """Return the address injected by the local HTTPS edge, not a client hint."""
+
+    remote = request.headers.get("x-komi-remote-address", "").strip()
+    if remote:
+        return remote.removeprefix("::ffff:")
+    return str(request.client.host if request.client is not None else "")
+
+
+@app.post(
+    "/api/v1/peer/claim",
+    response_model=PeerClaimResponse,
+    status_code=202,
+)
+def peer_claim(request: Request, body: PeerClaimRequest) -> dict:
+    """Claim an approval window; this endpoint never returns setup data."""
+
+    try:
+        remaining = claim_pairing_window(body.token, _peer_requester_ip(request))
+    except PeerSyncAuthorizationError as exc:
+        raise HTTPException(status_code=423, detail=str(exc)) from exc
+    return {"accepted": True, "expires_in_seconds": remaining}
+
+
+@app.get("/api/v1/peer/setup-snapshot", response_model=PeerSetupSnapshotResponse)
+def peer_setup_snapshot(request: Request) -> dict:
+    """Consume one approved capability before returning the allow-list."""
+
+    token = request.headers.get(PEER_SYNC_TOKEN_HEADER, "")
+    try:
+        consume_pairing_token(
+            token,
+            _peer_requester_ip(request),
+            get_cfg("installation_id", ""),
+        )
+    except PeerSyncAuthorizationError as exc:
+        raise HTTPException(status_code=401, detail=str(exc)) from exc
+    return primary_setup_snapshot()
 
 
 @app.get("/api/v1/reports/periods", response_model=PeriodListResponse)

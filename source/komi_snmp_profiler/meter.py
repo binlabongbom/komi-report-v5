@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import replace
 from ipaddress import ip_address
 from typing import Protocol
@@ -12,13 +13,17 @@ from .connectors import (
     WebConnectionAuthenticationError,
     WebConnectionCounterConnector,
     WebConnectionError,
+    WebCounterCollection,
 )
-from .credential_store import AdminCredential, CredentialStore, CredentialStoreError
+from .credential_store import (
+    PUBLIC_FACTORY_ADMIN_PASSWORDS,
+    AdminCredential,
+    CredentialStore,
+    CredentialStoreError,
+)
 from .device_profiles import WebMeterProtocol, resolve_device_meter_profile
 from .meter_export import (
-    MeterCountExportConnector,
     MeterExportKind,
-    MeterExportReader,
     MeterExportTable,
     subject_name_map,
 )
@@ -41,6 +46,7 @@ class MeterReader:
         legacy_public_connector: LegacyWebConnectionCounterConnector | None = None,
         legacy_admin_connector: LegacyAuthenticatedWebConnectionCounterConnector | None = None,
         export_reader: MeterExportReaderLike | None = None,
+        public_factory_credentials: tuple[AdminCredential, ...] | None = None,
     ) -> None:
         self.credential_store = credential_store
         self.public_connector = public_connector
@@ -48,6 +54,11 @@ class MeterReader:
         self.legacy_public_connector = legacy_public_connector
         self.legacy_admin_connector = legacy_admin_connector
         self.export_reader = export_reader
+        self.public_factory_credentials = (
+            tuple(AdminCredential(password=value) for value in PUBLIC_FACTORY_ADMIN_PASSWORDS)
+            if public_factory_credentials is None
+            else tuple(public_factory_credentials)
+        )
 
     def save_credential(self, host: str, credential: AdminCredential) -> None:
         self.credential_store.save(self._host(host), credential)
@@ -70,9 +81,13 @@ class MeterReader:
                 "คำเตือน: ปิดการตรวจสอบ TLS certificate แบบ explicit compatibility; "
                 "ควรเปลี่ยนเป็น trusted certificate หรือ fingerprint pinning"
             )
-        public_connector = self.public_connector or WebConnectionCounterConnector(tls_policy=tls_policy)
+        public_connector = self.public_connector or WebConnectionCounterConnector(
+            tls_policy=tls_policy,
+            scheme=profile.web_scheme,
+        )
         admin_connector = self.admin_connector or AuthenticatedWebConnectionCounterConnector(
-            tls_policy=tls_policy
+            tls_policy=tls_policy,
+            scheme=profile.web_scheme,
         )
         credential: AdminCredential | None = None
         try:
@@ -85,29 +100,50 @@ class MeterReader:
                 scheme=profile.web_scheme,
             )
             result = connector.collect_result(host, scheme=profile.web_scheme)
+            legacy_warnings = warnings + list(result.warnings)
+            if not any(counter.subject_type for counter in result.counters):
+                legacy_warnings.append(
+                    "Legacy Web Connection ไม่เปิดเผยสถานะ User Authentication / Account Track ใน snapshot นี้"
+                )
             return MeterReading.create(
                 host,
                 list(result.counters),
                 result.source,
                 result.auth_state,
-                warnings + list(result.warnings),
+                legacy_warnings,
             )
         if profile.web_protocol == WebMeterProtocol.LEGACY_XML_ADMIN:
-            if credential is None:
-                raise WebConnectionAuthenticationError(
-                    "รุ่นนี้ปิด PublicUser และต้องใช้ bounded Administrator session เพื่ออ่าน Meter"
-                )
             connector = self.legacy_admin_connector or LegacyAuthenticatedWebConnectionCounterConnector(
                 tls_policy=tls_policy,
                 scheme=profile.web_scheme,
             )
-            result = connector.collect_with_credential(host, credential, scheme=profile.web_scheme)
+            if credential is None:
+                result = self._read_with_public_factory_credentials(
+                    host,
+                    lambda candidate: connector.collect_with_credential(
+                        host,
+                        candidate,
+                        scheme=profile.web_scheme,
+                    ),
+                    warnings,
+                )
+            else:
+                result = connector.collect_with_credential(
+                    host,
+                    credential,
+                    scheme=profile.web_scheme,
+                )
+            legacy_warnings = warnings + list(result.warnings)
+            if not any(counter.subject_type for counter in result.counters):
+                legacy_warnings.append(
+                    "Legacy Web Connection ไม่เปิดเผยสถานะ User Authentication / Account Track ใน snapshot นี้"
+                )
             return MeterReading.create(
                 host,
                 list(result.counters),
                 result.source,
                 result.auth_state,
-                warnings + list(result.warnings),
+                legacy_warnings,
             )
         admin_failure: WebConnectionError | None = None
         if credential is not None:
@@ -129,6 +165,25 @@ class MeterReader:
                 )
         try:
             result = public_connector.collect_result(host)
+        except WebConnectionAuthenticationError:
+            if credential is not None:
+                if isinstance(admin_failure, WebConnectionAuthenticationError):
+                    raise admin_failure from None
+                raise
+            result = self._read_with_public_factory_credentials(
+                host,
+                lambda candidate: admin_connector.collect_with_credential(host, candidate),
+                warnings,
+            )
+            counters = list(result.counters)
+            counters, identity_warnings = self._enrich_subject_names(host, counters, tls_policy)
+            return MeterReading.create(
+                host,
+                counters,
+                result.source,
+                result.auth_state,
+                warnings + list(result.warnings) + identity_warnings,
+            )
         except WebConnectionError:
             if isinstance(admin_failure, WebConnectionAuthenticationError):
                 raise admin_failure from None
@@ -141,6 +196,33 @@ class MeterReader:
             auth_state,
             warnings + list(result.warnings),
         )
+
+    def _read_with_public_factory_credentials(
+        self,
+        host: str,
+        read: Callable[[AdminCredential], WebCounterCollection],
+        warnings: list[str],
+    ) -> WebCounterCollection:
+        """Try exactly two public defaults, remember only the successful one."""
+
+        for position, candidate in enumerate(self.public_factory_credentials, start=1):
+            try:
+                result = read(candidate)
+            except WebConnectionAuthenticationError:
+                continue
+            try:
+                self.credential_store.save(host, candidate)
+            except CredentialStoreError:
+                warnings.append(
+                    "รหัสเริ่มต้นผ่าน แต่ OS Credential Vault ยังบันทึกไม่ได้; "
+                    "รอบถัดไปอาจต้องตรวจใหม่"
+                )
+            warnings.append(f"ใช้รหัสเริ่มต้นสาธารณะชุดที่ {position}")
+            return result
+        raise WebConnectionAuthenticationError(
+            "รหัสเริ่มต้นของเครื่องทั้ง 2 แบบไม่ผ่าน · "
+            "กรุณากรอกรหัส Administrator ที่ลูกค้าตั้งไว้"
+        ) from None
 
     def _enrich_subject_names(
         self,
@@ -161,10 +243,13 @@ class MeterReader:
 
         names_by_type: dict[str, dict[str, str]] = {}
         warnings: list[str] = []
-        export_reader = self.export_reader or MeterExportReader(
-            self.credential_store,
-            connector=MeterCountExportConnector(tls_policy=tls_policy),
-        )
+        # Name export is a separate, explicit operator action.  It creates a
+        # short-lived export job on the device, so background polling and the
+        # normal "read now" path must never start it implicitly.  Callers that
+        # intentionally request name enrichment inject an export_reader.
+        if self.export_reader is None:
+            return counters, []
+        export_reader = self.export_reader
         for kind in sorted(kinds):
             subject_type = "user" if kind == "User" else "account"
             try:

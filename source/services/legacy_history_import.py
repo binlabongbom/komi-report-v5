@@ -591,6 +591,10 @@ def build_legacy_usage_intervals(
             continue
         previous = previous_by_slot.get(snapshot.slot)
         previous_by_slot[snapshot.slot] = snapshot
+        if previous is None:
+            # The first absolute meter is a display-only baseline. It must not
+            # become usage, cost, or a chart point.
+            continue
         if previous is not None and not _same_legacy_meter_lineage(previous, snapshot):
             # The first snapshot of a replacement printer is its baseline.  It
             # remains visible in V4.6 History but never becomes usage.

@@ -5,7 +5,7 @@
 from PyQt6.QtWidgets import (
     QFrame, QLabel, QPushButton, QHBoxLayout, QVBoxLayout,
     QTableWidget, QTableWidgetItem, QHeaderView, QScrollBar, QWidget,
-    QStyledItemDelegate, QCheckBox, QSizePolicy,
+    QStyledItemDelegate, QCheckBox, QSizePolicy, QAbstractItemView,
 )
 from PyQt6.QtCore import QPointF, QRectF, QSize, Qt
 from PyQt6.QtGui  import QFont, QColor, QPainter, QPen
@@ -605,6 +605,7 @@ class FrozenLeftTable(QWidget):
             t.verticalHeader().setVisible(False)
             t.verticalHeader().setDefaultSectionSize(self._row_h)
             t.verticalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Fixed)
+            t.setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
             t.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
             t.setAlternatingRowColors(True)
             t.setStyleSheet(self._TBL_STYLE)
@@ -627,6 +628,9 @@ class FrozenLeftTable(QWidget):
 
         self._group_hscroll_guard = False
         self._right.horizontalScrollBar().valueChanged.connect(self._on_body_hscroll)
+        self._right.horizontalScrollBar().rangeChanged.connect(
+            self._sync_left_bottom_margin
+        )
         self._group_right.horizontalScrollBar().valueChanged.connect(self._on_group_hscroll)
 
         lay.addWidget(self._left)
@@ -634,6 +638,22 @@ class FrozenLeftTable(QWidget):
         lay.addWidget(self._vsb)
         outer.addWidget(self._group_header)
         outer.addWidget(self._body, 1)
+
+    def _sync_left_bottom_margin(self, minimum: int, maximum: int) -> None:
+        """Keep frozen and scrollable viewports at the same body height.
+
+        The right table owns the horizontal scrollbar.  When it appears, Qt
+        reduces only that table's viewport, which otherwise makes equal
+        vertical scrollbar values land on adjacent rows near the bottom.
+        Reserve the same height below the frozen column without displaying a
+        second scrollbar.
+        """
+        reserve = (
+            self._right.horizontalScrollBar().sizeHint().height()
+            if maximum > minimum
+            else 0
+        )
+        self._left.setViewportMargins(0, 0, 0, reserve)
 
     def _on_body_hscroll(self, value):
         if self._group_hscroll_guard:
@@ -652,6 +672,14 @@ class FrozenLeftTable(QWidget):
     # ── Scroll sync ──────────────────────────────────────
     def _sync_range(self, mn, mx):
         sb = self._right.verticalScrollBar()
+        left_sb = self._left.verticalScrollBar()
+        # QTableWidget computes a shorter range for the frozen side because it
+        # has no horizontal scrollbar of its own.  Use the scrollable body's
+        # range on both sides so an identical pixel offset always means the
+        # identical top row.
+        left_sb.setRange(mn, mx)
+        left_sb.setPageStep(sb.pageStep())
+        left_sb.setSingleStep(sb.singleStep())
         self._vsb.setRange(mn, mx)
         self._vsb.setPageStep(sb.pageStep())
         self._vsb.setSingleStep(sb.singleStep())

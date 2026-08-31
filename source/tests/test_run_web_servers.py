@@ -25,3 +25,22 @@ def test_web_shortcut_refuses_half_running_service(tmp_path, monkeypatch):
         assert "เพียงบางส่วน" in str(error)
     else:
         raise AssertionError("partial service must not start a duplicate")
+
+
+def test_standalone_runtime_requires_node_not_npm(tmp_path, monkeypatch):
+    source = tmp_path / "source"
+    runtime = tmp_path / "runtime"
+    source.mkdir()
+    (runtime / ".next").mkdir(parents=True)
+    (runtime / ".next" / "BUILD_ID").write_text("build\n", encoding="utf-8")
+    (runtime / "server.js").write_text("server\n", encoding="utf-8")
+    monkeypatch.setattr(run_web_servers, "_port_open", lambda *_args: False)
+    monkeypatch.setattr(run_web_servers, "_https_open", lambda *_args: False)
+    monkeypatch.setattr(run_web_servers.shutil, "which", lambda name: None)
+
+    try:
+        run_web_servers.run(source, runtime, open_browser=False)
+    except RuntimeError as error:
+        assert "Node.js runtime" in str(error)
+    else:
+        raise AssertionError("standalone runtime without node must fail closed")

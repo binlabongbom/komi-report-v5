@@ -6,20 +6,20 @@ thread_title: KOMI V5.2 — Production Print & Meter Alert
 dashboard_visible: true
 department: dev
 status: testing
-progress: 74
+progress: 96
 owner: VEGA
-current_phase: Phase F/G partial — authorized Production Host contract and Dashboard read-back passed; installed Windows RC is not wired to the API client
-current_task: wire the approved Staging/Production API root into Desktop runtime, improve the unconfigured status text, and rebuild the Windows RC
-next_action: add an explicit V5.2 API-root configuration, run the exact installed Desktop against Staging with Dashboard read-back, then rebuild the Windows V5.2 installer
-problem: direct current-contract Register/Replay/Status/Meter passed on Staging and an explicitly authorized Synthetic Production test with Dashboard read-back, but the shipped RC creates V52RuntimeCoordinator with client=None and misleadingly displays waiting_for_internet; exact-installed-client proof remains open
-updated_at: 2026-08-25T17:26:00+07:00
+current_phase: V5.2.1 unsigned release readiness — reviewed source and documentation gates passed; exact-source packaging in progress
+current_task: Freeze the reviewed source identity, generate V5.2.1 macOS and Windows ARM64-VM unsigned candidates, and verify manifest/checksum/SBOM identity
+next_action: Commit the reviewed source, build both unsigned candidates and record artifact evidence without promoting HOLD to Production GO
+problem: Signing/notarization is intentionally deferred; Offline License Host public verification key and Joint Desktop-Staging E2E evidence are unavailable, while 950i/C84hc were current device-availability HOLD during the final bounded probe
+updated_at: 2026-08-31T12:32:56+07:00
 ---
 
 # KOMI Report V5.2 — Production Print & Meter Alert
 
 ## Goal
 
-ยกระดับ Build ใหม่เป็น KOMI Report `5.2.0` จาก source identity เดียว และเพิ่มการส่ง Total Meter แบบ aggregate ต่อเครื่องเพื่อให้ Host แยกคำเตือน “ไม่มีการพิมพ์เกิน 1 วัน — ควรตรวจสอบ” ออกจาก “Desktop/การเชื่อมต่อขาดหาย” โดยไม่เดาว่าเครื่องเสียและไม่ขยายข้อมูลเกิน Privacy boundary ที่อนุมัติ.
+ยกระดับ Build ใหม่เป็น KOMI Report `5.2.1` จาก source identity เดียว และเพิ่มการส่ง Total Meter แบบ aggregate ต่อเครื่องเพื่อให้ Host แยกคำเตือน “ไม่มีการพิมพ์เกิน 1 วัน — ควรตรวจสอบ” ออกจาก “Desktop/การเชื่อมต่อขาดหาย” โดยไม่เดาว่าเครื่องเสียและไม่ขยายข้อมูลเกิน Privacy boundary ที่อนุมัติ.
 
 ## Scope
 
@@ -91,7 +91,7 @@ updated_at: 2026-08-25T17:26:00+07:00
 - **Client offline:** Host ไม่ได้รับ heartbeat เกิน threshold; ชี้ไปที่ Desktop/เครือข่าย ไม่สรุปสถานะเครื่องพิมพ์.
 - **Production proof:** หลักฐาน read-only จาก model/device จริงที่มี authority และบันทึกเวลา/วิธีอ่านครบ; synthetic, Lab และ VM เป็น preflight เท่านั้น.
 
-## Progress: 74%
+## Progress: 96%
 
 ### Phase A — Baseline and design ✅
 
@@ -158,14 +158,88 @@ updated_at: 2026-08-25T17:26:00+07:00
 - [ ] manifest/checksum/SBOM/signing/notarization/native labels ตรงหลักฐาน
 - [ ] ตัดสิน GO/HOLD โดยไม่ยกระดับ VM/synthetic/unsigned evidence
 
+### Phase H — Main UI, Legacy Report, Advanced Settings and Customer Guide
+
+#### H0 — Review freeze and implementation boundary
+
+- [x] รวบรวมคอมเมนต์จากหน้าจอจริงของ Main application เป็นรายการเดียวก่อนแก้
+- [x] ยืนยันรอบนี้ยังไม่แก้ Source และยังไม่ Build installer ระหว่างรับคอมเมนต์
+- [x] ให้ Bom ตรวจแผนรอบนี้ว่าครบ แล้วจึงเริ่มแก้เป็นชุดเล็กที่เปิด Source ให้ลองได้
+
+#### H1 — Existing UI repairs
+
+- [x] หน้าอุปกรณ์: จัดปุ่ม `สถานะการอ่าน` และ `อ่านข้อมูลตอนนี้` ให้อยู่ baseline เดียวกัน แม้มีข้อความ Error ใต้ปุ่ม
+- [x] Reports → Usage: กระจายความกว้างคอลัมน์ตารางเต็มพื้นที่อย่างสมดุล ไม่ให้คอลัมน์เดือนกว้างและคอลัมน์ข้อมูลด้านขวาเบียดกัน
+- [x] Popup เตือนมีการแก้ไขค้าง: ลดพื้นที่ว่างและแสดงปุ่ม `ตกลง` ครบ ไม่ตัดข้อความบน macOS/Windows
+- [x] Native popup: ปุ่มข้อความสั้น `OK`/`Yes`/`No` ต้องคงเป็นปุ่มข้อความ ไม่ถูกตีความเป็นปุ่มไอคอนจากขนาดชั่วคราวก่อน platform layout เสร็จ
+- [x] ตารางตั้งเวลาแบบละเอียด: ขยาย `วันที่ทำงาน`, ย้ายหน่วยไปหัว `ตรวจสถานะ (นาที)`/`อ่านมิเตอร์ (นาที)`, ช่องเก็บเฉพาะตัวเลข และบีบคอลัมน์ชื่อช่วงเวลา/ลบ
+- [x] Sidebar: เปลี่ยน `ยังไม่มีข้อมูล` เป็น `ยังไม่มีประวัติการอ่าน`; เมื่อมีข้อมูลให้แสดงวัน/เวลาอ่านล่าสุด โดยไม่ทำให้เข้าใจว่าไม่มีเครื่องหรือไม่มี Total Meter
+
+#### H2 — Settings simplification and Advanced Settings
+
+- [x] เปลี่ยน card `ช่วยเหลือและตรวจสอบปัญหา` เป็น `การตั้งค่าขั้นสูง` พร้อมคำอธิบายและปุ่มที่ตรงความหมาย
+- [x] ย้าย LAN Web Report ออกจาก Settings หลักไป Advanced Settings ทั้งชุด: service, URL, copy/open, access mode, password และ test/save
+- [x] เปิดสิทธิ์ LAN Web Report และเริ่ม Web service อัตโนมัติหลัง Setup สำเร็จ
+- [x] เพิ่ม `อนุญาตให้เปิด Web Report โดยไม่ต้องใช้รหัส`; bypass เฉพาะหน้า Report แบบ read-only บน LAN ส่วน Settings, staff tools, mutation API และข้อมูลลับยังต้องป้องกัน
+- [x] จัด Advanced Settings เป็น Database/Storage, Program operation, LAN Web Report, Log/Support และ Maintenance
+- [x] Database tools รองรับดู/เปลี่ยน Path, Backup, Restore, integrity/repair และลบ/เริ่มใหม่; คำสั่งทำลายข้อมูลต้อง Backup ก่อนและยืนยันซ้ำโดยไม่ใช้ Settings password
+- [x] Program tools รองรับ Auto start, background/System Tray, พฤติกรรมปิดหน้าต่าง และตำแหน่งไฟล์
+- [x] Log tools รองรับเปิดโฟลเดอร์, Export support bundle, Version/OS/service status และ cleanup ตาม retention โดยไม่รวม credential/token/customer document
+
+#### H3 — Legacy raw-counter storage, reports and Excel
+
+- [x] ตรวจ inventory ของ Counter ที่ Modern JSON, Legacy Public XML และ Legacy Admin XML ส่งจริง โดยไม่เดาช่องที่เครื่องไม่ส่ง
+- [x] เพิ่ม durable raw-counter snapshot ต่อเครื่อง/เวลา เก็บ source key + source label + cumulative value ตรงจากเครื่อง และ migration แบบ rollback-safe
+- [x] คำนวณยอดใช้งานรายวันจากผลต่าง Snapshot โดยรักษาค่าดิบไว้; counter ลด/reset/replacement ต้องแยกสถานะและห้ามสร้างยอดติดลบ
+- [x] เพิ่มแท็บ `Legacy` โดยไม่ Map/rename/รวมประเภท เช่น A5, FAX, Scan, Duplex หรือชื่ออื่นที่เครื่องรายงาน
+- [x] มุมรายเครื่องแยกเครื่อง 1–3; มุมผู้ใช้แสดงประเภทดิบแยกตามเครื่อง; มุมรายวันแสดงทุกประเภทดิบแยกตามเครื่อง
+- [x] ใช้ dynamic columns + horizontal scroll; ช่องที่ source ไม่มีให้แสดง `—` ไม่เดาเป็น `0`
+- [x] เพิ่ม Excel sheets `Legacy-รายเครื่อง`, `Legacy-ผู้ใช้` และ `Legacy-รายวัน` โดยชื่อคอลัมน์ตรง source และยอดตรงกับหน้าจอ
+
+#### H4 — Parser Mapping Inspector
+
+- [x] เพิ่มหน้าต่างแยกสำหรับเลือก Slot/เครื่อง แล้วเปรียบเทียบ `Raw Data → Mapping → Database preview` พร้อม source และเวลาที่อ่านล่าสุด
+- [x] รองรับ Read/Test, Reset, Cancel และ Save/Test; mapping ผูกตาม Serial Number พร้อม audit และย้อนกลับได้
+- [x] Mapping ใหม่มีผลเฉพาะการอ่านครั้งถัดไป ไม่แก้ Raw snapshot, History, Billing Ledger หรือ Excel ย้อนหลัง
+- [x] ค่า Raw ที่ไม่ได้ Map ต้องคงอยู่ใน Legacy Report และแสดง `No Mapping` โดยไม่เดาประเภท
+
+#### H5 — Print/Copy reports and Excel
+
+- [x] แยก Print และ Copy ใน Overview, Users, Printers, Usage และกราฟที่เกี่ยวข้อง
+- [x] เพิ่มคอลัมน์ Print/Copy แยกตาม A3/A4/Other ในมุมรายเครื่อง ผู้ใช้ และรายวัน โดยข้อมูลเก่าที่แยกไม่ได้แสดง `—`
+- [x] ปรับ Excel มุมรายเครื่อง/ผู้ใช้/รายวันให้ใช้ semantic เดียวกับหน้าจอ และคง Legacy exact-source sheets แยกต่างหาก
+- [x] จัด Usage table เป็นหัวตารางสองชั้น `Print`/`Copy` ตามกลุ่ม A3/A4/Other และเพิ่ม `คิดรวม % กระดาษเสีย` ที่เปิดเป็นค่าเริ่มต้น; Checkbox เปลี่ยนเฉพาะค่าใช้จ่ายระหว่าง frozen net/gross ledger โดยไม่เปลี่ยนจำนวนหน้า และ Excel ใช้โหมดเดียวกับหน้าจอ
+
+#### H6 — Verification and Bom visual acceptance
+
+- [x] เพิ่ม focused tests สำหรับ layout state, unsaved-edit popup, Advanced Settings routing/LAN access และ Sidebar freshness wording
+- [x] เพิ่ม DB migration/raw-counter/daily-delta/reset tests และเทียบ Legacy UI ↔ Excel แบบ exact totals
+- [x] ยืนยัน passwordless Web Report อ่านได้เฉพาะ Report; route ที่แก้ Settings/ข้อมูลยังถูกปฏิเสธ
+- [x] รัน full Python regression, scoped Ruff/compileall/diff-check, Web TypeScript/security/build และ release-safety/privacy scan
+- [ ] เปิด Source ให้ Bom ไล่ตรวจทุกหน้าใน Thai/English และขนาดหน้าต่างเป้าหมายบน macOS; Windows visual acceptance ทำหลัง Source ผ่าน
+- [ ] ห้ามเรียกงานเสร็จจาก automated test อย่างเดียวจน Bom ยืนยันหน้าจอจริง
+
+#### H7 — Customer documentation after UI freeze
+
+- [x] หลัง Code/UI ผ่านแล้ว ใช้ไฟล์ `.doc/.docx Customer-guide` เดิมเป็น visual template หลัก
+- [x] แคปภาพหน้าจอจริงจาก Final Source และเขียนคู่มือเต็ม: Wizard, Primary/Secondary, Meter, Reports, Legacy, Excel, Settings/Advanced, LAN, Offline License, Backup/Restore และ troubleshooting
+- [x] เนื้อหาเดียวกันอยู่ทั้ง Word Customer Guide และหน้า `คู่มือ` ในโปรแกรม โดยใช้ชื่อปุ่ม/ลำดับงานร่วมกัน
+- [x] ตรวจภาษาไทย/อังกฤษ, เลข Version `5.2.1`, ภาพจริงและลำดับขั้น; DOCX structural/text/alt-text QA ผ่าน ส่วน raster fallback บน LibreOffice ไม่ใช้เป็นหลักฐานฟอนต์ไทย
+
+#### H8 — Build only after explicit order
+
+- [x] ไม่ Build Mac/Windows installer ระหว่างแก้และตรวจหน้าจอ จน Bom สั่ง Build โดยตรง
+- [ ] เมื่อ Bom สั่ง Build จึง freeze source identity, รัน release gates และสร้าง artifact ชุดใหม่จาก source ที่ผ่านการยอมรับแล้ว
+
 ## Problem / Blocker
 
 - Shared Contract R2/OpenAPI/public golden vector พร้อมในชุดส่งทีม API แล้ว แต่ private Host runtime, migration, Dashboard, deployed OpenAPI และ Host public key/kid สำหรับ Offline License ยังต้องให้ทีม API apply/deploy/ส่งหลักฐานจาก separate Staging; ห้ามเรียก Production/สร้าง customer artifact ก่อน Joint Staging E2E.
 - Joint Staging E2E เป็น external gate แยกจาก local focused/full gates; V5.1 API pack ใช้ได้เฉพาะ reference fixture และไม่มีสิทธิ์ทำ automatic downgrade/fallback.
-- C84hc ตอบ identity/Total targeted GET ในรอบแรก แต่ timeout ทั้ง walk และ targeted GET ซ้ำ 3 รอบ จึงเป็น `HOLD — device/network unavailable` ไม่ใช่เครื่องไม่รองรับ.
+- C84hc มีหลักฐาน targeted GET เดิมผ่าน แต่ไม่ตอบใน bounded final probe วันที่ `2026-08-31`; คง `HOLD — device/network unavailable` ไม่ใช่เครื่องไม่รองรับและไม่ยิง retry storm.
 - C5070 ตอบ targeted GET ซ้ำ 3/3 แต่ทุก SNMP walk timeout; implementation เดิมจึงล้มเหลวแม้ Total OID ใช้งานได้.
+- รอบ final bounded probe `2026-08-31` C5070 กลับมาตอบ exact Total สำเร็จด้วย targeted-only profile; สถานะ availability HOLD เดิมถูกปิดสำหรับรอบนี้โดยไม่เปลี่ยนข้อห้าม SNMP walk.
 - Post-implementation smoke รอบ `2026-08-25 10:50–11:00 +07` พบ C5070/C7090 ไม่ตอบ bounded SNMP/Web request และ C12010S Web แจ้ง session busy; หยุด probe เพิ่มเพื่อไม่รบกวนรุ่นเก่า. นี่เป็น device/session availability HOLD ไม่ใช่ product regression หรือ unsupported proof.
-- C368 authenticated Web Meter/TLS flow ยังไม่ได้ทดสอบครบ; ห้ามสรุปจาก C458 ว่าพฤติกรรมเหมือนกันทุก firmware.
+- C368 exact Total และ supplemental Toner/Tray ผ่านเครื่องจริง; authenticated Web/TLS ยังคงใช้ explicit legacy profile และห้ามสรุปจาก C458 ว่าทุก firmware เหมือนกัน.
 - C7090 ใช้ legacy XML Web Connection `system_counter.xml`; JSON connector เดิมได้ HTTP 404 แต่ XML Total ตรงกับ SNMP.
 - C12010S ใช้ public legacy XML เช่นกัน แต่ Printer-MIB primary `250,132` ไม่ใช่ Web Total; KM private OID คืน `250,206` ตรง Web. ห้ามใช้ primary OID แบบ universal โดยไม่มี profile/calibration.
 - รายการจาก Bom ระบุ C358 แต่เครื่องใน slot ทดสอบตอบ identity เป็น `KONICA MINOLTA bizhub C368`; ต้องใช้ identity จริงในการเลือก profileและไม่เก็บ network address ในรายงาน.
@@ -173,6 +247,16 @@ updated_at: 2026-08-25T17:26:00+07:00
 
 ## Decisions and Changes
 
+- 2026-08-31 — Bom กำหนด release target ใหม่เป็น `5.2.1` และยอมรับตัวติดตั้ง Windows/macOS แบบ Unsigned. การไม่ Signed ต้องแสดงเป็น accepted distribution risk และอาจถูก Smart App Control/Gatekeeper บล็อก; ห้ามรายงาน signing/notarization ว่า PASS.
+- 2026-08-31 — ก่อน freeze/Build 5.2.1 ต้องตรวจ dirty source ทั้งหมด, full regression/Web/release safety/dependency gates และทำ bounded read-only acceptance ทุกโมเดลที่มี authority โดยอ่าน Identity/Total ก่อน แล้วค่อย Web/Toner/Tray/User Authentication/Account Track ตาม capability; ห้าม write, retry storm หรือวน credential.
+- 2026-08-31 — Supersede policy เดิมเฉพาะ C7090/C12010S: หลังมีหลักฐาน Toner/Paper Tray จริง ให้ใช้ exact Total เป็น primary และ Printer-MIB walk เป็น `SUPPLEMENTAL`; optional status ล้มเหลวต้องไม่ทำให้ Total หรือสถานะเครื่องกลายเป็น Offline. C5070 ยังคง `TARGETED_ONLY` เพราะ walk timeout ซ้ำจากเครื่องจริง.
+- 2026-08-31 — RAM ในหน้าตรวจสอบหมายถึง User Authentication/Account Track process-memory snapshot ไม่ใช่ RAM hardware. Modern/legacy parser ต้องแยก `disabled`, `enabled-but-empty`, schema unreadable และ firmware ไม่เปิดเผยข้อมูล; ห้ามเหมารวมทุกกรณีเป็น “ไม่พบข้อมูล” หรือ “ปิดใช้งาน”.
+- 2026-08-26 — Bom สั่ง freeze การแก้ Main application ระหว่างส่ง screenshot/comment; ต้องสรุปแผนรอบเดียวให้ตรวจครบก่อนเริ่ม Source change และยังไม่ Build installer จนได้รับคำสั่งใหม่.
+- 2026-08-26 — Legacy Report ใช้ source counter names/values ตรงจากแต่ละเครื่องโดยไม่ Map/rename/รวมประเภท; เก็บ raw snapshot แล้วคำนวณ daily delta, แยกเครื่อง 1–3/ผู้ใช้/รายวัน และ Export เป็นสาม Legacy sheets.
+- 2026-08-26 — Settings หลักต้องเหลืองานทั่วไป; Database/Backup/Auto start/Log/Maintenance และ LAN Web Report ย้ายเข้า Advanced Settings. LAN เปิดอัตโนมัติ และ passwordless mode เปิดได้เฉพาะ read-only Web Report ไม่รวม Settings/staff/mutation API.
+- 2026-08-26 — Customer Guide ทำหลัง Code/UI freeze เท่านั้น โดยใช้ `.doc/.docx Customer-guide` เดิมเป็น visual template, ใช้ภาพหน้าจอจริง และรักษาเนื้อหา Word กับหน้า Guide ในโปรแกรมให้ตรงกัน.
+- 2026-08-26 — Main UI review implementation ใช้ Source-first acceptance: แก้ Devices/Usage/popup/schedule/sidebar, รวม LAN และเครื่องมือระบบไว้ Advanced Settings, เพิ่ม exact-source Legacy report/Excel และเปิดให้ Bom ตรวจจริงก่อน Build.
+- 2026-08-26 — Database Path/Restore เป็น staged next-start operation: ตรวจ SQLite และคัดลอกอย่างปลอดภัยก่อนบันทึก Path; ฐานข้อมูล active ไม่ถูกเขียนทับกลางการทำงาน. คำสั่งลบ/reset ทำ automatic backup และยืนยันสองครั้งโดยไม่ใช้ Settings password.
 - 2026-08-25 — Freeze Shared Contract `v5.2-shared-2026-08-25-r2`: public key ใช้ raw Ed25519 32 bytes แบบ unpadded base64url, hash decoded raw bytes, schema-v3 Registration สำเร็จเป็น `registered`, Meter response ต้องมี `accepted_observations`, Status รองรับ token rotation และ Offline License ต้องมี `algorithm: Ed25519`.
 - 2026-08-25 — ใช้ Desktop local-first + modular Host monolith; ไม่สร้าง microservices.
 - 2026-08-25 — V5.2 เริ่ม `5.2.0`; V5.1 artifacts/evidence เป็น immutable history และไม่ rename ย้อนหลัง.
@@ -189,7 +273,7 @@ updated_at: 2026-08-25T17:26:00+07:00
 - 2026-08-25 — Web Meter transport ต้องรองรับ TLS 1.1/1.2/1.3 และ negotiate เวอร์ชันสูงสุด; legacy TLS/renegotiation เป็น explicit device capability ไม่ใช่ global downgrade. Production trust ใช้ certificate pin/customer CA ไม่ใช่ปิด verification.
 - 2026-08-25 — C458 handshake จริงผ่าน TLS 1.1 และ 1.2 แต่ไม่รองรับ TLS 1.3; Python custom SSL context ที่ scope เฉพาะ request ผ่าน 1.1/1.2 โดยใช้ legacy-server-connect. Capability test ปิด verification ชั่วคราวเท่านั้นและไม่ใช่ Production implementation.
 - 2026-08-25 — C458 เป็น admin-only legacy XML profile (`/wcd/a_system_counter.xml`): ใช้ bounded Admin session, อ่าน aggregate Total แล้ว logout เสมอ. Targeted SNMP ยังเป็น primary path ที่เหมาะกว่าเพื่อลด single-session contention; Web ใช้ calibration/validation.
-- 2026-08-25 — Implemented profile registry เฉพาะรุ่นที่มีหลักฐาน: C5070/C7090/C12010S ใช้ targeted-only SNMP + public legacy XML; C458 ใช้ targeted-only SNMP + admin legacy XML + TLS 1.1 legacy compatibility แบบ scoped. C368/C84hc ยังเป็น generic จน real-device evidence ผ่าน.
+- 2026-08-25 — Initial profile registry ใช้หลักฐาน ณ เวลานั้น: C5070/C7090/C12010S เริ่มจาก targeted-only SNMP + public legacy XML; C458 ใช้ targeted-only SNMP + admin legacy XML + TLS 1.1 legacy compatibility แบบ scoped. นโยบาย C7090/C12010S ถูกปรับเป็น supplemental ภายหลังเมื่อมีหลักฐาน Toner/Paper Tray เพิ่มในวันที่ 2026-08-31.
 - 2026-08-25 — Scheduler ไม่เพิ่ม Web failure counter และไม่เปลี่ยนเครื่องเป็น Offline เมื่อผลเป็น `session_busy` หรือ endpoint `unsupported` ขณะที่ SNMP ยังตอบ; สองผลนี้ถูก log เป็น warning แยกจาก connectivity failure.
 - 2026-08-25 — Canonical Desktop/Host request ใช้ `docs/V5_2_HOST_API_IMPLEMENTATION_REQUEST.md` SHA-256 `4884a4a6fb798ef0c36c88daca09cf2ae5df66ff609139f812880ab7322413bd`.
 - 2026-08-25 — Status และ Meter ใช้ interval `21,600s` + jitter ±10%, startup/network cooldown `900s`, server clamp `3,600–43,200s`, outbox latest Status 1 + latest Meter 1 และ retry `15m → 1h → 6h` โดยเคารพ `Retry-After`; Host offline threshold เป็น `259,200s`, ส่วน no-print `86,400s` ใช้เฉพาะ online + Meter ok.
@@ -201,6 +285,7 @@ updated_at: 2026-08-25T17:26:00+07:00
 - 2026-08-25 — Application lifecycle ใช้ `V52RuntimeCoordinator` แบบ explicit-client-only; app start/restart อ่าน durable state, OS network recovery เคารพ cooldown 15 นาที, graceful stop เก็บ outbox สำหรับ restart recovery และ Meter observation ไม่ส่งทันทีแต่รวมใน batch รอบ 6 ชั่วโมง.
 - 2026-08-25 — Offline License mode หยุด scheduler และบล็อก Registration/Status/Meter telemetryจริงโดยไม่ลบ Device/DB/History/Billing; เปลี่ยนกลับ Online ได้โดยใช้ state เดิมและไม่มี legacy schema-2 fallback.
 - 2026-08-25 — Wizard คง 4 ขั้นเดิมและ Settings ใช้ card เดิม เพิ่มเฉพาะ Online/Offline mode, retry, export `.komirequest`, import `.komilicense`, expiry/bound devices และ support detail แบบซ่อน; user UI ไม่แสดง API key, token, public key หรือ raw error.
+- 2026-08-26 — Bom เลือกให้ Secondary Sync จาก Primary บน trusted LAN โดยไม่กรอกรหัส: ผู้ใช้ยังต้องกด `Sync จากเครื่องหลัก`, client pin certificate แบบ TOFU และรับเฉพาะ setup allow-list; Web Report/API อื่นยังคงต้อง Login และ Password/Token/History/Log ไม่ถูกเปิดเผย.
 
 ## Test Log
 
@@ -228,6 +313,8 @@ updated_at: 2026-08-25T17:26:00+07:00
 | 2026-08-25 10:32 +07 | C458 bounded Admin Web Meter read and logout | session ที่ Bom ล็อกอินต้องเปิด admin-only XML, ค่า aggregate ต้องตรง SNMP/visual และต้องออกจาก Admin หลังอ่าน | `/wcd/a_system_counter.xml` แสดง Total `243,744`; Copy `157,635` + Print `86,041` + Scan/Fax output `64 + 4` = Total; Black `171,719` + Color `72,025` = Total; Logout confirmation completed and browser returned to `/wcd/top.xml` | PASS — REAL DEVICE ADMIN XML | Chrome authenticated DOM read; password/cookie/session data not inspected or retained |
 | 2026-08-25 10:48 +07 | Multi-model Meter focused implementation tests | targeted SNMP, explicit profile, legacy XML parser, bounded Admin logout, TLS scope และ reader routing ต้องผ่านโดย UI เดิมไม่เปลี่ยน | focused suite `84 passed`; session busy ไม่เพิ่ม failure/Offline; scoped Ruff และ compileall ผ่าน | PASS — LOCAL | pytest + Ruff + compileall; synthetic XML contains no production data |
 | 2026-08-25 10:53 +07 | Post-implementation real-device SNMP smoke | V5.1 controls และ explicit profile ต้องคืน identity/Total โดยไม่ write | C450i `266,857`, C750i `444,193`, C12010S `250,214` using KM private OID, C458 `243,744` using Printer-MIB; profile-scoped C458 TLS handshake succeeded | PASS — 4 REAL DEVICES | live exact SNMP GET + read-only TLS handshake; no credential used |
+| 2026-08-31 10:44 +07 | Optional Toner/Paper Tray + RAM/legacy compatibility | อ่าน supply/tray เพิ่มโดยไม่กระทบ exact Total และอธิบาย User/Account Track ตามหลักฐานจริง | focused `55 passed`, related UI/background `84 passed`, full Python `640 passed`; Ruff, compileall และ diff-check ผ่าน. Live C7090 Total `220,150`, Toner C/Y/M/K `91/71/28/64`, 5 trays; C12010S Total `252,400`, Toner `96/92/13/87`, 4 trays. C5070 bounded read ไม่ตอบและถูกหยุดอย่างปลอดภัย | PASS WITH C5070 AVAILABILITY HOLD | LOCAL REGRESSION + READ-ONLY REAL DEVICE; no credential/write/raw XML/Host telemetry |
+| 2026-08-31 12:30 +07 | V5.2.1 final source gates + bounded 12-model exact Total matrix | ตรวจ correctness/security/release identity ครบและอ่าน Identity/Total เครื่องจริงแบบหนึ่ง request ต่อเครื่องโดยไม่ retry storm | focused `172 passed`; full Python `692 passed` (warning เดียวเป็น explicit Virtual Printer TLS fixture); Web lint/security `4/4`/Next production build/npm audit 0; Python lock audits 0 known vulnerabilities; version gate `5.2.1`, compileall, diff-check, release-safety tracked `290/0` และ changed/untracked `129/0` ผ่าน. Fresh Total PASS: C450i, C750i, C300i, C3350i, C751i, C458, C368, C7090, C5070 และ C12010S; 950i/C84hc ไม่ตอบใน bounded current probe | PASS 10 / AVAILABILITY HOLD 2 | LOCAL FULL REGRESSION + READ-ONLY REAL DEVICE; no write/login/Production call; HOLD ไม่เท่ากับ unsupported |
 | 2026-08-25 11:00 +07 | Legacy device/session availability smoke | read-only public XML หรือ exact SNMP ต้องคืนค่าหรือผลแยกที่ไม่ถูกตีความเป็น fault | C5070/C7090 bounded requests timed out; C12010S public XML returned `session_busy`; stopped further probes and retained earlier PASS evidence | HOLD — AVAILABILITY, NOT PRODUCT FAIL | bounded read-only requests; no retry storm, login or mutation |
 | 2026-08-25 11:06 +07 | Full V5.1 regression after Meter profile implementation | DB/History/Billing/Excel/UI/Registration และ existing Meter behavior ต้องไม่ถอย | `546 passed in 30.33s`; scoped Ruff, compileall and `git diff --check` passed; one existing explicit insecure virtual-printer warning | PASS — LOCAL REGRESSION | full pytest + scoped static/compile checks |
 | 2026-08-25 11:09 +07 | Internal project dashboard sync | checklist/progress จาก canonical Workbook ต้อง sync โดยไม่สร้าง workbook ซ้ำหรือ deploy Production | sync สำเร็จ 25 projects และ Codex usage snapshot; live publish ไม่ถูกอ้างหรือดำเนินการ | PASS — INTERNAL SYNC | `dashboard:quick`; local portfolio data only |
@@ -259,6 +346,13 @@ updated_at: 2026-08-25T17:26:00+07:00
 | 2026-08-25 16:26 +07 | Headless helper safety | Script/evidence ต้องไม่มี credential residue, syntax error หรือ forbidden release data | `zsh -n` PASS; macOS Keychain reference PASS; `/tmp/komi-vm-password.*` empty; release/tree safety PASS; helper mode `700`; final VM poweroff | PASS — SANITIZED | `Technical Evidence/WINDOWS_VM_HEADLESS_FINAL.json` |
 | 2026-08-25 17:19 +07 | Bounded live V5.2 Staging smoke | ใช้ current Desktop schema/signature/client parser ส่ง Synthetic เท่านั้นไป Staging; ห้ามแตะ Production หรือพิมพ์ token/private key | `KOMI-STAGING-UAT-20260825T101924Z`; Register `201`, same-operation replay `201`, Status `200`, Meter 3 observations `200`; all client results success; installation `718943ea-75f9-4878-8fce-5bbb4ec20f95` | PASS — LIVE STAGING API / DASHBOARD READ-BACK PENDING | exact Staging root `/api/staging/v1`; one-off transport rewrite required because current client hardcodes `/api/v1`; no Production request |
 | 2026-08-25 17:23 +07 | Bom-authorized bounded V5.2 Production Host smoke + Dashboard read-back | ส่งข้อมูล Synthetic ชื่อชัดเจน 1 installation ไป Production Host เพื่อพิสูจน์ Register/Idempotency/Status/Meter โดยไม่ใช้ข้อมูลลูกค้าและไม่แสดง token/private key | `KOMI-PRODUCTION-UAT-20260825T102316Z`; Register `201`, same-operation replay `201`, Status `200`, Meter 3 observations `200`; Dashboard แสดง V5.2.0/Windows x86_64, discovered 4/selected 3, Slot 1–3 และ Total 125,000/250,000/375,000 `ok`; installation `e7e25ba0-f900-4cb5-a829-54b3edf9d483` | PASS — LIVE PRODUCTION HOST API + DASHBOARD READ-BACK | explicitly authorized by Bom while Host is pre-production; Synthetic record intentionally retained; UI displays UTC and the synthetic status timestamp predates registration receipt by one second because the bounded harness reused its pre-register timestamp; this is not exact-installed-client proof |
+| 2026-08-26 17:42 +07 | Main UI/Legacy/Advanced source implementation gate | ทุกจุดจาก screenshot review ต้องทำงานร่วมกันได้โดยไม่ Build installer และไม่ทำให้ DB/History/Billing/Registration/Web security ถอย | focused UI/settings/migration/raw-counter/Excel tests ผ่าน; Portable import gateพบ missing `tools/db_recovery.py` แล้วแก้ allow-list/test; full Python `621 passed`; Web TypeScript lint และ security `3/3`; scoped new-code Ruff, compileall และ diff-check ผ่าน | PASS — LOCAL SOURCE / VISUAL ACCEPTANCE PENDING | warning เดียวเป็น explicit Virtual Printer TLS compatibility fixture เดิม; ไม่มี installer/customer artifact ถูกสร้าง |
+| 2026-08-26 17:45 +07 | เปิด Main application จาก Source ล่าสุด | ต้องใช้ฐานข้อมูล review แยก, migrate แบบมี backup และเปิดหน้าต่างโดยไม่ Build | Source `5.2.0` เปิด event loop สำเร็จ; review DB ถูกสำรองก่อน migration v16; Web service ใช้ external review service ที่ทำงานอยู่ | PASS — LIVE LOCAL SOURCE | `/tmp/komi-main-review.nU56Ew`; รอ Bom ตรวจหน้าจอจริงและยังไม่อ้าง Build/installer acceptance |
+| 2026-08-26 19:05 +07 | Final source regression หลังเพิ่ม Advanced/Parser/Print-Copy/Legacy | Source ต้องผ่าน regression, crash-safe report lifecycle, semantic Excel/Web และ static checks โดยไม่ Build installer | Python `623 passed`; แก้ PyQt deferred-widget lifecycle ที่พบจาก full-suite; Web TypeScript PASS, security `3/3`, npm production audit `0`; focused Ruff/compileall/diff-check PASS | PASS — LOCAL SOURCE / VISUAL ACCEPTANCE PENDING | broad legacy Ruff ยังมี baseline findings จึงอ้างเฉพาะ scoped changed/new code; warning เดียวเป็น explicit Virtual Printer TLS compatibility fixture เดิม |
+| 2026-08-26 19:16 +07 | Native popup short-text button geometry | ปุ่ม `OK`/`Yes`/`No` ต้องไม่ถูกบีบเป็นไอคอนจาก current width ชั่วคราวของ native QMessageBox | focused regression พิสูจน์ fail ก่อนแก้และ pass หลังแก้; UI/Settings `26 passed`; full Python `624 passed`; scoped Ruff/compileall/diff-check PASS | PASS — LOCAL SOURCE / VISUAL RECHECK PENDING | แก้กฎกลางให้ใช้ explicit maximum-width constraint เท่านั้น; warning เดียวเป็น Virtual Printer TLS fixture เดิม |
+| 2026-08-26 19:41 +07 | Usage grouped header + waste-paper cost mode | หน้าจอและ Excel ต้องจัด Print/Copy เป็นกลุ่มเดียวกัน และ Checkbox default-on ต้องสลับเฉพาะ frozen net/gross cost โดยไม่คำนวณประวัติใหม่หรือเปลี่ยนจำนวนหน้า | focused Report/Excel/History `28 passed`; full Python `625 passed`; scoped Ruff/compileall/diff-check PASS; เปิด Source จริงและตรวจเห็น grouped header กับ Checkbox default-on | PASS — LIVE LOCAL SOURCE / BOM VISUAL REVIEW | warning เดียวเป็น explicit Virtual Printer TLS compatibility fixture เดิม; ยังไม่ Build installer |
+| 2026-08-26 20:09 +07 | Legacy Admin XML supplemental Toner/Paper profile | C458/C368 ต้องคง exact Total GET เป็นหลัก แต่เก็บ Printer-MIB Toner/Tray แบบ optional และ failure ต้องไม่ทำ Total/Online ถอย | C458 Total `27,496`, Toner C/Y/M/K `72/79/78/59`, Tray levels `500/50/500/500/0`; C368 Total `201,926`, Toner `56/55/73/61`, Tray levels `50/50/0`; focused `56 passed`, full Python `626 passed`, Ruff/compileall/diff-check PASS; source-app manual refresh `20:16 +07` จบ `device_read` ครบ 3/3 slots และหน้าอุปกรณ์แสดง Toner/Tray จริง | PASS — TWO REAL DEVICES / LOCAL REGRESSION + UI READ-BACK | read-only SNMP; Web screenshot ของ C458 ยืนยัน Bypass Empty, Tray 2 Near Empty และ Tray อื่น Ready ตรงกับ level; ไม่มี credential/cookie/raw XML ถูกเก็บ และยังไม่ Build installer |
+| 2026-08-26 20:31 +07 | Usage opening-meter reference row | ตาราง Usage ทั้ง `ทุกเครื่อง` และ `ตามเครื่อง` ต้องเริ่มด้วย Meter ครั้งแรกที่บันทึก แต่ห้ามนำไปคิด usage, cost, chart, KPI หรือ % กระดาษเสีย และต้องไม่สืบทอด baseline ข้าม Serial เมื่อเปลี่ยนเครื่องใน Slot เดิม | แถว `Meter เริ่มต้น` แสดงเฉพาะคอลัมน์รวม; Print/Copy/Scan/Cost เป็น `—`; V4.6 snapshot แรกเป็น baseline-only; full Python `629 passed`; focused `22 passed`; scoped Ruff/compileall/diff-check PASS; เปิด widget จาก source และอ่านเห็น baseline รวม `247,062` โดยยอด period/กราฟยังคงมาจาก usage จริงเท่านั้น | PASS — LOCAL SOURCE / VISUAL REVIEW | ฐานข้อมูล review/fixture เท่านั้น; ไม่ Build installer, ไม่เรียก Host/Production และไม่เปลี่ยน Billing Ledger |
 
 ## Captured Evidence — AccurioPress C5070
 
@@ -340,9 +434,48 @@ Consistency checks:
 - Scan/Fax details are local-only validation evidence: Scans `438,708`, Fax TX `139`, Fax RX `1`, Scan TX Black `156,661`, Scan TX Color `274,773`; these do not become Host telemetry.
 - TLS capability: TLS 1.1 and 1.2 handshake/HTTP succeed; TLS 1.3 fails at the device. Runtime can scope legacy TLS to a custom request context; certificate pin/customer trust still requires Production implementation and tests.
 - Web automation status: `PASS — ADMIN-ONLY LEGACY XML`. `PublicUser=false`, so an unauthenticated request correctly redirects to login; an authenticated bounded session reads the Meter and logs out. Session contention remains a modeled outcome, not unsupported/offline.
+- Supplemental status verification at `2026-08-26 20:06–20:09 +07`: standard Printer-MIB returned Toner C/Y/M/K `72/79/78/59` and five input trays with levels `500/50/500/500/0`. Bom's Web view independently showed Bypass `Empty`, Tray 2 `Near Empty`, and Tray 1/3/4 `Ready`, matching the conservative level mapping. The profile now keeps exact Total as primary and treats Toner/Paper failure as optional, never as a device-offline decision.
 - Sanitization: extracted values only; raw XML/screenshots, credential, cookies/session material, IP, certificate subject/contact fields and unrelated configuration were not persisted.
 
+## Captured Evidence — bizhub C368 Supplemental Status
+
+- Device identity: `KONICA MINOLTA bizhub C368`; exact Total `201,926` remained available while optional status tables were collected.
+- Read-only Printer-MIB evidence at `2026-08-26 20:08 +07`: Toner C/Y/M/K `56/55/73/61`; Tray 1 `50/500`, Tray 2 `50/500`, Bypass `0/150`.
+- The same `LEGACY_XML_ADMIN + SUPPLEMENTAL` policy is shared with C458. Future confirmed Legacy Admin profiles inherit supplemental status by default unless device evidence requires a targeted-only exception.
+- No Web login, write, credential, cookie, raw XML or Host telemetry was used for this supplemental verification.
+
 ## Definition of Done
+
+### Secondary Desktop Wizard — 2026-08-26
+
+- [x] First-run ค้นหา Primary ใน active LAN แบบ background และมีปุ่มค้นหาซ้ำ; ถ้าไม่พบยังตั้งค่า Primary ตาม Wizard เดิมได้
+- [x] Discovery เปิดเผยเฉพาะ contract, readiness, company, printer count และ version; ไม่เปิดเผย Serial/IP printer/credential/token/history/log
+- [x] Setup snapshot ดึงได้โดยไม่กรอกรหัสหลังผู้ใช้กด Sync; ยังคง certificate TOFU pin, exact allow-list และปฏิเสธ extra field ส่วน Web Report/API อื่นยังต้อง Login
+- [x] Secondary ดึงเฉพาะบริษัท, selected printer/Slot/IP/model/serial/TLS pin, ราคาและรอบบิลลง Wizard memory; ยังไม่เขียนฐานข้อมูลจนผู้ใช้กดบันทึก
+- [x] หลัง Sync ต้องทดสอบ SNMP + Web จาก Secondary จริงอีกครั้ง; ผ่านครบจึงข้ามไปหน้า Review, ไม่ผ่านกลับ Step 2 ให้แก้สิทธิ์เฉพาะเครื่อง
+- [x] Save สร้าง installation ID ของ Secondary แยกและเก็บ role/Primary peer metadata ในฐานข้อมูล local โดยไม่แก้ Host payload เดิม; Web UI ยังคงเปิดจาก Desktop แต่ละเครื่อง
+- [ ] Continuous history/database synchronization และ Primary-heartbeat/Secondary-takeover runtime ยังเป็น work unit ถัดไป; milestone นี้ไม่อ้างว่า failover เสร็จ
+- [ ] ทดสอบ Source แบบสองเครื่องจริงใน LAN หลังบอมตรวจ UX แล้ว; ยังไม่ Build installer ตามคำสั่ง
+
+Verification:
+
+| เวลา | Gate | ผล | Evidence level |
+|---|---|---|---|
+| 2026-08-26 15:25 +07 | Secondary contract/Web/Wizard focused regression | `69 passed` | LOCAL SOURCE |
+| 2026-08-26 15:26 +07 | Full Python regression | `617 passed`; warning เดียวเป็น explicit Virtual Printer TLS compatibility fixture เดิม | LOCAL REGRESSION |
+| 2026-08-26 15:27 +07 | Web security/TypeScript/Next production build | security `2/2`, TypeScript PASS, Next 16.3.2 build PASS | LOCAL WEB BUILD |
+| 2026-08-26 15:27 +07 | Static/diff checks | targeted Ruff/compileall และ `git diff --check` PASS | LOCAL STATIC |
+| 2026-08-26 15:31 +07 | Primary Web → Secondary LAN contract E2E | discovery → certificate pin → Web login → allow-listed snapshot ผ่านด้วย Primary/Secondary DB ชั่วคราวแยกกัน | LOCAL LAN E2E; no printer/Host/Production |
+| 2026-08-26 15:41 +07 | Passwordless Secondary setup handoff | `GET /peer/setup-snapshot` ผ่านโดยไม่มี Session/Cookie, certificate pin และ allow-list ยังทำงาน; protected `/api/v1/health` ยังตอบ `401`; Wizard ข้ามหน้ารหัสและเริ่มตรวจ printer สด | LOCAL SOURCE/LAN LOOPBACK; no installer/Host/Production |
+| 2026-08-26 15:44 +07 | Bom Secondary Wizard acceptance | Bom ทดสอบ Secondary flow แบบไม่กรอกรหัสแล้วตอบ `ผ่าน` | USER ACCEPTANCE — SOURCE REVIEW; no installer claim |
+| 2026-08-26 15:45 +07 | Full regression after passwordless Sync | Python `618 passed`, warning เดียวเป็น explicit Virtual Printer TLS compatibility fixture เดิม; focused strict checks, compileall และ diff-check ผ่าน | LOCAL REGRESSION |
+| 2026-08-26 15:45 +07 | Verified learning capture | ส่งผลที่มี automated evidence และ Bom acceptance เข้า Knowledge backend; endpoint ตอบสำเร็จแต่ `observed=false`, `verified=false`, `promoted=false`, `notePath=null` จึงไม่อ้างว่าบันทึกความรู้ถาวร | KNOWLEDGE BACKEND HOLD |
+| 2026-08-26 15:45 +07 | Internal Dashboard sync | canonical workbook และ usage snapshot sync สำเร็จ 27 projects; ไม่ได้อ้าง live publish | INTERNAL SYNC |
+| 2026-08-26 20:30 +07 | V5.2 source UX/button/documentation release-review gate | Visual matrix ไทย/English ครบ 18 แบบ: 1–3 เครื่อง × 1024×768, 1280×800, 1440×900 ไม่พบข้อความ/ปุ่ม/กรอบถูกตัดและไม่เรียก network; focused Wizard/Secondary/Settings/LAN/Reports/Legacy/Parser/Excel/i18n `155 passed`; Python ทุก test file แบบ fresh process ครบ 95 files / `631 passed`; one-process run พบ native PyQt accumulated-lifetime crash จึงไม่ใช้เป็นหลักฐานผ่าน; scoped Ruff, compileall, version gate 5.2.0, diff-check, release builder `9 passed`, Web lint/security `3/3`/Next build/npm audit 0 ผ่าน; Customer Guide Word 17 หน้า render และตรวจภาพครบทุกหน้า | LOCAL SOURCE REVIEW — ยังไม่ Build EXE/installer และไม่เรียก Host/Production |
+| 2026-08-26 22:35 +07 | In-app Guide single-page redesign | เปลี่ยนคู่มือในโปรแกรมเป็นหน้า scroll ต่อเนื่อง 5 ส่วน ไทย/English โดยยึด Customer Guide เป็นแม่แบบ: พื้นขาวแบบเอกสาร, ตัดกรอบการ์ดซ้อน, ใช้หัวข้อ/เส้นคั่น/กล่องหมายเหตุแบบ Word และภาพหน้าจอร่วมชุดเดียวกับ Customer Guide ครบ 13 ภาพ; จอปกติแสดงสารบัญคงที่ด้านขวาพร้อม click-to-scroll/scroll highlight และ 1024px ยุบเป็น dropdown โดยไม่มี horizontal scroll; visual matrix ไทย/English 18 แบบผ่าน, focused manual/i18n/app/UI `14 passed`, Python fresh-process regression 95 files / `632 passed`, critical Ruff, compileall, version gate 5.2.0 และ diff-check ผ่าน; เปิด source Guide ด้วย isolated temporary DB และปิด network ค้างไว้ให้ Bom ตรวจ | LOCAL SOURCE REVIEW — คู่มือในโปรแกรมเป็นฉบับย่อ; Customer Guide Word ยังคงเป็นฉบับเต็ม; ยังไม่ Build EXE/installer |
+| 2026-08-26 22:47 +07 | In-app Guide typography review | ลดขนาดตัวอักษรทุกระดับเฉพาะหน้า Guide ลง 20% รวมหัวข้อ, เนื้อหา, step badge, caption, หมายเหตุ, สารบัญขวาและ responsive combo โดยไม่กระทบหน้าอื่น; focused Manual `3 passed`, diff-check ผ่าน และเปิด Source Guide ชุดใหม่ค้างไว้ให้ Bom ตรวจ | LOCAL SOURCE REVIEW — minimal focused check ตามคำสั่ง; ยังไม่ Build EXE/installer |
+| 2026-08-26 23:56 +07 | V5.2 macOS/Windows installation candidate packaging | ปรับ Diagram คู่มือให้ตรง runtime V5.2 และ `test_manual_diagrams.py` ผ่าน; full Python `636 passed`, Web lint/security `3/3`/Next build/npm audit 0 และ packaged Web integration ผ่าน. macOS arm64 DMG SHA-256 `fc317c982a8640587209951ed811a2bbd0908842bd90ffe26c02ebc0da1a6b47`, ZIP `6c003a4dd9df0b2c66c428edee79b7265236206ce2e7b1eaaf2bb628c8a2413e`; app smoke/DB/codesign strict ad-hoc ผ่าน แต่ไม่ notarized. Windows x64 RC สร้างใน Windows 11 ARM64 VM ผ่าน x64 emulation, exit 0, SHA-256 `693c18761fe9d021ac83043b663c2de717af37d99fde389219a4336322238036`, manifest/SBOM/inventory/checksum ครบ; Guest Control ยัง login ไม่ผ่านจึงใช้ GUI PowerShell โดยไม่ปิด Smart App Control | INSTALLATION CANDIDATE — Windows unsigned/build environment เป็น ARM64 VM preflight และ macOS ไม่มี Developer ID/notarization; `production_go=false`, ไม่อ้าง native Windows x64 UAT หรือ Production GO |
+| 2026-08-31 13:10 +07 | V5.2.1 final reviewed-source gate before unsigned packaging | ปิด P1 local-first registration retry, multi-interface/Manual Primary discovery, Excel formula injection และ exact-source archive identity; targeted `181 passed`; full Python `714 passed`; version gate `5.2.1`; Web lint/security `4/4`/Next build/npm audit 0; Python lock audit 0; critical Ruff/compileall/diff-check ผ่าน; tracked 321/0 และ staged 129/0 safety findings | PASS — EXACT STAGED SOURCE / PACKAGING NOT YET BUILT |
 
 - [x] Current Desktop/runtime/build metadata รายงาน `5.2.0` จาก authority เดียว และ validator ปฏิเสธ non-5.2.x
 - [x] UI, config, pyproject, Web metadata, PyInstaller/Inno และ API-reported version ใน current source ตรงกัน; customer artifact builder fail-closed ก่อน external gates

@@ -1,8 +1,8 @@
-"""Build the self-contained Windows x64 5.2.0 Release Candidate.
+"""Build the self-contained Windows x64 V5.2 Release Candidate.
 
-The command never publishes, signs, enables Registration, or adds an Update
-runtime. Windows ARM VM execution is explicitly a preflight and can never be
-labelled native x64 evidence.
+The command never publishes, signs or adds an Update runtime. Windows ARM VM
+execution is explicitly a preflight and can never be labelled native x64
+evidence.
 """
 
 from __future__ import annotations
@@ -22,6 +22,16 @@ import urllib.request
 import zipfile
 from pathlib import Path
 
+from services.offline_license_keys import (
+    PUBLIC_KEYS_FILENAME,
+    parse_offline_license_public_keys,
+)
+from tools.build_local_release import (
+    SOURCE_ARCHIVE_IDENTITY_NAME,
+    SOURCE_COMMIT_NAME,
+    SourceArchiveIdentityError,
+    assert_extracted_source_archive_identity,
+)
 from tools.package_windows_test_kit import (
     DOC_FILES,
     PACKAGE_DIRS,
@@ -37,6 +47,7 @@ from tools.release_evidence import (
     assert_no_update_runtime_paths,
     assert_registration_fail_closed_payload,
     build_environment_label,
+    load_joint_e2e_evidence,
     require_windows_x64,
     write_release_evidence,
 )
@@ -49,8 +60,9 @@ VERSION = tomllib.loads((SOURCE_ROOT / "pyproject.toml").read_text(encoding="utf
 ]
 RELEASE_ROOT = PROJECT_ROOT / "release" / "windows-x64-rc"
 PAYLOAD_NAME = f"KOMI Report V{VERSION}"
-INSTALLER_NAME = "KOMI_Report_V5_2_0_Windows_x64_RC.exe"
-CUSTOMER_INSTALLER_NAME = "KOMI_Report_V5_2_0_Windows_x64_Installer.exe"
+VERSION_TAG = VERSION.replace(".", "_")
+INSTALLER_NAME = f"KOMI_Report_V{VERSION_TAG}_Windows_x64_RC.exe"
+CUSTOMER_INSTALLER_NAME = f"KOMI_Report_V{VERSION_TAG}_Windows_x64_Installer.exe"
 INNO_SCRIPT = PROJECT_ROOT / "packaging" / "windows" / "KOMI_Report_V5.iss"
 NODE_VERSION = "24.18.0"
 NODE_ARCHIVE = f"node-v{NODE_VERSION}-win-x64.zip"
@@ -154,14 +166,15 @@ popd
 exit /b %KOMI_EXIT_CODE%
 """
 
-README = """KOMI Report V5.2.0 — Windows x64 Unsigned Pilot Candidate
+README = f"""KOMI Report V{VERSION} — Windows x64 Unsigned Pilot Candidate
 
 Target: Windows 10/11 x64
-Runtime: bundled CPython 3.11 x64 and Node.js {node_version} LTS x64
+Runtime: bundled CPython 3.11 x64 and Node.js {{node_version}} LTS x64
 
 This RC includes Desktop, local SQLite, OS-vault integration and LAN Web HTTPS.
 It does not include an Update client, updater, remote update command or Update telemetry.
-Registration/Heartbeat remains fail-closed unless a separately approved policy artefact is configured.
+Registration uses schema 3 with a per-installation Ed25519 identity generated
+locally. No shared/master bootstrap key is packaged in this artifact.
 
 PUBLISHER WARNING: this installer is not code-signed. Windows can display
 "Unknown publisher" or "Publisher could not be verified". Verify the SHA-256
@@ -173,21 +186,20 @@ Follow docs/PILOT_RELEASE_CHECKLIST.md and docs/RELEASE_SUPPORT_AND_RECOVERY.md
 before installation, upgrade, restore, rollback or data cleanup.
 """
 
-CUSTOMER_README = """KOMI Report V5.2.0 — Windows Customer Release Package
+CUSTOMER_README = f"""KOMI Report V{VERSION} — Windows Customer Release Package
 
 Target runtime: Windows 10/11 x64
-Build evidence: {build_evidence}
-Runtime: bundled CPython 3.11 x64 and Node.js {node_version} LTS x64
+Build evidence: {{build_evidence}}
+Runtime: bundled CPython 3.11 x64 and Node.js {{node_version}} LTS x64
 
 This package runs the production Desktop, local SQLite, OS-vault integration
 and LAN Web HTTPS behavior. It contains no Lab/test/demo/Virtual Printer auto-
 injection and no Update client, updater, remote command or Update telemetry.
-Registration uses the approved built-in production policy. The installer also
-contains a limited bootstrap identifier which is copied into Windows Credential
-Manager on first launch. Treat that identifier as public/extractable: the API
-must exchange it for a scoped per-installation token and must never grant it
-Dashboard, delete, Update or remote-command authority. Registration fails
-closed if OS-vault provisioning or the API contract is unavailable.
+Registration uses the V5.2 schema-3 Ed25519 public-client contract. Each
+installation creates its own key pair and stores the private key in Windows
+Credential Manager; no shared/master bootstrap key is embedded in the EXE.
+Registration fails closed if OS-vault provisioning or the API contract is
+unavailable.
 
 PUBLISHER WARNING: this installer is not code-signed. Windows can display
 "Unknown publisher" or "Publisher could not be verified". Verify the SHA-256
@@ -358,18 +370,30 @@ def build_payload(
     *,
     customer_release: bool = False,
     build_evidence: str = "not-yet-classified",
-    registration_bootstrap_file: Path | None = None,
 ) -> tuple[Path, dict[str, str]]:
-    if customer_release and VERSION.startswith("5.2."):
-        raise ReleaseContractError(
-            "V5.2 customer artifact HOLD: Final schema-3 auth vectors and Joint Staging "
-            "E2E have not been approved"
-        )
     payload_root = output_root / "payload" / PAYLOAD_NAME
     if payload_root.exists():
         shutil.rmtree(payload_root)
     source_destination = payload_root / "source"
     source_destination.mkdir(parents=True)
+
+    offline_public_keys = os.environ.get(
+        "KOMI_OFFLINE_LICENSE_PUBLIC_KEYS_BUILD_FILE", ""
+    ).strip()
+    offline_license_key_state = "absent-online-only"
+    if offline_public_keys:
+        public_keys_source = Path(offline_public_keys)
+        try:
+            raw_public_keys = public_keys_source.read_bytes()
+        except OSError as exc:
+            raise ReleaseContractError(
+                "Offline License public verification key file cannot be read"
+            ) from exc
+        parse_offline_license_public_keys(raw_public_keys)
+        public_keys_destination = payload_root / "runtime-config" / PUBLIC_KEYS_FILENAME
+        public_keys_destination.parent.mkdir(parents=True, exist_ok=True)
+        public_keys_destination.write_bytes(raw_public_keys)
+        offline_license_key_state = "bundled-public-only"
 
     for filename in ROOT_FILES:
         source = SOURCE_ROOT / filename
@@ -419,21 +443,6 @@ def build_payload(
     build_web_runtime_seed(payload_root=payload_root, node_root=node_root)
     removed_node_build_tool_files = remove_node_build_tooling(node_root)
 
-    registration_bootstrap_state = "absent-fail-closed"
-    if customer_release:
-        if registration_bootstrap_file is None or not registration_bootstrap_file.is_file():
-            raise ReleaseContractError(
-                "Customer build requires --registration-bootstrap-file from the authorized OS vault"
-            )
-        raw_bootstrap = registration_bootstrap_file.read_bytes()
-        if not raw_bootstrap.strip() or len(raw_bootstrap) > 4096 or b"\x00" in raw_bootstrap:
-            raise ReleaseContractError("Registration bootstrap build input is invalid")
-        runtime_config = payload_root / "runtime-config"
-        runtime_config.mkdir()
-        destination = runtime_config / "komi-registration-bootstrap.dat"
-        destination.write_bytes(raw_bootstrap)
-        registration_bootstrap_state = "packaged-limited-public-bootstrap-identifier"
-
     (payload_root / "START_KOMI_REPORT.cmd").write_text(START_CMD, encoding="utf-8", newline="\r\n")
     write_hidden_launcher(payload_root / "START_KOMI_REPORT.vbs")
     (payload_root / "START_DEBUG.cmd").write_text(START_DEBUG_CMD, encoding="utf-8", newline="\r\n")
@@ -457,7 +466,8 @@ def build_payload(
         "removed_forbidden_dependency_assets": str(removed_forbidden_assets),
         "removed_node_build_tool_files": str(removed_node_build_tool_files),
         "wheel_count": str(wheel_count),
-        "registration_bootstrap": registration_bootstrap_state,
+        "registration_bootstrap": "not-applicable-schema3",
+        "offline_license_public_keys": offline_license_key_state,
     }
 
 
@@ -491,9 +501,9 @@ def compile_installer(
     installer_name = CUSTOMER_INSTALLER_NAME if customer_release else INSTALLER_NAME
     output_base = installer_name.removesuffix(".exe")
     description = (
-        "KOMI Report V5.2.0 Customer Release Package"
+        f"KOMI Report V{VERSION} Customer Release Package"
         if customer_release
-        else "KOMI Report V5.2.0 Release Candidate"
+        else f"KOMI Report V{VERSION} Release Candidate"
     )
     subprocess.run(
         [
@@ -530,16 +540,21 @@ def authenticode_status(installer: Path) -> str:
 
 
 def source_identity(explicit_commit: str = "") -> tuple[str, str]:
-    archive_identity = PROJECT_ROOT / "SOURCE_COMMIT.txt"
-    archived_commit = ""
-    if archive_identity.is_file():
-        archived_commit = archive_identity.read_text(encoding="ascii").strip().casefold()
-        if not COMMIT_RE.fullmatch(archived_commit):
-            raise ReleaseContractError("SOURCE_COMMIT.txt is invalid")
     explicit_commit = explicit_commit.strip().casefold()
     if explicit_commit and not COMMIT_RE.fullmatch(explicit_commit):
         raise ReleaseContractError("--source-commit must be a full 40-character Git commit")
-    if archived_commit:
+    archive_markers = (
+        PROJECT_ROOT / SOURCE_COMMIT_NAME,
+        PROJECT_ROOT / SOURCE_ARCHIVE_IDENTITY_NAME,
+    )
+    if any(path.exists() for path in archive_markers):
+        try:
+            archive_identity = assert_extracted_source_archive_identity(PROJECT_ROOT)
+        except SourceArchiveIdentityError as exc:
+            raise ReleaseContractError(f"Source archive identity verification failed: {exc}") from exc
+        archived_commit = str(archive_identity["git_commit"])
+        if not COMMIT_RE.fullmatch(archived_commit):
+            raise ReleaseContractError("Source archive commit is invalid")
         if explicit_commit and explicit_commit != archived_commit:
             raise ReleaseContractError("Source archive commit does not match --source-commit")
         return archived_commit, "archive-clean"
@@ -555,7 +570,7 @@ def source_state_is_clean(source_state: str) -> bool:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Build KOMI Report V5.2.0 Windows x64 RC")
+    parser = argparse.ArgumentParser(description=f"Build KOMI Report V{VERSION} Windows x64 RC")
     parser.add_argument("--output", type=Path, default=RELEASE_ROOT)
     parser.add_argument("--iscc", type=Path)
     parser.add_argument("--virtualized", action="store_true")
@@ -568,9 +583,9 @@ def main() -> int:
         help="Build the production-behavior customer package profile (signing gate remains independent)",
     )
     parser.add_argument(
-        "--registration-bootstrap-file",
+        "--joint-e2e-evidence",
         type=Path,
-        help="Authorized build-time bootstrap input; value is never written to Git or logs",
+        help="Sanitized Joint Desktop-Staging E2E JSON; missing evidence produces a HOLD candidate",
     )
     args = parser.parse_args()
 
@@ -591,11 +606,15 @@ def main() -> int:
         machine=machine,
         virtualized=args.virtualized,
     )
+    joint_e2e = load_joint_e2e_evidence(
+        args.joint_e2e_evidence,
+        version=VERSION,
+        source_commit=commit,
+    )
     payload_root, runtime_evidence = build_payload(
         output_root,
         customer_release=args.customer_release,
         build_evidence=environment,
-        registration_bootstrap_file=args.registration_bootstrap_file,
     )
     installer = compile_installer(
         payload_root=payload_root,
@@ -624,14 +643,23 @@ def main() -> int:
             else "komi-report-v5-windows-x64-rc"
         ),
         manifest_name=manifest_name,
-        registration_runtime=(
-            "built-in-production-policy-os-vault-provisioned-limited-bootstrap"
-            if args.customer_release
-            else "fail-closed-no-policy-artefact"
-        ),
+        registration_runtime="schema3-ed25519-public-client-no-shared-bootstrap",
     )
     manifest["release_profile"] = "customer-production-behavior" if args.customer_release else "rc"
     manifest.update(runtime_evidence)
+    manifest["joint_staging_e2e"] = joint_e2e
+    blockers = ["Production GO requires explicit external approval; packaging never self-promotes"]
+    if signing != "verified":
+        blockers.append("Windows Authenticode is not verified")
+    if environment != "windows-x64-native":
+        blockers.append("Windows build evidence is not native Windows x64")
+    if args.customer_release and joint_e2e["verified"] is not True:
+        blockers.append("Joint Desktop-Staging E2E evidence is missing or did not pass")
+    if runtime_evidence["offline_license_public_keys"] != "bundled-public-only":
+        blockers.append("Host Offline License public verification key is not bundled")
+    manifest["release_decision"] = "HOLD"
+    manifest["production_go"] = False
+    manifest["blockers"] = blockers
     (output_root / manifest_name).write_text(
         json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
     )

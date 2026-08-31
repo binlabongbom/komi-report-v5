@@ -39,6 +39,8 @@ FORBIDDEN_SUFFIXES = {
     ".db-wal",
     ".env",
     ".key",
+    ".komilicense",
+    ".komirequest",
     ".log",
     ".p12",
     ".pem",
@@ -187,7 +189,7 @@ def git_identity(project_root: Path) -> tuple[str, str]:
         return "UNCOMMITTED", "uncommitted"
 
     dirty = subprocess.run(
-        ["git", "status", "--porcelain", "--untracked-files=no"],
+        ["git", "status", "--porcelain", "--untracked-files=all"],
         cwd=project_root,
         check=True,
         capture_output=True,

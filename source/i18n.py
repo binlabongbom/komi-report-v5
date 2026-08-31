@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import re
 
+from PyQt6 import sip
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QAbstractButton,
@@ -80,6 +81,10 @@ _EN: dict[str, str] = {
     "เลือกใช้งานแบบ Offline License": "Use an Offline License",
     "ออนไลน์จะส่งสถานะและ Total Meter รวมตามประกาศข้อมูล โดยไม่ให้กรอก API Key": "Online mode sends status and aggregate Total Meter under the Data Notice. No API key is required.",
     "Offline License ไม่ส่ง Registration, Status หรือ Meter ไปยัง Host": "Offline License sends no Registration, Status, or Meter telemetry to the Host.",
+    "<b>ขอบเขตข้อมูลที่ปลอดภัย:</b> ส่ง Serial Number, Model, สถานะเลือกใช้, Status และ Aggregate Total Meter เท่านั้น · ไม่ส่ง IP, MAC, hostname, Credential, Counter รายละเอียด, ผู้ใช้, เอกสาร หรือ Log": "<b>Safe data boundary:</b> Only serial number, model, selection status, Status, and aggregate Total Meter are sent. IP, MAC, hostname, credentials, detailed counters, users, documents, and logs are never sent.",
+    "รอลงทะเบียน": "Pending registration",
+    "ต้องลงทะเบียน": "Registration required",
+    "ลงทะเบียนแล้ว": "Registered",
     "<b>ขอบเขตข้อมูลที่ปลอดภัย:</b> Registration ส่ง Serial Number, Model และสถานะเลือกใช้ตาม ประกาศข้อมูลการลงทะเบียน; Online ส่งเฉพาะ Status และ Aggregate Total Meter · ไม่ส่ง IP, MAC, hostname, Credential, Counter รายละเอียด, ผู้ใช้, เอกสาร หรือ Log": "<b>Privacy boundary:</b> Registration sends serial number, model, and selection state under the Registration Data Notice. Online mode sends only Status and aggregate Total Meter. It does not send IP, MAC, hostname, credentials, detailed counters, users, documents, or logs.",
     "สร้างไฟล์คำขอ…": "Export request…",
     "นำเข้า License…": "Import license…",
@@ -152,6 +157,31 @@ _EN: dict[str, str] = {
     "ตารางค่าเริ่มต้นใหม่พร้อมบันทึก": "New default schedule ready to save",
     "เลือกข้อมูลที่แสดงในรายงาน": "Choose report data",
     "เปิดโปรแกรมอัตโนมัติเมื่อเข้าสู่ระบบ": "Start automatically at sign-in",
+    "เปิดโปรแกรมอัตโนมัติ": "Automatic startup",
+    "กำหนดให้ KOMI Report เริ่มทำงานเมื่อผู้ใช้เข้าสู่ระบบปฏิบัติการ": "Start KOMI Report when the user signs in to the operating system.",
+    "บันทึก Auto-start": "Save auto-start",
+    "จัดการ Database, Backup, Auto-start, Log, Parser Mapping และรายงานผ่าน LAN · รายการที่ลบหรือรีเซ็ตข้อมูลจะสำรองข้อมูลและขอยืนยันก่อนเสมอ": "Manage the database, backups, auto-start, logs, Parser Mapping, and LAN reports. Destructive actions always create a backup and ask for confirmation.",
+    "การเปลี่ยน Path หรือนำ Backup กลับมาใช้ จะสร้างสำเนาที่ตรวจสอบแล้ว และมีผลเมื่อเปิดโปรแกรมครั้งถัดไป ฐานข้อมูลที่กำลังใช้จะไม่ถูกทับ": "Changing the path or restoring a backup creates a verified copy and takes effect the next time the app starts. The active database is never overwritten.",
+    "เปลี่ยน Path": "Change path",
+    "ตรวจสอบ Database": "Check database",
+    "สำรอง Database": "Back up database",
+    "นำ Backup กลับมาใช้": "Restore backup",
+    "🧩  ตรวจสอบ Parser Mapping": "🧩  Inspect Parser Mapping",
+    "ดูข้อมูล Raw จากเครื่องแต่ละ Slot เทียบกับช่องที่จะบันทึกใน Database และแก้ Mapping เฉพาะ Serial Number ได้": "Compare each Slot's raw counters with the database fields and edit mappings for a specific serial number.",
+    "🔎  ตรวจสอบ Parser Mapping": "🔎  Inspect Parser Mapping",
+    "⚙️  โปรแกรม Log และการบำรุงรักษา": "⚙️  App behavior, logs & maintenance",
+    "เมื่อกดปิดหน้าต่าง ให้โปรแกรมทำงานต่อใน System Tray": "Keep the app running in the System Tray when the window is closed",
+    "ยกเลิกตัวเลือกนี้ หากต้องการให้ปุ่มปิดหน้าต่างหยุดโปรแกรมจริง": "Clear this option if closing the window should fully exit the application.",
+    "ปิดหน้าต่างแล้วทำงานต่อใน System Tray": "Closing the window keeps the app running in the System Tray",
+    "ปิดหน้าต่างแล้วหยุดโปรแกรม": "Closing the window exits the application",
+    "เก็บ Log ย้อนหลัง": "Retain logs for",
+    " วัน": " days",
+    "บันทึกการทำงานของโปรแกรม": "Save app behavior",
+    "เปิดโฟลเดอร์ Log": "Open log folder",
+    "ส่งออก Log สำหรับ Support": "Export support logs",
+    "ล้าง Log เก่า": "Clear old logs",
+    "ล้างไฟล์ชั่วคราว": "Clear temporary files",
+    "ยืนยัน": "Confirm",
     "ปรับเวลาแบบละเอียด": "Customize schedule",
     "อนุญาตให้เครื่องอื่นใน LAN เปิดรายงานผ่าน Web": "Allow other computers on the LAN to open Web reports",
     "เปิด Web Report อัตโนมัติพร้อม KOMI Report": "Start Web Report automatically with KOMI Report",
@@ -259,6 +289,8 @@ _EN: dict[str, str] = {
     "ตัวเลขทั้งหมดในแท็บนี้ใช้ช่วงเวลาเดียวกัน": "All figures in this tab use the same date range.",
     "ช่วงรายงานที่เลือก": "Selected report period",
     "มุมมอง": "View",
+    "Meter เริ่มต้น": "Opening meter",
+    "ค่า Meter ครั้งแรกที่บันทึกไว้ ใช้เป็นข้อมูลอ้างอิงเท่านั้น ไม่รวมในยอดใช้งาน กราฟ หรือค่าใช้จ่าย": "The first recorded meter is for reference only and is excluded from usage, charts, and cost.",
     "Timeline รวมตาม Slot · ประวัติ V4.6 ต่อกับ V5 โดยไม่คำนวณ Meter ข้ามการเปลี่ยนเครื่อง และไม่คิดค่าใช้จ่ายย้อนหลัง": "Timeline continuity follows each Slot · V4.6 history continues into V5 without calculating meters across printer replacement or applying historical cost",
     "ตามเครื่อง": "By printer",
     "ค่าใช้จ่ายโดยประมาณ": "Estimated cost",
@@ -367,6 +399,9 @@ _EN: dict[str, str] = {
     "ข้อมูลองค์กร": "Organization",
     "องค์กร": "Organization",
     "ข้อมูลสำหรับเริ่มใช้งาน": "Information to get started",
+    "มี KOMI Report เครื่องหลักอยู่แล้ว?": "Already have a KOMI Report Primary?",
+    "ค้นหาใน LAN แล้วดึงเฉพาะบริษัท เครื่องพิมพ์ ราคา และรอบบิล · ไม่คัดลอกรหัสผ่านหรือประวัติ": "Search the LAN and copy only company, printer, price and billing settings · passwords and history are never copied",
+    "ค้นหาเครื่องหลัก": "Find Primary",
     "นำเครื่องพิมพ์เข้าระบบ": "Add printers securely",
     "ตั้งค่าราคา": "Configure pricing",
     "ราคา": "Pricing",
@@ -591,6 +626,8 @@ _EN: dict[str, str] = {
 # Ordered longest-first at runtime. These fragments cover formatted/dynamic
 # status messages while preserving numbers, printer names and technical terms.
 _PHRASES: dict[str, str] = {
+    "หลังเปิดโปรแกรมครั้งถัดไป:": "After the next app start:",
+    "กำลังใช้งาน:": "In use:",
     " น.": "",
     "เช่น ": "e.g. ",
     "ค่าเริ่มต้น:": "Default:",
@@ -630,6 +667,22 @@ _PHRASES: dict[str, str] = {
     "ภาพรวมการใช้งานและสถานะเครื่องพิมพ์": "Usage and printer status overview",
     "ตัวกรองช่วงเวลา": "Period filter",
     "กราฟแนวโน้มการใช้งานแยกตามเครื่อง": "Usage trend by printer",
+    "แยกประเภทงานรายเครื่องตาม Counter ที่เครื่องส่ง": "Operation mix by printer from reported counters",
+    "Print ในช่วงนี้": "Print in this period",
+    "Copy ในช่วงนี้": "Copy in this period",
+    "ไม่พบข้อมูลแยกประเภท": "Operation breakdown unavailable",
+    "คิดรวม % กระดาษเสีย": "Include waste-paper %",
+    "คิดค่าใช้จ่ายหลังรวมเปอร์เซ็นต์กระดาษเสีย": "Calculate cost after applying the waste-paper percentage",
+    "เปิด: ใช้ยอดสุทธิหลังคิด % กระดาษเสียจาก Billing Ledger\nปิด: ใช้ยอดก่อนคิด % กระดาษเสีย โดยจำนวนหน้าไม่เปลี่ยน": "On: use net cost after the Billing Ledger waste-paper percentage\nOff: use gross cost; page counts do not change",
+    "แสดงชื่อ Counter และค่าตามที่เครื่องส่งมาโดยตรง · ไม่ Map กระดาษ ไม่เปลี่ยนชื่อ และไม่เดาค่าที่เครื่องไม่ได้ส่ง": "Shows the exact counter names and values reported by each printer; paper sizes are not mapped, labels are not renamed, and missing values are never inferred",
+    "ผู้ใช้": "Users",
+    "กลุ่มงาน": "Operation group",
+    "ประเภท Counter (ชื่อจากเครื่อง)": "Counter type (printer label)",
+    "ยังไม่มี Raw Counter ในช่วงวันที่เลือก": "No raw counters in the selected period",
+    "ยังไม่มี Raw Counter แยกผู้ใช้ / Account ในช่วงวันที่เลือก": "No user or account raw counters in the selected period",
+    "ยังไม่มี Raw Counter รายวันในช่วงวันที่เลือก": "No daily raw counters in the selected period",
+    "การตั้งค่าขั้นสูง": "Advanced Settings",
+    "เปิด": "Open",
     "ยังไม่บันทึกใน Billing Ledger": "not posted to the Billing Ledger",
     "ยอดระหว่างวัน": "Provisional usage",
     "Sync ล่าสุด": "Last sync",
@@ -777,6 +830,7 @@ def translate_text(text: str) -> str:
     # Dynamic overview messages contain changing numbers, so translate their
     # stable grammatical parts without touching printer names or other data.
     translated = re.sub(r"ยืนยันแล้ว(?=\s)", "Confirmed", translated)
+    translated = re.sub(r"ยืนยัน(?=\s*[+~0-9])", "Posted", translated)
     translated = re.sub(r"วันนี้(?=\s*[+~0-9])", "Today", translated)
     translated = re.sub(r"รวม(?=\s*[+~0-9])", "Total", translated)
     translated = re.sub(r"(?<=\d)\s*หน้า\b", " pages", translated)
@@ -824,7 +878,14 @@ def _source(widget: QWidget, text: str) -> str:
 
 def apply_language(root: QWidget) -> None:
     """Translate existing widgets recursively, including tables and tabs."""
-    widgets = [root, *root.findChildren(QWidget)]
+    # Qt defers destruction for chart/table children.  A wrapper can therefore
+    # still be returned by ``findChildren`` after its C++ object is gone; even
+    # calling ``getattr`` on that wrapper may crash the process.
+    widgets = [
+        widget
+        for widget in (root, *root.findChildren(QWidget))
+        if not sip.isdeleted(widget)
+    ]
     for widget in widgets:
         if isinstance(widget, (QLabel, QAbstractButton, QGroupBox)):
             original = _source(widget, widget.text())
@@ -931,6 +992,11 @@ def apply_language(root: QWidget) -> None:
         root.setWindowTitle(str(original) if _language == THAI else translate_text(str(original)))
 
     for widget in widgets:
-        hook = getattr(widget, "_apply_i18n_visibility", None)
+        if sip.isdeleted(widget):
+            continue
+        # Resolve the optional hook on the Python class.  Looking it up on a
+        # QWidget instance may invoke Qt's dynamic attribute bridge and touch
+        # a child queued for deletion while report charts are being rebuilt.
+        hook = getattr(type(widget), "_apply_i18n_visibility", None)
         if callable(hook):
-            hook(_language)
+            hook(widget, _language)

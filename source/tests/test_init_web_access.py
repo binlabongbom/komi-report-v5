@@ -9,9 +9,11 @@ from services.web_access import (
     ACCESS_HASH_KEY,
     AUTH_EPOCH_KEY,
     LEGACY_ACCESS_CODE_KEY,
+    REPORT_PASSWORDLESS_KEY,
     SESSION_SECRET_KEY,
     USER_KEY,
     set_web_access_code,
+    set_web_report_passwordless,
     verify_web_access_code,
     web_access_status,
 )
@@ -38,6 +40,7 @@ def test_web_access_is_created_outside_the_shared_source(tmp_path):
     assert values[SESSION_SECRET_KEY] != "komi-report-v5-local-session"
     assert len(values[SESSION_SECRET_KEY]) >= 32
     assert len(values[AUTH_EPOCH_KEY]) >= 32
+    assert values[REPORT_PASSWORDLESS_KEY] == "0"
     assert LEGACY_ACCESS_CODE_KEY not in runtime_env.read_text(encoding="utf-8")
     assert not web_access_status(runtime_env).configured
 
@@ -113,3 +116,22 @@ def test_desktop_change_rejects_ambiguous_outer_whitespace(tmp_path):
 
     with pytest.raises(ValueError, match="ช่องว่างที่ต้นหรือท้าย"):
         set_web_access_code(runtime_env, " Valid-LAN-Code-2026 ")
+
+
+def test_passwordless_report_toggle_is_explicit_and_rotates_sessions(tmp_path):
+    runtime_env = tmp_path / "runtime" / ".env.local"
+    ensure_web_access(runtime_env)
+    before = _read_values(runtime_env)
+
+    enabled = set_web_report_passwordless(runtime_env, True)
+    after_enabled = _read_values(runtime_env)
+
+    assert enabled.report_passwordless
+    assert after_enabled[REPORT_PASSWORDLESS_KEY] == "1"
+    assert after_enabled[AUTH_EPOCH_KEY] != before[AUTH_EPOCH_KEY]
+
+    disabled = set_web_report_passwordless(runtime_env, False)
+    after_disabled = _read_values(runtime_env)
+    assert not disabled.report_passwordless
+    assert after_disabled[REPORT_PASSWORDLESS_KEY] == "0"
+    assert after_disabled[AUTH_EPOCH_KEY] != after_enabled[AUTH_EPOCH_KEY]

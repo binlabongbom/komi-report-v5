@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 
+from komi_version import APP_VERSION
 from services.installation_identity import load_or_create_installation_identity
 from services.registration_vault import (
     SessionRegistrationSecretStore,
@@ -78,7 +79,7 @@ def test_local_fixture_register_status_meter_e2e_without_shared_api_key():
         identity=identity,
         company_name="Synthetic E2E Company",
         first_started_at="2026-08-25",
-        app_version="5.2.0",
+        app_version=APP_VERSION,
         devices=[
             {"serial_number": "SYNTH-001", "model": "bizhub C450i", "selected": True, "device_slot": 1}
         ],
@@ -99,7 +100,7 @@ def test_local_fixture_register_status_meter_e2e_without_shared_api_key():
         "status",
         build_status_payload(
             installation_id=identity.installation_id,
-            app_version="5.2.0",
+            app_version=APP_VERSION,
             platform_name="TestOS",
             architecture="test64",
             occurred_at="2026-08-25T03:02:00Z",
@@ -151,7 +152,7 @@ def test_client_fails_closed_when_queued_body_changes_after_claim():
         identity=identity,
         company_name="Synthetic E2E Company",
         first_started_at="2026-08-25",
-        app_version="5.2.0",
+        app_version=APP_VERSION,
         devices=[
             {"serial_number": "SYNTH-001", "model": "bizhub C450i", "selected": True, "device_slot": 1}
         ],
@@ -195,7 +196,7 @@ def test_client_honors_retry_after_and_treats_validation_as_terminal():
         "status",
         build_status_payload(
             installation_id="33333333-3333-4333-8333-333333333333",
-            app_version="5.2.0",
+                app_version=APP_VERSION,
             platform_name="TestOS",
             architecture="test64",
             occurred_at="2026-08-25T03:02:00Z",

@@ -1,181 +1,22 @@
 <!doctype html>
-<html lang="th">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>KOMI Report V5 — ภาพรวมการเก็บข้อมูล</title>
-  <style>
-    :root { --ink:#172033; --muted:#5f6b7a; --paper:#f5f7fa; --line:#cad3df; }
-    * { box-sizing:border-box; }
-    body { margin:0; color:var(--ink); background:var(--paper); font-family:"Noto Sans Thai",Tahoma,Arial,sans-serif; }
-    main { max-width:1600px; margin:auto; padding:28px; }
-    header { display:flex; justify-content:space-between; gap:20px; align-items:end; margin-bottom:18px; }
-    h1 { margin:0; font-size:38px; letter-spacing:-.03em; }
-    p { margin:6px 0 0; color:var(--muted); }
-    .links { display:flex; gap:8px; margin-top:10px; }
-    .links a { color:#1769aa; text-decoration:none; border:1px solid #b8c8d8; background:white; padding:7px 11px; font-weight:700; font-size:13px; }
-    .legend { display:flex; flex-wrap:wrap; gap:12px; font-size:13px; }
-    .legend span { display:flex; align-items:center; gap:6px; }
-    .dot { width:12px; height:12px; border-radius:3px; }
-    .canvas { overflow:auto; border:1px solid var(--line); background:white; box-shadow:0 12px 30px rgba(23,32,51,.08); }
-    svg { display:block; width:100%; min-width:1280px; height:auto; }
-    .lane { fill:#f8fafc; stroke:#e0e6ed; stroke-width:2; }
-    .lane-title { font-size:15px; font-weight:800; letter-spacing:.06em; fill:#718096; }
-    .node { stroke-width:2; rx:14; }
-    .source { fill:#f1edff; stroke:#6d53c9; }
-    .memory { fill:#fff5dd; stroke:#d89028; }
-    .cache { fill:#e8f8f7; stroke:#198f89; }
-    .database { fill:#eaf3ff; stroke:#1769aa; }
-    .report { fill:#e9f8f0; stroke:#18875d; }
-    .legacy { fill:#f4f6f8; stroke:#7b8794; }
-    .risk { fill:#fff0f0; stroke:#bd3f3f; }
-    .title { font-size:20px; font-weight:800; fill:#172033; }
-    .copy { font-size:15px; fill:#405066; }
-    .small { font-size:13px; fill:#667085; }
-    .arrow { fill:none; stroke:#526273; stroke-width:3; marker-end:url(#arrow); }
-    .arrow-teal { fill:none; stroke:#198f89; stroke-width:3; marker-end:url(#arrow-teal); }
-    .arrow-blue { fill:none; stroke:#1769aa; stroke-width:3; marker-end:url(#arrow-blue); }
-    .dash { stroke-dasharray:9 7; }
-    .footer { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin-top:16px; }
-    .note { background:white; border-left:5px solid #1769aa; padding:13px 15px; font-size:14px; }
-    .note.warn { border-left-color:#bd3f3f; }
-    .note strong { display:block; margin-bottom:3px; }
-  </style>
-</head>
-<body>
-<main>
-  <header>
-    <div>
-      <h1>ภาพรวมการเก็บข้อมูล</h1>
-      <p>ข้อมูลไหนอยู่ชั่วคราว ข้อมูลไหนรอดเมื่อปิดโปรแกรม และตารางไหนใช้กับ History / Billing</p>
-      <div class="links"><a href="sync-rule-flowchart.html">← กลับไปกฎการ Sync</a></div>
-    </div>
-    <div class="legend">
-      <span><i class="dot" style="background:#6d53c9"></i>แหล่งข้อมูล</span>
-      <span><i class="dot" style="background:#d89028"></i>RAM ชั่วคราว</span>
-      <span><i class="dot" style="background:#198f89"></i>JSON Daily Cache</span>
-      <span><i class="dot" style="background:#1769aa"></i>SQLite</span>
-      <span><i class="dot" style="background:#18875d"></i>รายงาน</span>
-    </div>
-  </header>
-
-  <section class="canvas">
-  <svg viewBox="0 0 1540 1770" role="img" aria-label="ภาพรวมการเก็บข้อมูล KOMI Report V5">
-    <defs>
-      <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#526273"/></marker>
-      <marker id="arrow-teal" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#198f89"/></marker>
-      <marker id="arrow-blue" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#1769aa"/></marker>
-    </defs>
-
-    <rect class="lane" x="35" y="30" width="1470" height="245" rx="18"/><text class="lane-title" x="65" y="65">1 · READ SOURCES</text>
-    <rect class="lane" x="35" y="295" width="1470" height="270" rx="18"/><text class="lane-title" x="65" y="330">2 · PROCESS MEMORY — หายเมื่อปิดโปรแกรม</text>
-    <rect class="lane" x="35" y="585" width="1470" height="325" rx="18"/><text class="lane-title" x="65" y="620">3 · DAILY WORKING CACHE — JSON บน Disk / รอดเมื่อปิดโปรแกรม</text>
-    <rect class="lane" x="35" y="930" width="1470" height="490" rx="18"/><text class="lane-title" x="65" y="965">4 · SQLITE DATABASE — KOMI Report V5</text>
-    <rect class="lane" x="35" y="1440" width="1470" height="285" rx="18"/><text class="lane-title" x="65" y="1475">5 · REPORTS / CONSUMERS</text>
-
-    <rect class="node source" x="110" y="100" width="360" height="120"/>
-    <text class="title" x="290" y="140" text-anchor="middle">SNMP</text>
-    <text class="copy" x="290" y="174" text-anchor="middle">Status · Model · Serial · Total</text>
-    <text class="copy" x="290" y="201" text-anchor="middle">Toner C / Y / M / K</text>
-
-    <rect class="node source" x="590" y="100" width="360" height="120"/>
-    <text class="title" x="770" y="140" text-anchor="middle">Web Connection</text>
-    <text class="copy" x="770" y="174" text-anchor="middle">Device Counter ทุกค่า</text>
-    <text class="copy" x="770" y="201" text-anchor="middle">แหล่ง Usage / Billing หลัก</text>
-
-    <rect class="node source" x="1070" y="100" width="360" height="120"/>
-    <text class="title" x="1250" y="140" text-anchor="middle">RAM User / Account</text>
-    <text class="copy" x="1250" y="174" text-anchor="middle">User Authentication / Account Track</text>
-    <text class="copy" x="1250" y="201" text-anchor="middle">Total Counter ต่อ User</text>
-
-    <path class="arrow" d="M290 220 L290 375"/><path class="arrow" d="M770 220 L770 375"/><path class="arrow" d="M1250 220 L1250 375"/>
-
-    <rect class="node memory" x="90" y="375" width="420" height="125"/>
-    <text class="title" x="300" y="417" text-anchor="middle">SNMP Result + Event Log</text>
-    <text class="copy" x="300" y="450" text-anchor="middle">Total/Toner ส่งต่อเข้า Cache · Log 5,000 events</text>
-    <text class="small" x="300" y="480" text-anchor="middle">Event Log ใช้หน้า Sync Log · ปิดโปรแกรมแล้วหาย</text>
-
-    <rect class="node memory" x="560" y="375" width="420" height="125"/>
-    <text class="title" x="770" y="417" text-anchor="middle">Runtime Web Snapshot</text>
-    <text class="copy" x="770" y="450" text-anchor="middle">Device Counter ล่าสุดส่งต่อเข้า Device Cache</text>
-    <text class="small" x="770" y="480" text-anchor="middle">ใช้หน้า Import / Connection · ปิดโปรแกรมแล้วหาย</text>
-
-    <rect class="node memory" x="1030" y="375" width="420" height="125"/>
-    <text class="title" x="1240" y="417" text-anchor="middle">Runtime User Snapshot</text>
-    <text class="copy" x="1240" y="450" text-anchor="middle">Subject rows ล่าสุดส่งต่อเข้า User Cache</text>
-    <text class="small" x="1240" y="480" text-anchor="middle">ใช้หน้า Import / Connection · ปิดโปรแกรมแล้วหาย</text>
-
-    <path class="arrow-teal" d="M290 500 L290 675"/><path class="arrow-teal" d="M770 500 L770 675"/><path class="arrow-teal" d="M1240 500 L1240 675"/>
-
-    <rect class="node cache" x="120" y="675" width="600" height="165"/>
-    <text class="title" x="420" y="716" text-anchor="middle">Device Daily Cache</text>
-    <text class="copy" x="420" y="750" text-anchor="middle">runtime-cache/device-N/YYYY-MM-DD.json</text>
-    <text class="small" x="420" y="782" text-anchor="middle">opening · latest · delta · resets · source</text>
-    <text class="small" x="420" y="808" text-anchor="middle">heartbeat_count · sample_count · error_count · snmp_toner</text>
-
-    <rect class="node cache" x="820" y="675" width="600" height="165"/>
-    <text class="title" x="1120" y="716" text-anchor="middle">User / Account Daily Cache</text>
-    <text class="copy" x="1120" y="750" text-anchor="middle">runtime-cache/subjects/device-N/YYYY-MM-DD.json</text>
-    <text class="small" x="1120" y="782" text-anchor="middle">subject ID/name · opening/latest/delta total</text>
-    <text class="small" x="1120" y="808" text-anchor="middle">reset · missing baseline · warnings · sample_count</text>
-
-    <path class="arrow-blue" d="M420 840 L420 1025"/><path class="arrow-blue" d="M1120 840 L1120 1025"/>
-    <text class="small" x="455" y="900">เมื่อเปลี่ยนวันและ commit สำเร็จ</text><text class="small" x="1155" y="900">เมื่อเปลี่ยนวันและ commit สำเร็จ</text>
-
-    <rect class="node database" x="80" y="1025" width="430" height="145"/>
-    <text class="title" x="295" y="1066" text-anchor="middle">daily_meter_records</text>
-    <text class="copy" x="295" y="1100" text-anchor="middle">1 row / เครื่อง / วัน</text>
-    <text class="small" x="295" y="1131" text-anchor="middle">opening · closing · delta · category · source</text>
-    <text class="small" x="295" y="1154" text-anchor="middle">sample/error/incomplete · UNIQUE(slot,date)</text>
-
-    <rect class="node database" x="555" y="1025" width="430" height="145"/>
-    <text class="title" x="770" y="1066" text-anchor="middle">daily_subject_records</text>
-    <text class="copy" x="770" y="1100" text-anchor="middle">1 row / User / เครื่อง / วัน</text>
-    <text class="small" x="770" y="1131" text-anchor="middle">opening · closing · delta · reset · warnings</text>
-    <text class="small" x="770" y="1154" text-anchor="middle">ไม่ใช้ Billing · conflict แล้วไม่เขียนทับ</text>
-
-    <rect class="node database" x="1030" y="1025" width="430" height="145"/>
-    <text class="title" x="1245" y="1066" text-anchor="middle">devices + settings</text>
-    <text class="copy" x="1245" y="1100" text-anchor="middle">เครื่อง 1–3 · Credential · Runtime status</text>
-    <text class="small" x="1245" y="1131" text-anchor="middle">ช่วงงาน · Polling intervals · Billing day</text>
-
-    <rect class="node database" x="80" y="1210" width="430" height="145"/>
-    <text class="title" x="295" y="1251" text-anchor="middle">price_history</text>
-    <text class="copy" x="295" y="1285" text-anchor="middle">A3/A4 · Color/B&amp;W · วันที่เริ่มใช้</text>
-    <text class="small" x="295" y="1316" text-anchor="middle">ใช้ราคาที่มีผลในวันของ Daily Record</text>
-
-    <rect class="node database" x="555" y="1210" width="430" height="145"/>
-    <text class="title" x="770" y="1251" text-anchor="middle">cost_category_history</text>
-    <text class="copy" x="770" y="1285" text-anchor="middle">Raw Counter → 4 ราคา / ไม่คิดเงิน</text>
-    <text class="small" x="770" y="1316" text-anchor="middle">แยกเครื่องและวันที่เริ่มมีผล</text>
-
-    <rect class="node legacy" x="1030" y="1210" width="430" height="145"/>
-    <text class="title" x="1245" y="1251" text-anchor="middle">V4.6 Import tables</text>
-    <text class="copy" x="1245" y="1285" text-anchor="middle">readings · price_snapshot · config_log</text>
-    <text class="small" x="1245" y="1316" text-anchor="middle">รองรับ Import .txt เดิม แยกจาก V5 Daily pipeline</text>
-
-    <rect class="node report" x="90" y="1515" width="420" height="145"/>
-    <text class="title" x="300" y="1556" text-anchor="middle">History / Monthly Usage</text>
-    <text class="copy" x="300" y="1590" text-anchor="middle">Current · รายเดือน · User pivot</text>
-    <text class="small" x="300" y="1621" text-anchor="middle">อ่าน daily_meter + daily_subject + Cache วันนี้</text>
-
-    <rect class="node report" x="560" y="1515" width="420" height="145"/>
-    <text class="title" x="770" y="1556" text-anchor="middle">Billing Calculation</text>
-    <text class="copy" x="770" y="1590" text-anchor="middle">Device delta × Category × Effective Price</text>
-    <text class="small" x="770" y="1621" text-anchor="middle">ใช้ daily_meter + price + category เท่านั้น</text>
-
-    <rect class="node report" x="1030" y="1515" width="420" height="145"/>
-    <text class="title" x="1240" y="1556" text-anchor="middle">Import / Connection / Sync Log</text>
-    <text class="copy" x="1240" y="1590" text-anchor="middle">ดูข้อมูลสด + Trace + Cache/DB status</text>
-    <text class="small" x="1240" y="1621" text-anchor="middle">ใช้ runtime snapshot + devices + legacy tables</text>
-  </svg>
-  </section>
-
-  <section class="footer">
-    <div class="note"><strong>Daily Cache มีไว้กันข้อมูลหาย</strong>เขียนแบบ atomic JSON แยกเครื่องและวัน จึงกลับมาทำต่อได้หลังเปิดโปรแกรมใหม่</div>
-    <div class="note"><strong>Database ลดการบวม</strong>Device Meter เก็บหนึ่ง record ต่อเครื่องต่อวัน และ User เก็บหนึ่ง record ต่อ User/เครื่อง/วัน</div>
-    <div class="note warn"><strong>จุดที่ยังต้องทำต่อ</strong>`daily_meter_records` ปัจจุบัน upsert แถวเดิมได้ จึงยังไม่ใช่ Immutable Append-only Billing Ledger เต็มรูปแบบ</div>
-  </section>
-</main>
-</body>
-</html>
+<html lang="th"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>KOMI Report V5.2 — ภาพรวมการเก็บข้อมูล</title>
+<style>
+:root{--ink:#172033;--muted:#5f6b7a;--paper:#f5f7fa;--line:#cad3df;--blue:#1769aa;--green:#18875d;--purple:#6d53c9;--teal:#198f89;--orange:#d89028}*{box-sizing:border-box}body{margin:0;color:var(--ink);background:var(--paper);font-family:"Noto Sans Thai",Tahoma,Arial,sans-serif}main{max-width:1600px;margin:auto;padding:28px}header{display:flex;justify-content:space-between;gap:20px;align-items:end;margin-bottom:18px}h1{margin:0;font-size:38px;letter-spacing:-.03em}p{margin:6px 0 0;color:var(--muted)}.links{display:flex;gap:8px;margin-top:10px}.links a{color:var(--blue);text-decoration:none;border:1px solid #b8c8d8;background:#fff;padding:7px 11px;font-weight:700;font-size:13px}.legend{display:flex;flex-wrap:wrap;gap:12px;font-size:13px}.legend span{display:flex;align-items:center;gap:6px}.dot{width:12px;height:12px;border-radius:3px}.canvas{overflow:auto;border:1px solid var(--line);background:#fff;box-shadow:0 12px 30px rgba(23,32,51,.08)}svg{display:block;width:100%;min-width:1280px;height:auto}.lane{fill:#f8fafc;stroke:#e0e6ed;stroke-width:2}.lane-title{font-size:15px;font-weight:800;letter-spacing:.06em;fill:#718096}.node{stroke-width:2;rx:14}.source{fill:#f1edff;stroke:var(--purple)}.memory{fill:#fff5dd;stroke:var(--orange)}.cache{fill:#e8f8f7;stroke:var(--teal)}.database{fill:#eaf3ff;stroke:var(--blue)}.report{fill:#e9f8f0;stroke:var(--green)}.legacy{fill:#f4f6f8;stroke:#7b8794}.title{font-size:19px;font-weight:800;fill:var(--ink)}.copy{font-size:14px;fill:#405066}.small{font-size:12px;fill:#667085}.arrow{fill:none;stroke:#526273;stroke-width:3;marker-end:url(#arrow)}.arrow-blue{fill:none;stroke:var(--blue);stroke-width:3;marker-end:url(#arrow-blue)}.dash{stroke-dasharray:9 7}.footer{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:16px}.note{background:#fff;border-left:5px solid var(--blue);padding:13px 15px;font-size:14px}.note strong{display:block;margin-bottom:3px}
+</style></head><body><main>
+<header><div><h1>ภาพรวมการเก็บข้อมูล — V5.2</h1><p>แยกข้อมูลชั่วคราว, Daily Cache, Raw Counter, ข้อมูลที่ Mapping แล้ว และ Billing Ledger อย่างชัดเจน</p><div class="links"><a href="sync-rule-flowchart.html">← กลับไปเส้นทางการอ่านข้อมูล</a></div></div><div class="legend"><span><i class="dot" style="background:#6d53c9"></i>แหล่งข้อมูล</span><span><i class="dot" style="background:#d89028"></i>Runtime</span><span><i class="dot" style="background:#198f89"></i>Daily Cache</span><span><i class="dot" style="background:#1769aa"></i>SQLite</span><span><i class="dot" style="background:#18875d"></i>ผู้ใช้งานข้อมูล</span></div></header>
+<section class="canvas"><svg viewBox="0 0 1540 1840" role="img" aria-label="ภาพรวมการเก็บข้อมูล KOMI Report V5.2"><defs><marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#526273"/></marker><marker id="arrow-blue" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#1769aa"/></marker></defs>
+<rect class="lane" x="35" y="30" width="1470" height="240" rx="18"/><text class="lane-title" x="65" y="65">1 · DATA SOURCES</text><rect class="lane" x="35" y="290" width="1470" height="245" rx="18"/><text class="lane-title" x="65" y="325">2 · RUNTIME MEMORY — หายเมื่อปิดโปรแกรม</text><rect class="lane" x="35" y="555" width="1470" height="275" rx="18"/><text class="lane-title" x="65" y="590">3 · DAILY JSON CACHE — รอดเมื่อปิด/เปิดโปรแกรม</text><rect class="lane" x="35" y="850" width="1470" height="585" rx="18"/><text class="lane-title" x="65" y="885">4 · SQLITE DATABASE</text><rect class="lane" x="35" y="1455" width="1470" height="335" rx="18"/><text class="lane-title" x="65" y="1490">5 · REPORTS / SERVICES</text>
+<rect class="node source" x="100" y="100" width="370" height="120"/><text class="title" x="285" y="141" text-anchor="middle">SNMP Exact GET</text><text class="copy" x="285" y="174" text-anchor="middle">Identity · Total · Toner · Paper Tray</text><text class="small" x="285" y="201" text-anchor="middle">Status / Alert / Availability</text><rect class="node source" x="585" y="100" width="370" height="120"/><text class="title" x="770" y="141" text-anchor="middle">Web JSON / XML</text><text class="copy" x="770" y="174" text-anchor="middle">Counter ดิบ · Print / Copy · User</text><text class="small" x="770" y="201" text-anchor="middle">Modern / Public / conditional Admin</text><rect class="node source" x="1070" y="100" width="370" height="120"/><text class="title" x="1255" y="141" text-anchor="middle">Setup / Local Settings</text><text class="copy" x="1255" y="174" text-anchor="middle">Device · Slot · Price · Schedule</text><text class="small" x="1255" y="201" text-anchor="middle">Parser Mapping · Registration mode</text>
+<path class="arrow" d="M285 220 L285 370"/><path class="arrow" d="M770 220 L770 370"/><path class="arrow" d="M1255 220 L1255 370"/>
+<rect class="node memory" x="100" y="370" width="370" height="110"/><text class="title" x="285" y="410" text-anchor="middle">Pipeline Log</text><text class="copy" x="285" y="443" text-anchor="middle">ล่าสุดสูงสุด 5,000 events</text><text class="small" x="285" y="467" text-anchor="middle">ใช้ตรวจสอบรอบอ่านปัจจุบัน</text><rect class="node memory" x="585" y="370" width="370" height="110"/><text class="title" x="770" y="410" text-anchor="middle">Runtime Snapshots</text><text class="copy" x="770" y="443" text-anchor="middle">Web/Device/User ล่าสุด</text><text class="small" x="770" y="467" text-anchor="middle">สำหรับ UI และการ reconcile</text><rect class="node memory" x="1070" y="370" width="370" height="110"/><text class="title" x="1255" y="410" text-anchor="middle">Scheduler State</text><text class="copy" x="1255" y="443" text-anchor="middle">Due · Failure · Pending · Session</text><text class="small" x="1255" y="467" text-anchor="middle">สถานะรอบปัจจุบัน</text>
+<path class="arrow" d="M285 480 L285 635"/><path class="arrow" d="M770 480 L770 555 L405 555 L405 635"/><path class="arrow" d="M770 555 L1135 555 L1135 635"/><path class="arrow" d="M1255 480 L1255 530 L405 530 L405 635"/>
+<rect class="node cache" x="95" y="635" width="620" height="145"/><text class="title" x="405" y="675" text-anchor="middle">Device Daily Cache</text><text class="copy" x="405" y="708" text-anchor="middle">runtime-cache/device-N/YYYY-MM-DD.json</text><text class="small" x="405" y="738" text-anchor="middle">opening · latest · delta · heartbeat · toner · paper tray · status</text><text class="small" x="405" y="762" text-anchor="middle">เขียนแบบ atomic และกลับมาทำต่อได้หลัง restart</text><rect class="node cache" x="825" y="635" width="620" height="145"/><text class="title" x="1135" y="675" text-anchor="middle">Subject / User Daily Cache</text><text class="copy" x="1135" y="708" text-anchor="middle">runtime-cache/subjects/device-N/YYYY-MM-DD.json</text><text class="small" x="1135" y="738" text-anchor="middle">User/Account · opening · latest · delta · reset · warnings</text><text class="small" x="1135" y="762" text-anchor="middle">แยกตามเครื่องและวัน</text>
+<path class="arrow-blue" d="M405 780 L405 850 L285 850 L285 930"/><path class="arrow-blue" d="M1135 780 L1135 825 L285 825 L285 930"/><path class="arrow-blue dash" d="M770 480 L770 930"/>
+<rect class="node database" x="70" y="930" width="430" height="140"/><text class="title" x="285" y="970" text-anchor="middle">Normalized Daily Data</text><text class="copy" x="285" y="1003" text-anchor="middle">daily_meter_records</text><text class="copy" x="285" y="1030" text-anchor="middle">daily_subject_records</text><text class="small" x="285" y="1055" text-anchor="middle">Print / Copy / Paper / Color ที่ Mapping แล้ว</text><rect class="node database" x="555" y="930" width="430" height="140"/><text class="title" x="770" y="970" text-anchor="middle">Raw Counter History</text><text class="copy" x="770" y="1003" text-anchor="middle">daily_raw_counter_records</text><text class="small" x="770" y="1033" text-anchor="middle">ชื่อ Counter/Source/User/ค่า ตรงจากเครื่อง</text><text class="small" x="770" y="1057" text-anchor="middle">ไม่ถูกแก้ตาม Parser Mapping ภายหลัง</text><rect class="node database" x="1040" y="930" width="430" height="140"/><text class="title" x="1255" y="970" text-anchor="middle">Immutable Billing</text><text class="copy" x="1255" y="1003" text-anchor="middle">billing_ledger</text><text class="small" x="1255" y="1033" text-anchor="middle">Append-only · no update · no delete</text><text class="small" x="1255" y="1057" text-anchor="middle">ราคาและยอดที่ปิดรอบแล้วไม่ย้อนเปลี่ยน</text>
+<rect class="node database" x="70" y="1120" width="430" height="245"/><text class="title" x="285" y="1160" text-anchor="middle">Configuration</text><text class="copy" x="285" y="1193" text-anchor="middle">devices · settings · schedule</text><text class="copy" x="285" y="1220" text-anchor="middle">price_history · cost_category_history</text><text class="copy" x="285" y="1247" text-anchor="middle">parser_mapping tables</text><text class="small" x="285" y="1282" text-anchor="middle">Credential เก็บผ่าน OS vault</text><text class="small" x="285" y="1307" text-anchor="middle">Mapping ใหม่มีผลกับข้อมูลอนาคต</text><rect class="node legacy" x="555" y="1120" width="430" height="245"/><text class="title" x="770" y="1160" text-anchor="middle">Legacy / Import Provenance</text><text class="copy" x="770" y="1193" text-anchor="middle">V4.6 readings · price snapshot</text><text class="copy" x="770" y="1220" text-anchor="middle">config log · import metadata</text><text class="small" x="770" y="1255" text-anchor="middle">เก็บแยกจาก V5.2 Daily Pipeline</text><text class="small" x="770" y="1280" text-anchor="middle">ใช้ต่อ Timeline โดยไม่คำนวณข้ามเครื่อง</text><rect class="node database" x="1040" y="1120" width="430" height="245"/><text class="title" x="1255" y="1160" text-anchor="middle">Registration V5.2 State</text><text class="copy" x="1255" y="1193" text-anchor="middle">installation identity · outbox</text><text class="copy" x="1255" y="1220" text-anchor="middle">status/meter cooldown · success</text><text class="small" x="1255" y="1255" text-anchor="middle">ส่งเฉพาะ allow-listed aggregate telemetry</text><text class="small" x="1255" y="1280" text-anchor="middle">Offline License = hard no-send</text><text class="small" x="1255" y="1305" text-anchor="middle">ไม่ส่ง Raw Counter/User/Document</text>
+<path class="arrow dash" d="M500 1240 L1005 1240 L1005 1000 L1040 1000"/>
+<rect class="node report" x="70" y="1535" width="430" height="185"/><text class="title" x="285" y="1575" text-anchor="middle">Reports / Billing / Excel</text><text class="copy" x="285" y="1608" text-anchor="middle">Overview · Users · Printers · Usage</text><text class="copy" x="285" y="1635" text-anchor="middle">Print / Copy · Daily / Monthly / Yearly</text><text class="small" x="285" y="1668" text-anchor="middle">อ่าน Normalized + Price + Billing Ledger</text><rect class="node report" x="555" y="1535" width="430" height="185"/><text class="title" x="770" y="1575" text-anchor="middle">Legacy / Parser Inspector</text><text class="copy" x="770" y="1608" text-anchor="middle">ดู Counter จริงแยกเครื่อง/User/วัน</text><text class="copy" x="770" y="1635" text-anchor="middle">แก้ Mapping แล้วบันทึกสำหรับอนาคต</text><text class="small" x="770" y="1668" text-anchor="middle">Raw History เดิมไม่เปลี่ยน</text><rect class="node report" x="1040" y="1535" width="430" height="185"/><text class="title" x="1255" y="1575" text-anchor="middle">Device UI / Host</text><text class="copy" x="1255" y="1608" text-anchor="middle">Current Meter · Toner · Paper Tray</text><text class="copy" x="1255" y="1635" text-anchor="middle">Registration · Status · Aggregate Meter</text><text class="small" x="1255" y="1668" text-anchor="middle">Host ไม่ได้รับรายละเอียดงานพิมพ์</text>
+<path class="arrow" d="M285 1070 L285 1535"/><path class="arrow" d="M770 1070 L770 1535"/><path class="arrow" d="M1255 1070 L1255 1415 L285 1415 L285 1535"/><path class="arrow" d="M1255 1365 L1255 1535"/>
+</svg></section>
+<section class="footer"><div class="note"><strong>Daily Cache กันข้อมูลหาย</strong>ข้อมูลระหว่างวันอยู่บน Disk และกลับมาทำต่อได้หลัง restart</div><div class="note"><strong>Raw กับ Normalized แยกกัน</strong>Raw ใช้ตรวจ Parser ส่วน Normalized ใช้ Report และ Billing</div><div class="note"><strong>Billing Ledger ล็อกประวัติ</strong>มี trigger ป้องกันการแก้หรือลบรายการที่บันทึกแล้ว</div><div class="note"><strong>Telemetry มีขอบเขต</strong>Host รับเฉพาะ Registration, Status และ Aggregate Total Meter ที่อนุญาต</div></section>
+</main></body></html>

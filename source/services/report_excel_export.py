@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+import unicodedata
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date, datetime
@@ -14,6 +16,11 @@ from openpyxl.utils import get_column_letter
 from services.device_config import DeviceConfig
 from services.monthly_history import MonthlyUsage
 from services.pricing import PricingRepository
+from services.raw_counter_history import RawCounterDailyRecord
+from services.report_operation_breakdown import (
+    breakdown_from_raw_records,
+    raw_operation_label,
+)
 from services.subject_history import SubjectPeriodUsage
 
 NAVY = "123262"
@@ -24,6 +31,9 @@ PALE = "EAF2F8"
 LINE = "D9E2EA"
 MUTED = "56677A"
 WHITE = "FFFFFF"
+
+_EXCEL_FORMULA_PREFIXES = frozenset("=+-@")
+_ILLEGAL_XML_CONTROL_RE = re.compile(r"[\x00-\x08\x0b-\x0c\x0e-\x1f]")
 
 CATEGORY_FIELDS = (
     ("a4_color", "A4 สี"),
@@ -36,6 +46,24 @@ DEVICE_SUBHEADERS = tuple(
     for _field, label in CATEGORY_FIELDS
     for item in (f"{label} (หน้า)", f"{label} (บาท)")
 ) + ("Scan", "รวมหน้า", "ค่าใช้จ่ายรวม (บาท)")
+
+OPERATION_FIELDS = (
+    ("print_a4_color", "Print A4 สี", "a4_color", "print"),
+    ("print_a4_bw", "Print A4 ขาวดำ", "a4_bw", "print"),
+    ("print_a3_color", "Print A3 สี", "a3_color", "print"),
+    ("print_a3_bw", "Print A3 ขาวดำ", "a3_bw", "print"),
+    ("print_other", "Print Other", "", "print"),
+    ("copy_a4_color", "Copy A4 สี", "a4_color", "copy"),
+    ("copy_a4_bw", "Copy A4 ขาวดำ", "a4_bw", "copy"),
+    ("copy_a3_color", "Copy A3 สี", "a3_color", "copy"),
+    ("copy_a3_bw", "Copy A3 ขาวดำ", "a3_bw", "copy"),
+    ("copy_other", "Copy Other", "", "copy"),
+)
+OPERATION_DEVICE_SUBHEADERS = tuple(
+    item
+    for _field, label, _cost_field, _operation in OPERATION_FIELDS
+    for item in (f"{label} (หน้า)", f"{label} (บาท)")
+) + ("Scan", "Print รวม", "Copy รวม", "รวมหน้า", "ค่าใช้จ่ายรวม (บาท)")
 
 
 @dataclass(frozen=True)
@@ -76,7 +104,9 @@ class CloudReportsExportData:
     period: tuple[str, str] | None
     last_sync_at: str | None
     generated_at: datetime
+    include_waste_adjustment: bool = True
     category_costs: tuple[DailyCategoryCost, ...] = ()
+    raw_counter_records: tuple[RawCounterDailyRecord, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -99,8 +129,9 @@ def build_daily_category_costs(
     records: tuple[MonthlyUsage, ...],
     *,
     pricing: PricingRepository | None = None,
+    include_waste_adjustment: bool = True,
 ) -> tuple[DailyCategoryCost, ...]:
-    """Allocate the exact net total using prices effective on each record day.
+    """Allocate the selected frozen total using prices effective on each record day.
 
     If no historical price basis exists, the value remains explicitly
     unallocated instead of being guessed into a paper category.
@@ -116,7 +147,13 @@ def build_daily_category_costs(
             field: usage[field] * float(getattr(prices, field, 0.0) or 0.0)
             for field, _label in CATEGORY_FIELDS
         }
-        target = round(_combined(record, "net_cost"), 2)
+        target = round(
+            _combined(
+                record,
+                "net_cost" if include_waste_adjustment else "gross_cost",
+            ),
+            2,
+        )
         allocated = {field: 0.0 for field, _label in CATEGORY_FIELDS}
         total_basis = sum(basis.values())
         unallocated = 0.0
@@ -147,7 +184,7 @@ def export_cloud_reports_xlsx(
     target: str | Path,
     report: CloudReportsExportData,
 ) -> Path:
-    """Save three human-readable report views without local credentials."""
+    """Save normalized and exact-source report views without credentials."""
 
     destination = Path(target).expanduser()
     if destination.suffix.casefold() != ".xlsx":
@@ -155,25 +192,65 @@ def export_cloud_reports_xlsx(
     destination.parent.mkdir(parents=True, exist_ok=True)
 
     records = tuple(report.selected_daily_records or report.selected_records)
-    costs = report.category_costs or build_daily_category_costs(records)
+    cost_field = "net_cost" if report.include_waste_adjustment else "gross_cost"
+    cost_note = (
+        "ค่าใช้จ่ายหลังคิด % กระดาษเสียตาม Billing Ledger"
+        if report.include_waste_adjustment
+        else "ค่าใช้จ่ายก่อนหักกระดาษเสีย"
+    )
+    costs = report.category_costs or build_daily_category_costs(
+        records,
+        include_waste_adjustment=report.include_waste_adjustment,
+    )
     devices = _device_columns(report, records)
     period_text = _period_text(report.period)
 
     workbook = Workbook()
     machine_sheet = workbook.active
     machine_sheet.title = "การใช้งานรายเครื่อง"
-    _write_machine_sheet(machine_sheet, records, costs, devices, period_text)
+    _write_machine_sheet(
+        machine_sheet,
+        records,
+        costs,
+        devices,
+        period_text,
+        cost_field=cost_field,
+        cost_note=cost_note,
+    )
     _write_user_sheet(
         workbook.create_sheet("มุมมองผู้ใช้"),
         report.subjects,
         devices,
         period_text,
+        report.raw_counter_records,
+        costs,
+        cost_note=cost_note,
     )
     _write_daily_sheet(
         workbook.create_sheet("มุมมองรายวัน"),
         records,
         costs,
         devices,
+        period_text,
+        cost_field=cost_field,
+        cost_note=cost_note,
+    )
+    _write_legacy_machine_sheet(
+        workbook.create_sheet("Legacy-รายเครื่อง"),
+        report.raw_counter_records,
+        report.devices,
+        period_text,
+    )
+    _write_legacy_user_sheet(
+        workbook.create_sheet("Legacy-ผู้ใช้"),
+        report.raw_counter_records,
+        report.devices,
+        period_text,
+    )
+    _write_legacy_daily_sheet(
+        workbook.create_sheet("Legacy-รายวัน"),
+        report.raw_counter_records,
+        report.devices,
         period_text,
     )
 
@@ -183,25 +260,431 @@ def export_cloud_reports_xlsx(
     return destination
 
 
+def _raw_type(record: RawCounterDailyRecord) -> tuple[str, str, str]:
+    """Keep exact model counters distinct when their labels collide."""
+
+    return record.canonical_field, record.label, record.source_path
+
+
+def _raw_display_label(
+    raw_type: tuple[str, str, str],
+    all_types: tuple[tuple[str, str, str], ...],
+) -> str:
+    field, label, source_path = raw_type
+    base = label or field or "Unknown"
+    duplicate = sum(
+        1 for item in all_types if (item[1] or item[0] or "Unknown") == base
+    ) > 1
+    return f"{base} [{source_path}]" if duplicate and source_path else base
+
+
+def _raw_device_identity(
+    slot: int,
+    serial: str,
+    name: str,
+) -> str:
+    normalized_serial = str(serial or "").strip().casefold()
+    if normalized_serial:
+        return f"serial:{normalized_serial}"
+    return f"unknown:{slot}:{str(name or '').strip().casefold()}"
+
+
+def _raw_device_key(record: RawCounterDailyRecord) -> tuple[int, str]:
+    return (
+        int(record.device_slot),
+        _raw_device_identity(
+            int(record.device_slot),
+            record.device_serial_snapshot,
+            record.device_name_snapshot,
+        ),
+    )
+
+
+def _masked_serial(serial: str) -> str:
+    value = str(serial or "").strip()
+    return f"••••{value[-4:]}" if value else ""
+
+
+def _raw_device_columns(
+    records: tuple[RawCounterDailyRecord, ...],
+    devices: tuple[DeviceConfig, ...],
+) -> tuple[_DeviceColumn, ...]:
+    columns: dict[tuple[int, str], _DeviceColumn] = {}
+    for record in records:
+        key = _raw_device_key(record)
+        name = record.device_name_snapshot or f"MFP {record.device_slot + 1}"
+        serial_suffix = _masked_serial(record.device_serial_snapshot)
+        columns.setdefault(
+            key,
+            _DeviceColumn(
+                slot=key[0],
+                identity=key[1],
+                label=(
+                    f"Slot {key[0] + 1} · {name} · {serial_suffix}"
+                    if serial_suffix
+                    else f"Slot {key[0] + 1} · {name} · ไม่พบ Serial"
+                ),
+            ),
+        )
+    for device in devices:
+        key = (
+            int(device.slot),
+            _raw_device_identity(int(device.slot), device.serial, device.name),
+        )
+        serial_suffix = _masked_serial(device.serial)
+        columns.setdefault(
+            key,
+            _DeviceColumn(
+                slot=key[0],
+                identity=key[1],
+                label=(
+                    f"Slot {key[0] + 1} · {device.name} · {serial_suffix}"
+                    if serial_suffix
+                    else f"Slot {key[0] + 1} · {device.name} · ไม่พบ Serial"
+                ),
+            ),
+        )
+    return tuple(sorted(columns.values(), key=lambda item: (item.slot, item.identity)))
+
+
+def _raw_total(records) -> float | str:
+    values = tuple(records)
+    if not values:
+        return "—"
+    return sum(float(item.delta_value) for item in values)
+
+
+def _write_legacy_machine_sheet(
+    worksheet,
+    records: tuple[RawCounterDailyRecord, ...],
+    devices: tuple[DeviceConfig, ...],
+    period_text: str,
+) -> None:
+    device_records = tuple(record for record in records if not record.is_subject)
+    device_columns = _raw_device_columns(records, devices)
+    types = tuple(
+        sorted({_raw_type(record) for record in device_records}, key=lambda item: (item[1].casefold(), item[0]))
+    )
+    columns = max(2, 2 + len(device_columns))
+    _sheet_title(
+        worksheet,
+        "Legacy — รายเครื่อง",
+        f"ช่วงวันที่ {period_text} · ชื่อ Counter และค่าตรงจากเครื่อง ไม่มีการ Map",
+        columns,
+    )
+    _header_cell(worksheet.cell(4, 1, "กลุ่มงาน"), NAVY)
+    _header_cell(worksheet.cell(4, 2, "ประเภท Counter (ชื่อจากเครื่อง)"), NAVY)
+    for column, device in enumerate(device_columns, start=3):
+        _header_cell(_set_cell_value(worksheet, 4, column, device.label), BLUE)
+    for row_no, raw_type in enumerate(types, start=5):
+        row: list[object] = [
+            raw_operation_label(raw_type[0], raw_type[1]),
+            _raw_display_label(raw_type, types),
+        ]
+        for device in device_columns:
+            row.append(
+                _raw_total(
+                    record
+                    for record in device_records
+                    if _raw_device_key(record) == device.key
+                    and _raw_type(record) == raw_type
+                )
+            )
+        _write_row(worksheet, row_no, row, currency_columns=set())
+    if not types:
+        _empty_row(worksheet, 5, columns, "ไม่มี Raw Counter ในช่วงวันที่เลือก")
+    _finish_sheet(worksheet, columns, max(5, 4 + len(types)), freeze="C5", first_width=24)
+    worksheet.column_dimensions["B"].width = 34
+
+
+def _raw_dynamic_columns(
+    records: tuple[RawCounterDailyRecord, ...],
+) -> tuple[tuple[int, str, str, str, str], ...]:
+    return tuple(
+        sorted(
+            {
+                (
+                    record.device_slot,
+                    _raw_device_key(record)[1],
+                    record.canonical_field,
+                    record.label,
+                    record.source_path,
+                )
+                for record in records
+            },
+            key=lambda item: (item[0], item[1], item[3].casefold(), item[2], item[4]),
+        )
+    )
+
+
+def _write_legacy_user_sheet(
+    worksheet,
+    records: tuple[RawCounterDailyRecord, ...],
+    devices: tuple[DeviceConfig, ...],
+    period_text: str,
+) -> None:
+    subject_records = tuple(record for record in records if record.is_subject)
+    names = {item.key: item.label for item in _raw_device_columns(records, devices)}
+    dynamic = _raw_dynamic_columns(subject_records)
+    subjects = tuple(
+        sorted(
+            {
+                (record.subject_type, record.subject_id, record.subject_name or record.subject_id)
+                for record in subject_records
+            },
+            key=lambda item: (item[2].casefold(), item[0], item[1]),
+        )
+    )
+    columns = max(1, 1 + len(dynamic))
+    _sheet_title(
+        worksheet,
+        "Legacy — ผู้ใช้",
+        f"ช่วงวันที่ {period_text} · ทุกประเภท Counter ต่อผู้ใช้และต่อเครื่องตามข้อมูลต้นทาง",
+        columns,
+    )
+    _header_cell(worksheet.cell(4, 1, "ผู้ใช้ / Account"), NAVY)
+    raw_types = tuple((item[2], item[3], item[4]) for item in dynamic)
+    for column, (slot, identity, field, label, source_path) in enumerate(dynamic, start=2):
+        _header_cell(
+            _set_cell_value(
+                worksheet,
+                4,
+                column,
+                f"{names.get((slot, identity), f'Slot {slot + 1}')}\n"
+                f"{raw_operation_label(field, label)} · "
+                f"{_raw_display_label((field, label, source_path), raw_types)}",
+            ),
+            (BLUE, TEAL, PURPLE)[slot % 3],
+        )
+    for row_no, (subject_type, subject_id, subject_name) in enumerate(subjects, start=5):
+        row: list[object] = [f"{subject_name} ({subject_type})"]
+        for slot, identity, field, label, source_path in dynamic:
+            row.append(
+                _raw_total(
+                    record
+                    for record in subject_records
+                    if record.subject_type == subject_type
+                    and record.subject_id == subject_id
+                    and _raw_device_key(record) == (slot, identity)
+                    and _raw_type(record) == (field, label, source_path)
+                )
+            )
+        _write_row(worksheet, row_no, row, currency_columns=set())
+    if not subjects:
+        _empty_row(worksheet, 5, columns, "ไม่มี Raw Counter แยกผู้ใช้ / Account")
+    _finish_sheet(worksheet, columns, max(5, 4 + len(subjects)), freeze="B5", first_width=28)
+
+
+def _write_legacy_daily_sheet(
+    worksheet,
+    records: tuple[RawCounterDailyRecord, ...],
+    devices: tuple[DeviceConfig, ...],
+    period_text: str,
+) -> None:
+    device_records = tuple(record for record in records if not record.is_subject)
+    names = {item.key: item.label for item in _raw_device_columns(records, devices)}
+    dynamic = _raw_dynamic_columns(device_records)
+    days = tuple(sorted({record.record_date for record in device_records}))
+    columns = max(1, 1 + len(dynamic))
+    _sheet_title(
+        worksheet,
+        "Legacy — รายวัน",
+        f"ช่วงวันที่ {period_text} · หนึ่งวันต่อหนึ่งแถว · ไม่มีการ Map หรือเดาค่าที่ขาด",
+        columns,
+    )
+    _header_cell(worksheet.cell(4, 1, "วันที่"), NAVY)
+    raw_types = tuple((item[2], item[3], item[4]) for item in dynamic)
+    for column, (slot, identity, field, label, source_path) in enumerate(dynamic, start=2):
+        _header_cell(
+            _set_cell_value(
+                worksheet,
+                4,
+                column,
+                f"{names.get((slot, identity), f'Slot {slot + 1}')}\n"
+                f"{raw_operation_label(field, label)} · "
+                f"{_raw_display_label((field, label, source_path), raw_types)}",
+            ),
+            (BLUE, TEAL, PURPLE)[slot % 3],
+        )
+    for row_no, day in enumerate(days, start=5):
+        row: list[object] = [day]
+        for slot, identity, field, label, source_path in dynamic:
+            row.append(
+                _raw_total(
+                    record
+                    for record in device_records
+                    if record.record_date == day
+                    and _raw_device_key(record) == (slot, identity)
+                    and _raw_type(record) == (field, label, source_path)
+                )
+            )
+        _write_row(worksheet, row_no, row, currency_columns=set())
+        worksheet.cell(row_no, 1).number_format = "dd/mm/yyyy"
+    if not days:
+        _empty_row(worksheet, 5, columns, "ไม่มี Raw Counter รายวัน")
+    _finish_sheet(worksheet, columns, max(5, 4 + len(days)), freeze="B5", first_width=14)
+
+
+def _operation_available(records: tuple[MonthlyUsage, ...], operation: str) -> bool:
+    return any(
+        bool(getattr(record, f"{operation}_available", False))
+        or any(
+            _combined(record, f"{operation}_{suffix}")
+            for suffix in ("a3_color", "a3_bw", "a4_color", "a4_bw", "other")
+        )
+        for record in records
+    )
+
+
+def _operation_total(records: tuple[MonthlyUsage, ...], operation: str) -> float:
+    return sum(
+        _combined(record, f"{operation}_{suffix}")
+        for record in records
+        for suffix in ("a3_color", "a3_bw", "a4_color", "a4_bw", "other")
+    )
+
+
+def _operation_cost(
+    records: tuple[MonthlyUsage, ...],
+    costs: tuple[DailyCategoryCost, ...],
+    operation_field: str,
+    category_field: str,
+) -> float | None:
+    if not category_field:
+        return None
+    costs_by_day: defaultdict[date, float] = defaultdict(float)
+    for cost in costs:
+        costs_by_day[cost.record_date] += float(getattr(cost, category_field, 0.0) or 0.0)
+    amount = 0.0
+    for record in records:
+        category_usage = _combined(record, category_field)
+        operation_usage = _combined(record, operation_field)
+        if category_usage > 0 and operation_usage > 0:
+            if record.period_start not in costs_by_day:
+                return None
+            amount += costs_by_day[record.period_start] * operation_usage / category_usage
+    return round(amount, 2)
+
+
+def _raw_matches_device(
+    record: RawCounterDailyRecord,
+    device_key: tuple[int, str],
+) -> bool:
+    slot, identity = device_key
+    if int(record.device_slot) != int(slot):
+        return False
+    if identity.startswith("serial:"):
+        return record.device_serial_snapshot == identity.removeprefix("serial:")
+    return True
+
+
+def _subject_operation_cost(
+    subject_records: tuple[RawCounterDailyRecord, ...],
+    all_raw_records: tuple[RawCounterDailyRecord, ...],
+    costs: tuple[DailyCategoryCost, ...],
+    device_key: tuple[int, str],
+    operation_field: str,
+    category_field: str,
+) -> float | None:
+    """Attribute frozen device-day cost only when exact operation evidence exists.
+
+    The calculation never invents a user paper mix.  It uses the exact subject
+    counter as a share of the matching exact device Print+Copy counter for the
+    same day.  A missing denominator or frozen daily category cost is shown as
+    unavailable by returning ``None``.
+    """
+
+    if not category_field:
+        return None
+    by_day: defaultdict[date, list[RawCounterDailyRecord]] = defaultdict(list)
+    for record in subject_records:
+        by_day[record.record_date].append(record)
+    amount = 0.0
+    evidence_seen = False
+    for day, rows in by_day.items():
+        subject_breakdown = breakdown_from_raw_records(rows)
+        subject_pages = float(getattr(subject_breakdown, operation_field, 0.0) or 0.0)
+        if subject_pages <= 0:
+            continue
+        evidence_seen = True
+        device_rows = tuple(
+            record
+            for record in all_raw_records
+            if not record.is_subject
+            and record.record_date == day
+            and _raw_matches_device(record, device_key)
+        )
+        device_breakdown = breakdown_from_raw_records(device_rows)
+        suffix = operation_field.split("_", 1)[1]
+        category_pages = float(
+            getattr(device_breakdown, f"print_{suffix}", 0.0) or 0.0
+        ) + float(getattr(device_breakdown, f"copy_{suffix}", 0.0) or 0.0)
+        daily_cost = next(
+            (
+                cost
+                for cost in costs
+                if cost.record_date == day
+                and (cost.device_slot, cost.device_identity) == device_key
+            ),
+            None,
+        )
+        if daily_cost is None or category_pages <= 0:
+            return None
+        amount += (
+            float(getattr(daily_cost, category_field, 0.0) or 0.0)
+            * subject_pages
+            / category_pages
+        )
+    return round(amount, 2) if evidence_seen else None
+
+
+def _subject_total_cost(
+    subject_records: tuple[RawCounterDailyRecord, ...],
+    all_raw_records: tuple[RawCounterDailyRecord, ...],
+    costs: tuple[DailyCategoryCost, ...],
+    device_key: tuple[int, str],
+) -> float | None:
+    breakdown = breakdown_from_raw_records(subject_records)
+    values: list[float] = []
+    for field, _label, category_field, _operation in OPERATION_FIELDS:
+        if not category_field or float(getattr(breakdown, field, 0.0) or 0.0) <= 0:
+            continue
+        value = _subject_operation_cost(
+            subject_records,
+            all_raw_records,
+            costs,
+            device_key,
+            field,
+            category_field,
+        )
+        if value is None:
+            return None
+        values.append(value)
+    return round(sum(values), 2) if values else None
+
+
 def _write_machine_sheet(
     worksheet,
     records: tuple[MonthlyUsage, ...],
     costs: tuple[DailyCategoryCost, ...],
     devices: tuple[_DeviceColumn, ...],
     period_text: str,
+    *,
+    cost_field: str,
+    cost_note: str,
 ) -> None:
-    total_columns = 1 + len(CATEGORY_FIELDS) * 2 + 4
+    total_columns = 1 + len(OPERATION_FIELDS) * 2 + 6
     _sheet_title(
         worksheet,
         "การใช้งานรายเครื่อง",
-        f"ช่วงวันที่ {period_text} · หนึ่งเครื่องต่อหนึ่งแถว",
+        f"ช่วงวันที่ {period_text} · หนึ่งเครื่องต่อหนึ่งแถว · {cost_note}",
         total_columns,
     )
     _header_cell(worksheet.cell(3, 1, "เครื่องพิมพ์"), NAVY)
     _header_cell(worksheet.cell(4, 1, "ชื่อเครื่อง"), NAVY)
     column = 2
-    for index, (_field, label) in enumerate(CATEGORY_FIELDS):
-        color = (BLUE, TEAL, PURPLE, BLUE)[index]
+    for _field, label, _cost_field, operation in OPERATION_FIELDS:
+        color = BLUE if operation == "print" else TEAL
         worksheet.merge_cells(start_row=3, start_column=column, end_row=3, end_column=column + 1)
         _header_cell(worksheet.cell(3, column, label), color)
         _header_cell(worksheet.cell(4, column, "จำนวนหน้า"), color)
@@ -209,6 +692,8 @@ def _write_machine_sheet(
         column += 2
     for group_label, detail_label in (
         ("Scan", "จำนวน"),
+        ("Print", "รวมหน้า"),
+        ("Copy", "รวมหน้า"),
         ("รวม", "จำนวนหน้า"),
         ("รวม", "ค่าใช้จ่าย (บาท)"),
         ("สถานะ", "ผลตรวจ"),
@@ -223,22 +708,39 @@ def _write_machine_sheet(
         device_records = grouped_records.get(device.key, ())
         device_costs = grouped_costs.get(device.key, ())
         row: list[object] = [device.label]
-        for field, _label in CATEGORY_FIELDS:
+        print_available = _operation_available(device_records, "print")
+        copy_available = _operation_available(device_records, "copy")
+        for field, _label, category_field, operation in OPERATION_FIELDS:
+            available = print_available if operation == "print" else copy_available
             row.extend(
                 (
-                    sum(_combined(record, field) for record in device_records),
-                    sum(getattr(cost, field) for cost in device_costs),
+                    sum(_combined(record, field) for record in device_records)
+                    if available
+                    else None,
+                    _operation_cost(
+                        device_records,
+                        device_costs,
+                        field,
+                        category_field,
+                    )
+                    if available
+                    else None,
                 )
             )
         row.extend(
             (
                 sum(_combined(record, "scan") for record in device_records),
+                _operation_total(device_records, "print") if print_available else None,
+                _operation_total(device_records, "copy") if copy_available else None,
                 sum(_usage_total(record) for record in device_records),
-                sum(_combined(record, "net_cost") for record in device_records),
+                sum(_combined(record, cost_field) for record in device_records),
                 _review_status(device_records),
             )
         )
-        _write_row(worksheet, row_index, row, currency_columns=_machine_currency_columns())
+        currency_columns = {
+            3 + index * 2 for index in range(len(OPERATION_FIELDS))
+        } | {total_columns - 1}
+        _write_row(worksheet, row_index, row, currency_columns=currency_columns)
     if not devices:
         _empty_row(worksheet, 5, total_columns, "ไม่มีข้อมูลเครื่องพิมพ์ในช่วงวันที่เลือก")
     _finish_sheet(worksheet, total_columns, max(5, 4 + len(devices)), freeze="B5", first_width=30)
@@ -249,15 +751,20 @@ def _write_user_sheet(
     subjects: tuple[SubjectPeriodUsage, ...],
     devices: tuple[_DeviceColumn, ...],
     period_text: str,
+    raw_records: tuple[RawCounterDailyRecord, ...],
+    costs: tuple[DailyCategoryCost, ...],
+    *,
+    cost_note: str,
 ) -> None:
     fixed_columns = 3
-    total_columns = fixed_columns + len(devices) * len(DEVICE_SUBHEADERS) + 2
+    total_columns = fixed_columns + len(devices) * len(OPERATION_DEVICE_SUBHEADERS) + 2
     _sheet_title(
         worksheet,
         "มุมมองผู้ใช้",
         (
             f"ช่วงวันที่ {period_text} · หนึ่งผู้ใช้ต่อหนึ่งแถว · "
-            "เครื่องส่งเฉพาะยอดรวมต่อผู้ใช้ จึงไม่ประมาณ A3/A4 สี/ขาวดำหรือค่าใช้จ่าย"
+            "แยก Print/Copy เฉพาะ Counter ที่ต้นทางระบุชัดเจน และไม่ประมาณค่าที่ขาด · "
+            f"{cost_note}"
         ),
         total_columns,
     )
@@ -269,11 +776,11 @@ def _write_user_sheet(
         _header_cell(worksheet.cell(4, column, detail_label), NAVY)
     column = fixed_columns + 1
     for index, device in enumerate(devices):
-        end_column = column + len(DEVICE_SUBHEADERS) - 1
+        end_column = column + len(OPERATION_DEVICE_SUBHEADERS) - 1
         color = (BLUE, TEAL, PURPLE)[index % 3]
         worksheet.merge_cells(start_row=3, start_column=column, end_row=3, end_column=end_column)
-        _header_cell(worksheet.cell(3, column, device.label), color)
-        for offset, label in enumerate(DEVICE_SUBHEADERS):
+        _header_cell(_set_cell_value(worksheet, 3, column, device.label), color)
+        for offset, label in enumerate(OPERATION_DEVICE_SUBHEADERS):
             _header_cell(worksheet.cell(4, column + offset, label), color)
         column = end_column + 1
     _header_cell(worksheet.cell(3, column, "รวมทุกเครื่อง"), NAVY)
@@ -291,6 +798,18 @@ def _write_user_sheet(
         subject_groups.items(),
         key=lambda item: str(item[1]["name"]).casefold(),
     )
+    raw_groups: defaultdict[tuple[str, str, tuple[int, str]], list[RawCounterDailyRecord]] = defaultdict(list)
+    for record in raw_records:
+        if not record.is_subject:
+            continue
+        identity = (
+            f"serial:{record.device_serial_snapshot}"
+            if record.device_serial_snapshot
+            else f"slot:{record.device_slot}"
+        )
+        raw_groups[
+            (record.subject_type, record.subject_id, (record.device_slot, identity))
+        ].append(record)
     for row_index, ((subject_type, subject_id), group) in enumerate(ordered_groups, start=5):
         subject_records = tuple(group["records"])
         row: list[object] = [group["name"], subject_type, subject_id]
@@ -300,14 +819,65 @@ def _write_user_sheet(
                 for record in subject_records
                 if _subject_device_key(record) == device.key
             )
-            row.extend((None, None, None, None, None, None, None, None, None, usage, None))
+            subject_raw = tuple(
+                raw_groups.get((subject_type, subject_id, device.key), ())
+            )
+            breakdown = breakdown_from_raw_records(subject_raw)
+            for field, _label, category_field, operation in OPERATION_FIELDS:
+                available = (
+                    breakdown.print_available
+                    if operation == "print"
+                    else breakdown.copy_available
+                )
+                row.extend(
+                    (
+                        getattr(breakdown, field) if available else None,
+                        _subject_operation_cost(
+                            subject_raw,
+                            raw_records,
+                            costs,
+                            device.key,
+                            field,
+                            category_field,
+                        )
+                        if available
+                        else None,
+                    )
+                )
+            row.extend(
+                (
+                    breakdown.scan if breakdown.scan_available else None,
+                    breakdown.print_total if breakdown.print_available else None,
+                    breakdown.copy_total if breakdown.copy_available else None,
+                    usage,
+                    _subject_total_cost(
+                        subject_raw,
+                        raw_records,
+                        costs,
+                        device.key,
+                    ),
+                )
+            )
         row.extend(
             (
                 sum(record.period_usage for record in subject_records),
                 "ตรวจสอบ" if any(record.needs_review for record in subject_records) else "พร้อมใช้",
             )
         )
-        _write_row(worksheet, row_index, row, currency_columns=set())
+        currency_columns = {
+            fixed_columns
+            + 2
+            + device_index * len(OPERATION_DEVICE_SUBHEADERS)
+            + field_index * 2
+            for device_index in range(len(devices))
+            for field_index in range(len(OPERATION_FIELDS))
+        } | {
+            fixed_columns
+            + device_index * len(OPERATION_DEVICE_SUBHEADERS)
+            + len(OPERATION_DEVICE_SUBHEADERS)
+            for device_index in range(len(devices))
+        }
+        _write_row(worksheet, row_index, row, currency_columns=currency_columns)
     if not subject_groups:
         _empty_row(worksheet, 5, total_columns, "ไม่มีข้อมูลผู้ใช้ / Account Track ในช่วงวันที่เลือก")
     _finish_sheet(
@@ -325,23 +895,26 @@ def _write_daily_sheet(
     costs: tuple[DailyCategoryCost, ...],
     devices: tuple[_DeviceColumn, ...],
     period_text: str,
+    *,
+    cost_field: str,
+    cost_note: str,
 ) -> None:
-    total_columns = 1 + len(devices) * len(DEVICE_SUBHEADERS) + 2
+    total_columns = 1 + len(devices) * len(OPERATION_DEVICE_SUBHEADERS) + 2
     _sheet_title(
         worksheet,
         "มุมมองรายวัน",
-        f"ช่วงวันที่ {period_text} · หนึ่งวันต่อหนึ่งแถว ไม่มีวันที่ซ้ำ",
+        f"ช่วงวันที่ {period_text} · หนึ่งวันต่อหนึ่งแถว ไม่มีวันที่ซ้ำ · {cost_note}",
         total_columns,
     )
     _header_cell(worksheet.cell(3, 1, "วันที่"), NAVY)
     _header_cell(worksheet.cell(4, 1, "วันที่"), NAVY)
     column = 2
     for index, device in enumerate(devices):
-        end_column = column + len(DEVICE_SUBHEADERS) - 1
+        end_column = column + len(OPERATION_DEVICE_SUBHEADERS) - 1
         color = (BLUE, TEAL, PURPLE)[index % 3]
         worksheet.merge_cells(start_row=3, start_column=column, end_row=3, end_column=end_column)
-        _header_cell(worksheet.cell(3, column, device.label), color)
-        for offset, label in enumerate(DEVICE_SUBHEADERS):
+        _header_cell(_set_cell_value(worksheet, 3, column, device.label), color)
+        for offset, label in enumerate(OPERATION_DEVICE_SUBHEADERS):
             _header_cell(worksheet.cell(4, column + offset, label), color)
         column = end_column + 1
     for group_label, detail_label in (
@@ -353,26 +926,67 @@ def _write_daily_sheet(
         column += 1
 
     record_index = {(record.period_start, _record_device_key(record)): record for record in records}
-    cost_index = {(cost.record_date, (cost.device_slot, cost.device_identity)): cost for cost in costs}
     days = sorted({record.period_start for record in records})
-    currency_columns = _wide_currency_columns(1, len(devices)) | {total_columns}
+    currency_columns = {
+        3
+        + device_index * len(OPERATION_DEVICE_SUBHEADERS)
+        + field_index * 2
+        for device_index in range(len(devices))
+        for field_index in range(len(OPERATION_FIELDS))
+    } | {
+        1 + (device_index + 1) * len(OPERATION_DEVICE_SUBHEADERS)
+        for device_index in range(len(devices))
+    } | {total_columns}
     for row_index, day in enumerate(days, start=5):
         row: list[object] = [day]
         daily_usage = 0.0
         daily_cost = 0.0
         for device in devices:
             record = record_index.get((day, device.key))
-            cost = cost_index.get((day, device.key))
             if record is None:
-                row.extend((0.0,) * len(DEVICE_SUBHEADERS))
+                # Blank means unavailable.  A numeric zero would falsely claim
+                # that this printer was observed and had no usage that day.
+                row.extend((None,) * len(OPERATION_DEVICE_SUBHEADERS))
                 continue
-            for field, _label in CATEGORY_FIELDS:
-                row.extend((_combined(record, field), getattr(cost, field, 0.0) if cost else 0.0))
+            print_available = _operation_available((record,), "print")
+            copy_available = _operation_available((record,), "copy")
+            cost = next(
+                (
+                    item
+                    for item in costs
+                    if item.record_date == day
+                    and (item.device_slot, item.device_identity) == device.key
+                ),
+                None,
+            )
+            for field, _label, category_field, operation in OPERATION_FIELDS:
+                available = print_available if operation == "print" else copy_available
+                row.extend(
+                    (
+                        _combined(record, field) if available else None,
+                        _operation_cost(
+                            (record,),
+                            (cost,) if cost is not None else (),
+                            field,
+                            category_field,
+                        )
+                        if available
+                        else None,
+                    )
+                )
             usage_total = _usage_total(record)
-            net_cost = _combined(record, "net_cost")
-            row.extend((_combined(record, "scan"), usage_total, net_cost))
+            selected_cost = _combined(record, cost_field)
+            row.extend(
+                (
+                    _combined(record, "scan"),
+                    _operation_total((record,), "print") if print_available else None,
+                    _operation_total((record,), "copy") if copy_available else None,
+                    usage_total,
+                    selected_cost,
+                )
+            )
             daily_usage += usage_total
-            daily_cost += net_cost
+            daily_cost += selected_cost
         row.extend((daily_usage, daily_cost))
         _write_row(worksheet, row_index, row, currency_columns=currency_columns)
         worksheet.cell(row_index, 1).number_format = "dd/mm/yyyy"
@@ -458,15 +1072,65 @@ def _period_text(period: tuple[str, str] | None) -> str:
     return f"{start:%d/%m/%Y} – {end:%d/%m/%Y}"
 
 
+def _neutralize_untrusted_cell_string(value: str) -> tuple[str, bool]:
+    """Return text that Excel cannot reinterpret as a formula.
+
+    Printer, user, and raw-counter labels are external input even when they
+    arrive through a trusted local database.  Excel treats ``=``, ``+``, ``-``
+    and ``@`` as formula prefixes, and spreadsheet applications can ignore
+    leading whitespace/control characters when deciding how to interpret a
+    cell.  Prefixing an apostrophe and setting ``quotePrefix`` preserves the
+    displayed text while forcing a string cell.
+
+    XML-illegal controls are removed before writing because openpyxl cannot
+    serialize them.  Numeric/date values bypass this function entirely.
+    """
+
+    cleaned = _ILLEGAL_XML_CONTROL_RE.sub("", value)
+    for character in cleaned:
+        category = unicodedata.category(character)
+        if character.isspace() or category in {"Cc", "Cf"}:
+            continue
+        if character in _EXCEL_FORMULA_PREFIXES:
+            return f"'{cleaned}", True
+        break
+    return cleaned, False
+
+
+def _set_cell_value(
+    worksheet,
+    row: int,
+    column: int,
+    value: object,
+    *,
+    trusted_formula: bool = False,
+):
+    """Write one cell, neutralizing strings unless explicitly trusted.
+
+    ``trusted_formula`` is reserved for formulas authored by this exporter.
+    External values must never set it.  The current report intentionally
+    writes no formulas, but retaining this explicit escape hatch prevents a
+    future program-authored formula from being silently converted to text.
+    """
+
+    neutralized = False
+    if isinstance(value, str) and not trusted_formula:
+        value, neutralized = _neutralize_untrusted_cell_string(value)
+    cell = worksheet.cell(row, column, value)
+    if neutralized:
+        cell.quotePrefix = True
+    return cell
+
+
 def _sheet_title(worksheet, title: str, subtitle: str, columns: int) -> None:
     worksheet.merge_cells(start_row=1, start_column=1, end_row=1, end_column=columns)
-    title_cell = worksheet.cell(1, 1, title)
+    title_cell = _set_cell_value(worksheet, 1, 1, title)
     title_cell.font = Font(name="Aptos Display", size=16, bold=True, color=WHITE)
     title_cell.fill = PatternFill("solid", fgColor=NAVY)
     title_cell.alignment = Alignment(horizontal="left", vertical="center")
     worksheet.row_dimensions[1].height = 28
     worksheet.merge_cells(start_row=2, start_column=1, end_row=2, end_column=columns)
-    subtitle_cell = worksheet.cell(2, 1, subtitle)
+    subtitle_cell = _set_cell_value(worksheet, 2, 1, subtitle)
     subtitle_cell.font = Font(name="Aptos", size=10, color=MUTED)
     subtitle_cell.fill = PatternFill("solid", fgColor=PALE)
     subtitle_cell.alignment = Alignment(horizontal="left", vertical="center", wrap_text=True)
@@ -474,6 +1138,11 @@ def _sheet_title(worksheet, title: str, subtitle: str, columns: int) -> None:
 
 
 def _header_cell(cell, color: str) -> None:
+    if isinstance(cell.value, str):
+        value, neutralized = _neutralize_untrusted_cell_string(cell.value)
+        cell.value = value
+        if neutralized:
+            cell.quotePrefix = True
     cell.fill = PatternFill("solid", fgColor=color)
     cell.font = Font(name="Aptos", size=10, bold=True, color=WHITE)
     cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
@@ -481,7 +1150,7 @@ def _header_cell(cell, color: str) -> None:
 
 def _write_row(worksheet, row_index: int, row: list[object], *, currency_columns: set[int]) -> None:
     for column, value in enumerate(row, start=1):
-        cell = worksheet.cell(row_index, column, value)
+        cell = _set_cell_value(worksheet, row_index, column, value)
         is_number = isinstance(value, (int, float)) and not isinstance(value, bool)
         cell.alignment = Alignment(horizontal="right" if is_number else "left", vertical="center")
         if column in currency_columns and is_number:
@@ -494,7 +1163,7 @@ def _write_row(worksheet, row_index: int, row: list[object], *, currency_columns
 
 def _empty_row(worksheet, row: int, columns: int, message: str) -> None:
     worksheet.merge_cells(start_row=row, start_column=1, end_row=row, end_column=columns)
-    cell = worksheet.cell(row, 1, message)
+    cell = _set_cell_value(worksheet, row, 1, message)
     cell.font = Font(italic=True, color=MUTED)
     cell.alignment = Alignment(horizontal="center", vertical="center")
     cell.fill = PatternFill("solid", fgColor="F7FAFC")

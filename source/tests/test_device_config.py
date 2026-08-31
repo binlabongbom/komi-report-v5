@@ -8,9 +8,11 @@ import pytest
 from database import _open, factory_reset_v5, init_db, reset_usage_data, set_db_path
 from komi_snmp_profiler.credential_store import CredentialStoreError, SessionCredentialStore
 from services.device_config import DatabaseCredentialStore, DeviceConfig, DeviceConfigRepository
+from services.registration_data_notice import REGISTRATION_NOTICE_VERSION
 from services.registration_envelope import build_registration_envelope
 from services.registration_repository import RegistrationRepository
 from services.registration_vault import SessionRegistrationSecretStore
+from services.v5_2_runtime_state import V52RuntimeStateRepository
 
 
 def test_device_repository_persists_one_to_three_devices(tmp_path):
@@ -48,6 +50,71 @@ def test_database_credential_store_uses_per_device_password(tmp_path):
 
     assert credential is not None
     assert credential.password == password
+
+
+def test_device_edit_updates_registration_inventory_in_the_same_transaction(tmp_path):
+    set_db_path(tmp_path / "atomic-inventory.db")
+    init_db()
+    repository = DeviceConfigRepository()
+    repository.replace_all([DeviceConfig(0, "Old", "192.0.2.10")])
+    state = V52RuntimeStateRepository()
+    state.configure(
+        "offline",
+        "Synthetic Company",
+        "atomic-installation",
+        "2026-08-31",
+        REGISTRATION_NOTICE_VERSION,
+        "2026-08-31T08:00:00+07:00",
+        registration_devices=[
+            {
+                "serial_number": "OLD-SERIAL",
+                "model": "Old Printer",
+                "selected": True,
+                "device_slot": 1,
+            }
+        ],
+    )
+
+    repository.replace_all(
+        [DeviceConfig(0, "New", "192.0.2.11")],
+        registration_devices=[
+            {
+                "serial_number": "NEW-SERIAL",
+                "model": "New Printer",
+                "selected": True,
+                "device_slot": 1,
+            }
+        ],
+    )
+
+    assert [device.name for device in repository.list()] == ["New"]
+    assert state.registration_devices()[0]["serial_number"] == "NEW-SERIAL"
+    assert state.internal()["mode"] == "offline"
+
+
+def test_device_edit_rolls_back_when_registration_state_is_missing(tmp_path):
+    set_db_path(tmp_path / "atomic-inventory-failure.db")
+    init_db()
+    repository = DeviceConfigRepository()
+    repository.replace_all([DeviceConfig(0, "Old", "192.0.2.10")])
+
+    with pytest.raises(ValueError, match="runtime is not configured"):
+        repository.replace_all(
+            [DeviceConfig(0, "New", "192.0.2.11")],
+            registration_devices=[
+                {
+                    "serial_number": "NEW-SERIAL",
+                    "model": "New Printer",
+                    "selected": True,
+                    "device_slot": 1,
+                }
+            ],
+        )
+
+    devices = repository.list()
+    assert [(device.name, device.host) for device in devices] == [
+        ("Old", "192.0.2.10")
+    ]
 
 
 def test_printer_tls_policy_defaults_to_system_and_persists_explicit_pin(tmp_path):

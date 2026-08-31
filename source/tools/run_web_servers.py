@@ -12,6 +12,9 @@ import time
 import webbrowser
 from pathlib import Path
 
+from services.web_access import read_web_runtime_values
+from services.web_service import WebServiceManager
+
 
 def _wait_for_port(host: str, port: int, process: subprocess.Popen[bytes], timeout: float = 30.0) -> None:
     deadline = time.monotonic() + timeout
@@ -107,14 +110,21 @@ def run(
         raise RuntimeError(
             "พบ Web service เพียงบางส่วน กรุณาปิด process ที่ใช้ port 3000/8766 แล้วเปิดใหม่"
         )
-    npm = shutil.which("npm.cmd") or shutil.which("npm")
-    if npm is None:
-        raise RuntimeError("ไม่พบ Node.js/npm กรุณาติดตั้ง Node.js LTS ก่อน")
     if not (web_runtime / ".next" / "BUILD_ID").is_file():
         raise FileNotFoundError(f"ไม่พบ Web build ใน runtime: {web_runtime}")
 
+    standalone = (web_runtime / "server.js").is_file()
+    npm = shutil.which("npm.cmd") or shutil.which("npm")
+    node = shutil.which("node.exe") or shutil.which("node")
+    if standalone and node is None:
+        raise RuntimeError("ไม่พบ Node.js runtime ที่มากับตัวติดตั้ง")
+    if not standalone and npm is None:
+        raise RuntimeError("ไม่พบ Node.js/npm กรุณาติดตั้ง Node.js LTS ก่อน")
+
     api: subprocess.Popen[bytes] | None = None
     web: subprocess.Popen[bytes] | None = None
+    proxy = None
+    proxy_thread = None
     previous_handlers: dict[int, signal.Handlers] = {}
 
     def stop_from_signal(signum: int, _frame: object) -> None:
@@ -134,8 +144,33 @@ def run(
         )
         _wait_for_port("127.0.0.1", 8766, api)
 
-        web = subprocess.Popen([npm, "run", "start"], cwd=web_runtime, env=environment)
-        _wait_for_https("127.0.0.1", 3000, web)
+        if standalone:
+            runtime_values = read_web_runtime_values(web_runtime / ".env.local")
+            certificate = Path(runtime_values.get("KOMI_TLS_CERT_FILE", ""))
+            private_key = Path(runtime_values.get("KOMI_TLS_KEY_FILE", ""))
+            if not certificate.is_file() or not private_key.is_file():
+                raise RuntimeError("ไม่พบ Certificate สำหรับเปิด Web Report ผ่าน HTTPS")
+            environment.update(runtime_values)
+            environment["HOSTNAME"] = "127.0.0.1"
+            environment["PORT"] = "3001"
+            web = subprocess.Popen([str(node), "server.js"], cwd=web_runtime, env=environment)
+            _wait_for_port("127.0.0.1", 3001, web)
+            proxy = WebServiceManager._https_proxy_server(
+                certificate=certificate,
+                private_key=private_key,
+            )
+            import threading
+
+            proxy_thread = threading.Thread(
+                target=proxy.serve_forever,
+                name="komi-installer-https-proxy",
+                daemon=True,
+            )
+            proxy_thread.start()
+            _wait_for_https("127.0.0.1", 3000, web)
+        else:
+            web = subprocess.Popen([str(npm), "run", "start"], cwd=web_runtime, env=environment)
+            _wait_for_https("127.0.0.1", 3000, web)
 
         local_url = "https://127.0.0.1:3000"
         print(f"KOMI Report Web พร้อม: {local_url}", flush=True)
@@ -155,6 +190,11 @@ def run(
     except KeyboardInterrupt:
         return 0
     finally:
+        if proxy is not None:
+            proxy.shutdown()
+            proxy.server_close()
+        if proxy_thread is not None and proxy_thread.is_alive():
+            proxy_thread.join(timeout=5)
         _stop(web)
         _stop(api)
         for signum, previous in previous_handlers.items():

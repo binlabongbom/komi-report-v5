@@ -62,6 +62,8 @@ class MonthlyUsage:
     copy_a4_color: float = 0.0
     copy_a3_bw: float = 0.0
     copy_a4_bw: float = 0.0
+    print_other: float = 0.0
+    copy_other: float = 0.0
     provisional_print_a3_color: float = 0.0
     provisional_print_a4_color: float = 0.0
     provisional_print_a3_bw: float = 0.0
@@ -70,6 +72,8 @@ class MonthlyUsage:
     provisional_copy_a4_color: float = 0.0
     provisional_copy_a3_bw: float = 0.0
     provisional_copy_a4_bw: float = 0.0
+    provisional_print_other: float = 0.0
+    provisional_copy_other: float = 0.0
     print_available: bool = False
     copy_available: bool = False
 
@@ -464,11 +468,11 @@ def load_usage_history(
         provisional_groups = default_usage_groups(bucket["provisional_counters"])
         print_labels = (
             "A3 Color (Print)", "A4 Color (Print)",
-            "A3 B&W (Print)", "A4 B&W (Print)",
+            "A3 B&W (Print)", "A4 B&W (Print)", "Other size (Print)",
         )
         copy_labels = (
             "A3 Color (Copy)", "A4 Color (Copy)",
-            "A3 B&W (Copy)", "A4 B&W (Copy)",
+            "A3 B&W (Copy)", "A4 B&W (Copy)", "Other size (Copy)",
         )
         print_available = any(groups.get(label) is not None for label in print_labels) or any(
             provisional_groups.get(label) is not None for label in print_labels
@@ -486,7 +490,14 @@ def load_usage_history(
         copy_bw = _group_value(groups, "A3 B&W (Copy)") + _group_value(groups, "A4 B&W (Copy)")
         total = bucket["counters"].get("counter.total.total")
         if total is None:
-            total = a3_color + a3_bw + a4_color + a4_bw
+            total = (
+                a3_color
+                + a3_bw
+                + a4_color
+                + a4_bw
+                + _group_value(groups, "Other size (Print)")
+                + _group_value(groups, "Other size (Copy)")
+            )
         provisional_a3_color = _group_value(provisional_groups, "A3 Color (Print)") + _group_value(
             provisional_groups, "A3 Color (Copy)"
         )
@@ -518,6 +529,8 @@ def load_usage_history(
                 + provisional_a3_bw
                 + provisional_a4_color
                 + provisional_a4_bw
+                + _group_value(provisional_groups, "Other size (Print)")
+                + _group_value(provisional_groups, "Other size (Copy)")
             )
         result.append(
             MonthlyUsage(
@@ -564,6 +577,8 @@ def load_usage_history(
                 copy_a4_color=_group_value(groups, "A4 Color (Copy)"),
                 copy_a3_bw=_group_value(groups, "A3 B&W (Copy)"),
                 copy_a4_bw=_group_value(groups, "A4 B&W (Copy)"),
+                print_other=_group_value(groups, "Other size (Print)"),
+                copy_other=_group_value(groups, "Other size (Copy)"),
                 provisional_print_a3_color=_group_value(provisional_groups, "A3 Color (Print)"),
                 provisional_print_a4_color=_group_value(provisional_groups, "A4 Color (Print)"),
                 provisional_print_a3_bw=_group_value(provisional_groups, "A3 B&W (Print)"),
@@ -572,6 +587,12 @@ def load_usage_history(
                 provisional_copy_a4_color=_group_value(provisional_groups, "A4 Color (Copy)"),
                 provisional_copy_a3_bw=_group_value(provisional_groups, "A3 B&W (Copy)"),
                 provisional_copy_a4_bw=_group_value(provisional_groups, "A4 B&W (Copy)"),
+                provisional_print_other=_group_value(
+                    provisional_groups, "Other size (Print)"
+                ),
+                provisional_copy_other=_group_value(
+                    provisional_groups, "Other size (Copy)"
+                ),
                 print_available=print_available,
                 copy_available=copy_available,
             )

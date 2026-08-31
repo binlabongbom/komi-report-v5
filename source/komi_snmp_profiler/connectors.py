@@ -25,7 +25,7 @@ class WebConnectionError(RuntimeError):
 
 
 class WebConnectionAuthenticationError(WebConnectionError):
-    """Raised after one rejected Administrator login attempt; callers must not retry automatically."""
+    """Raised when Web Connection requires or rejects Administrator authentication."""
 
 
 class WebConnectionCertificateError(WebConnectionError):
@@ -228,6 +228,28 @@ class ReadOnlyWebConnectionSession:
         for path in ("spa_main.html", "spa_login.html", "login_ex.json", "top.xml"):
             self.get(path, expect_json=False)
 
+    def prepare_legacy_admin_login(self) -> None:
+        """Create the fixed browser context used by legacy Meter Admin login."""
+        for name, value in {
+            "pf": "PC",
+            "uatype": "NN",
+            "vm": "Html",
+            "lang": "En",
+            "selno": "En",
+            "usr": "",
+            "srv": "",
+            "access": "ASYS_COU",
+            "param": "",
+            # login_f.html calls setCookie('AS_COU') immediately before the
+            # browser submits the legacy Administrator form.
+            "adm": "AS_COU",
+        }.items():
+            self._set_session_cookie(name, value)
+        # This is a fixed read-only entry route, not a caller-controlled URL.
+        # Opening it first mirrors the firmware UI and prevents DirectAccessError.
+        self._request("index.html?access=ASYS_COU", method="GET")
+        self.get_bytes("login.xml")
+
     def prepare_meter_export(self, token: str) -> None:
         """Initialize the firmware's temporary Meter-export CustomID context."""
         # These client-side UI flags are normally created by Integrated_main.js.
@@ -413,10 +435,14 @@ class WebConnectionCounterConnector:
         tls_policy: TlsPolicy | None = None,
         verify_tls: bool | None = None,
         session_factory=ReadOnlyWebConnectionSession,
+        scheme: str = "https",
     ) -> None:
         self.timeout = timeout
         self.tls_policy = tls_policy or TlsPolicy(mode="system" if verify_tls is not False else "insecure")
         self.session_factory = session_factory
+        if scheme not in {"http", "https"}:
+            raise ValueError("Web Connection scheme ต้องเป็น http หรือ https")
+        self.scheme = scheme
 
     def supported(self, model: str) -> bool:
         return "bizhub" in model.lower() or not model
@@ -425,12 +451,19 @@ class WebConnectionCounterConnector:
         return list(self.collect_result(host).counters)
 
     def collect_result(self, host: str) -> WebCounterCollection:
-        session = self.session_factory(host, timeout=self.timeout, tls_policy=self.tls_policy)
+        session = self.session_factory(
+            host,
+            timeout=self.timeout,
+            tls_policy=self.tls_policy,
+            scheme=self.scheme,
+        )
         try:
             session.get("index.html", expect_json=False)
             common = session.get("api/AppReqGetCustomData/_A-00-00001")
             if _nested(common, "MFP.LoginMode") != "PublicUser":
-                raise WebConnectionError("Web Connection public session ไม่พร้อมใช้งาน")
+                raise WebConnectionAuthenticationError(
+                    "Web Connection ปิด PublicUser และต้องใช้ Administrator"
+                )
             payload = session.post_json("api/AppReqGetCounterInfo/_Total", {"NetworkType": "NW1"})
             counters = self._parse_total_payload(payload)
             return WebCounterCollection(tuple(counters), "web_connection_public", WebAuthState.PUBLIC)
@@ -568,6 +601,12 @@ class LegacyWebConnectionCounterConnector:
             scheme=scheme or self.scheme,
         )
         try:
+            # Legacy Web Connection rejects a direct counter request until the
+            # normal entry page has created its short-lived browser session.
+            # This is read-only and mirrors opening Web Connection before the
+            # Meter page; without it the device returns DirectAccessError even
+            # when no other user is signed in.
+            session.get_bytes("index.html")
             counters = self.parse_xml(session.get_bytes("system_counter.xml"))
             return WebCounterCollection(
                 tuple(counters),
@@ -580,27 +619,37 @@ class LegacyWebConnectionCounterConnector:
     @staticmethod
     def parse_xml(payload: bytes) -> list[WebCounterValue]:
         lowered = payload.decode("utf-8", errors="ignore").casefold()
-        if "directaccesserror" in lowered or "another user session" in lowered:
+        if "another user session" in lowered:
             raise WebConnectionSessionBusyError(
                 "Web Connection session กำลังถูกใช้งาน; ยังไม่สรุปว่าเครื่อง offline หรือไม่รองรับ"
+            )
+        if "directaccesserror" in lowered:
+            raise WebConnectionError(
+                "Web Connection ปฏิเสธการเปิด Meter โดยตรง; ต้องเริ่ม Web session ก่อน"
             )
         try:
             root = ET.fromstring(payload)
         except ET.ParseError as err:
             raise WebConnectionError("Legacy Web Connection คืน XML ไม่ถูกต้อง") from err
-        info_element = next(
-            (element for element in root.iter() if _xml_local_name(element.tag) == "UserCounterInfo"),
-            None,
-        )
-        if info_element is None:
-            raise WebConnectionError("Legacy Web Connection ไม่คืน UserCounterInfo")
-        info = _xml_object(info_element)
-        if not isinstance(info, dict):
-            raise WebConnectionError("Legacy Web Connection counter schema ไม่ถูกต้อง")
-        counters = WebConnectionCounterConnector._parse_counter_info(info)
-        if not any(counter.canonical_field == "counter.total.total" for counter in counters):
-            raise WebConnectionError("Legacy Web Connection ไม่คืน aggregate Total Meter")
-        return counters
+        candidates = [
+            element
+            for element in root.iter()
+            if _xml_local_name(element.tag) in {"UserCounterInfo", "CounterInfo", "MeterCounterInfo"}
+        ]
+        # Some Production Print firmware omits the UserCounterInfo wrapper and
+        # places aggregate counter lists directly below MFP.  Parse the wrapper
+        # first when present, then bounded known alternatives and finally the
+        # root.  Acceptance still requires aggregate Total Meter, so an
+        # unrelated XML page cannot be mistaken for a valid counter response.
+        candidates.append(root)
+        for info_element in candidates:
+            info = _xml_object(info_element)
+            if not isinstance(info, dict):
+                continue
+            counters = WebConnectionCounterConnector._parse_counter_info(info)
+            if any(counter.canonical_field == "counter.total.total" for counter in counters):
+                return counters
+        raise WebConnectionError("Legacy Web Connection ไม่คืน aggregate Total Meter")
 
 
 class LegacyAuthenticatedWebConnectionCounterConnector(LegacyWebConnectionCounterConnector):
@@ -623,9 +672,7 @@ class LegacyAuthenticatedWebConnectionCounterConnector(LegacyWebConnectionCounte
         result: WebCounterCollection | None = None
         failure: Exception | None = None
         try:
-            session.get_bytes("top.xml")
-            session.post_session_form("ulogin.cgi", {"Mode": "Admin"})
-            session.get_bytes("login.xml")
+            session.prepare_legacy_admin_login()
             login_attempted = True
             session.post_session_form("login.cgi", self._legacy_login_fields(credential))
             counters = self.parse_xml(session.get_bytes("a_system_counter.xml"))
@@ -640,7 +687,8 @@ class LegacyAuthenticatedWebConnectionCounterConnector(LegacyWebConnectionCounte
             failure = err
         except WebConnectionError as err:
             failure = WebConnectionAuthenticationError(
-                "Legacy Administrator session อ่าน Meter ไม่สำเร็จหลังลองเพียงหนึ่งครั้ง"
+                "Legacy Administrator session อ่าน Meter ไม่สำเร็จหลังลองเพียงหนึ่งครั้ง: "
+                f"{err}"
             )
             failure.__cause__ = err
         finally:
@@ -664,11 +712,21 @@ class LegacyAuthenticatedWebConnectionCounterConnector(LegacyWebConnectionCounte
         return {
             "func": "PSL_LP1_LOG",
             "AuthType": "MiddleServer",
+            "TrackType": "",
             "ExtSvType": "0",
+            "PswcForm": "HtmlFlash",
             "Mode": "",
-            "AuthorityType": "",
-            "R_ADM1": "AdminAdmin",
+            "publicuser": "",
+            "username": "",
             "password": credential.password,
+            "AuthorityType": "",
+            "R_ADM": "AdminAdmin",
+            "ExtServ": "0",
+            "ViewMode": "",
+            "BrowserMode": "",
+            "Lang": "En",
+            "trackname": "",
+            "trackpassword": "",
         }
 
 
@@ -676,7 +734,12 @@ class AuthenticatedWebConnectionCounterConnector(WebConnectionCounterConnector):
     """Open one Administrator session, read counters, and always log out and clear cookies."""
 
     def collect_with_credential(self, host: str, credential: AdminCredential) -> WebCounterCollection:
-        session = self.session_factory(host, timeout=self.timeout, tls_policy=self.tls_policy)
+        session = self.session_factory(
+            host,
+            timeout=self.timeout,
+            tls_policy=self.tls_policy,
+            scheme=self.scheme,
+        )
         login_attempted = False
         result: WebCounterCollection | None = None
         failure: Exception | None = None
@@ -766,7 +829,12 @@ class AuthenticatedWebConnectionCounterConnector(WebConnectionCounterConnector):
                         "Token": token,
                     },
                 )
-                counters.extend(self._parse_attributed_payload(payload, "user"))
+                user_counters = self._parse_attributed_payload(payload, "user")
+                counters.extend(user_counters)
+                if not user_counters:
+                    warnings.append(
+                        "เปิด User Authentication อยู่ แต่ snapshot นี้ยังไม่มีรายการผู้ใช้งาน"
+                    )
             except (TypeError, ValueError, WebConnectionError):
                 warnings.append("เปิด User Authentication อยู่ แต่ยังอ่าน User counter schema ของ firmware นี้ไม่ได้")
         if track_type not in {"", "None"}:
@@ -783,9 +851,16 @@ class AuthenticatedWebConnectionCounterConnector(WebConnectionCounterConnector):
                         "Token": token,
                     },
                 )
-                counters.extend(self._parse_attributed_payload(payload, "account"))
+                account_counters = self._parse_attributed_payload(payload, "account")
+                counters.extend(account_counters)
+                if not account_counters:
+                    warnings.append(
+                        "เปิด Account Track อยู่ แต่ snapshot นี้ยังไม่มีรายการบัญชี"
+                    )
             except (TypeError, ValueError, WebConnectionError):
                 warnings.append("เปิด Account Track อยู่ แต่ยังอ่าน Track counter schema ของ firmware นี้ไม่ได้")
+        if auth_type in {"", "None"} and track_type in {"", "None"}:
+            warnings.append("User Authentication และ Account Track ยังไม่ได้เปิดใช้งานบนเครื่อง")
         return counters, warnings
 
     @staticmethod

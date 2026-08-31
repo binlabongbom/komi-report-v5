@@ -8,19 +8,41 @@ from PyInstaller.utils.hooks import collect_submodules
 from tools.release_safety import FORBIDDEN_SUFFIXES
 
 
-registration_datas = []
-registration_bootstrap = os.environ.get("KOMI_REGISTRATION_BOOTSTRAP_BUILD_FILE", "").strip()
-if registration_bootstrap:
-    bootstrap_path = Path(registration_bootstrap)
-    if not bootstrap_path.is_file():
-        raise ValueError("Registration bootstrap build input is unavailable")
-    registration_datas.append((str(bootstrap_path), "runtime-config"))
+web_datas = []
+node_binaries = []
+offline_public_keys = os.environ.get(
+    "KOMI_OFFLINE_LICENSE_PUBLIC_KEYS_BUILD_FILE", ""
+).strip()
+if offline_public_keys:
+    public_keys_path = Path(offline_public_keys)
+    if not public_keys_path.is_file():
+        raise ValueError("KOMI_OFFLINE_LICENSE_PUBLIC_KEYS_BUILD_FILE does not exist")
+    web_datas.append(
+        (str(public_keys_path), "runtime-config")
+    )
+if sys.platform == "darwin":
+    web_standalone = Path("../web/.next/standalone")
+    web_static = Path("../web/.next/static")
+    web_server = Path("../web/server.mjs")
+    node_runtime = os.environ.get("KOMI_NODE_RUNTIME_BUILD_FILE", "").strip()
+    if not (web_standalone / ".next" / "BUILD_ID").is_file():
+        raise ValueError("Run the Web production build before packaging macOS")
+    if not node_runtime or not Path(node_runtime).is_file():
+        raise ValueError("KOMI_NODE_RUNTIME_BUILD_FILE is required for macOS packaging")
+    web_datas.extend(
+        [
+            (str(web_standalone), "web-runtime-seed"),
+            (str(web_static), "web-runtime-seed/.next/static"),
+            (str(web_server), "web-runtime-seed"),
+        ]
+    )
+    node_binaries.append((node_runtime, "node-runtime"))
 
 
 a = Analysis(
     ['app.py'],
     pathex=[],
-    binaries=[],
+    binaries=node_binaries,
     datas=[
         ('logo.png', '.'),   # โลโก้แสดงใน sidebar
         ('Logo.ico', '.'),   # ไอคอนโปรแกรม
@@ -28,8 +50,8 @@ a = Analysis(
         ('../docs/sync-rule-flowchart.png', 'docs'),
         ('../docs/data-storage-overview.html', 'docs'),
         ('../docs/data-storage-overview.png', 'docs'),
-    ] + registration_datas,
-    hiddenimports=['tools.check_parser'] + collect_submodules('pysnmp'),
+    ] + web_datas,
+    hiddenimports=['tools.check_parser', 'web_api'] + collect_submodules('pysnmp'),
     hookspath=[],
     hooksconfig={},
     runtime_hooks=['runtime_hooks/no_bytecode.py'],
@@ -58,7 +80,7 @@ if sys.platform == "darwin":
         a.scripts,
         [],
         exclude_binaries=True,
-        name="KOMI Report V5.2.0",
+        name="KOMI Report V5.2.1",
         debug=False,
         bootloader_ignore_signals=False,
         strip=False,
@@ -75,17 +97,17 @@ if sys.platform == "darwin":
         a.datas,
         strip=False,
         upx=False,
-        name="KOMI Report V5.2.0",
+        name="KOMI Report V5.2.1",
     )
     app = BUNDLE(
         collected,
-        name="KOMI Report V5.2.0.app",
+        name="KOMI Report V5.2.1.app",
         icon="Logo.icns",
         bundle_identifier="com.komiminolta.komireportv5",
         info_plist={
-            "CFBundleDisplayName": "KOMI Report V5.2.0",
-            "CFBundleShortVersionString": "5.2.0",
-            "CFBundleVersion": "50200",
+            "CFBundleDisplayName": "KOMI Report V5.2.1",
+            "CFBundleShortVersionString": "5.2.1",
+            "CFBundleVersion": "50201",
             "LSBackgroundOnly": False,
             "NSHighResolutionCapable": True,
         },
@@ -99,7 +121,7 @@ else:
         a.scripts,
         [],
         exclude_binaries=True,
-        name="KOMI Report V5.2.0",
+        name="KOMI Report V5.2.1",
         debug=False,
         bootloader_ignore_signals=False,
         strip=False,
@@ -120,5 +142,5 @@ else:
         a.datas,
         strip=False,
         upx=False,
-        name="KOMI Report V5.2.0",
+        name="KOMI Report V5.2.1",
     )

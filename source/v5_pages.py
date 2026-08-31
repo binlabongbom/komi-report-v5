@@ -10,7 +10,7 @@ import webbrowser
 from collections.abc import Callable
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor
 from concurrent.futures import wait as wait_futures
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from datetime import date, datetime, time, timedelta
 from html import escape
 from pathlib import Path
@@ -43,6 +43,7 @@ from PyQt6.QtWidgets import (
     QLineEdit,
     QMessageBox,
     QPlainTextEdit,
+    QProgressBar,
     QPushButton,
     QRadioButton,
     QScrollArea,
@@ -96,15 +97,21 @@ from database import (
 from i18n import ENGLISH, THAI, apply_language, get_language, set_language, tr, translate_text
 from komi_snmp_profiler.connectors import (
     AuthenticatedWebConnectionCounterConnector,
+    LegacyAuthenticatedWebConnectionCounterConnector,
+    LegacyWebConnectionCounterConnector,
     TlsPolicy,
+    WebConnectionAuthenticationError,
     WebConnectionCertificateError,
     WebConnectionCounterConnector,
     server_certificate_fingerprint,
 )
-from komi_snmp_profiler.credential_store import AdminCredential, SessionCredentialStore
+from komi_snmp_profiler.credential_store import (
+    PUBLIC_FACTORY_ADMIN_PASSWORDS,
+    AdminCredential,
+    SessionCredentialStore,
+)
 from komi_snmp_profiler.device_profiles import resolve_device_meter_profile
 from komi_snmp_profiler.meter import MeterReader
-from komi_snmp_profiler.models import WebAuthState
 from pages import PageHistory
 from runtime_config import RUNTIME_SETTINGS, save_runtime_database_path
 from services.autostart import configure_autostart
@@ -135,18 +142,36 @@ from services.monthly_history import (
     load_monthly_usage,
     load_usage_history,
 )
+from services.peer_sync_authorization import (
+    PeerSyncAuthorizationError,
+    open_pairing_window,
+    pairing_window_status,
+)
 from services.pipeline_log import PipelineEvent, pipeline_log
 from services.polling import PollingPolicy, ScheduleWindow
 from services.pricing import PriceList, PricingRepository
+from services.raw_counter_history import (
+    load_raw_counter_history,
+    load_usage_meter_baselines,
+)
 from services.reconciliation import ReconciliationReport, reconcile_web_counters
-from services.registration_data_notice import DRAFT_NOTICE_VERSION, registration_data_notice
+from services.registration_data_notice import (
+    REGISTRATION_NOTICE_VERSION,
+    registration_data_notice,
+)
 from services.registration_envelope import (
     normalize_device_models,
     runtime_platform,
 )
-from services.v5_2_runtime_state import V52RuntimeStateRepository
 from services.report_scope import report_slots
 from services.runtime_snapshots import RuntimeCounterRow, runtime_snapshots
+from services.secondary_setup import (
+    SecondaryPeerCandidate,
+    SecondaryPeerClient,
+    SecondarySetupError,
+    local_ipv4_hosts,
+    normalize_primary_ipv4,
+)
 from services.snmp_probe import PaperTrayStatus, SnmpTotalProbe
 from services.subject_history import SubjectDailyCacheStore, SubjectPeriodUsage, load_subject_history
 from services.sync_schedule import (
@@ -166,9 +191,11 @@ from services.usage import (
     default_usage_groups,
     latest_counters,
 )
+from services.v5_2_runtime_state import V52RuntimeStateRepository
 from services.web_access import (
     MIN_ACCESS_CODE_LENGTH,
     set_web_access_code,
+    set_web_report_passwordless,
     validate_web_access_code,
     web_access_status,
 )
@@ -199,6 +226,31 @@ def suggested_cloud_reports_filename(*args, **kwargs):
     return suggest(*args, **kwargs)
 
 
+def show_compact_information(parent: QWidget, title: str, message: str) -> None:
+    """Consistent compact notice that does not inherit oversized native alerts."""
+
+    dialog = QDialog(parent)
+    dialog.setWindowTitle(title)
+    dialog.setModal(True)
+    dialog.setMinimumWidth(420)
+    dialog.setMaximumWidth(560)
+    layout = QVBoxLayout(dialog)
+    layout.setContentsMargins(22, 20, 22, 18)
+    layout.setSpacing(16)
+    body = QLabel(message)
+    body.setWordWrap(True)
+    body.setStyleSheet("color:#243244;font-weight:650;border:none;")
+    layout.addWidget(body)
+    actions = QHBoxLayout()
+    actions.addStretch()
+    confirm = btn(tr("ตกลง", "OK"), "primary")
+    confirm.setMinimumWidth(104)
+    confirm.clicked.connect(dialog.accept)
+    actions.addWidget(confirm)
+    layout.addLayout(actions)
+    dialog.exec()
+
+
 class SetupDeviceStatusDelegate(QStyledItemDelegate):
     """Preserve the row's explicit status colour when Qt marks it selected."""
 
@@ -225,8 +277,18 @@ class WizardComboBox(QComboBox):
         painter.drawPath(path)
 
 
+@dataclass(frozen=True)
+class DeviceTestResult:
+    """One immutable device-test result bound to a scan endpoint and test run."""
+
+    generation: int
+    host: str
+    slot: int
+    payload: dict
+
+
 class DeviceTestWorker(QObject):
-    result = pyqtSignal(int, object)
+    result = pyqtSignal(object)
     finished = pyqtSignal()
 
     def __init__(
@@ -236,12 +298,14 @@ class DeviceTestWorker(QObject):
         snmp_port: int = 161,
         web_port: int = 443,
         endpoint_ports: dict[str, tuple[int, int]] | None = None,
+        generation: int = 0,
     ) -> None:
         super().__init__()
         self.devices = devices
         self.snmp_port = snmp_port
         self.web_port = web_port
         self.endpoint_ports = endpoint_ports or {}
+        self.generation = generation
 
     def _test(self, device: DeviceConfig) -> dict:
         snmp_port, web_port = self.endpoint_ports.get(
@@ -252,6 +316,8 @@ class DeviceTestWorker(QObject):
         errors: list[str] = []
         tls_mode = device.tls_mode
         tls_fingerprint = device.tls_fingerprint
+        credential_required = False
+        credential_default_index: int | None = None
         pipeline_log.append(
             stage="POLICY",
             action="Setup Test All",
@@ -323,10 +389,28 @@ class DeviceTestWorker(QObject):
             profile = resolve_device_meter_profile(meter_model)
 
             def read_with_policy(policy: TlsPolicy):
+                effective_policy = replace(
+                    policy,
+                    compatibility=profile.tls_compatibility,
+                )
                 reader = MeterReader(
                     store,
-                    public_connector=WebConnectionCounterConnector(tls_policy=policy),
-                    admin_connector=AuthenticatedWebConnectionCounterConnector(tls_policy=policy),
+                    public_connector=WebConnectionCounterConnector(
+                        tls_policy=effective_policy,
+                        scheme=profile.web_scheme,
+                    ),
+                    admin_connector=AuthenticatedWebConnectionCounterConnector(
+                        tls_policy=effective_policy,
+                        scheme=profile.web_scheme,
+                    ),
+                    legacy_public_connector=LegacyWebConnectionCounterConnector(
+                        tls_policy=effective_policy,
+                        scheme=profile.web_scheme,
+                    ),
+                    legacy_admin_connector=LegacyAuthenticatedWebConnectionCounterConnector(
+                        tls_policy=effective_policy,
+                        scheme=profile.web_scheme,
+                    ),
                 )
                 if profile.profile_id == "generic":
                     return reader.read(web_host)
@@ -358,11 +442,6 @@ class DeviceTestWorker(QObject):
                     )
                 )
 
-            if device.password and reading.auth_state != WebAuthState.ADMIN:
-                reading = None
-                raise ValueError(
-                    "Administrator password ไม่ผ่านการตรวจสอบ; กรุณาตรวจรหัสของเครื่องพิมพ์"
-                )
             pipeline_log.append(
                 stage="WEB",
                 action="Setup Web read complete",
@@ -373,6 +452,18 @@ class DeviceTestWorker(QObject):
                 value=f"{len(reading.counters)} counters",
                 detail=f"auth={reading.auth_state.value}",
                 status="ok",
+            )
+        except WebConnectionAuthenticationError as exc:
+            credential_required = True
+            errors.append(f"Web: {exc}")
+            pipeline_log.append(
+                stage="WEB",
+                action="Setup Web credential required",
+                device_slot=device.slot,
+                device_name=device.name,
+                host=device.host,
+                value="customer credential required",
+                status="warning",
             )
         except Exception as exc:
             errors.append(f"Web: {exc}")
@@ -385,6 +476,15 @@ class DeviceTestWorker(QObject):
                 value=exc,
                 status="error",
             )
+        if reading is not None and not device.password:
+            used_credential = store.load(web_host)
+            if used_credential is not None:
+                try:
+                    credential_default_index = PUBLIC_FACTORY_ADMIN_PASSWORDS.index(
+                        used_credential.password
+                    )
+                except ValueError:
+                    credential_default_index = None
         return {
             "online": probe_result is not None or reading is not None,
             "model": probe_result.model if probe_result else "",
@@ -395,18 +495,27 @@ class DeviceTestWorker(QObject):
             "tls_mode": tls_mode,
             "tls_fingerprint": tls_fingerprint,
             "web_auth_state": reading.auth_state.value if reading is not None else "",
+            "credential_required": credential_required,
+            "credential_default_index": credential_default_index,
         }
 
     @pyqtSlot()
     def run(self) -> None:
         with ThreadPoolExecutor(max_workers=3) as executor:
-            futures = {executor.submit(self._test, device): device.slot for device in self.devices}
-            for future, slot in [(future, slot) for future, slot in futures.items()]:
+            futures = {executor.submit(self._test, device): device for device in self.devices}
+            for future, device in list(futures.items()):
                 try:
                     payload = future.result()
                 except Exception as exc:
                     payload = {"online": False, "model": "", "serial": "", "total": None, "web_ok": False, "error": str(exc)}
-                self.result.emit(slot, payload)
+                self.result.emit(
+                    DeviceTestResult(
+                        generation=self.generation,
+                        host=device.host,
+                        slot=device.slot,
+                        payload=payload,
+                    )
+                )
         self.finished.emit()
 
 
@@ -415,6 +524,7 @@ class NetworkDiscoveryWorker(QObject):
 
     result = pyqtSignal(object)
     progress = pyqtSignal(str)
+    progress_count = pyqtSignal(int, int)
     finished = pyqtSignal()
 
     def __init__(self, hosts: list[str] | None = None, *, snmp_port: int = 161) -> None:
@@ -465,6 +575,9 @@ class NetworkDiscoveryWorker(QObject):
             if not hosts:
                 raise ValueError("ไม่พบ IP สำหรับสแกน")
             self.progress.emit(f"กำลังสแกน Konica Minolta ใน {scope}…")
+            total_hosts = len(hosts)
+            completed_hosts = 0
+            self.progress_count.emit(completed_hosts, total_hosts)
             # Keep only a bounded batch in flight. Submitting an entire /24 at
             # once made cancellation race with ThreadPoolExecutor while it was
             # still creating workers, which could leave dozens of probes alive
@@ -492,11 +605,12 @@ class NetworkDiscoveryWorker(QObject):
                     return_when=FIRST_COMPLETED,
                 )
                 for future in done:
-                    if self._is_cancelled():
-                        break
-                    found = future.result()
-                    if found:
-                        self.result.emit(found)
+                    completed_hosts += 1
+                    self.progress_count.emit(completed_hosts, total_hosts)
+                    if not self._is_cancelled():
+                        found = future.result()
+                        if found:
+                            self.result.emit(found)
                 fill_queue()
             if self._is_cancelled():
                 self.progress.emit("ยกเลิกการค้นหาแล้ว")
@@ -511,6 +625,43 @@ class NetworkDiscoveryWorker(QObject):
                     future.cancel()
                 executor.shutdown(wait=False, cancel_futures=True)
             self.finished.emit()
+
+
+class SecondaryPeerDiscoveryWorker(QObject):
+    """Discover configured KOMI Primary Desktops without blocking first run."""
+
+    finished = pyqtSignal(object, str)
+
+    def __init__(self, hosts: list[str] | None = None) -> None:
+        super().__init__()
+        self.hosts = hosts
+
+    @pyqtSlot()
+    def run(self) -> None:
+        try:
+            hosts = list(self.hosts) if self.hosts is not None else local_ipv4_hosts()
+            candidates = SecondaryPeerClient().discover(hosts)
+            self.finished.emit(candidates, "")
+        except Exception as exc:
+            self.finished.emit([], str(exc))
+
+
+class SecondarySnapshotWorker(QObject):
+    """Fetch the allow-listed setup snapshot after the user confirms Sync."""
+
+    finished = pyqtSignal(object, str)
+
+    def __init__(self, candidate: SecondaryPeerCandidate) -> None:
+        super().__init__()
+        self.candidate = candidate
+
+    @pyqtSlot()
+    def run(self) -> None:
+        try:
+            snapshot = SecondaryPeerClient().fetch_snapshot(self.candidate)
+            self.finished.emit(snapshot, "")
+        except Exception as exc:
+            self.finished.emit({}, str(exc))
 
 
 class LegacyHistoryImportDialog(QDialog):
@@ -884,6 +1035,9 @@ class SetupWizardV5(QDialog):
         lab_web_port: int = 443,
         legacy_source_paths: list[str] | None = None,
         runtime_config_path: str | None = None,
+        registration_runtime=None,
+        offline_license_public_keys: dict[str, str] | None = None,
+        secondary_peer_hosts: list[str] | None = None,
     ) -> None:
         super().__init__(parent)
         self._apply_light_appearance()
@@ -891,6 +1045,20 @@ class SetupWizardV5(QDialog):
         set_language(get_cfg("ui_language", THAI))
         self.repository = DeviceConfigRepository()
         self.registration_state = V52RuntimeStateRepository()
+        self.registration_runtime = registration_runtime
+        self.offline_license_public_keys = dict(offline_license_public_keys or {})
+        self.secondary_peer_hosts = secondary_peer_hosts
+        self.secondary_candidates: list[SecondaryPeerCandidate] = []
+        self.secondary_candidate: SecondaryPeerCandidate | None = None
+        self.secondary_snapshot: dict[str, object] | None = None
+        self._secondary_discovery_thread: QThread | None = None
+        self._secondary_discovery_worker: SecondaryPeerDiscoveryWorker | None = None
+        self._secondary_discovery_manual_host = ""
+        self._secondary_sync_thread: QThread | None = None
+        self._secondary_sync_worker: SecondarySnapshotWorker | None = None
+        self._secondary_sync_dialog: QDialog | None = None
+        self._secondary_sync_cancelled = False
+        self._secondary_auto_review = False
         self.pricing = PricingRepository()
         self.edit_mode = edit_mode
         self.lab_mode = lab_mode
@@ -907,6 +1075,11 @@ class SetupWizardV5(QDialog):
             self.legacy_source_paths or load_imported_legacy_history()
         )
         self.results: dict[int, dict] = {}
+        self._test_generation = 0
+        self._registration_in_progress = False
+        self._registration_dialog: QDialog | None = None
+        self._registration_poll_timer: QTimer | None = None
+        self._registration_deadline: datetime | None = None
         # QDialog.open() is asynchronous; retain every child dialog for the
         # Wizard lifetime as required by Qt and to keep macOS Accessibility
         # from querying a wrapper that Python has already released.
@@ -922,6 +1095,13 @@ class SetupWizardV5(QDialog):
         apply_language(self)
         self._sync_language_switch()
         self._fit_to_available_screen()
+        if (
+            not self.edit_mode
+            and not self.lab_mode
+            and not self.repository.setup_complete()
+            and QApplication.platformName() != "offscreen"
+        ):
+            QTimer.singleShot(350, self._start_secondary_discovery)
 
     def _fit_to_available_screen(self) -> None:
         """Keep the Wizard a normal centered window on common office displays."""
@@ -1229,6 +1409,59 @@ class SetupWizardV5(QDialog):
         description.setStyleSheet(f"color:{C_TEXT2};")
         layout.addWidget(description)
 
+        self.secondary_join_card = QFrame()
+        self.secondary_join_card.setObjectName("secondary_join_card")
+        self.secondary_join_card.setFixedWidth(760)
+        self.secondary_join_card.setStyleSheet(
+            "QFrame#secondary_join_card{background:#F0F8FF;border:1px solid #B9D7EE;"
+            "border-radius:8px;} QLabel{background:transparent;border:none;}"
+        )
+        secondary_layout = QVBoxLayout(self.secondary_join_card)
+        secondary_layout.setContentsMargins(14, 11, 14, 11)
+        secondary_top = QHBoxLayout()
+        secondary_copy = QVBoxLayout()
+        self.secondary_join_title = QLabel("มี KOMI Report เครื่องหลักอยู่แล้ว?")
+        self.secondary_join_title.setFont(fnt(F_MD, True))
+        self.secondary_join_status = QLabel(
+            "ค้นหาใน LAN แล้วดึงเฉพาะบริษัท เครื่องพิมพ์ ราคา และรอบบิล · ไม่คัดลอกรหัสผ่านหรือประวัติ"
+        )
+        self.secondary_join_status.setWordWrap(True)
+        self.secondary_join_status.setStyleSheet("color:#52677D;")
+        secondary_copy.addWidget(self.secondary_join_title)
+        secondary_copy.addWidget(self.secondary_join_status)
+        secondary_top.addLayout(secondary_copy, 1)
+        self.secondary_join_button = btn("ค้นหาเครื่องหลัก", "outline")
+        self.secondary_join_button.setAccessibleName("ค้นหา KOMI Report เครื่องหลักใน LAN")
+        self.secondary_join_button.clicked.connect(self._secondary_join_clicked)
+        secondary_top.addWidget(self.secondary_join_button)
+        secondary_layout.addLayout(secondary_top)
+        manual_primary_row = QHBoxLayout()
+        manual_primary_label = QLabel(tr("หรือระบุ Primary IP", "Or enter Primary IP"))
+        manual_primary_label.setStyleSheet("color:#52677D;font-weight:650;")
+        manual_primary_row.addWidget(manual_primary_label)
+        self.secondary_manual_ip = QLineEdit()
+        self.secondary_manual_ip.setObjectName("secondary_manual_primary_ip")
+        self.secondary_manual_ip.setPlaceholderText("192.168.1.10")
+        self.secondary_manual_ip.setAccessibleName(
+            tr("Primary IP สำหรับ Sync การตั้งค่า", "Primary IP for setup sync")
+        )
+        self.secondary_manual_ip.setMaximumWidth(190)
+        self.secondary_manual_ip.returnPressed.connect(
+            self._secondary_manual_join_clicked
+        )
+        manual_primary_row.addWidget(self.secondary_manual_ip)
+        self.secondary_manual_button = btn(tr("เชื่อมต่อ", "Connect"), "outline")
+        self.secondary_manual_button.setAccessibleName(
+            tr("ค้นหาเครื่องหลักตาม Primary IP", "Find Primary at this IP")
+        )
+        self.secondary_manual_button.clicked.connect(
+            self._secondary_manual_join_clicked
+        )
+        manual_primary_row.addWidget(self.secondary_manual_button)
+        manual_primary_row.addStretch()
+        secondary_layout.addLayout(manual_primary_row)
+        layout.addWidget(self.secondary_join_card, 0, Qt.AlignmentFlag.AlignHCenter)
+
         self.company_card = QFrame()
         self.company_card.setObjectName("company_setup_card")
         self.company_card.setFixedWidth(760)
@@ -1279,14 +1512,10 @@ class SetupWizardV5(QDialog):
         self.company_name_input.textChanged.connect(self._clear_company_name_error)
         self.first_started_input = QLineEdit()
         self.first_started_input.setReadOnly(True)
-        self.first_started_input.setMinimumHeight(42)
-        self.first_started_input.setMinimumWidth(470)
-        self.first_started_input.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self.first_started_input.setFixedSize(150, 38)
         self.version_input = QLineEdit(PACKAGE_VERSION)
         self.version_input.setReadOnly(True)
-        self.version_input.setMinimumHeight(42)
-        self.version_input.setMinimumWidth(470)
-        self.version_input.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self.version_input.setFixedSize(100, 38)
         readonly_style = (
             "QLineEdit{background:#F1F5F9;color:#475569;border:1px solid #D6E0EA;"
             "border-radius:6px;padding:8px 11px;font-weight:700;}"
@@ -1295,7 +1524,7 @@ class SetupWizardV5(QDialog):
         self.version_input.setStyleSheet(readonly_style)
 
         self.database_path_container = QWidget()
-        self.database_path_container.setMinimumHeight(94)
+        self.database_path_container.setMinimumHeight(92)
         self.database_path_container.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
         )
@@ -1312,29 +1541,42 @@ class SetupWizardV5(QDialog):
         self.database_path_input.setStyleSheet(readonly_style)
         self.database_path_input.setToolTip(str(self.selected_database_path))
         database_path_row.addWidget(self.database_path_input, 1)
-        self.choose_database_path_button = btn("เลือกตำแหน่ง…", "outline")
+        self.choose_database_path_button = btn("Browse", "outline")
         self.choose_database_path_button.clicked.connect(self._choose_database_destination)
         database_path_row.addWidget(self.choose_database_path_button)
         database_layout.addLayout(database_path_row)
         database_actions = QHBoxLayout()
         database_actions.setContentsMargins(0, 0, 0, 0)
         database_actions.setSpacing(9)
-        self.legacy_import_button = btn("นำเข้าฐานข้อมูลเดิม…", "outline")
+        self.legacy_import_button = btn("Import", "outline")
         self.legacy_import_button.clicked.connect(self._open_legacy_history_import)
         database_actions.addWidget(self.legacy_import_button)
-        self.database_path_status = QLabel(
-            "สร้าง Database ใหม่ที่ Path นี้ · การนำเข้า V4.6 จะนำเข้าเฉพาะ Meter/Usage History"
-        )
+        self.database_path_status = QLabel("")
         self.database_path_status.setWordWrap(True)
         self.database_path_status.setStyleSheet("color:#52677D;border:none;")
-        database_actions.addWidget(self.database_path_status, 1)
+        self.database_path_status.setVisible(False)
+        database_actions.addStretch(1)
         database_layout.addLayout(database_actions)
+        database_layout.addWidget(self.database_path_status)
 
         self.company_form_labels = []
+        metadata_container = QWidget()
+        metadata_layout = QHBoxLayout(metadata_container)
+        metadata_layout.setContentsMargins(0, 0, 0, 0)
+        metadata_layout.setSpacing(10)
+        metadata_layout.addWidget(self.first_started_input)
+        version_label = QLabel("Version ที่ใช้")
+        version_label.setFont(fnt(F_MD, True))
+        version_label.setStyleSheet("color:#334155;background:transparent;border:none;")
+        version_label.setBuddy(self.version_input)
+        metadata_layout.addSpacing(12)
+        metadata_layout.addWidget(version_label)
+        metadata_layout.addWidget(self.version_input)
+        metadata_layout.addStretch(1)
+
         for label_text, field in (
             ("ชื่อบริษัท *", self.company_name_container),
-            ("วันที่เริ่มใช้งาน", self.first_started_input),
-            ("Version ที่ใช้", self.version_input),
+            ("วันที่เริ่มใช้งาน", metadata_container),
             ("Database Path", self.database_path_container),
         ):
             label = QLabel(label_text)
@@ -1344,22 +1586,10 @@ class SetupWizardV5(QDialog):
             label.setBuddy(self.company_name_input if field is self.company_name_container else field)
             self.company_form_labels.append(label)
             self.company_form.addRow(label, field)
+        self.company_form_labels.append(version_label)
         self.company_name_input.setAccessibleName("ชื่อบริษัท")
         self.company_name_input.setAccessibleDescription("ใช้แสดงในรายงานและระบุการติดตั้งนี้")
         layout.addWidget(self.company_card, 0, Qt.AlignmentFlag.AlignHCenter)
-
-        self.company_notice = QLabel(
-            "<b>ขอบเขตข้อมูลที่ปลอดภัย:</b> Registration ส่ง Serial Number, Model และสถานะเลือกใช้ตาม "
-            "ประกาศข้อมูลการลงทะเบียน; Online ส่งเฉพาะ Status และ Aggregate Total Meter · "
-            "ไม่ส่ง IP, MAC, hostname, Credential, Counter รายละเอียด, ผู้ใช้, เอกสาร หรือ Log"
-        )
-        self.company_notice.setWordWrap(True)
-        self.company_notice.setFixedWidth(760)
-        self.company_notice.setStyleSheet(
-            "background:#EEF6F9;color:#245268;border:1px solid #C7DFE8;"
-            "border-radius:6px;padding:12px;"
-        )
-        layout.addWidget(self.company_notice, 0, Qt.AlignmentFlag.AlignHCenter)
 
         privacy_card = QFrame()
         privacy_card.setObjectName("registration_privacy_card")
@@ -1385,73 +1615,41 @@ class SetupWizardV5(QDialog):
         self.view_privacy_notice_button.clicked.connect(self._show_privacy_notice)
         privacy_row.addWidget(self.view_privacy_notice_button)
         privacy_layout.addLayout(privacy_row)
-        self.privacy_notice_accepted = QCheckBox("ฉันได้อ่านและรับทราบข้อมูลการลงทะเบียนฉบับนี้")
-        self.privacy_notice_accepted.setAccessibleName("รับทราบประกาศข้อมูลการลงทะเบียน")
+        self.company_notice = QLabel(
+            "<b>ขอบเขตข้อมูลที่ปลอดภัย:</b> ส่ง Serial Number, Model, สถานะเลือกใช้, "
+            "Status และ Aggregate Total Meter เท่านั้น · ไม่ส่ง IP, MAC, hostname, Credential, "
+            "Counter รายละเอียด, ผู้ใช้, เอกสาร หรือ Log"
+        )
+        self.company_notice.setWordWrap(True)
+        self.company_notice.setStyleSheet(
+            "background:#EEF6F9;color:#245268;border:1px solid #C7DFE8;"
+            "border-radius:6px;padding:10px;"
+        )
+        privacy_layout.addWidget(self.company_notice)
+        # Retained as an internal compatibility value only. The customer no longer
+        # sees a checkbox; pressing Save records acknowledgement under the master
+        # agreement and Online Registration is mandatory.
+        self.privacy_notice_accepted = QCheckBox()
+        self.privacy_notice_accepted.setChecked(False)
+        self.privacy_notice_accepted.setVisible(False)
         self.privacy_notice_status.setText(
             tr(
-                f"ฉบับ {DRAFT_NOTICE_VERSION} · ต้องรับทราบก่อนใช้ Online Registration",
-                f"Version {DRAFT_NOTICE_VERSION} · acknowledgement is required for Online Registration",
+                f"ฉบับ {REGISTRATION_NOTICE_VERSION} · ต้องลงทะเบียนก่อนเริ่มใช้งาน",
+                f"Version {REGISTRATION_NOTICE_VERSION} · registration is required before use",
             )
         )
-        privacy_layout.addWidget(self.privacy_notice_accepted)
         layout.addWidget(privacy_card, 0, Qt.AlignmentFlag.AlignHCenter)
-
-        mode_card = QFrame()
-        mode_card.setObjectName("registration_mode_card")
-        mode_card.setFixedWidth(760)
-        mode_card.setStyleSheet(
-            "QFrame#registration_mode_card{background:#FFFFFF;border:1px solid #C9D9E8;"
-            "border-radius:8px;} QLabel,QRadioButton{border:none;background:transparent;}"
-        )
-        mode_layout = QVBoxLayout(mode_card)
-        mode_layout.setContentsMargins(14, 12, 14, 12)
-        mode_layout.setSpacing(7)
-        mode_title = QLabel(tr("โหมดการลงทะเบียน", "Registration mode"))
-        mode_title.setFont(fnt(F_MD, True))
-        mode_layout.addWidget(mode_title)
+        # Keep hidden compatibility controls for older integrations while the
+        # customer Wizard follows one unambiguous Online-first path.
         self.registration_mode_group = QButtonGroup(self)
         self.registration_mode_group.setExclusive(True)
-        self.registration_online_mode = QRadioButton(
-            tr("ออนไลน์ · ลงทะเบียนอัตโนมัติ", "Online · automatic registration")
-        )
-        self.registration_online_mode.setAccessibleName(
-            tr("เลือกรับบริการแบบออนไลน์", "Use Online Registration")
-        )
-        self.registration_offline_mode = QRadioButton(
-            tr("ออฟไลน์ · ใช้ไฟล์ License", "Offline · use a license file")
-        )
-        self.registration_offline_mode.setAccessibleName(
-            tr("เลือกใช้งานแบบ Offline License", "Use an Offline License")
-        )
+        self.registration_online_mode = QRadioButton()
+        self.registration_offline_mode = QRadioButton()
         self.registration_mode_group.addButton(self.registration_online_mode)
         self.registration_mode_group.addButton(self.registration_offline_mode)
-        selected_mode = get_cfg("v52_registration_mode", "online")
-        self.registration_offline_mode.setChecked(selected_mode == "offline")
-        self.registration_online_mode.setChecked(selected_mode != "offline")
-        mode_layout.addWidget(self.registration_online_mode)
-        online_hint = QLabel(
-            tr(
-                "ออนไลน์จะส่งสถานะและ Total Meter รวมตามประกาศข้อมูล โดยไม่ให้กรอก API Key",
-                "Online mode sends status and aggregate Total Meter under the Data Notice. No API key is required.",
-            )
-        )
-        online_hint.setWordWrap(True)
-        online_hint.setStyleSheet("color:#52677D;border:none;margin-left:22px;")
-        mode_layout.addWidget(online_hint)
-        mode_layout.addWidget(self.registration_offline_mode)
-        offline_hint = QLabel(
-            tr(
-                "Offline License ไม่ส่ง Registration, Status หรือ Meter ไปยัง Host",
-                "Offline License sends no Registration, Status, or Meter telemetry to the Host.",
-            )
-        )
-        offline_hint.setWordWrap(True)
-        offline_hint.setStyleSheet("color:#52677D;border:none;margin-left:22px;")
-        mode_layout.addWidget(offline_hint)
-        self.registration_online_mode.toggled.connect(self._registration_mode_changed)
-        self.registration_offline_mode.toggled.connect(self._registration_mode_changed)
-        self._registration_mode_changed()
-        layout.addWidget(mode_card, 0, Qt.AlignmentFlag.AlignHCenter)
+        self.registration_online_mode.setChecked(True)
+        self.registration_online_mode.setVisible(False)
+        self.registration_offline_mode.setVisible(False)
         if self.lab_mode:
             lab_notice = QLabel(
                 "<b>SETUP LAB</b> · หน้านี้ใช้ Wizard ตัวจริง แต่ใช้ฐานข้อมูลชั่วคราวและ "
@@ -1531,6 +1729,320 @@ class SetupWizardV5(QDialog):
         for button in (self.thai_language_button, self.english_language_button):
             button.blockSignals(False)
 
+    def _start_secondary_discovery(
+        self,
+        hosts: list[str] | None = None,
+        *,
+        manual_host: str = "",
+    ) -> None:
+        """Look for an already-configured Desktop before creating a new setup."""
+
+        if self._secondary_discovery_thread is not None or self._secondary_sync_thread is not None:
+            return
+        self._secondary_discovery_manual_host = manual_host
+        self.secondary_join_button.setEnabled(False)
+        self.secondary_join_button.setText(tr("กำลังค้นหา…", "Searching…"))
+        self.secondary_manual_button.setEnabled(False)
+        self.secondary_manual_ip.setEnabled(False)
+        self.secondary_join_status.setText(
+            tr(
+                "กำลังค้นหา KOMI Report เครื่องหลักในเครือข่าย LAN…",
+                "Searching the LAN for an existing KOMI Report Primary…",
+            )
+        )
+        thread = QThread(self)
+        worker = SecondaryPeerDiscoveryWorker(
+            hosts if hosts is not None else self.secondary_peer_hosts
+        )
+        worker.moveToThread(thread)
+        thread.started.connect(worker.run)
+        worker.finished.connect(self._secondary_discovery_finished)
+        worker.finished.connect(thread.quit)
+        worker.finished.connect(worker.deleteLater)
+        thread.finished.connect(thread.deleteLater)
+        self._secondary_discovery_thread = thread
+        self._secondary_discovery_worker = worker
+        thread.start()
+
+    def _secondary_join_clicked(self) -> None:
+        if self.secondary_candidates:
+            self._show_secondary_candidate_dialog(self.secondary_candidates)
+            return
+        self._start_secondary_discovery()
+
+    def _secondary_manual_join_clicked(self) -> None:
+        try:
+            host = normalize_primary_ipv4(self.secondary_manual_ip.text())
+        except SecondarySetupError as exc:
+            self.secondary_join_status.setText(str(exc))
+            self.secondary_join_status.setStyleSheet("color:#C62828;font-weight:650;")
+            self.secondary_manual_ip.setFocus()
+            return
+        self.secondary_candidates = []
+        self.secondary_join_status.setStyleSheet("color:#52677D;")
+        self._start_secondary_discovery([host], manual_host=host)
+
+    def _secondary_discovery_finished(self, candidates: object, error: str) -> None:
+        self._secondary_discovery_thread = None
+        self._secondary_discovery_worker = None
+        self.secondary_join_button.setEnabled(True)
+        self.secondary_manual_button.setEnabled(True)
+        self.secondary_manual_ip.setEnabled(True)
+        self.secondary_join_button.setText(tr("ค้นหาเครื่องหลัก", "Find Primary"))
+        self.secondary_candidates = [
+            item for item in (candidates if isinstance(candidates, list) else [])
+            if isinstance(item, SecondaryPeerCandidate)
+        ]
+        if self.secondary_candidates:
+            self._secondary_discovery_manual_host = ""
+            self.secondary_join_button.setText(tr("ดูและ Sync", "Review & sync"))
+            self.secondary_join_status.setStyleSheet("color:#52677D;")
+            self.secondary_join_status.setText(
+                tr(
+                    f"พบเครื่องหลัก {len(self.secondary_candidates)} เครื่อง · เลือกเพื่อ Sync การตั้งค่า",
+                    f"Found {len(self.secondary_candidates)} Primary Desktop(s) · choose one to sync setup",
+                )
+            )
+            self._show_secondary_candidate_dialog(self.secondary_candidates)
+            return
+        manual_host = self._secondary_discovery_manual_host
+        self._secondary_discovery_manual_host = ""
+        if manual_host:
+            self.secondary_join_status.setText(
+                tr(
+                    f"ไม่พบ KOMI Report Primary ที่ {manual_host} · ตรวจ IP และ LAN แล้วลองใหม่",
+                    f"No KOMI Report Primary found at {manual_host} · check the IP and LAN, then retry",
+                )
+            )
+            self.secondary_join_status.setStyleSheet(
+                "color:#C62828;font-weight:650;"
+            )
+            if error:
+                self.secondary_join_status.setToolTip(error)
+            return
+        self.secondary_join_status.setStyleSheet("color:#52677D;")
+        self.secondary_join_status.setText(
+            tr(
+                "ยังไม่พบเครื่องหลัก · ตั้งค่าเครื่องนี้ตามปกติได้ หรือค้นหาใหม่ภายหลัง",
+                "No Primary was found · continue normal setup or search again later",
+            )
+        )
+        if error:
+            self.secondary_join_status.setToolTip(error)
+
+    def _show_secondary_candidate_dialog(
+        self,
+        candidates: list[SecondaryPeerCandidate],
+    ) -> QDialog:
+        dialog = QDialog(self)
+        dialog.setWindowTitle(tr("พบ KOMI Report เครื่องหลัก", "KOMI Report Primary found"))
+        dialog.setMinimumWidth(620)
+        layout = QVBoxLayout(dialog)
+        title = QLabel(tr("พบการตั้งค่าที่ใช้งานอยู่ใน LAN", "Existing LAN setup found"))
+        title.setFont(fnt(F_XL, True))
+        layout.addWidget(title)
+        copy = QLabel(
+            tr(
+                "Secondary จะดึงเฉพาะชื่อบริษัท เครื่องพิมพ์ ราคา และรอบบิล "
+                "จากนั้นทดสอบเครื่องพิมพ์จากเครื่องนี้อีกครั้งก่อนบันทึก",
+                "The Secondary copies only company, printer, price and billing settings, "
+                "then verifies every printer from this computer before saving.",
+            )
+        )
+        copy.setWordWrap(True)
+        copy.setStyleSheet("color:#52677D;")
+        layout.addWidget(copy)
+        selector = WizardComboBox()
+        for candidate in candidates:
+            selector.addItem(
+                f"{candidate.company_name} · {candidate.base_url} · "
+                f"{candidate.printer_count} {tr('เครื่องพิมพ์', 'printer(s)')}",
+                candidate,
+            )
+        self._style_wizard_combo(selector, popup_width=560)
+        layout.addWidget(selector)
+        safety = QLabel(
+            tr(
+                "ไม่คัดลอก Password เครื่องพิมพ์, Registration Token, ประวัติการใช้งาน หรือ Log",
+                "Printer passwords, registration tokens, usage history and logs are never copied.",
+            )
+        )
+        safety.setWordWrap(True)
+        safety.setStyleSheet(
+            "background:#EEF6F9;color:#245268;border:1px solid #C7DFE8;"
+            "border-radius:6px;padding:9px;"
+        )
+        layout.addWidget(safety)
+        actions = QHBoxLayout()
+        actions.addStretch()
+        normal = btn(tr("ตั้งค่าเครื่องนี้เอง", "Set up independently"), "outline")
+        sync = btn(tr("Sync จากเครื่องหลัก", "Sync from Primary"), "primary")
+        normal.clicked.connect(dialog.reject)
+        sync.clicked.connect(dialog.accept)
+        actions.addWidget(normal)
+        actions.addWidget(sync)
+        layout.addLayout(actions)
+
+        def candidate_finished(result: int) -> None:
+            if result != int(QDialog.DialogCode.Accepted):
+                return
+            candidate = selector.currentData()
+            if isinstance(candidate, SecondaryPeerCandidate):
+                self._start_secondary_snapshot(candidate)
+
+        return self._open_wizard_child(dialog, candidate_finished)
+
+    def _start_secondary_snapshot(
+        self,
+        candidate: SecondaryPeerCandidate,
+    ) -> None:
+        if self._secondary_sync_thread is not None:
+            return
+        self._secondary_sync_cancelled = False
+        progress = QDialog(self)
+        progress.setWindowTitle(tr("กำลัง Sync การตั้งค่า", "Syncing setup"))
+        progress.setMinimumWidth(500)
+        progress_layout = QVBoxLayout(progress)
+        title = QLabel(tr("กำลังดึงการตั้งค่าจากเครื่องหลัก…", "Copying setup from Primary…"))
+        title.setFont(fnt(F_LG, True))
+        progress_layout.addWidget(title)
+        detail = QLabel(
+            tr(
+                "ระบบจะตรวจรูปแบบข้อมูลและไม่รับ Password, Token, ประวัติ หรือ Log",
+                "The app validates the payload and rejects passwords, tokens, history and logs.",
+            )
+        )
+        detail.setWordWrap(True)
+        progress_layout.addWidget(detail)
+        bar = QProgressBar()
+        bar.setRange(0, 0)
+        progress_layout.addWidget(bar)
+        cancel = btn(tr("ยกเลิก", "Cancel"), "outline")
+        cancel.clicked.connect(lambda: self._cancel_secondary_snapshot(progress))
+        progress_layout.addWidget(cancel, 0, Qt.AlignmentFlag.AlignRight)
+        self._secondary_sync_dialog = self._open_wizard_child(progress)
+
+        thread = QThread(self)
+        worker = SecondarySnapshotWorker(candidate)
+        worker.moveToThread(thread)
+        thread.started.connect(worker.run)
+        worker.finished.connect(
+            lambda snapshot, error: self._secondary_snapshot_finished(
+                candidate,
+                snapshot,
+                error,
+            )
+        )
+        worker.finished.connect(thread.quit)
+        worker.finished.connect(worker.deleteLater)
+        thread.finished.connect(thread.deleteLater)
+        self._secondary_sync_thread = thread
+        self._secondary_sync_worker = worker
+        thread.start()
+
+    def _cancel_secondary_snapshot(self, dialog: QDialog) -> None:
+        self._secondary_sync_cancelled = True
+        dialog.reject()
+
+    def _secondary_snapshot_finished(
+        self,
+        candidate: SecondaryPeerCandidate,
+        snapshot: object,
+        error: str,
+    ) -> None:
+        self._secondary_sync_thread = None
+        self._secondary_sync_worker = None
+        if self._secondary_sync_dialog is not None:
+            self._secondary_sync_dialog.accept()
+            self._secondary_sync_dialog = None
+        if self._secondary_sync_cancelled:
+            self.secondary_join_status.setText(
+                tr("ยกเลิกการ Sync แล้ว · ยังไม่มีการเปลี่ยนแปลง", "Sync cancelled · no changes were made")
+            )
+            return
+        if error or not isinstance(snapshot, dict):
+            self._show_wizard_message(
+                tr("Sync ไม่สำเร็จ", "Sync failed"),
+                error or tr("เครื่องหลักส่งข้อมูลไม่ครบ", "The Primary returned incomplete data"),
+            )
+            return
+        try:
+            self._apply_secondary_snapshot(candidate, snapshot)
+        except (KeyError, TypeError, ValueError, SecondarySetupError) as exc:
+            self._show_wizard_message(tr("Sync ไม่สำเร็จ", "Sync failed"), str(exc))
+
+    def _apply_secondary_snapshot(
+        self,
+        candidate: SecondaryPeerCandidate,
+        snapshot: dict[str, object],
+    ) -> None:
+        organization = snapshot["organization"]
+        settings = snapshot["settings"]
+        devices = snapshot["devices"]
+        if not isinstance(organization, dict) or not isinstance(settings, dict) or not isinstance(devices, list):
+            raise SecondarySetupError("ข้อมูลจากเครื่องหลักไม่สมบูรณ์")
+        self.company_name_input.setText(str(organization["company_name"]))
+        self.first_started_input.setText(
+            self._display_first_started(str(organization["first_started_at"]))
+        )
+        self.discovered_devices.clear()
+        self.results.clear()
+        self.device_table.setRowCount(0)
+        for raw in devices:
+            if not isinstance(raw, dict):
+                raise SecondarySetupError("ข้อมูลเครื่องพิมพ์จากเครื่องหลักไม่ถูกต้อง")
+            slot = int(raw["slot"])
+            self._upsert_discovered(
+                {
+                    "slot": slot,
+                    "name": str(raw["name"]),
+                    "name_is_default": False,
+                    "host": str(raw["host"]),
+                    "model": str(raw["model"]),
+                    "serial": str(raw["serial"]),
+                    "username": DEFAULT_ADMIN_USERNAME,
+                    "password": "",
+                    "tls_mode": str(raw["tls_mode"]),
+                    "tls_fingerprint": str(raw["tls_fingerprint"]),
+                    "found_in_registration_scan": True,
+                    "result": {
+                        "online": False,
+                        "web_ok": False,
+                        "tested": False,
+                        "synced_from_primary": True,
+                        "model": str(raw["model"]),
+                        "serial": str(raw["serial"]),
+                    },
+                },
+                select=True,
+            )
+            prices = raw["prices"]
+            if not isinstance(prices, dict):
+                raise SecondarySetupError("ราคาจากเครื่องหลักไม่ถูกต้อง")
+            for key, spin in self.price_rows[slot].items():
+                spin.setValue(float(prices[key]))
+            if slot == 0:
+                for key, spin in self.shared_price_row.items():
+                    spin.setValue(float(prices[key]))
+        pricing_mode = str(settings["pricing_mode"])
+        self.shared_price_mode.setChecked(pricing_mode == "shared")
+        self.per_device_price_mode.setChecked(pricing_mode == "per_device")
+        self.deferred_price_mode.setChecked(pricing_mode == "deferred")
+        self.waste_paper_pct.setValue(float(settings["waste_paper_pct"]))
+        self.billing_end_day.setCurrentIndex(int(settings["billing_day"]) - 1)
+        self.secondary_candidate = candidate
+        self.secondary_snapshot = snapshot
+        self.secondary_join_status.setText(
+            tr(
+                "รับการตั้งค่าแล้ว · กำลังทดสอบเครื่องพิมพ์จาก Secondary เครื่องนี้",
+                "Setup copied · verifying printers from this Secondary Desktop",
+            )
+        )
+        if self.stack.currentIndex() == 0:
+            self._next()
+        self._secondary_auto_review = True
+        QTimer.singleShot(0, self._test_all)
+
     def _choose_database_destination(self) -> None:
         start = str(self.selected_database_path)
         selected, _ = QFileDialog.getSaveFileName(
@@ -1578,6 +2090,7 @@ class SetupWizardV5(QDialog):
             )
         self.database_path_status.setText(status)
         self.database_path_status.setStyleSheet("color:#52677D;border:none;")
+        self.database_path_status.setVisible(True)
         return True
 
     def _activate_selected_database_path(self) -> None:
@@ -1660,6 +2173,20 @@ class SetupWizardV5(QDialog):
         self.scan_status.setStyleSheet("background:#EEF6F9;color:#245268;padding:8px 10px;")
         self.scan_status.setAccessibleName("สถานะการค้นหาเครื่องพิมพ์")
         layout.addWidget(self.scan_status)
+
+        self.scan_progress_bar = QProgressBar()
+        self.scan_progress_bar.setRange(0, 1)
+        self.scan_progress_bar.setValue(0)
+        self.scan_progress_bar.setTextVisible(True)
+        self.scan_progress_bar.setFormat("สแกน 0 / 0 IP (0%)")
+        self.scan_progress_bar.setAccessibleName("ความคืบหน้าการค้นหาเครื่องพิมพ์")
+        self.scan_progress_bar.setStyleSheet(
+            "QProgressBar{background:#E7EEF5;border:1px solid #C5D5E5;"
+            "border-radius:6px;color:#173A63;text-align:center;font-weight:700;min-height:24px;}"
+            "QProgressBar::chunk{background:#1685D1;border-radius:5px;}"
+        )
+        self.scan_progress_bar.setVisible(False)
+        layout.addWidget(self.scan_progress_bar)
 
         self.device_table = QTableWidget(0, 6)
         self.device_table.setHorizontalHeaderLabels(
@@ -1744,6 +2271,7 @@ class SetupWizardV5(QDialog):
                 self.database_path_status.setStyleSheet(
                     f"color:{C_GREEN};border:none;font-weight:700;"
                 )
+                self.database_path_status.setVisible(True)
 
         self._open_wizard_child(dialog, import_finished)
 
@@ -1886,7 +2414,7 @@ class SetupWizardV5(QDialog):
         mode_section.setObjectName("price_mode_section")
         mode_section.setStyleSheet("QFrame#price_mode_section{background:transparent;border:none;}")
         mode_layout = QVBoxLayout(mode_section)
-        mode_layout.setContentsMargins(0, 2, 0, 4)
+        mode_layout.setContentsMargins(0, 2, 0, 2)
         mode_layout.setSpacing(6)
         mode_header = QHBoxLayout()
         mode_header.setSpacing(12)
@@ -1907,7 +2435,7 @@ class SetupWizardV5(QDialog):
         self.price_mode_group.setExclusive(True)
         mode_style = (
             "QPushButton{background:#FFFFFF;color:#172033;border:1px solid #CBD5E1;"
-            "border-radius:6px;padding:12px 18px;font-weight:700;text-align:left;}"
+            "border-radius:6px;padding:14px 18px;font-weight:700;text-align:left;}"
             "QPushButton:hover{border-color:#7C91AA;background:#F8FAFC;}"
             "QPushButton:checked{background:#EAF3FB;color:#0B4F8A;border:2px solid #1769AA;}"
             "QPushButton:focus{border:2px solid #1769AA;background:#F8FCFF;}"
@@ -1920,7 +2448,7 @@ class SetupWizardV5(QDialog):
             button.setCheckable(True)
             button.setFont(fnt(F_MD, True))
             button.setStyleSheet(mode_style)
-            button.setMinimumHeight(44)
+            button.setMinimumHeight(50)
             button.setMaximumWidth(480)
             button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
             self.price_mode_group.addButton(button)
@@ -2306,6 +2834,7 @@ class SetupWizardV5(QDialog):
             entry = {
                 "slot": payload.get("slot"),
                 "name": payload.get("name") or payload.get("model") or host,
+                "name_is_default": bool(payload.get("name_is_default", False)),
                 "host": host,
                 "model": payload.get("model") or "—",
                 "serial": payload.get("serial") or "—",
@@ -2322,9 +2851,17 @@ class SetupWizardV5(QDialog):
             row = len(self.discovered_devices) - 1
         else:
             entry = self.discovered_devices[row]
+            old_model = str(entry.get("model") or "")
+            old_serial = str(entry.get("serial") or "")
             entry.update({key: value for key, value in payload.items() if key != "host" and value is not None})
             entry["host"] = host
             entry["result"] = payload.get("result", entry.get("result", {}))
+            identity_changed = (
+                str(entry.get("model") or "") != old_model
+                or str(entry.get("serial") or "") != old_serial
+            )
+            if identity_changed and "result" not in payload:
+                entry["result"] = {"online": True, "web_ok": False}
         self._render_discovered_row(row)
         if select:
             entry["selected"] = True
@@ -2335,10 +2872,16 @@ class SetupWizardV5(QDialog):
         self.device_table.setRowCount(len(self.discovered_devices))
         result = entry.get("result", {})
         selected = bool(entry.get("selected"))
-        if result.get("online") and result.get("web_ok"):
+        if result.get("testing"):
+            status, color = "● กำลังตรวจสอบ SNMP และ Web…", "#1769AA"
+            background = QColor("#E3F0FB") if selected else None
+        elif result.get("online") and result.get("web_ok"):
             prefix = "● VIRTUAL · " if entry.get("is_virtual") else "● "
             status, color = f"{prefix}พร้อมใช้งาน · SNMP + Web ผ่าน", C_GREEN
             background = QColor("#EDF8F2") if selected else None
+        elif result.get("credential_required"):
+            status, color = "● ต้องใส่รหัส · กรุณาใส่รหัสของลูกค้า", C_RED
+            background = QColor("#FDECEC") if selected else None
         elif result.get("tested"):
             status, color = "● ไม่ผ่าน · " + str(result.get("error") or "Web Connection อ่านค่าไม่ได้")[:60], C_RED
             background = QColor("#FDECEC") if selected else None
@@ -2384,7 +2927,9 @@ class SetupWizardV5(QDialog):
                 item.setForeground(QColor(C_RED) if column == 4 else QColor("#7F1D1D"))
             item.setToolTip(str(value))
             self.device_table.setItem(row, column, item)
-        credential_item = QTableWidgetItem("ตั้งค่า")
+        credential_item = QTableWidgetItem(
+            "ใส่รหัส" if result.get("credential_required") else "ตั้งค่า"
+        )
         credential_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
         credential_item.setForeground(QColor("#1769AA"))
         credential_item.setToolTip(f"ตั้งค่า Username / Password สำหรับ {entry['name']}")
@@ -2406,15 +2951,22 @@ class SetupWizardV5(QDialog):
         layout = QVBoxLayout(dialog)
         form = QFormLayout()
         username = QLineEdit(entry["username"])
-        password = QLineEdit(entry["password"])
+        current_password = (
+            ""
+            if entry.get("credential_origin") == "public_factory_default"
+            else entry["password"]
+        )
+        password = QLineEdit(current_password)
         password.setEchoMode(QLineEdit.EchoMode.Password)
         form.addRow("Username", username)
         form.addRow("Password", password)
         layout.addLayout(form)
         hint = QLabel(
             tr(
-                f"Username: {DEFAULT_ADMIN_USERNAME} · กรุณากรอก password ของเครื่อง",
-                f"Username: {DEFAULT_ADMIN_USERNAME} · Enter the printer password",
+                f"Username: {DEFAULT_ADMIN_USERNAME} · ระบบลองรหัสเริ่มต้น 2 แบบอัตโนมัติแล้ว "
+                "กรอกเฉพาะเมื่อเครื่องถูกเปลี่ยนรหัส",
+                f"Username: {DEFAULT_ADMIN_USERNAME} · Two public defaults are tested automatically; "
+                "enter a password only when the customer changed it",
             )
         )
         hint.setStyleSheet(f"color:{C_TEXT2};")
@@ -2432,6 +2984,10 @@ class SetupWizardV5(QDialog):
             if result == int(QDialog.DialogCode.Accepted):
                 entry["username"] = username.text().strip() or DEFAULT_ADMIN_USERNAME
                 entry["password"] = password.text()
+                entry["credential_origin"] = "customer" if password.text() else ""
+                entry["result"] = {"online": True, "web_ok": False}
+                self._render_discovered_row(self.discovered_devices.index(entry))
+                self._update_device_actions()
 
         self._open_wizard_child(dialog, credentials_finished)
 
@@ -2455,31 +3011,45 @@ class SetupWizardV5(QDialog):
         cancel = btn("ยกเลิก", "outline")
         confirm = btn("เริ่ม Advanced scan", "primary")
         cancel.clicked.connect(dialog.reject)
-        confirm.clicked.connect(dialog.accept)
+        confirm.setDefault(True)
+        confirm.setAutoDefault(True)
+        cancel.setAutoDefault(False)
         actions.addWidget(cancel)
         actions.addWidget(confirm)
         layout.addLayout(actions)
-        def advanced_finished(result: int) -> None:
-            if result != int(QDialog.DialogCode.Accepted):
+        def submit_scan() -> None:
+            if self._scan_thread is not None:
                 return
             try:
-                first = ipaddress.ip_address(start.text().strip())
-                last = ipaddress.ip_address(end.text().strip())
-                if first.version != 4 or last.version != 4 or int(last) < int(first):
-                    raise ValueError
-                values = range(int(first), int(last) + 1)
-                if len(values) > 1024:
-                    raise ValueError("กรุณาแบ่งช่วงให้ไม่เกิน 1,024 IP")
-                self._scan_network(
-                    [str(ipaddress.ip_address(value)) for value in values]
-                )
+                hosts = self._advanced_scan_hosts(start.text(), end.text())
             except ValueError as exc:
-                self._show_wizard_message(
-                    "ช่วง IP ไม่ถูกต้อง",
-                    str(exc) or "กรุณาระบุ IPv4 เริ่มต้นและสิ้นสุดให้ถูกต้อง",
-                )
+                hint.setText(str(exc))
+                hint.setStyleSheet(f"color:{C_RED};font-weight:700;")
+                start.setFocus()
+                return
+            dialog.accept()
+            self._scan_network(hosts)
 
-        self._open_wizard_child(dialog, advanced_finished)
+        confirm.clicked.connect(submit_scan)
+        start.returnPressed.connect(submit_scan)
+        end.returnPressed.connect(submit_scan)
+        self._open_wizard_child(dialog)
+
+    @staticmethod
+    def _advanced_scan_hosts(start: str, end: str) -> list[str]:
+        """Validate a bounded IPv4 range without closing the input dialog."""
+
+        try:
+            first = ipaddress.ip_address(start.strip())
+            last = ipaddress.ip_address(end.strip())
+        except ValueError as exc:
+            raise ValueError("กรุณาระบุ IPv4 เริ่มต้นและสิ้นสุดให้ถูกต้อง") from exc
+        if first.version != 4 or last.version != 4 or int(last) < int(first):
+            raise ValueError("กรุณาระบุช่วง IPv4 จากค่าน้อยไปหาค่ามาก")
+        values = range(int(first), int(last) + 1)
+        if len(values) > 1024:
+            raise ValueError("กรุณาแบ่งช่วงให้ไม่เกิน 1,024 IP")
+        return [str(ipaddress.ip_address(value)) for value in values]
 
     def _manual_setup(self) -> None:
         """Add up to three devices directly when network discovery is not useful."""
@@ -2568,6 +3138,7 @@ class SetupWizardV5(QDialog):
             self._upsert_discovered(
                 {
                     "name": host,
+                    "name_is_default": True,
                     "host": host,
                     "model": "รอทดสอบ",
                     "serial": "—",
@@ -2679,8 +3250,9 @@ class SetupWizardV5(QDialog):
     def _scan_network(self, hosts: list[str] | None = None) -> None:
         if isinstance(hosts, bool):
             hosts = None
-        if self._scan_thread is not None:
+        if self._scan_thread is not None or self._thread is not None:
             return
+        self._test_generation += 1
         self.scan_button.setEnabled(False)
         self.advanced_scan_button.setEnabled(False)
         self.manual_setup_button.setEnabled(False)
@@ -2694,6 +3266,7 @@ class SetupWizardV5(QDialog):
         thread.started.connect(worker.run)
         worker.result.connect(self._discovery_result)
         worker.progress.connect(self.scan_status.setText)
+        worker.progress_count.connect(self._scan_progress_changed)
         worker.finished.connect(thread.quit)
         worker.finished.connect(worker.deleteLater)
         thread.finished.connect(thread.deleteLater)
@@ -2701,6 +3274,17 @@ class SetupWizardV5(QDialog):
         self._scan_thread = thread
         self._scan_worker = worker
         thread.start()
+
+    def _scan_progress_changed(self, completed: int, total: int) -> None:
+        safe_total = max(1, int(total))
+        safe_completed = min(max(0, int(completed)), safe_total)
+        percent = round((safe_completed / safe_total) * 100)
+        self.scan_progress_bar.setRange(0, safe_total)
+        self.scan_progress_bar.setValue(safe_completed)
+        self.scan_progress_bar.setFormat(
+            f"สแกน {safe_completed:,} / {int(total):,} IP ({percent}%)"
+        )
+        self.scan_progress_bar.setVisible(True)
 
     def _scan_parameters(self, hosts: list[str] | None) -> tuple[list[str] | None, int]:
         """Use virtual ports only for the explicit local simulator endpoint."""
@@ -2731,6 +3315,7 @@ class SetupWizardV5(QDialog):
             {
                 **result,
                 "name": self._default_device_name(model, str(result.get("host") or "เครื่องพิมพ์")),
+                "name_is_default": True,
                 "is_virtual": is_virtual,
                 "found_in_registration_scan": True,
                 "result": {**result, "online": True, "web_ok": False},
@@ -2758,7 +3343,12 @@ class SetupWizardV5(QDialog):
         """Ask setup workers to stop before Qt destroys their QThread owners."""
         threads = [
             thread
-            for thread in (self._scan_thread, self._thread)
+            for thread in (
+                self._scan_thread,
+                self._thread,
+                self._secondary_discovery_thread,
+                self._secondary_sync_thread,
+            )
             if thread is not None and thread.isRunning()
         ]
         if self._scan_worker is not None:
@@ -2804,7 +3394,7 @@ class SetupWizardV5(QDialog):
 
     def _registration_devices(self) -> list[dict[str, object]]:
         """Return scan results plus selected manual devices without network identity."""
-        inventory: list[dict[str, object]] = []
+        by_serial: dict[str, dict[str, object]] = {}
         for entry in self.discovered_devices:
             selected = bool(entry.get("selected"))
             if not selected and not entry.get("found_in_registration_scan"):
@@ -2812,16 +3402,21 @@ class SetupWizardV5(QDialog):
             result = entry.get("result", {})
             serial_number = str(result.get("serial") or entry.get("serial") or "").strip()
             model = str(result.get("model") or entry.get("model") or "").strip()
+            if not serial_number or serial_number == "—":
+                continue
             raw_slot = entry.get("slot")
-            inventory.append(
-                {
-                    "serial_number": serial_number,
-                    "model": model,
-                    "selected": selected,
-                    "device_slot": int(raw_slot) + 1 if selected and raw_slot is not None else None,
-                }
-            )
-        return inventory
+            candidate = {
+                "serial_number": serial_number,
+                "model": model or "Unknown",
+                "selected": selected,
+                "device_slot": int(raw_slot) + 1 if selected and raw_slot is not None else None,
+            }
+            current = by_serial.get(serial_number)
+            # One physical printer may expose more than one IP/interface. Keep
+            # one serial row and prefer the selected endpoint when applicable.
+            if current is None or (selected and not current["selected"]):
+                by_serial[serial_number] = candidate
+        return list(by_serial.values())
 
     @staticmethod
     def _assign_selected_slots(selected: list[dict]) -> None:
@@ -2853,14 +3448,24 @@ class SetupWizardV5(QDialog):
             return
         if self._thread is not None:
             return
+        self._test_generation += 1
+        generation = self._test_generation
+        for entry in self._selected_entries():
+            entry["result"] = {"testing": True, "online": False, "web_ok": False}
+            self._render_discovered_row(self.discovered_devices.index(entry))
         self.test_button.setEnabled(False)
         self.test_button.setText("กำลังตรวจสอบเครื่องที่เลือก…")
+        self.scan_button.setEnabled(False)
+        self.advanced_scan_button.setEnabled(False)
+        self.manual_setup_button.setEnabled(False)
+        self.fallback_toggle.setEnabled(False)
         thread = QThread(self)
         worker = DeviceTestWorker(
             devices,
             snmp_port=161,
             web_port=443,
             endpoint_ports=self._lab_endpoint_ports(),
+            generation=generation,
         )
         worker.moveToThread(thread)
         thread.started.connect(worker.run)
@@ -2873,18 +3478,65 @@ class SetupWizardV5(QDialog):
         self._worker = worker
         thread.start()
 
-    def _test_result(self, slot: int, payload: dict) -> None:
-        payload = {**payload, "tested": True}
-        self.results[slot] = payload
-        row = next((index for index, entry in enumerate(self.discovered_devices) if entry.get("slot") == slot), None)
+    def _test_result(
+        self,
+        report: DeviceTestResult | int,
+        legacy_payload: dict | None = None,
+    ) -> None:
+        if isinstance(report, int):
+            entry = next(
+                (
+                    item
+                    for item in self.discovered_devices
+                    if item.get("slot") == report and item.get("selected")
+                ),
+                None,
+            )
+            if entry is None or legacy_payload is None:
+                return
+            report = DeviceTestResult(
+                generation=self._test_generation,
+                host=str(entry["host"]),
+                slot=report,
+                payload=legacy_payload,
+            )
+        if report.generation != self._test_generation:
+            return
+        payload = {**report.payload, "tested": True, "testing": False}
+        row = next(
+            (
+                index
+                for index, entry in enumerate(self.discovered_devices)
+                if entry.get("host") == report.host
+            ),
+            None,
+        )
         if row is None:
             return
         entry = self.discovered_devices[row]
+        if not entry.get("selected"):
+            return
         entry["result"] = payload
         entry["model"] = payload.get("model") or entry["model"]
         entry["serial"] = payload.get("serial") or entry["serial"]
+        if entry.get("name_is_default"):
+            entry["name"] = self._default_device_name(
+                str(entry["model"]), str(entry["host"])
+            )
         entry["tls_mode"] = payload.get("tls_mode") or entry.get("tls_mode", "system")
         entry["tls_fingerprint"] = payload.get("tls_fingerprint") or entry.get("tls_fingerprint", "")
+        default_index = payload.get("credential_default_index")
+        if (
+            not entry.get("password")
+            and isinstance(default_index, int)
+            and not isinstance(default_index, bool)
+            and 0 <= default_index < len(PUBLIC_FACTORY_ADMIN_PASSWORDS)
+        ):
+            entry["password"] = PUBLIC_FACTORY_ADMIN_PASSWORDS[default_index]
+            entry["credential_origin"] = "public_factory_default"
+        current_slot = entry.get("slot")
+        if current_slot is not None:
+            self.results[int(current_slot)] = payload
         self._render_discovered_row(row)
         self._update_device_actions()
 
@@ -2893,18 +3545,47 @@ class SetupWizardV5(QDialog):
         self._worker = None
         self.test_button.setEnabled(True)
         self.test_button.setText("ตรวจสอบเครื่องที่เลือก")
+        self.scan_button.setEnabled(True)
+        self.advanced_scan_button.setEnabled(True)
+        self.manual_setup_button.setEnabled(True)
+        self.fallback_toggle.setEnabled(True)
         try:
-            devices = self._configs()
+            self._configs()
         except ValueError:
             return
         all_ready = all(
-            self.results.get(device.slot, {}).get("online") and self.results[device.slot].get("web_ok")
-            for device in devices
+            entry.get("result", {}).get("online")
+            and entry.get("result", {}).get("web_ok")
+            for entry in self._selected_entries()
         )
         if all_ready:
             if self.lab_mode:
                 self.scan_status.setText("Virtual Printer พร้อมใช้งาน · ผ่าน SNMP และ Web แล้ว")
             self._update_device_actions()
+            if self._secondary_auto_review:
+                self._secondary_auto_review = False
+                self._show_review_step()
+                return
+        if self._secondary_auto_review:
+            self._secondary_auto_review = False
+            failed = [
+                str(entry.get("name") or entry.get("host"))
+                for entry in self._selected_entries()
+                if not (
+                    entry.get("result", {}).get("online")
+                    and entry.get("result", {}).get("web_ok")
+                )
+            ]
+            self._show_wizard_message(
+                tr("ต้องตรวจสอบบางเครื่อง", "Some printers need attention"),
+                tr(
+                    "รับการตั้งค่าจาก Primary แล้ว แต่ Secondary เครื่องนี้ยังเชื่อมต่อบางเครื่องไม่ผ่าน "
+                    "กรุณาตั้งค่าสิทธิ์เฉพาะรายการด้านล่างแล้วกดตรวจสอบอีกครั้ง:\n",
+                    "Primary setup was copied, but this Secondary could not verify every printer. "
+                    "Configure access for the entries below and verify again:\n",
+                )
+                + "\n".join(f"• {name}" for name in failed),
+            )
 
     def _update_device_actions(self) -> None:
         selected = self._selected_entries()
@@ -2954,14 +3635,17 @@ class SetupWizardV5(QDialog):
             return
         if index == 1:
             try:
-                devices = self._configs()
+                self._configs()
             except ValueError as exc:
                 self._show_wizard_message("ข้อมูลไม่ครบ", str(exc))
                 return
             not_ready = [
-                device.name
-                for device in devices
-                if not (self.results.get(device.slot, {}).get("online") and self.results[device.slot].get("web_ok"))
+                str(entry.get("name") or entry.get("host"))
+                for entry in self._selected_entries()
+                if not (
+                    entry.get("result", {}).get("online")
+                    and entry.get("result", {}).get("web_ok")
+                )
             ]
             if not_ready:
                 self._show_wizard_message(
@@ -2984,15 +3668,7 @@ class SetupWizardV5(QDialog):
                 )
                 self.deferred_price_mode.setFocus()
                 return
-            self._update_review()
-            self.stack.setCurrentIndex(3)
-            self.title.setText("ตรวจสอบและเริ่มใช้งาน")
-            self.step_label.setText("4 / 4")
-            self.note.setText("ขั้นที่ 4: ตรวจสอบแต่ละส่วนก่อนนำเครื่องพิมพ์เข้าระบบ")
-            self._update_progress(3)
-            self.next_button.setText("จบการทดสอบ" if self.lab_mode else "บันทึกและเปิดโปรแกรม")
-            apply_language(self)
-            self._sync_language_switch()
+            self._show_review_step()
             return
         if index == 3:
             self._save()
@@ -3010,6 +3686,31 @@ class SetupWizardV5(QDialog):
         self.back_button.setVisible(True)
         self.next_button.setText("ตรวจสอบการตั้งค่า →")
         self.next_button.setEnabled(True)
+        apply_language(self)
+        self._sync_language_switch()
+
+    def _show_review_step(self) -> None:
+        """Enter the shared final review from normal or Secondary setup flow."""
+
+        self._update_review()
+        self.stack.setCurrentIndex(3)
+        self.title.setText("ตรวจสอบและเริ่มใช้งาน")
+        self.step_label.setText("4 / 4")
+        self.note.setText("ขั้นที่ 4: ตรวจสอบแต่ละส่วนก่อนนำเครื่องพิมพ์เข้าระบบ")
+        self._update_progress(3)
+        self.back_button.setVisible(True)
+        self.test_button.setVisible(False)
+        self.next_button.setEnabled(True)
+        self.next_button.setText("จบการทดสอบ" if self.lab_mode else "บันทึกและเปิดโปรแกรม")
+        if self.secondary_candidate is not None:
+            self.review_ready_note.setText(
+                tr(
+                    "พร้อมบันทึก Secondary Desktop\n"
+                    "เครื่องพิมพ์ทั้งหมดผ่านการตรวจสอบจากเครื่องนี้แล้ว และ Desktop เครื่องนี้จะลงทะเบียนแยกบน Host",
+                    "Secondary Desktop is ready\n"
+                    "All printers were verified from this computer; it will register as a separate Host installation.",
+                )
+            )
         apply_language(self)
         self._sync_language_switch()
 
@@ -3049,8 +3750,11 @@ class SetupWizardV5(QDialog):
             f"Version {escape(PACKAGE_VERSION)}"
         )
         device_lines: list[str] = []
+        entries_by_host = {
+            str(entry.get("host")): entry for entry in self._selected_entries()
+        }
         for device in devices:
-            meter = self.results.get(device.slot, {}).get("total")
+            meter = entries_by_host.get(device.host, {}).get("result", {}).get("total")
             meter_text = f"{meter:,.0f}" if isinstance(meter, (int, float)) else "—"
             device_lines.append(
                 f"<b>{escape(device.name)}</b> · {escape(device.model or 'ไม่ทราบรุ่น')} · "
@@ -3097,13 +3801,9 @@ class SetupWizardV5(QDialog):
         model_text = ", ".join(
             f"{escape(str(row['model']))} × {row['quantity']}" for row in model_rows
         ) or "—"
-        online_mode = self.registration_online_mode.isChecked()
         delivery_copy = (
             f"<b>{tr('Online Registration:', 'Online Registration:')}</b> "
-            f"{tr('ลงทะเบียนอัตโนมัติและส่ง Status กับ Aggregate Total Meter ทุก 6 ชั่วโมงโดยประมาณ', 'automatic registration with Status and aggregate Total Meter about every 6 hours')}<br>"
-            if online_mode
-            else f"<b>{tr('Offline License:', 'Offline License:')}</b> "
-            f"{tr('ไม่ส่ง Registration, Status หรือ Meter ไปยัง Host', 'no Registration, Status, or Meter telemetry is sent to the Host')}<br>"
+            f"{tr('ระบบจะลงทะเบียนก่อนเปิดโปรแกรม และส่ง Status กับ Aggregate Total Meter ทุก 6 ชั่วโมงโดยประมาณ', 'the app registers before opening and sends Status and aggregate Total Meter about every 6 hours')}<br>"
         )
         self.review_sections["registration"].setText(
             delivery_copy
@@ -3117,14 +3817,7 @@ class SetupWizardV5(QDialog):
             f"<b>{tr('การแจ้งเตือน:', 'Alerts:')}</b> "
             f"{tr('Host อาจแจ้งว่า Desktop ขาดการเชื่อมต่อหลัง 3 วัน; ข้อความนี้ไม่ใช่หลักฐานว่าเครื่องพิมพ์เสีย', 'the Host may report Desktop connectivity loss after 3 days; this is not proof of a printer fault')}"
         )
-        if not online_mode:
-            self.registration_status_label.setText(tr("Offline License", "Offline License"))
-        elif self.privacy_notice_accepted.isChecked():
-            self.registration_status_label.setText(
-                tr("รอบันทึก", "Pending")
-            )
-        else:
-            self.registration_status_label.setText(tr("รอยอมรับ", "Accept"))
+        self.registration_status_label.setText(tr("รอลงทะเบียน", "Pending"))
         apply_language(self)
         self._sync_language_switch()
 
@@ -3138,29 +3831,50 @@ class SetupWizardV5(QDialog):
         )
 
     def _save(self) -> None:
+        existing_registration_state: dict[str, object] | None = None
+        if self.edit_mode:
+            current_database_path = Path(get_db_path()).expanduser().resolve(strict=False)
+            if self.selected_database_path != current_database_path:
+                self._show_wizard_message(
+                    tr("เปลี่ยนเครื่องพิมพ์ไม่ได้", "Could not change printers"),
+                    tr(
+                        "การเปลี่ยน Database Path ให้ทำจากการตั้งค่าขั้นสูงก่อน แล้วเปิดแก้ไขเครื่องพิมพ์อีกครั้ง",
+                        "Change the Database Path from Advanced Settings first, then reopen printer editing.",
+                    ),
+                )
+                return
+            existing_registration_state = self.registration_state.internal()
+            if existing_registration_state is None:
+                self._show_wizard_message(
+                    tr("เปลี่ยนเครื่องพิมพ์ไม่ได้", "Could not change printers"),
+                    tr(
+                        "ไม่พบสถานะ Registration เดิม จึงยังไม่บันทึกการเปลี่ยนแปลง กรุณาตรวจสอบ Registration ก่อนลองอีกครั้ง",
+                        "The existing Registration state is missing, so no changes were saved. Check Registration before trying again.",
+                    ),
+                )
+                return
         try:
             company_name = " ".join(self.company_name_input.text().split())
             if not company_name:
                 raise ValueError("กรุณากรอกชื่อบริษัท")
             registration_mode = (
-                "offline" if self.registration_offline_mode.isChecked() else "online"
+                str(existing_registration_state["mode"])
+                if existing_registration_state is not None
+                else "online"
             )
-            if registration_mode == "online" and not self.privacy_notice_accepted.isChecked():
-                self._show_wizard_message(
-                    tr("กรุณารับทราบข้อมูล", "Acknowledge the Data Notice"),
-                    tr(
-                        "รับทราบประกาศข้อมูลการลงทะเบียน หรือเลือก Offline License ก่อนบันทึก",
-                        "Acknowledge the Registration Data Notice or select Offline License before saving.",
-                    ),
-                )
-                self.privacy_notice_accepted.setFocus()
-                return
+            if registration_mode not in {"online", "offline"}:
+                raise ValueError("สถานะ Registration เดิมไม่ถูกต้อง")
             devices = self._configs()
             if self.lab_mode:
                 self.accept()
                 return
             self._activate_selected_database_path()
-            self.repository.replace_all(devices)
+            self.repository.replace_all(
+                devices,
+                registration_devices=(
+                    self._registration_devices() if self.edit_mode else None
+                ),
+            )
             effective = self.effective_date.date().toPyDate()
             shared = self.shared_price_mode.isChecked()
             deferred = self.deferred_price_mode.isChecked()
@@ -3193,33 +3907,307 @@ class SetupWizardV5(QDialog):
             installation_id = get_cfg("installation_id", "") or str(uuid4())
             set_cfg("installation_id", installation_id)
             set_cfg("v52_registration_mode", registration_mode)
+            if self.secondary_candidate is not None and self.secondary_snapshot is not None:
+                organization = self.secondary_snapshot.get("organization", {})
+                settings = self.secondary_snapshot.get("settings", {})
+                primary_installation_id = (
+                    str(organization.get("primary_installation_id") or "")
+                    if isinstance(organization, dict)
+                    else ""
+                )
+                if isinstance(settings, dict):
+                    received_schedule = str(
+                        settings.get("sync_schedule_windows") or ""
+                    ).strip()
+                    if received_schedule and not get_cfg("sync_schedule_windows", ""):
+                        set_cfg("sync_schedule_windows", received_schedule)
+                set_cfg("desktop_role", "secondary")
+                set_cfg("primary_peer_url", self.secondary_candidate.base_url)
+                set_cfg(
+                    "primary_peer_certificate_sha256",
+                    self.secondary_candidate.certificate_sha256,
+                )
+                set_cfg("primary_installation_id", primary_installation_id)
+            elif not get_cfg("desktop_role", ""):
+                set_cfg("desktop_role", "primary")
         except Exception as exc:
             self._show_wizard_message("บันทึกไม่สำเร็จ", str(exc))
             return
 
-        # Registration is intentionally second and local-only: configuration
-        # failure must never roll back Device, Billing, History, or Report data.
-        # The lifecycle coordinator queues schema 3 after the Wizard closes;
-        # no transport is called from the dialog.
+        if self.edit_mode:
+            # Editing printers is a local Settings action.  Preserve the
+            # existing Online/Offline lifecycle and let its normal schedule
+            # observe the updated inventory; never enqueue or send here.
+            self.accept()
+            return
+
+        # Configuration stays local and durable if registration fails. The
+        # application itself remains closed until Online Registration succeeds
+        # or a valid Host-signed Offline License is imported.
         try:
             self.registration_state.configure(
                 registration_mode,
                 company_name,
                 installation_id,
                 get_cfg("client_first_started_at", "") or date.today().isoformat(),
-                DRAFT_NOTICE_VERSION if registration_mode == "online" else "",
+                REGISTRATION_NOTICE_VERSION if registration_mode == "online" else "",
                 (
                     datetime.now().astimezone().isoformat(timespec="seconds")
                     if registration_mode == "online"
                     else ""
                 ),
+                registration_devices=self._registration_devices(),
             )
             set_cfg("registration_pending_envelope", "")
             set_cfg("registration_status", "v52_configured")
         except Exception:
             set_cfg("registration_pending_envelope", "")
             set_cfg("registration_status", "action_required")
+            dialog = self._registration_dialog_ui()
+            if not dialog.isVisible():
+                dialog.open()
+            self._show_registration_failure("contract_invalid")
+            return
+        self._start_online_registration()
+
+    def _registration_dialog_ui(self) -> QDialog:
+        if self._registration_dialog is not None:
+            return self._registration_dialog
+        dialog = QDialog(self)
+        dialog.setWindowTitle(tr("ลงทะเบียน KOMI Report", "Register KOMI Report"))
+        dialog.setMinimumWidth(520)
+        dialog.setWindowModality(Qt.WindowModality.ApplicationModal)
+        layout = QVBoxLayout(dialog)
+        title = QLabel(tr("กำลังลงทะเบียนออนไลน์", "Registering online"))
+        title.setFont(fnt(F_XL, True))
+        layout.addWidget(title)
+        self.registration_progress = QProgressBar()
+        self.registration_progress.setRange(0, 0)
+        self.registration_progress.setTextVisible(False)
+        layout.addWidget(self.registration_progress)
+        self.registration_result_copy = QLabel(
+            tr("กำลังติดต่อ Host กรุณารอสักครู่…", "Contacting the Host. Please wait…")
+        )
+        self.registration_result_copy.setWordWrap(True)
+        layout.addWidget(self.registration_result_copy)
+        actions = QHBoxLayout()
+        actions.addStretch()
+        self.registration_cancel_button = btn(tr("ยกเลิก", "Cancel"), "outline")
+        self.registration_retry_button = btn(tr("ลองอีกครั้ง", "Retry"), "outline")
+        self.registration_offline_button = btn(
+            tr("ลงทะเบียน Offline", "Offline Registration"), "primary"
+        )
+        self.registration_cancel_button.clicked.connect(dialog.reject)
+        self.registration_retry_button.clicked.connect(self._retry_online_registration)
+        self.registration_offline_button.clicked.connect(self._open_offline_registration)
+        actions.addWidget(self.registration_cancel_button)
+        actions.addWidget(self.registration_retry_button)
+        actions.addWidget(self.registration_offline_button)
+        layout.addLayout(actions)
+        self.registration_retry_button.setVisible(False)
+        self.registration_offline_button.setVisible(False)
+        dialog.finished.connect(lambda _result: self._registration_dialog_closed())
+        self._prepare_wizard_dialog(dialog)
+        self._registration_dialog = dialog
+        return dialog
+
+    def _start_online_registration(self) -> None:
+        if self._registration_in_progress:
+            return
+        self._registration_in_progress = True
+        self.next_button.setEnabled(False)
+        dialog = self._registration_dialog_ui()
+        self.registration_progress.setVisible(True)
+        self.registration_progress.setRange(0, 0)
+        self.registration_result_copy.setStyleSheet("color:#334155;")
+        self.registration_result_copy.setText(
+            tr("กำลังติดต่อ Host กรุณารอสักครู่…", "Contacting the Host. Please wait…")
+        )
+        self.registration_retry_button.setVisible(False)
+        self.registration_offline_button.setVisible(False)
+        self.registration_cancel_button.setVisible(True)
+        if not dialog.isVisible():
+            dialog.open()
+        runtime = self.registration_runtime
+        if runtime is None:
+            self._show_registration_failure("client_not_configured")
+            return
+        try:
+            runtime.set_mode("online")
+            runtime.configuration_changed()
+        except Exception:
+            self._show_registration_failure("contract_invalid")
+            return
+        self._registration_deadline = datetime.now().astimezone() + timedelta(seconds=25)
+        timer = self._registration_poll_timer
+        if timer is None:
+            timer = QTimer(self)
+            timer.setInterval(250)
+            timer.timeout.connect(self._poll_registration_result)
+            self._registration_poll_timer = timer
+        timer.start()
+        self._poll_registration_result()
+
+    def _poll_registration_result(self) -> None:
+        runtime = self.registration_runtime
+        if runtime is None:
+            self._show_registration_failure("client_not_configured")
+            return
+        snapshot = runtime.snapshot()
+        status = str(snapshot.get("status") or "")
+        if status == "registered":
+            self._registration_succeeded()
+            return
+        if status in {"needs_review", "retrying"}:
+            self._show_registration_failure(str(snapshot.get("support_code") or status))
+            return
+        if self._registration_deadline and datetime.now().astimezone() >= self._registration_deadline:
+            self._show_registration_failure(str(snapshot.get("support_code") or "offline"))
+
+    def _registration_succeeded(self) -> None:
+        if self._registration_poll_timer is not None:
+            self._registration_poll_timer.stop()
+        self._registration_in_progress = False
+        self.registration_progress.setRange(0, 1)
+        self.registration_progress.setValue(1)
+        self.registration_cancel_button.setVisible(False)
+        self.registration_result_copy.setStyleSheet(f"color:{C_GREEN};font-weight:700;")
+        self.registration_result_copy.setText(
+            tr("✓ ลงทะเบียนสำเร็จ กำลังเปิดโปรแกรม…", "✓ Registration successful. Opening the app…")
+        )
+        self.registration_status_label.setText(tr("ลงทะเบียนแล้ว", "Registered"))
+        if QApplication.platformName() == "offscreen":
+            self._complete_registered_setup()
+            return
+        QTimer.singleShot(650, self._complete_registered_setup)
+
+    def _complete_registered_setup(self) -> None:
+        if self._registration_dialog is not None:
+            self._registration_dialog.accept()
         self.accept()
+
+    def _show_registration_failure(self, code: str) -> None:
+        if self._registration_poll_timer is not None:
+            self._registration_poll_timer.stop()
+        self._registration_in_progress = False
+        self.next_button.setEnabled(True)
+        self.registration_progress.setVisible(False)
+        messages = {
+            "offline": tr("ไม่สามารถเชื่อมต่ออินเทอร์เน็ตหรือ Host ได้", "Internet or Host connection is unavailable."),
+            "client_not_configured": tr("ยังไม่ได้ตั้งค่าการเชื่อมต่อ Host", "The Host connection is not configured."),
+            "validation_error": tr("Host ไม่รับข้อมูลการลงทะเบียนชุดนี้", "The Host rejected this registration data."),
+            "contract_invalid": tr("รูปแบบข้อมูลตอบกลับจาก Host ไม่ถูกต้อง", "The Host response contract is invalid."),
+            "vault_unavailable": tr("ไม่สามารถเก็บข้อมูลลงทะเบียนอย่างปลอดภัยได้", "Secure registration storage is unavailable."),
+        }
+        message = messages.get(code, tr("ลงทะเบียนออนไลน์ไม่สำเร็จ", "Online Registration failed."))
+        self.registration_result_copy.setStyleSheet(f"color:{C_RED};font-weight:700;")
+        self.registration_result_copy.setText(
+            message
+            + "\n"
+            + tr(
+                "ลองอีกครั้งเมื่ออินเทอร์เน็ตพร้อม หรือลงทะเบียนแบบ Offline",
+                "Retry when the internet is available, or use Offline Registration.",
+            )
+        )
+        self.registration_retry_button.setVisible(True)
+        self.registration_offline_button.setVisible(True)
+        self.registration_status_label.setText(tr("ต้องลงทะเบียน", "Registration required"))
+
+    def _retry_online_registration(self) -> None:
+        self._start_online_registration()
+
+    def _registration_service(self):
+        """Return a local-capable runtime even when no Host client is injected.
+
+        First-run source review and a temporarily unavailable Host must still be
+        able to create an installation-signed Offline License request.  The
+        coordinator remains fail-closed for network delivery when it has no
+        client, while Offline License import still requires Host public keys.
+        """
+
+        if self.registration_runtime is None:
+            from services.v5_2_runtime import V52RuntimeCoordinator
+
+            self.registration_runtime = V52RuntimeCoordinator(parent=self)
+        return self.registration_runtime
+
+    def _open_offline_registration(self) -> None:
+        runtime = self._registration_service()
+        dialog = QDialog(self)
+        dialog.setWindowTitle(tr("ลงทะเบียน Offline", "Offline Registration"))
+        dialog.setMinimumWidth(560)
+        layout = QVBoxLayout(dialog)
+        copy = QLabel(
+            tr(
+                "1. ส่งออกไฟล์ .komirequest ให้ผู้ดูแลออก License\n"
+                "2. นำเข้าไฟล์ .komilicense ที่ได้รับกลับมา",
+                "1. Export a .komirequest file for the administrator\n"
+                "2. Import the returned .komilicense file",
+            )
+        )
+        copy.setWordWrap(True)
+        layout.addWidget(copy)
+        actions = QHBoxLayout()
+        cancel_button = btn(tr("ยกเลิก", "Cancel"), "outline")
+        export_button = btn(tr("ส่งออก Request", "Export Request"), "outline")
+        import_button = btn(tr("นำเข้า License", "Import License"), "primary")
+        actions.addStretch()
+        actions.addWidget(cancel_button)
+        actions.addWidget(export_button)
+        actions.addWidget(import_button)
+        layout.addLayout(actions)
+
+        def export_request() -> None:
+            path, _ = QFileDialog.getSaveFileName(
+                dialog,
+                tr("บันทึก Offline License Request", "Save Offline License Request"),
+                "KOMI-Offline.komirequest",
+                "KOMI Request (*.komirequest)",
+            )
+            if not path:
+                return
+            destination = Path(path)
+            if destination.suffix.casefold() != ".komirequest":
+                destination = destination.with_suffix(".komirequest")
+            try:
+                runtime.set_mode("offline")
+                runtime.create_offline_request(destination)
+                copy.setText(tr("ส่งออก Request แล้ว รอไฟล์ License จากผู้ดูแล", "Request exported. Wait for the License file."))
+            except Exception as exc:
+                copy.setText(str(exc))
+
+        def import_license() -> None:
+            path, _ = QFileDialog.getOpenFileName(
+                dialog,
+                tr("เลือก Offline License", "Choose Offline License"),
+                "",
+                "KOMI License (*.komilicense)",
+            )
+            if not path:
+                return
+            try:
+                runtime.import_offline_license(
+                    Path(path), self.offline_license_public_keys
+                )
+            except Exception as exc:
+                copy.setStyleSheet(f"color:{C_RED};font-weight:700;")
+                copy.setText(str(exc))
+                return
+            dialog.accept()
+            if self._registration_dialog is not None:
+                self._registration_dialog.accept()
+            self.accept()
+
+        cancel_button.clicked.connect(dialog.reject)
+        export_button.clicked.connect(export_request)
+        import_button.clicked.connect(import_license)
+        self._open_wizard_child(dialog)
+
+    def _registration_dialog_closed(self) -> None:
+        if self._registration_poll_timer is not None:
+            self._registration_poll_timer.stop()
+        self._registration_in_progress = False
+        self.next_button.setEnabled(True)
 
     def _billing_day(self) -> int:
         return int(self.billing_end_day.currentData() or DEFAULT_BILLING_DAY)
@@ -4376,7 +5364,15 @@ class ConnectionInspectorWorker(QObject):
                     )
                 )
             if not ram_rows:
-                ram_rows.append(("ไม่พบ User Authentication / Account Track", "—", "RAM snapshot"))
+                diagnostic = next(
+                    (
+                        warning
+                        for warning in reading.warnings
+                        if "User Authentication" in warning or "Account Track" in warning
+                    ),
+                    "snapshot นี้ยังไม่มีรายการ User Authentication / Account Track",
+                )
+                ram_rows.append((diagnostic, "—", "RAM snapshot"))
         elif web_error:
             ram_rows.append(("ERROR", "ไม่มี User/Account RAM snapshot", web_error))
 
@@ -4772,16 +5768,19 @@ class PageImportV5(QWidget):
         header.addWidget(title)
         header.addStretch()
 
-        self.sync_log_button = btn("สถานะการอ่าน", "outline")
-        self.sync_log_button.clicked.connect(self.sync_log_requested.emit)
-        header.addWidget(self.sync_log_button)
-
         sync_controls = QVBoxLayout()
         sync_controls.setContentsMargins(0, 0, 0, 0)
         sync_controls.setSpacing(3)
+        sync_actions = QHBoxLayout()
+        sync_actions.setContentsMargins(0, 0, 0, 0)
+        sync_actions.setSpacing(10)
+        self.sync_log_button = btn("สถานะการอ่าน", "outline")
+        self.sync_log_button.clicked.connect(self.sync_log_requested.emit)
+        sync_actions.addWidget(self.sync_log_button)
         self.sync_button = btn("อ่านข้อมูลตอนนี้", "primary")
         self.sync_button.clicked.connect(self._request_sync)
-        sync_controls.addWidget(self.sync_button, 0, Qt.AlignmentFlag.AlignRight)
+        sync_actions.addWidget(self.sync_button)
+        sync_controls.addLayout(sync_actions)
         self.sync_message = QLabel("")
         self.sync_message.setObjectName("import_sync_message")
         self.sync_message.setWordWrap(True)
@@ -5890,10 +6889,14 @@ class PageHistoryV5(PageHistory):
                 )
                 if record.period_start == start and record.period_end == end
             )
+            raw_counter_records = load_raw_counter_history(
+                report_slots(), period_start=start, period_end=end
+            )
         else:
             daily_records = ()
             selected_records = ()
             subjects = ()
+            raw_counter_records = ()
         devices = tuple(self._historical_devices())
         last_sync = max(
             (
@@ -5911,6 +6914,8 @@ class PageHistoryV5(PageHistory):
             subjects=subjects,
             devices=devices,
             legacy_history=load_imported_legacy_history(),
+            raw_counter_records=raw_counter_records,
+            usage_meter_baselines=load_usage_meter_baselines(report_slots()),
             period=selected,
             last_sync_at=last_sync,
         )
@@ -5966,6 +6971,9 @@ class PageHistoryV5(PageHistory):
                 period_end=end,
             )
         )
+        raw_counter_records = load_raw_counter_history(
+            report_slots(), period_start=start, period_end=end
+        )
         suggested = (
             f"KOMI_Reports_{start:%Y%m%d}_{end:%Y%m%d}.xlsx"
         )
@@ -5990,6 +6998,8 @@ class PageHistoryV5(PageHistory):
                     period=(start.isoformat(), end.isoformat()),
                     last_sync_at=cloud._last_sync_at,
                     generated_at=datetime.now().astimezone(),
+                    include_waste_adjustment=cloud.include_waste_adjustment(),
+                    raw_counter_records=raw_counter_records,
                 ),
             )
         except Exception as error:
@@ -6532,12 +7542,30 @@ class PageHistoryV5(PageHistory):
             self.meter_table.setColumnWidth(column, 150 if column < 3 else 122)
         daily = self.meter_readout_type.currentData() == "daily"
         for row, (device, first, last, opening, latest, delta) in enumerate(rows):
-            def value_for(key: str) -> str:
-                if daily:
-                    return f"{delta[key]:,.0f}" if key in delta else "—"
-                if key in opening and key in latest:
-                    return f"{opening[key]:,.0f}\n{latest[key]:,.0f}"
-                return f"{latest[key]:,.0f}" if key in latest else "—"
+            def value_for(
+                key: str,
+                *,
+                daily_mode: bool = daily,
+                daily_delta: dict[str, float] = delta,
+                opening_values: dict[str, float] = opening,
+                latest_values: dict[str, float] = latest,
+            ) -> str:
+                if daily_mode:
+                    return (
+                        f"{daily_delta[key]:,.0f}"
+                        if key in daily_delta
+                        else "—"
+                    )
+                if key in opening_values and key in latest_values:
+                    return (
+                        f"{opening_values[key]:,.0f}\n"
+                        f"{latest_values[key]:,.0f}"
+                    )
+                return (
+                    f"{latest_values[key]:,.0f}"
+                    if key in latest_values
+                    else "—"
+                )
             display = (device.name, first, last) + tuple(
                 value_for(key) for key in counter_keys
             )
@@ -6835,7 +7863,7 @@ class PageHistoryV5(PageHistory):
                         displayed_totals[period_index] += value
                 if show_values:
                     for x, total, top in zip(
-                        xs, displayed_totals, running_bases
+                        xs, displayed_totals, running_bases, strict=True
                     ):
                         if total <= 0:
                             continue
@@ -6873,7 +7901,7 @@ class PageHistoryV5(PageHistory):
             )
             self.plot_widget.addItem(cap)
             for period_index, (x, value, base) in enumerate(
-                zip(xs, heights, bases)
+                zip(xs, heights, bases, strict=True)
             ):
                 if value <= 0:
                     continue
@@ -7820,7 +8848,7 @@ class PageHistoryV5(PageHistory):
             empty.setForeground(QColor(C_TEXT2))
             self.report_users.setItem(0, 0, empty)
             self.report_users.setSpan(0, 0, 1, 2)
-        for row, (name, usage, subject_type, device_label, device_tooltip) in enumerate(top_subjects):
+        for row, (name, usage, _subject_type, device_label, device_tooltip) in enumerate(top_subjects):
             self.report_users.setRowHeight(row, 42)
             for column, text in enumerate(
                 (
@@ -8986,7 +10014,15 @@ class ScheduleTimeRangeEditor(QWidget):
 
 class WeekdaySelector(QWidget):
     changed = pyqtSignal()
-    LABELS = ("M", "T", "W", "TH", "F", "SA", "SU")
+    LABELS = (
+        ("จ.", "M"),
+        ("อ.", "Tu"),
+        ("พ.", "W"),
+        ("พฤ.", "Th"),
+        ("ศ.", "F"),
+        ("ส.", "Sa"),
+        ("อา.", "Su"),
+    )
     ACCESSIBLE_LABELS = (
         "Monday",
         "Tuesday",
@@ -9003,8 +10039,8 @@ class WeekdaySelector(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(2)
         self.boxes: list[QCheckBox] = []
-        for index, label in enumerate(self.LABELS):
-            box = QCheckBox(label)
+        for index, labels in enumerate(self.LABELS):
+            box = QCheckBox(tr(*labels))
             box.setChecked(index in weekdays)
             box.setToolTip(self.ACCESSIBLE_LABELS[index])
             box.setAccessibleName(self.ACCESSIBLE_LABELS[index])
@@ -9327,10 +10363,8 @@ class PageFleetSettings(QWidget):
         schedule_body = self.schedule_task_editor.layout()
         self.autostart = QCheckBox("เปิดโปรแกรมอัตโนมัติเมื่อเข้าสู่ระบบ")
         self.autostart.setAccessibleName("เปิดโปรแกรมอัตโนมัติเมื่อเข้าสู่ระบบ")
-        schedule_body.addWidget(self.autostart)
         self.autostart_status = QLabel()
         self.autostart_status.setWordWrap(True)
-        schedule_body.addWidget(self.autostart_status)
         self.schedule = QLabel()
         self.schedule.setWordWrap(True)
         self.schedule.setMinimumHeight(54)
@@ -9374,8 +10408,8 @@ class PageFleetSettings(QWidget):
                 tr("ชื่อช่วงเวลา", "Window name"),
                 tr("เริ่ม–สิ้นสุด", "Start–end"),
                 tr("วันที่ทำงาน", "Days"),
-                tr("ตรวจสถานะ", "Status check"),
-                tr("อ่านมิเตอร์", "Meter read"),
+                tr("ตรวจสถานะ\n(นาที)", "Status check\n(min)"),
+                tr("อ่านมิเตอร์\n(นาที)", "Meter read\n(min)"),
                 "",
             ]
         )
@@ -9388,11 +10422,16 @@ class PageFleetSettings(QWidget):
         self.schedule_windows_table.setMinimumHeight(250)
         self.schedule_windows_table.setMaximumHeight(390)
         header = self.schedule_windows_table.horizontalHeader()
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        for column in (1, 2, 3, 4):
-            header.setSectionResizeMode(column, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+        for column in (3, 4):
+            header.setSectionResizeMode(column, QHeaderView.ResizeMode.Fixed)
         header.setSectionResizeMode(5, QHeaderView.ResizeMode.Fixed)
-        self.schedule_windows_table.setColumnWidth(5, 112)
+        self.schedule_windows_table.setColumnWidth(0, 118)
+        self.schedule_windows_table.setColumnWidth(3, 92)
+        self.schedule_windows_table.setColumnWidth(4, 92)
+        self.schedule_windows_table.setColumnWidth(5, 50)
         schedule_editor_layout.addWidget(self.schedule_windows_table)
         self.add_schedule_window_button = btn(
             tr("เพิ่มช่วงเวลา", "Add time window"),
@@ -9417,6 +10456,30 @@ class PageFleetSettings(QWidget):
         schedule_body.addLayout(schedule_actions)
         layout.addWidget(schedule_card)
 
+        self.autostart_program_card, autostart_body = self._task_card_shell()
+        autostart_title = QLabel("เปิดโปรแกรมอัตโนมัติ")
+        autostart_title.setFont(fnt(F_MD, True))
+        autostart_title.setStyleSheet("color:#102A43;border:none;")
+        autostart_note = QLabel(
+            "กำหนดให้ KOMI Report เริ่มทำงานเมื่อผู้ใช้เข้าสู่ระบบปฏิบัติการ"
+        )
+        autostart_note.setWordWrap(True)
+        autostart_note.setStyleSheet("color:#52677D;border:none;")
+        autostart_body.addWidget(autostart_title)
+        autostart_body.addWidget(autostart_note)
+        autostart_body.addWidget(self.autostart)
+        autostart_body.addWidget(self.autostart_status)
+        (
+            self.autostart_save_status,
+            autostart_actions,
+            self.autostart_save_button,
+        ) = self._editor_actions(
+            "บันทึก Auto-start",
+            self._save_autostart,
+            lambda: self._cancel_section("autostart"),
+        )
+        autostart_body.addLayout(autostart_actions)
+
         (
             program_card,
             self.web_task_summary,
@@ -9432,6 +10495,39 @@ class PageFleetSettings(QWidget):
         self.web_service_enabled = QCheckBox("อนุญาตให้เครื่องอื่นใน LAN เปิดดูรายงาน")
         self.web_service_enabled.setAccessibleName("เปิดรายงานผ่าน Web สำหรับเครื่องอื่นใน LAN")
         program_body.addWidget(self.web_service_enabled)
+        self.web_report_passwordless = QCheckBox(
+            "อนุญาตให้เปิด Web Report แบบอ่านอย่างเดียวโดยไม่ต้องใช้รหัส"
+        )
+        self.web_report_passwordless.setAccessibleName(
+            "เปิดรายงานแบบอ่านอย่างเดียวใน LAN โดยไม่ต้องใช้รหัส"
+        )
+        self.web_report_passwordless.setToolTip(
+            "ใช้ได้เฉพาะหน้ารายงานและ API แบบอ่านอย่างเดียว "
+            "ข้อมูลระบบ เครื่องมือเจ้าหน้าที่ และการแก้ไขยังต้องเข้าสู่ระบบ"
+        )
+        program_body.addWidget(self.web_report_passwordless)
+        self.web_report_passwordless_warning = QLabel(
+            tr(
+                "คำเตือน: เมื่อเปิดตัวเลือกนี้ ทุกคนในเครือข่าย LAN เดียวกันจะดูรายงาน "
+                "รหัสเครื่องพิมพ์ และชื่อผู้ใช้ในรายงานได้โดยไม่ต้องใส่รหัส · "
+                "ใช้เฉพาะเครือข่ายภายในที่เชื่อถือได้",
+                "Warning: When enabled, anyone on the same LAN can view reports, "
+                "printer identifiers, and report user names without a password. "
+                "Use only on a trusted internal network.",
+            )
+        )
+        self.web_report_passwordless_warning.setWordWrap(True)
+        self.web_report_passwordless_warning.setAccessibleName(
+            tr("คำเตือนการเปิดรายงานโดยไม่ใช้รหัส", "Passwordless report warning")
+        )
+        self.web_report_passwordless_warning.setStyleSheet(
+            "color:#8A4B08;background:#FFF7E8;border:1px solid #F2C879;"
+            "border-radius:7px;padding:8px 10px;"
+        )
+        self.web_report_passwordless_warning.setVisible(
+            self.web_report_passwordless.isChecked()
+        )
+        program_body.addWidget(self.web_report_passwordless_warning)
         self.web_service_status = QLabel()
         self.web_service_status.setWordWrap(True)
         program_body.addWidget(self.web_service_status)
@@ -9444,6 +10540,30 @@ class PageFleetSettings(QWidget):
             "border-radius:7px;padding:9px 11px;font-weight:700;"
         )
         program_body.addWidget(self.web_service_url)
+        peer_sync = QFrame()
+        peer_sync.setObjectName("peer_sync_authorization")
+        peer_sync.setStyleSheet(
+            "QFrame#peer_sync_authorization{background:#F0F8FF;border:1px solid #B9D7EE;"
+            "border-radius:7px;} QLabel{background:transparent;border:none;}"
+        )
+        peer_sync_layout = QHBoxLayout(peer_sync)
+        peer_sync_layout.setContentsMargins(11, 9, 11, 9)
+        peer_sync_copy = QVBoxLayout()
+        peer_sync_title = QLabel("อนุญาตเครื่อง Secondary ดึงการตั้งค่า")
+        peer_sync_title.setStyleSheet("color:#334155;font-weight:700;")
+        self.peer_sync_status = QLabel()
+        self.peer_sync_status.setWordWrap(True)
+        self.peer_sync_status.setAccessibleName("สถานะการอนุญาต Secondary Sync")
+        peer_sync_copy.addWidget(peer_sync_title)
+        peer_sync_copy.addWidget(self.peer_sync_status)
+        peer_sync_layout.addLayout(peer_sync_copy, 1)
+        self.peer_sync_authorize_button = btn("อนุญาต Secondary Sync 5 นาที", "outline")
+        self.peer_sync_authorize_button.setAccessibleName(
+            "เปิดสิทธิ์ชั่วคราวให้เครื่อง Secondary ดึงการตั้งค่า"
+        )
+        self.peer_sync_authorize_button.clicked.connect(self._authorize_peer_sync)
+        peer_sync_layout.addWidget(self.peer_sync_authorize_button)
+        program_body.addWidget(peer_sync)
         web_security = QFrame()
         web_security.setObjectName("web_security")
         web_security.setStyleSheet(
@@ -9492,7 +10612,10 @@ class PageFleetSettings(QWidget):
             lambda: self._cancel_section("web"),
         )
         program_body.addLayout(web_save_actions)
-        layout.addWidget(program_card)
+        # LAN/Web Report is an operational program setting.  It lives on the
+        # Advanced Settings page instead of competing with everyday pricing
+        # and schedule tasks on the main Settings page.
+        self.web_program_card = program_card
 
         (
             support_card,
@@ -9501,11 +10624,14 @@ class PageFleetSettings(QWidget):
             self.support_section_toggle,
         ) = self._expandable_task(
             "support",
-            "ช่วยเหลือและตรวจสอบปัญหา",
-            "เลือกอาการที่พบ ระบบจะพาไปยังข้อมูลที่เกี่ยวข้อง",
-            closed_action="แก้ปัญหา",
+            "การตั้งค่าขั้นสูง",
+            "สำหรับเจ้าหน้าที่และการตรวจสอบระบบ",
+            closed_action="เปิด",
         )
         support_body = self.support_task_editor.layout()
+        open_advanced = btn("เปิดการตั้งค่าขั้นสูง", "primary")
+        open_advanced.clicked.connect(self.advanced_tools_requested.emit)
+        support_body.addWidget(open_advanced, 0, Qt.AlignmentFlag.AlignLeft)
         symptom_label = QLabel("พบปัญหาอะไร")
         symptom_label.setStyleSheet("color:#334155;font-weight:700;border:none;")
         support_body.addWidget(symptom_label)
@@ -9556,7 +10682,7 @@ class PageFleetSettings(QWidget):
         audit_button = btn("ตรวจสอบรอบบิล", "outline")
         audit_button.clicked.connect(self.billing_audit_requested.emit)
         support_actions.addWidget(audit_button)
-        advanced_button = btn("เครื่องมือขั้นสูง", "outline")
+        advanced_button = btn("เปิดการตั้งค่าขั้นสูง", "outline")
         advanced_button.clicked.connect(self.advanced_tools_requested.emit)
         support_actions.addWidget(advanced_button)
         support_actions.addStretch()
@@ -9595,12 +10721,19 @@ class PageFleetSettings(QWidget):
 
         for control in (self.billing_day, self.waste):
             control.valueChanged.connect(lambda _value, section="billing": self._mark_dirty(section))
-        self.autostart.toggled.connect(lambda _checked: self._mark_dirty("schedule"))
+        self.autostart.toggled.connect(lambda _checked: self._mark_dirty("autostart"))
         self.web_service_enabled.toggled.connect(lambda _checked: self._mark_dirty("web"))
+        self.web_report_passwordless.toggled.connect(
+            self.web_report_passwordless_warning.setVisible
+        )
+        self.web_report_passwordless.toggled.connect(
+            lambda _checked: self._mark_dirty("web")
+        )
         self._web_status_timer = QTimer(self)
         self._web_status_timer.setInterval(2000)
         self._web_status_timer.timeout.connect(self._refresh_web_status)
         self._web_status_timer.timeout.connect(self._refresh_registration_status)
+        self._web_status_timer.timeout.connect(self._refresh_peer_sync_status)
         self._web_status_timer.start()
         self.refresh_from_config()
         layout.addStretch()
@@ -9721,6 +10854,13 @@ class PageFleetSettings(QWidget):
     def _task_toggle_requested(self, key: str, checked: bool) -> None:
         if checked:
             self._set_active_editor(key)
+        elif key == "web" and self._active_editor == "web":
+            # LAN settings are nested inside Advanced Settings. Closing the
+            # LAN editor must return to the advanced overview, not collapse
+            # the entire parent section.
+            self._set_active_editor("support")
+        elif key == "support" and self._active_editor == "web":
+            self._set_active_editor(None)
         elif self._active_editor == key:
             self._set_active_editor(None)
 
@@ -9729,7 +10869,7 @@ class PageFleetSettings(QWidget):
         if current == key:
             return True
         if current is not None and current in self._dirty_sections and not force:
-            QMessageBox.information(
+            show_compact_information(
                 self,
                 tr("ยังไม่ได้บันทึก", "Unsaved changes"),
                 tr(
@@ -9749,8 +10889,14 @@ class PageFleetSettings(QWidget):
                 current_button.blockSignals(False)
             return False
 
+        nested_web = (
+            key == "web"
+            and self.web_program_card.parent() is self.support_task_editor
+        )
         for task_key, editor in self._task_editors.items():
-            visible = task_key == key
+            # LAN/Web is a child card of Advanced Settings. Keep the parent
+            # editor visible while its nested editor is open.
+            visible = task_key == key or (nested_web and task_key == "support")
             editor.setVisible(visible)
             button = self._task_buttons[task_key]
             button.blockSignals(True)
@@ -9849,6 +10995,7 @@ class PageFleetSettings(QWidget):
         widgets = {
             "billing": (self.billing_save_status, self.billing_save_button),
             "schedule": (self.schedule_save_status, self.schedule_save_button),
+            "autostart": (self.autostart_save_status, self.autostart_save_button),
             "web": (self.web_save_status, self.web_save_button),
         }
         status, save_button = widgets[section]
@@ -9875,7 +11022,11 @@ class PageFleetSettings(QWidget):
             return False
         self._loading_config = True
         controls = (
-            self.billing_day, self.waste, self.autostart, self.web_service_enabled,
+            self.billing_day,
+            self.waste,
+            self.autostart,
+            self.web_service_enabled,
+            self.web_report_passwordless,
         )
         for control in controls:
             control.blockSignals(True)
@@ -9893,13 +11044,15 @@ class PageFleetSettings(QWidget):
         )
         self._refresh_autostart_status(registration)
         self.web_service_enabled.setChecked(get_cfg("web_service_enabled", "1") != "0")
+        web_access = web_access_status(self.web_service.runtime_root / ".env.local")
+        self.web_report_passwordless.setChecked(web_access.report_passwordless)
         for control in controls:
             control.blockSignals(False)
         device_count = self._refresh_device_summary()
         active_path = str(get_db_path())
         database_text = (
-            f"ฐานข้อมูลที่กำลังใช้งาน (อ่านอย่างเดียว): {active_path}\n"
-            "การย้าย Database path ยังไม่รองรับใน V5 local release"
+            f"ฐานข้อมูลที่กำลังใช้งาน: {active_path}\n"
+            "เปลี่ยน Path, สำรอง และนำ Backup กลับมาใช้ได้ใน การตั้งค่าขั้นสูง"
         )
         self.active_database_path.setText(database_text)
         self.active_database_path.setToolTip(database_text)
@@ -9907,6 +11060,7 @@ class PageFleetSettings(QWidget):
         for status, save_button in (
             (self.billing_save_status, self.billing_save_button),
             (self.schedule_save_status, self.schedule_save_button),
+            (self.autostart_save_status, self.autostart_save_button),
             (self.web_save_status, self.web_save_button),
         ):
             status.setText(tr("ค่าปัจจุบันถูกบันทึกแล้ว", "Current settings are saved"))
@@ -9917,8 +11071,53 @@ class PageFleetSettings(QWidget):
         self._refresh_registration_status()
         self._refresh_web_status()
         self._refresh_web_access_status()
+        self._refresh_peer_sync_status()
         self._loading_config = False
         return True
+
+    def _authorize_peer_sync(self) -> None:
+        try:
+            status = open_pairing_window(get_cfg("installation_id", ""))
+        except PeerSyncAuthorizationError as error:
+            QMessageBox.warning(
+                self,
+                tr("ยังอนุญาตไม่ได้", "Could not authorize sync"),
+                translate_text(str(error)),
+            )
+            self._refresh_peer_sync_status()
+            return
+        self.peer_sync_status.setText(
+            tr(
+                f"เปิดสิทธิ์แล้ว {status.seconds_remaining // 60} นาที "
+                "· เครื่องแรกที่ขอ Sync จะใช้สิทธิ์ได้ครั้งเดียว",
+                f"Authorized for {status.seconds_remaining // 60} minutes "
+                "· the first Secondary may use it once",
+            )
+        )
+        self.peer_sync_status.setStyleSheet("color:#16875D;font-weight:700;")
+
+    def _refresh_peer_sync_status(self) -> None:
+        if not hasattr(self, "peer_sync_status"):
+            return
+        status = pairing_window_status()
+        if status.open:
+            claimed = tr(" · มีเครื่องรับสิทธิ์แล้ว", " · claimed") if status.claimed else ""
+            self.peer_sync_status.setText(
+                tr(
+                    f"เปิดอยู่ · เหลือ {status.seconds_remaining} วินาที",
+                    f"Open · {status.seconds_remaining} seconds remaining",
+                )
+                + claimed
+            )
+            self.peer_sync_status.setStyleSheet("color:#16875D;font-weight:700;")
+            return
+        self.peer_sync_status.setText(
+            tr(
+                "ปิดอยู่ · ต้องกดอนุญาตจากเครื่อง Primary ก่อน Sync ทุกครั้ง",
+                "Closed · Primary approval is required for every setup sync",
+            )
+        )
+        self.peer_sync_status.setStyleSheet("color:#64748B;")
 
     def _refresh_registration_status(self) -> None:
         runtime = self._registration_service()
@@ -9942,6 +11141,14 @@ class PageFleetSettings(QWidget):
                 "Offline License · request exported, waiting for license import",
             ),
             "offline_license": tr("Offline License", "Offline License"),
+            "offline_license_expired": tr(
+                "Offline License หมดอายุ · กรุณานำเข้า License ใหม่",
+                "Offline License expired · import a renewed license",
+            ),
+            "offline_license_device_mismatch": tr(
+                "เครื่องพิมพ์ที่เลือกไม่ตรงกับ Offline License · กรุณาสร้างคำขอและนำเข้า License ใหม่",
+                "Selected printers do not match the Offline License · create a new request and import a new license",
+            ),
         }
         detail = labels.get(effective_status, tr("ต้องตรวจสอบ", "Needs attention"))
         last_sent_at = str(snapshot.get("last_sent_at") or "")
@@ -10023,7 +11230,7 @@ class PageFleetSettings(QWidget):
             self._refresh_registration_status()
             return
         self._registration_service().accept_notice(
-            DRAFT_NOTICE_VERSION,
+            REGISTRATION_NOTICE_VERSION,
             datetime.now().astimezone().isoformat(timespec="seconds"),
         )
         self._refresh_registration_status()
@@ -10200,9 +11407,10 @@ class PageFleetSettings(QWidget):
         if registration is None:
             registration = self._autostart_registration_status()
         automatic = registration is True or self.autostart.isChecked()
-        schedule_prefix = (
-            tr("กำลังแก้ไข · ", "Editing · ") if "schedule" in self._dirty_sections else ""
-        )
+        schedule_prefix = tr("กำลังแก้ไข · ", "Editing · ") if {
+            "schedule",
+            "autostart",
+        } & self._dirty_sections else ""
         automatic_text = tr("เปิดพร้อมระบบ", "Starts at sign-in") if automatic else tr(
             "เปิดแอปด้วยตนเอง", "Open the app manually"
         )
@@ -10223,8 +11431,8 @@ class PageFleetSettings(QWidget):
         else:
             self.support_summary.setText(
                 tr(
-                    "เลือกอาการที่พบ ระบบจะพาไปยังข้อมูลที่เกี่ยวข้อง",
-                    "Choose the problem you see to open the relevant information",
+                    "Database, Backup, Auto-start, Log, Parser Mapping และรายงานผ่าน LAN",
+                    "Database, backup, auto-start, logs, parser mapping, and LAN reports",
                 )
             )
 
@@ -10437,6 +11645,22 @@ class PageFleetSettings(QWidget):
 
     def _refresh_web_access_status(self) -> None:
         status = web_access_status(self.web_service.runtime_root / ".env.local")
+        if status.report_passwordless:
+            self.web_access_status.setText(
+                tr(
+                    "เปิดรายงานแบบอ่านอย่างเดียวได้โดยไม่ใช้รหัส · "
+                    "ข้อมูลระบบและเครื่องมือเจ้าหน้าที่ยังต้องเข้าสู่ระบบ",
+                    "Read-only reports can be opened without a password · "
+                    "System information and staff tools still require sign-in",
+                )
+            )
+            self.web_access_status.setStyleSheet("color:#16875D;")
+            self.change_web_access_button.setText(
+                tr("ตั้งรหัสสำหรับเจ้าหน้าที่", "Set staff access code")
+                if not status.configured
+                else tr("เปลี่ยนรหัสเจ้าหน้าที่", "Change staff access code")
+            )
+            return
         if status.configured:
             self.web_access_status.setText(
                 tr(
@@ -10531,7 +11755,12 @@ class PageFleetSettings(QWidget):
                 ),
             )
             return
-        dialog = SetupWizardV5(self, edit_mode=True)
+        dialog = SetupWizardV5(
+            self,
+            edit_mode=True,
+            registration_runtime=self.registration_runtime,
+            offline_license_public_keys=self.offline_license_public_keys,
+        )
         self._setup_wizard_dialog = dialog
 
         def setup_finished(result: int) -> None:
@@ -10561,6 +11790,7 @@ class PageFleetSettings(QWidget):
         status, save_button = {
             "billing": (self.billing_save_status, self.billing_save_button),
             "schedule": (self.schedule_save_status, self.schedule_save_button),
+            "autostart": (self.autostart_save_status, self.autostart_save_button),
             "web": (self.web_save_status, self.web_save_button),
         }[section]
         status.setText(
@@ -10600,22 +11830,10 @@ class PageFleetSettings(QWidget):
                 translate_text(str(error)),
             )
             return
-        try:
-            configure_autostart(self.autostart.isChecked(), apply=True)
-        except Exception as exc:
-            QMessageBox.warning(
-                self,
-                tr("ตั้งค่า Auto-start ไม่สำเร็จ", "Could not configure automatic start"),
-                translate_text(str(exc)),
-            )
-            return
         serialized_windows = dump_schedule_windows(schedule_windows)
-        expected_autostart = "1" if self.autostart.isChecked() else "0"
         set_cfg("sync_schedule_windows", serialized_windows)
-        set_cfg("autostart_enabled", expected_autostart)
         stored_windows = load_schedule_windows(get_cfg("sync_schedule_windows", ""))
-        stored_autostart = get_cfg("autostart_enabled", "")
-        if stored_windows != schedule_windows or stored_autostart != expected_autostart:
+        if stored_windows != schedule_windows:
             self.schedule_save_button.setEnabled(True)
             self.schedule_save_status.setText(
                 tr(
@@ -10628,34 +11846,64 @@ class PageFleetSettings(QWidget):
             )
             return
         self._using_unsaved_default_schedule = False
+        self._refresh_schedule()
+        self._mark_section_saved("schedule")
+
+    def _save_autostart(self) -> None:
+        expected = self.autostart.isChecked()
+        try:
+            configure_autostart(expected, apply=True)
+        except Exception as exc:
+            QMessageBox.warning(
+                self,
+                tr("ตั้งค่า Auto-start ไม่สำเร็จ", "Could not configure automatic start"),
+                translate_text(str(exc)),
+            )
+            return
+        set_cfg("autostart_enabled", "1" if expected else "0")
         registration = self._autostart_registration_status()
         self._refresh_autostart_status(registration)
-        self._refresh_schedule()
-        registration_matches = (
-            registration is True
-            if self.autostart.isChecked()
-            else registration is False
-        )
-        if not registration_matches:
-            self.schedule_save_button.setEnabled(True)
-            self.schedule_save_status.setText(
+        if registration is not expected:
+            self.autostart_save_button.setEnabled(True)
+            self.autostart_save_status.setText(
                 tr(
-                    "บันทึกตารางเวลาแล้ว แต่ Auto-start ยังไม่ตรงกับค่าที่เลือก · กดลองตรวจอีกครั้ง",
-                    "The schedule was saved, but automatic start does not match the selected setting. Try verifying again.",
+                    "บันทึกค่าแล้ว แต่ OS registration ยังไม่ตรงกับค่าที่เลือก",
+                    "The value was saved, but OS registration does not match it yet.",
                 )
             )
-            self.schedule_save_status.setStyleSheet(
+            self.autostart_save_status.setStyleSheet(
                 "color:#B54708;font-weight:700;border:none;"
             )
             self._refresh_task_summaries(registration=registration)
             self.changed.emit()
             return
-        self._mark_section_saved("schedule")
+        self._mark_section_saved("autostart", close=False)
 
     def _save_web(self) -> None:
         web_enabled = self.web_service_enabled.isChecked()
+        env_path = self.web_service.runtime_root / ".env.local"
+        previous_access = web_access_status(env_path)
+        passwordless = self.web_report_passwordless.isChecked()
+        try:
+            set_web_report_passwordless(env_path, passwordless)
+        except OSError as error:
+            QMessageBox.warning(
+                self,
+                tr("บันทึกการเข้าถึง Web ไม่สำเร็จ", "Could not save Web access"),
+                translate_text(str(error)),
+            )
+            return
         set_cfg("web_service_enabled", "1" if web_enabled else "0")
-        web_status = self.web_service.start() if web_enabled else self.web_service.stop()
+        access_changed = previous_access.report_passwordless != passwordless
+        current = self.web_service.status()
+        if web_enabled and access_changed and current.state in {
+            "running",
+            "starting",
+            "external",
+        }:
+            web_status = self.web_service.restart()
+        else:
+            web_status = self.web_service.start() if web_enabled else self.web_service.stop()
         self._refresh_web_status(web_status)
         stored_enabled = get_cfg("web_service_enabled", "") == "1"
         if (
@@ -10726,20 +11974,24 @@ class PageFleetSettings(QWidget):
         self.schedule_windows_table.insertRow(row)
         self.schedule_windows_table.setRowHeight(row, 48)
         name = QLineEdit(window.label)
-        name.setMinimumWidth(110)
+        name.setMinimumWidth(90)
         clock_range = ScheduleTimeRangeEditor(window.start, window.end)
         weekdays = WeekdaySelector(window.weekdays)
         snmp_interval = QSpinBox()
         snmp_interval.setRange(1, 1_440)
-        snmp_interval.setSuffix(tr(" นาที", " min"))
         snmp_interval.setValue(int((window.snmp_interval or timedelta(minutes=5)).total_seconds() // 60))
         web_interval = QSpinBox()
         web_interval.setRange(1, 1_440)
-        web_interval.setSuffix(tr(" นาที", " min"))
         web_interval.setValue(int(window.web_interval.total_seconds() // 60))
-        remove = btn(tr("ลบ", "Remove"), "outline")
-        remove.setMinimumWidth(86)
-        remove.setMinimumWidth(54)
+        # Keep the action column narrow without clipping a translated word.
+        # The tooltip and accessible name retain the full action label.
+        remove = btn("✕", "outline")
+        remove.setAccessibleName(tr("ลบช่วงเวลานี้", "Remove this time window"))
+        remove.setToolTip(tr("ลบช่วงเวลานี้", "Remove this time window"))
+        remove.setMinimumWidth(34)
+        remove.setMaximumWidth(38)
+        snmp_interval.setMaximumWidth(78)
+        web_interval.setMaximumWidth(78)
         for control in (name, snmp_interval, web_interval):
             control.setMinimumHeight(32)
         self.schedule_windows_table.setCellWidget(row, 0, name)
@@ -10811,7 +12063,7 @@ class PageFleetSettings(QWidget):
                 )
             )
         ordered = tuple(sorted(windows, key=lambda item: item.start))
-        for previous, current in zip(ordered, ordered[1:]):
+        for previous, current in zip(ordered, ordered[1:], strict=False):
             if previous.end > current.start and previous.weekdays & current.weekdays:
                 raise ValueError(
                     f"ช่วงเวลา {previous.label} และ {current.label} ซ้อนกันในวันเดียวกัน กรุณาแก้ไขก่อนบันทึก"
@@ -11134,6 +12386,7 @@ class PageBillingAudit(QWidget):
 class PageSettingsV5(QWidget):
     changed = pyqtSignal()
     sync_requested = pyqtSignal()
+    parser_read_requested = pyqtSignal(int)
 
     def __init__(
         self,
@@ -11168,21 +12421,51 @@ class PageSettingsV5(QWidget):
             "ดูหลักฐานและรายการที่ระบบพักไว้เพื่อตรวจสอบ โดยไม่เปลี่ยนยอดย้อนหลังอัตโนมัติ",
             self.audit,
         )
-        self.legacy = self._scroll_page(self.legacy_content)
-        self._legacy_host = self._detail_page(
-            "เครื่องมือขั้นสูง",
-            "คำเตือน: การรีเซ็ตหรือปรับ Parser อาจเปลี่ยนผลการอ่านข้อมูล กรุณาตรวจข้อความยืนยันทุกครั้ง",
-            self.legacy,
-            warning=True,
+        self.legacy = self.legacy_content
+        support_layout = self.fleet_content.support_task_editor.layout()
+
+        def hide_existing(item) -> None:
+            widget = item.widget()
+            if widget is not None:
+                widget.hide()
+            child_layout = item.layout()
+            if child_layout is not None:
+                for child_index in range(child_layout.count()):
+                    hide_existing(child_layout.itemAt(child_index))
+
+        for item_index in range(support_layout.count()):
+            hide_existing(support_layout.itemAt(item_index))
+
+        advanced_notice = QLabel(
+            "จัดการ Database, Backup, Auto-start, Log, Parser Mapping และรายงานผ่าน LAN · "
+            "รายการที่ลบหรือรีเซ็ตข้อมูลจะสำรองข้อมูลและขอยืนยันก่อนเสมอ"
         )
-        for page in (self.fleet, self._activity_host, self._audit_host, self._legacy_host):
+        advanced_notice.setWordWrap(True)
+        advanced_notice.setStyleSheet(
+            "color:#8A4B08;background:#FFF7E8;border:1px solid #F2C879;"
+            "border-radius:7px;padding:9px 11px;"
+        )
+        support_layout.addWidget(advanced_notice)
+        self.fleet_content.autostart_program_card.setParent(
+            self.fleet_content.support_task_editor
+        )
+        support_layout.addWidget(self.fleet_content.autostart_program_card)
+        self.fleet_content.web_program_card.setParent(
+            self.fleet_content.support_task_editor
+        )
+        support_layout.addWidget(self.fleet_content.web_program_card)
+        self.legacy_content.setParent(self.fleet_content.support_task_editor)
+        support_layout.addWidget(self.legacy_content)
+        self._legacy_host = self.fleet
+
+        for page in (self.fleet, self._activity_host, self._audit_host):
             self.stack.addWidget(page)
         self._logical_pages = [self.fleet, self.activity, self.audit, self.legacy]
         self._host_for_page = {
             self.fleet: self.fleet,
             self.activity: self._activity_host,
             self.audit: self._audit_host,
-            self.legacy: self._legacy_host,
+            self.legacy: self.fleet,
         }
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -11196,6 +12479,8 @@ class PageSettingsV5(QWidget):
         self.activity.settings_requested.connect(self.show_main)
         if hasattr(self.legacy_content, "changed"):
             self.legacy_content.changed.connect(self.changed)
+        if hasattr(self.legacy_content, "parser_read_requested"):
+            self.legacy_content.parser_read_requested.connect(self.parser_read_requested)
 
     @staticmethod
     def _scroll_page(page: QWidget) -> QScrollArea:
@@ -11268,11 +12553,12 @@ class PageSettingsV5(QWidget):
         apply_language(self._audit_host)
 
     def show_advanced(self) -> None:
-        self.stack.setCurrentWidget(self._legacy_host)
+        self.stack.setCurrentWidget(self.fleet)
+        self.fleet_content._set_active_editor("support", force=True)
         refresh = getattr(self.legacy_content, "_refresh_ui", None)
         if callable(refresh):
             refresh()
-        apply_language(self._legacy_host)
+        apply_language(self.fleet_content)
 
     def refresh(self) -> None:
         current = self.currentWidget()
@@ -11296,6 +12582,9 @@ class PageSettingsV5(QWidget):
             show_protected(True)
 
     def setCurrentWidget(self, widget: QWidget) -> None:
+        if widget is self.legacy:
+            self.show_advanced()
+            return
         host = self._host_for_page.get(widget, widget)
         self.stack.setCurrentWidget(host)
         if widget is self.activity:

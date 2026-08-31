@@ -7,6 +7,7 @@ from komi_snmp_profiler.connectors import (
     ReadOnlyWebConnectionSession,
     TlsPolicy,
     WebConnectionCounterConnector,
+    WebConnectionError,
     WebConnectionSessionBusyError,
 )
 from komi_snmp_profiler.device_profiles import TlsCompatibility
@@ -69,11 +70,94 @@ def test_legacy_xml_parser_extracts_same_canonical_total_contract() -> None:
     assert by_field["counter.print.total"] == 19_643
 
 
+def test_legacy_xml_parser_accepts_aggregate_lists_without_user_counter_wrapper() -> None:
+    payload = b"""<?xml version='1.0'?>
+    <MFP><CounterInfo>
+      <TotalCounterList>
+        <TotalCounter><Type>Total</Type><Count>250206</Count></TotalCounter>
+      </TotalCounterList>
+      <PrintCounterList>
+        <PrintCounter><Type>Total</Type><Count>224150</Count></PrintCounter>
+      </PrintCounterList>
+    </CounterInfo></MFP>"""
+
+    values = LegacyWebConnectionCounterConnector.parse_xml(payload)
+    by_field = {item.canonical_field: item.count for item in values}
+
+    assert by_field["counter.total.total"] == 250_206
+    assert by_field["counter.print.total"] == 224_150
+
+
 def test_legacy_xml_parser_reports_session_busy_separately() -> None:
     with pytest.raises(WebConnectionSessionBusyError, match="session"):
         LegacyWebConnectionCounterConnector.parse_xml(
             b"<MFP><DirectAccessError>Another user session is active</DirectAccessError></MFP>"
         )
+
+
+def test_legacy_xml_parser_does_not_call_direct_access_error_session_busy() -> None:
+    with pytest.raises(WebConnectionError, match="direct|Web session") as raised:
+        LegacyWebConnectionCounterConnector.parse_xml(
+            b"<MFP><DirectAccessError><Redirect>/wcd/index.html</Redirect></DirectAccessError></MFP>"
+        )
+
+    assert not isinstance(raised.value, WebConnectionSessionBusyError)
+
+
+def test_legacy_connector_opens_entry_page_before_counter() -> None:
+    class Session:
+        def __init__(self, _host: str, **_kwargs) -> None:
+            self.calls: list[str] = []
+            self.cleared = False
+
+        def get_bytes(self, path: str) -> bytes:
+            self.calls.append(path)
+            if path == "system_counter.xml":
+                return b"""<MFP><UserCounterInfo><TotalCounterList>
+                <TotalCounter><Type>Total</Type><Count>219546</Count></TotalCounter>
+                </TotalCounterList></UserCounterInfo></MFP>"""
+            return b"<html/>"
+
+        def clear(self) -> None:
+            self.cleared = True
+
+    sessions: list[Session] = []
+
+    def factory(host: str, **kwargs) -> Session:
+        session = Session(host, **kwargs)
+        sessions.append(session)
+        return session
+
+    result = LegacyWebConnectionCounterConnector(session_factory=factory).collect_result(
+        "192.0.2.16"
+    )
+
+    assert result.counters[0].count == 219_546
+    assert sessions[0].calls == ["index.html", "system_counter.xml"]
+    assert sessions[0].cleared is True
+
+
+def test_legacy_admin_preparation_uses_fixed_meter_route_and_ephemeral_cookies(monkeypatch) -> None:
+    session = ReadOnlyWebConnectionSession("127.0.0.1")
+    calls: list[tuple[str, str]] = []
+    monkeypatch.setattr(
+        session,
+        "_request",
+        lambda path, *, method, **_kwargs: calls.append((method, path)) or b"<MFP/>",
+    )
+
+    session.prepare_legacy_admin_login()
+
+    assert calls == [
+        ("GET", "index.html?access=ASYS_COU"),
+        ("GET", "login.xml"),
+    ]
+    cookies = {cookie.name: cookie.value for cookie in session.cookies}
+    assert cookies["access"] == "ASYS_COU"
+    assert cookies["adm"] == "AS_COU"
+    assert cookies["usr"] == ""
+    assert cookies["srv"] == ""
+    assert cookies["param"] == ""
 
 
 def test_parse_counter_info_extracts_a3_a4_by_color() -> None:

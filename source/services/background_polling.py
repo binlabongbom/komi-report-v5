@@ -17,8 +17,10 @@ from komi_snmp_profiler.meter import MeterReader
 from services.daily_cache import DailyCacheStore
 from services.device_config import DatabaseCredentialStore, DeviceConfig, DeviceConfigRepository
 from services.live_meter_service import meter_reading_to_report
+from services.parser_mapping import apply_parser_mapping_overrides
 from services.pipeline_log import pipeline_log
 from services.polling import DevicePollState, PollingPolicy, PollingStateMachine
+from services.raw_counter_history import RawCounterHistoryStore
 from services.reconciliation import reconcile_web_counters
 from services.runtime_snapshots import runtime_snapshots
 from services.snmp_probe import SnmpTotalProbe
@@ -40,6 +42,7 @@ class BackgroundPollingCoordinator(QObject):
         reader: MeterReader | None = None,
         cache: DailyCacheStore | None = None,
         subject_cache: SubjectDailyCacheStore | None = None,
+        raw_counter_history: RawCounterHistoryStore | None = None,
         parent=None,
     ) -> None:
         super().__init__(parent)
@@ -48,6 +51,7 @@ class BackgroundPollingCoordinator(QObject):
         self.reader = reader or MeterReader(DatabaseCredentialStore(self.repository))
         self.cache = cache or DailyCacheStore()
         self.subject_cache = subject_cache or SubjectDailyCacheStore()
+        self.raw_counter_history = raw_counter_history or RawCounterHistoryStore()
         self.machine = PollingStateMachine()
         self.snmp_interval = timedelta(minutes=5)
         self.executor = ThreadPoolExecutor(max_workers=3, thread_name_prefix="komi-meter")
@@ -516,15 +520,15 @@ class BackgroundPollingCoordinator(QObject):
                 if isinstance(self.reader, MeterReader)
                 else self.reader.read(device.host)
             )
-            reconciliation = reconcile_web_counters(
+            raw_reconciliation = reconcile_web_counters(
                 {
                     counter.canonical_field: counter.count
                     for counter in reading.counters
                     if counter.subject_type is None
                 }
             )
-            if reconciliation.needs_review:
-                for issue in reconciliation.issues:
+            if raw_reconciliation.needs_review:
+                for issue in raw_reconciliation.issues:
                     pipeline_log.append(
                         stage="WEB",
                         action="Reconciliation warning",
@@ -536,12 +540,12 @@ class BackgroundPollingCoordinator(QObject):
                         detail=(
                             "Web Connection Device Meter · Needs Review · ยังไม่ควรใช้คิดเงิน"
                             + (f" · {issue.breakdown()}" if issue.breakdown() else "")
-                            + f" · profile={reconciliation.profile_id}"
+                            + f" · profile={raw_reconciliation.profile_id}"
                         ),
                         status="warning",
                         at=now,
                     )
-            elif reconciliation.checked_count:
+            elif raw_reconciliation.checked_count:
                 pipeline_log.append(
                     stage="WEB",
                     action="Reconciliation passed",
@@ -549,12 +553,33 @@ class BackgroundPollingCoordinator(QObject):
                     device_name=device.name,
                     host=device.host,
                     target="Web Connection Device Meter",
-                    value=f"ตรวจ {reconciliation.checked_count} จุด · ผลรวมตรงกัน",
+                    value=f"ตรวจ {raw_reconciliation.checked_count} จุด · ผลรวมตรงกัน",
                     status="ok",
                     at=now,
                 )
             ram_snapshot = runtime_snapshots.update(device.slot, reading)
             subject_state = self.subject_cache.update_reading(device.slot, reading, at=now)
+            try:
+                raw_counter_count = self.raw_counter_history.update_reading(
+                    device.slot,
+                    reading,
+                    at=now,
+                )
+            except Exception as exc:
+                raw_counter_count = 0
+                log.exception("raw counter history update failed; normalized polling continues")
+                pipeline_log.append(
+                    stage="DB",
+                    action="Legacy raw counter history failed",
+                    device_slot=device.slot,
+                    device_name=device.name,
+                    host=device.host,
+                    target="daily_raw_counter_records",
+                    value=type(exc).__name__,
+                    detail="ข้อมูล Billing/History ปกติยังทำงานต่อ; จะลองเก็บ Legacy ใหม่รอบถัดไป",
+                    status="warning",
+                    at=now,
+                )
             pipeline_log.append(
                 stage="RAM",
                 action="Web/User snapshot stored in RAM",
@@ -565,7 +590,8 @@ class BackgroundPollingCoordinator(QObject):
                 value=f"Web={len(ram_snapshot.web_rows)} · User/Track={len(ram_snapshot.subject_rows)}",
                 detail=(
                     f"source={ram_snapshot.source} · collected_at={ram_snapshot.collected_at} · "
-                    f"subject daily cache={len(subject_state.get('subjects', {}))}"
+                    f"subject daily cache={len(subject_state.get('subjects', {}))} · "
+                    f"raw counters={raw_counter_count}"
                 ),
                 status="ok",
                 at=now,
@@ -595,13 +621,56 @@ class BackgroundPollingCoordinator(QObject):
                 )
                 if web_total is not None:
                     state.last_snmp_total = web_total
+            normalized_reading = apply_parser_mapping_overrides(
+                reading,
+                device.serial,
+            )
+            normalized_reconciliation = reconcile_web_counters(
+                {
+                    counter.canonical_field: counter.count
+                    for counter in normalized_reading.counters
+                    if counter.subject_type is None
+                }
+            )
+            if normalized_reading is not reading:
+                pipeline_log.append(
+                    stage="MAP",
+                    action="Parser mapping applied",
+                    device_slot=device.slot,
+                    device_name=device.name,
+                    host=device.host,
+                    target="future normalized records",
+                    value=f"raw={len(reading.counters)} · normalized={len(normalized_reading.counters)}",
+                    detail="Raw/Legacy history and existing Billing Ledger were not changed",
+                    status="ok",
+                    at=now,
+                )
+                if not normalized_reconciliation.billing_safe:
+                    pipeline_log.append(
+                        stage="MAP",
+                        action="Mapped counter reconciliation held",
+                        device_slot=device.slot,
+                        device_name=device.name,
+                        host=device.host,
+                        target="normalized daily cache",
+                        value=(
+                            f"issues={len(normalized_reconciliation.issues)} · "
+                            f"checked={normalized_reconciliation.checked_count}"
+                        ),
+                        detail=(
+                            "Parser mapping เปลี่ยนชุด Counter; "
+                            "ไม่ใช้ผล billing-safe จาก Raw snapshot เดิม"
+                        ),
+                        status="warning",
+                        at=now,
+                    )
             cache_state = self.cache.update_reading(
                 device.slot,
-                reading,
+                normalized_reading,
                 at=now,
-                reconciliation=reconciliation,
+                reconciliation=normalized_reconciliation,
             )
-            if not reconciliation.billing_safe:
+            if not normalized_reconciliation.billing_safe:
                 pipeline_log.append(
                     stage="POLICY",
                     action="Billing evidence held for review",
@@ -610,10 +679,13 @@ class BackgroundPollingCoordinator(QObject):
                     host=device.host,
                     target="Daily Cache reconciliation",
                     value=(
-                        f"issues={len(reconciliation.issues)} · "
-                        f"checked={reconciliation.checked_count}"
+                        f"issues={len(normalized_reconciliation.issues)} · "
+                        f"checked={normalized_reconciliation.checked_count}"
                     ),
-                    detail=f"profile={reconciliation.profile_id} · billing_safe=false",
+                    detail=(
+                        f"profile={normalized_reconciliation.profile_id} · "
+                        "billing_safe=false"
+                    ),
                     status="warning",
                     at=now,
                 )

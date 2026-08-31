@@ -1,48 +1,49 @@
-# KOMI Report V5.1.0 — Customer Release Notes
+# KOMI Report V5.2.1 — Customer Release Notes
 
 ## Package identity
 
-ชุดส่งมอบของแต่ละ OS ต้องมี manifest, SHA256, file inventory และ CycloneDX SBOM อยู่ข้าง artifact และต้องระบุ
-source commit เดียวกัน. ตรวจ `CUSTOMER_RELEASE_MANIFEST.json` ก่อนติดตั้งเสมอ; ถ้า decision เป็น `HOLD`, checksum
-ไม่ตรง หรือ source commit ต่างกัน ให้หยุดและติดต่อผู้ดูแล Release.
+ชุดส่งมอบของแต่ละ OS ต้องมี manifest, SHA-256, file inventory และ CycloneDX SBOM อยู่ข้าง artifact
+โดยอ้าง source commit และ shared contract เดียวกัน:
 
-## Production behavior
+- Contract version: `v5.2-shared-2026-08-25-r2`
+- Contract SHA-256: `4884a4a6fb798ef0c36c88daca09cf2ae5df66ff609139f812880ab7322413bd`
+
+ตรวจ `MACOS_MANIFEST.json`, `WINDOWS_MANIFEST.json` และ `CUSTOMER_RELEASE_MANIFEST.json` ก่อนส่งมอบ.
+ถ้า checksum หรือ contract identity ไม่ตรง Builder/Assembler ต้องหยุด. ถ้า decision เป็น `HOLD` ห้ามเรียก
+artifact ว่า Production Ready.
+
+## Runtime behavior
 
 - Desktop เป็นศูนย์ควบคุม local-first สำหรับเครื่องพิมพ์สูงสุด 3 เครื่อง; Web เป็น LAN report viewer แบบ HTTPS.
-- Database, logs, Web security material และ scoped installation token อยู่ใน data/runtime path หรือ OS vault ของผู้ใช้.
-- Registration ใช้ Production policy ภายในโปรแกรมที่ชี้ไป canonical `https://www.dmskm.com`. Customer installer มี limited
-  bootstrap identifier สำหรับย้ายเข้า macOS Keychain/Windows Credential Manager ตอนเปิดครั้งแรก. ค่านี้ถือว่าอ่านออกจาก
-  installer ได้และห้าม Server ให้สิทธิ์ Dashboard, delete, Update หรือ remote command; Server ต้องแลกเป็น scoped token ของ
-  Installation. หาก OS vault หรือ API contract ใช้ไม่ได้ ระบบหยุดส่งแบบ fail-closed โดย local workflow ยังทำงานได้.
-- ไม่มี Lab/test/demo mode, Virtual Printer auto-injection, mock/`.invalid` endpoint หรือ QA-only fallback ใน runtime payload.
-- Production Phase 3 Update ไม่รวมใน V5.1.0: ไม่มี silent/forced update, remote command หรือ Update telemetry.
+- Database, logs, Web security material, Ed25519 private key และ scoped installation token อยู่ใน data/runtime
+  path หรือ OS vault ของเครื่องลูกค้า ไม่อยู่ในโฟลเดอร์ติดตั้งหรือ manifest.
+- Registration ใช้ schema 3 Ed25519 public-client. แต่ละ Installation สร้าง key pair ของตนเองและไม่มี
+  shared/master bootstrap key หรือ `komi-registration-bootstrap.dat` ฝังใน EXE/APP.
+- หาก OS vault หรือ API contract ใช้ไม่ได้ ระบบหยุดส่งแบบ fail-closed โดย local Meter, Billing, Report และ
+  Excel ยังคงทำงานตามข้อมูลในเครื่อง.
+- ไม่มี Lab/test/demo mode, Virtual Printer auto-injection, mock/`.invalid` endpoint หรือ QA fallback ใน runtime.
+- Production Phase 3 Update ไม่รวมใน V5.2.1: ไม่มี silent/forced update, remote command หรือ Update telemetry.
 
-## Trust state
+## Evidence และ Trust state
 
-ดู signing state ใน manifest แยกตาม OS:
-
+- Builder รับ sanitized Joint Desktop-Staging E2E JSON ผ่าน `--joint-e2e-evidence` และตรวจ product version,
+  source commit, contract version/hash, Dashboard read-back และ cleanup/deactivate แบบ fail-closed.
+- ไม่มีไฟล์ Joint E2E ยังสร้าง unsigned candidate สำหรับตรวจภายในได้ แต่ต้องแสดง blocker ใน manifest.
 - macOS ต้องเป็น `developer-id-notarized-verified` และ Gatekeeper `accepted` จึงผ่าน trust gate.
-- Windows ต้องเป็น Authenticode `verified` และ Publisher ที่อนุมัติจึงผ่าน trust gate.
-- Windows customer shortcut เปิดผ่าน hidden launcher; `START_DEBUG.cmd` ไม่ถูกใช้ใน flow ปกติและสงวนไว้สำหรับ Support.
-- ad-hoc/unsigned artifact ใช้ตรวจภายในได้เมื่อ checksum ตรง แต่ยังเป็น `HOLD` สำหรับ customer release และต้องแจ้ง
+- Windows ต้องเป็น Authenticode `verified` และมี native Windows x64 UAT จึงผ่าน trust gate.
+- Windows ARM64 VM หรือ x64 emulation เป็น preflight เท่านั้น ไม่ใช่ native Windows x64 evidence.
+- ad-hoc/unsigned artifact ใช้ตรวจภายในได้เมื่อ checksum ตรง แต่ยังเป็น `HOLD` และต้องแจ้ง
   Gatekeeper/Unknown Publisher warning ตามจริง.
 
-## Current release gate — HOLD
-
-ชุดนี้ห้ามปล่อยลูกค้าและใช้ได้เฉพาะ authorized internal verification. Current Desktop schema v2 ส่ง
-`device_inventory.devices[].serial_number` แต่ live `POST https://www.dmskm.com/api/v1/installations/register`
-ตอบ HTTP 422 `VALIDATION_ERROR` เพราะ deployed schema-v2 privacy allow-list ยังไม่รับ
-`serial_number`. ห้ามแก้ Desktop ย้อนกลับไปใช้ `device_instance_id`; ต้อง migrate backend boundary ไป `serial_number` โดยรักษา
-forbidden-data boundary แล้ว rerun current-client live E2E จึงพิจารณาปลด HOLD ได้. Canonical production endpoint
-ต้องเป็น `https://www.dmskm.com` เพราะ non-www redirect และ client ไม่ follow credential redirect โดยตั้งใจ.
+Packaging ชุดนี้ไม่อนุญาตให้ตัวเองประกาศ Production GO แม้ evidence รายการย่อยจะครบ:
+`release_decision` ต้องเป็น `HOLD` และ `production_go=false` จนกว่าจะมี external release approval ที่ตรวจสอบได้.
 
 ## Recovery boundary
 
-Uninstall/reinstall ลบเฉพาะ program files; ห้ามลบ Database, CSV, logs, backup, Web certificate/local secret หรือ OS-vault
-entry. ก่อน upgrade/rollback ต้อง backup SQLite ด้วย online backup, ตรวจ `integrity=ok`, SHA256, schema version และ
-critical counts ตาม `RELEASE_SUPPORT_AND_RECOVERY.md`.
+Uninstall/reinstall ลบเฉพาะ program files; ห้ามลบ Database, CSV, logs, backup, Web certificate/local secret หรือ
+OS-vault entry. ก่อน upgrade/rollback ต้อง backup SQLite ด้วย online backup, ตรวจ `integrity=ok`, SHA-256,
+schema version และ critical counts ตาม `RELEASE_SUPPORT_AND_RECOVERY.md`.
 
 ## Deferred
 
-Linux production, การซื้อ/สร้าง certificate และ Production Phase 3 Update อยู่นอก Release นี้. Windows ARM64 VM หรือ
-x64 emulation เป็น preflight เท่านั้นและห้ามเรียก native Windows x64 UAT.
+Linux production, การซื้อ/สร้าง signing certificate และ Production Phase 3 Update อยู่นอก Release นี้.

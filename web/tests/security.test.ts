@@ -7,6 +7,10 @@ import assert from "node:assert/strict";
 
 import { loginDecision, recordLoginFailure, recordLoginSuccess } from "../lib/login-guard";
 import { createSessionToken, verifySessionToken } from "../lib/session";
+import {
+  isPasswordlessReportRequest,
+  passwordlessReportsEnabled,
+} from "../lib/report-access";
 
 function randomSecret(): string {
   return randomBytes(32).toString("hex");
@@ -52,4 +56,40 @@ test("session expires, survives restart state, and is revoked by auth epoch rota
 
   process.env.KOMI_WEB_AUTH_EPOCH = randomSecret();
   assert.equal(verifySessionToken(token, issuedAt + 1), false);
+});
+
+test("passwordless mode grants only exact read-only report routes", () => {
+  process.env.KOMI_WEB_REPORT_PASSWORDLESS = "1";
+  assert.equal(passwordlessReportsEnabled(), true);
+  for (const path of [
+    "/",
+    "/api/health",
+    "/api/devices",
+    "/api/reports/periods",
+    "/api/reports/overview",
+    "/api/reports/history",
+    "/api/reports/users",
+  ]) {
+    assert.equal(isPasswordlessReportRequest("GET", path), true, path);
+  }
+  for (const path of [
+    "/api/settings",
+    "/api/sync/status",
+    "/api/docs",
+    "/api/openapi.json",
+    "/login",
+  ]) {
+    assert.equal(isPasswordlessReportRequest("GET", path), false, path);
+  }
+  assert.equal(isPasswordlessReportRequest("POST", "/api/reports/overview"), false);
+  assert.equal(isPasswordlessReportRequest("DELETE", "/api/devices"), false);
+  delete process.env.KOMI_WEB_REPORT_PASSWORDLESS;
+});
+
+test("peer setup routes remain capability-gated outside Web login", () => {
+  const proxySource = readFileSync(join(process.cwd(), "proxy.ts"), "utf8");
+  assert.equal(proxySource.includes('path === "/api/v1/peer/discovery"'), true);
+  assert.equal(proxySource.includes('path === "/api/v1/peer/claim"'), true);
+  assert.equal(proxySource.includes('path === "/api/v1/peer/setup-snapshot"'), true);
+  assert.equal(proxySource.includes("X-KOMI-Peer-Sync-Token"), false);
 });

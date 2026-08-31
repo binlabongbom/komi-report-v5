@@ -19,6 +19,7 @@ type ViewId = "overview" | "users" | "printers" | "usage" | "system";
 type DateRange = { start: string; end: string };
 type PageResponse<T> = { items: T[]; next_offset: number | null };
 type Health = { status: string; device_count: number; online_count: number };
+type AccessMode = { authenticated: boolean; reportPasswordless: boolean };
 
 const EMPTY_RANGE: DateRange = { start: "", end: "" };
 const menu: { id: ViewId; icon: ViewId; th: string; en: string; group: "reports" | "system" }[] = [
@@ -92,6 +93,7 @@ export default function Home() {
   const [usageError, setUsageError] = useState(false);
   const [systemFailures, setSystemFailures] = useState<string[]>([]);
   const [periodError, setPeriodError] = useState("");
+  const [accessMode, setAccessMode] = useState<AccessMode | null>(null);
   const reportRequest = useRef(0);
   const usageRequest = useRef(0);
 
@@ -168,8 +170,17 @@ export default function Home() {
   useEffect(() => {
     let cancelled = false;
     async function initialize() {
+      let mode: AccessMode = { authenticated: false, reportPasswordless: false };
+      try {
+        mode = await json<AccessMode>("/auth/session");
+      } catch {
+        // The proxy remains the authority.  A failed mode check does not open
+        // any additional route and ordinary report requests still fail closed.
+      }
+      if (cancelled) return;
+      setAccessMode(mode);
       void loadHealth();
-      void loadSystem();
+      if (mode.authenticated) void loadSystem();
       let selected: DateRange | null = null;
       try {
         const periodData = await json<{ items: Period[] }>("/api/reports/periods");
@@ -191,7 +202,10 @@ export default function Home() {
 
   const minimumDate = periods.at(-1)?.start ?? "";
   const maximumDate = periods[0]?.end ?? "";
-  const activeItem = menu.find(item => item.id === active) ?? menu[0];
+  const visibleMenu = accessMode?.authenticated
+    ? menu
+    : menu.filter(item => item.group === "reports");
+  const activeItem = visibleMenu.find(item => item.id === active) ?? visibleMenu[0];
   const isPeriodReport = reportViews.has(active);
   const failureNames = useMemo(() => reportFailures.map(item => ({
     overview: tr(language, "ภาพรวม", "overview"),
@@ -245,8 +259,8 @@ export default function Home() {
   return <main className="app-shell" lang={language}>
     <aside className="sidebar">
       <div className="brand"><span className="brand-mark"><i/><i/><i/><i/></span><div><strong>KOMI REPORT</strong><small>Meter Control V5</small></div></div>
-      <nav aria-label={tr(language, "เมนูหลัก", "Main navigation")}>{menu.map((item, index) => <div key={item.id}>{(index === 0 || menu[index - 1].group !== item.group) && <small className="nav-group">{item.group === "reports" ? tr(language, "รายงาน", "Reports") : tr(language, "ระบบ", "System")}</small>}<button className={active === item.id ? "active" : ""} onClick={() => selectView(item.id)} title={tr(language, item.th, item.en)} aria-current={active === item.id ? "page" : undefined}><NavIcon icon={item.icon}/><span>{tr(language, item.th, item.en)}</span></button></div>)}</nav>
-      <div className="sidebar-foot"><button onClick={() => void logout()}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 4H4v16h6M14 8l4 4-4 4M8 12h10"/></svg><span>{tr(language, "ออกจากระบบ", "Sign out")}</span></button><small>Web Edition · Read only</small></div>
+      <nav aria-label={tr(language, "เมนูหลัก", "Main navigation")}>{visibleMenu.map((item, index) => <div key={item.id}>{(index === 0 || visibleMenu[index - 1].group !== item.group) && <small className="nav-group">{item.group === "reports" ? tr(language, "รายงาน", "Reports") : tr(language, "ระบบ", "System")}</small>}<button className={active === item.id ? "active" : ""} onClick={() => selectView(item.id)} title={tr(language, item.th, item.en)} aria-current={active === item.id ? "page" : undefined}><NavIcon icon={item.icon}/><span>{tr(language, item.th, item.en)}</span></button></div>)}</nav>
+      <div className="sidebar-foot">{accessMode?.authenticated && <button onClick={() => void logout()}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 4H4v16h6M14 8l4 4-4 4M8 12h10"/></svg><span>{tr(language, "ออกจากระบบ", "Sign out")}</span></button>}<small>{accessMode?.reportPasswordless && !accessMode.authenticated ? tr(language, "รายงาน LAN · อ่านอย่างเดียว", "LAN reports · Read only") : "Web Edition · Read only"}</small></div>
     </aside>
     <section className="workspace">
       <header className="topbar"><div><p>{activeItem.group === "reports" ? tr(language, "รายงาน", "Reports") : tr(language, "ระบบ", "System")}</p><h1>{tr(language, activeItem.th, activeItem.en)}</h1></div><div className="topbar-actions"><div className="language-switch" role="group" aria-label={tr(language, "เลือกภาษา", "Choose language")}><button className={language === "th" ? "active" : ""} onClick={() => changeLanguage("th")} aria-pressed={language === "th"}>ไทย</button><button className={language === "en" ? "active" : ""} onClick={() => changeLanguage("en")} aria-pressed={language === "en"}>EN</button></div><div className={`server-pill ${health ? "" : "offline"}`}><span/>{health ? tr(language, `พร้อมใช้งาน · ${health.online_count}/${health.device_count} เครื่อง`, `Online · ${health.online_count}/${health.device_count} printers`) : tr(language, "ไม่สามารถติดต่อ Server", "Server unavailable")}</div></div></header>

@@ -11,6 +11,7 @@ from komi_snmp_profiler.models import Confidence, MeterReading, WebAuthState, We
 from services.background_polling import BackgroundPollingCoordinator
 from services.daily_cache import DailyCacheStore
 from services.device_config import DeviceConfig, DeviceConfigRepository
+from services.parser_mapping import ParserMappingRepository
 from services.pipeline_log import pipeline_log
 from services.pricing import PriceList, PricingRepository
 from services.reconciliation import ReconciliationReport
@@ -104,6 +105,35 @@ class MismatchedReader:
         )
 
 
+class ReconciledReader:
+    def read(self, host: str) -> MeterReading:
+        def counter(field: str, value: int) -> WebCounterValue:
+            return WebCounterValue(
+                field,
+                field,
+                value,
+                "Meter",
+                "fixture",
+                Confidence.VERIFIED,
+            )
+
+        return MeterReading(
+            host=host,
+            collected_at=datetime.now(UTC).isoformat(),
+            counters=(
+                counter("counter.total.total", 100),
+                counter("counter.print.total", 80),
+                counter("counter.print.full_color_total", 50),
+                counter("counter.print.bw_total", 30),
+                counter("counter.copy.total", 20),
+                counter("counter.copy.full_color_total", 5),
+                counter("counter.copy.bw_total", 15),
+            ),
+            source="fixture",
+            auth_state=WebAuthState.ADMIN,
+        )
+
+
 class SessionBusyReader:
     def read(self, _host: str) -> MeterReading:
         raise WebConnectionSessionBusyError("legacy session busy")
@@ -178,6 +208,47 @@ def test_poll_device_logs_web_reconciliation_warning(tmp_path):
     assert state["source"]["reconciliation"]["profile_id"] == "konica.web_connection.device_meter.v2"
     assert state["source"]["counter_sources"]["counter.total.total"]["source_path"] == "fixture"
     assert any(event.action == "Billing evidence held for review" for event in pipeline_log.snapshot())
+    coordinator.stop()
+
+
+def test_parser_mapping_reconciles_normalized_snapshot_not_raw_attestation(tmp_path):
+    QCoreApplication.instance() or QCoreApplication([])
+    set_db_path(tmp_path / "polling-mapped-reconciliation.db")
+    init_db()
+    repository = DeviceConfigRepository()
+    device = DeviceConfig(
+        0,
+        "Office",
+        "192.0.2.10",
+        serial="SERIAL-1",
+        last_total=100,
+    )
+    repository.replace_all([device])
+    ParserMappingRepository().replace_all(
+        "SERIAL-1",
+        {("counter.print.bw_total", "fixture"): "mapped.print.a4.bw"},
+    )
+    pipeline_log.clear()
+    cache = DailyCacheStore(tmp_path / "cache")
+    coordinator = BackgroundPollingCoordinator(
+        repository,
+        probe=FakeProbe(),
+        reader=ReconciledReader(),
+        cache=cache,
+    )
+
+    assert coordinator._poll_device(device, force_web=True) is True
+
+    state = cache.load(0, datetime.now().date())
+    reconciliation = state["source"]["reconciliation"]
+    assert reconciliation["billing_safe"] is False
+    assert {issue["code"] for issue in reconciliation["issues"]} >= {
+        "print_total_by_color"
+    }
+    events = pipeline_log.snapshot()
+    assert any(event.action == "Reconciliation passed" for event in events)
+    assert any(event.action == "Mapped counter reconciliation held" for event in events)
+    assert any(event.action == "Billing evidence held for review" for event in events)
     coordinator.stop()
 
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
+from komi_version import APP_VERSION
 from services.v5_2_contract import build_status_payload
 from services.v5_2_outbox import V52OutboxRepository, compute_retry_delay_seconds
 
@@ -11,7 +12,7 @@ NOW = datetime(2026, 8, 25, 3, tzinfo=UTC)
 def _status(second: int):
     return build_status_payload(
         installation_id="44444444-4444-4444-8444-444444444444",
-        app_version="5.2.0",
+        app_version=APP_VERSION,
         platform_name="TestOS",
         architecture="test64",
         occurred_at=f"2026-08-25T03:00:{second:02d}Z",

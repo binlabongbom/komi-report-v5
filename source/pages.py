@@ -5,6 +5,7 @@
 import json
 import logging
 import os
+import platform
 import stat
 import traceback
 from html import escape
@@ -12,7 +13,7 @@ from datetime import datetime
 from collections import defaultdict
 from pathlib import Path
 
-from i18n import ENGLISH, apply_language, get_language
+from i18n import ENGLISH, apply_language, get_language, tr
 
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame, QTableWidget, QTableWidgetItem, QHeaderView,
@@ -197,6 +198,38 @@ class _FlowLayout(QLayout):
         return y + row_h - rect.y() + m.bottom()
 
 
+class _ManualDocumentImage(QLabel):
+    """Responsive screenshot shared by the in-app guide and Customer Guide."""
+
+    def __init__(self, pixmap: QPixmap, parent=None):
+        super().__init__(parent)
+        self._aspect_ratio = (
+            pixmap.height() / pixmap.width() if pixmap.width() else 0.75
+        )
+        self.setPixmap(pixmap)
+        self.setScaledContents(True)
+        self.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Preferred,
+        )
+        self.setMinimumWidth(0)
+        self.setStyleSheet("background:#FFFFFF; border:0;")
+
+    def hasHeightForWidth(self):
+        return True
+
+    def heightForWidth(self, width):
+        return max(120, round(max(1, width) * self._aspect_ratio))
+
+    def sizeHint(self):
+        width = min(900, max(640, self.pixmap().width()))
+        return QSize(width, self.heightForWidth(width))
+
+    def minimumSizeHint(self):
+        return QSize(240, self.heightForWidth(240))
+
+
 # ── PyQt6.QtCharts — native Qt charts (pie, bar)
 from PyQt6.QtCharts import (
     QChart, QChartView, QPieSeries,
@@ -212,7 +245,10 @@ from database import (
     get_monthly_summary, get_month_top_users, reset_settings_to_default,
     get_waste_paper_pct, set_waste_paper_pct, get_settings_password, verify_settings_password,
     set_settings_password, sanitize_filename, get_db_path,
+    copy_database_for_first_run,
 )
+from runtime_config import RUNTIME_SETTINGS, load_runtime_settings, save_runtime_database_path
+from tools.db_recovery import backup_database, inspect_database
 
 # ── PyQtGraph for interactive plotting
 try:
@@ -242,8 +278,10 @@ class _OverviewMetricCard(QFrame):
         self.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
         self.setFixedHeight(56)
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(20, 5, 20, 5)
-        layout.setSpacing(12)
+        # Keep long currency values and their context fully visible at the
+        # supported 1024 px minimum window size.
+        layout.setContentsMargins(14, 5, 14, 5)
+        layout.setSpacing(8)
         left = QWidget()
         left.setObjectName("overview_metric_content")
         left.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
@@ -759,7 +797,7 @@ class PageOverview(QWidget):
             prefix = "~" if provisional_total else ""
             self.stat_cards[0].lbl_val.setText(f"{prefix}{fn(display_total)}")
             self.stat_cards[0].lbl_diff.setText(
-                f"ยืนยันแล้ว {fn(confirmed_total)} · วันนี้ +{fn(provisional_total)}"
+                f"ยืนยัน {fn(confirmed_total)} · วันนี้ +{fn(provisional_total)}"
             )
             self.stat_cards[1].lbl_val.setText(
                 f"{'~' if provisional_color else ''}{fn(display_color)}"
@@ -776,9 +814,9 @@ class PageOverview(QWidget):
             else:
                 self.stat_cards[3].lbl_val.setText("—")
             self.stat_cards[3].lbl_diff.setText(
-                f"ยืนยันแล้ว {fmt_baht(confirmed_cost)} · วันนี้ ~{fmt_baht(provisional_cost)}"
+                f"ยืนยัน {fmt_baht(confirmed_cost)} · วันนี้ ~{fmt_baht(provisional_cost)}"
                 if provisional_total
-                else f"ยืนยันแล้ว {fmt_baht(confirmed_cost)}"
+                else f"ยืนยัน {fmt_baht(confirmed_cost)}"
             )
 
         # ── Printer rows ─────────────────────────────────────────
@@ -1270,7 +1308,7 @@ class PageOverviewV2(QWidget):
         )
         self.card_total_usage.lbl_val.setText(fn(display_total))
         self.card_total_usage.lbl_diff.setText(
-            f"ยืนยันแล้ว {fn(metrics.get('total', 0))} · วันนี้ +{fn(provisional_total)}"
+            f"ยืนยัน {fn(metrics.get('total', 0))} · วันนี้ +{fn(provisional_total)}"
         )
         if quality.get("provisional_cost_available", True):
             self.card_total_cost.lbl_val.setText(fmt_baht(display_cost))
@@ -5019,6 +5057,7 @@ class PageIndividual(QWidget):
 # ══════════════════════════════════════════════════════════
 class PageSettings(QWidget):
     changed = pyqtSignal()   # ส่งสัญญาณเมื่อตั้งค่าเปลี่ยน
+    parser_read_requested = pyqtSignal(int)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -5228,18 +5267,21 @@ class PageSettings(QWidget):
         c3 = mk_card(); c3.setMaximumWidth(700)
         l3 = QVBoxLayout(c3); l3.setContentsMargins(20,16,20,16); l3.setSpacing(10)
         l3.addWidget(sub_title("🗄  Database"))
-        dr2 = QHBoxLayout()
         self.db_lbl = QLabel()
         self.db_lbl.setFont(fnt(F_XS))
+        self.db_lbl.setWordWrap(True)
+        self.db_lbl.setMinimumWidth(0)
+        self.db_lbl.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         self.db_lbl.setStyleSheet(f"color:{C_TEXT2}; background:#F1F5F9; padding:8px; border-radius:6px;")
-        b_ch = btn("เปลี่ยน path", "outline"); b_ch.setFixedWidth(130)
+        b_ch = btn("เปลี่ยน Path", "outline"); b_ch.setFixedWidth(130)
         b_ch.setStyleSheet("QPushButton { background: white !important; color: #0F172A !important; border: 1.5px solid #E2E8F0 !important; border-radius: 8px; padding: 7px 16px; font-weight: 600; } QPushButton:hover { background: #2563EB !important; color: white !important; border-color: #E2E8F0 !important; }")
         b_ch.clicked.connect(self._change_db)
         self._btn_change_db_path = b_ch
-        dr2.addWidget(self.db_lbl, 1); dr2.addWidget(b_ch)
-        l3.addLayout(dr2)
+        l3.addWidget(self.db_lbl)
+        l3.addWidget(b_ch, 0, Qt.AlignmentFlag.AlignLeft)
         self._v5_db_migration_note = QLabel(
-            "V5 แสดง path ที่กำลังใช้งานแบบอ่านอย่างเดียว · การย้าย Database path ยังไม่รองรับในรุ่นนี้"
+            "การเปลี่ยน Path หรือนำ Backup กลับมาใช้ จะสร้างสำเนาที่ตรวจสอบแล้ว "
+            "และมีผลเมื่อเปิดโปรแกรมครั้งถัดไป ฐานข้อมูลที่กำลังใช้จะไม่ถูกทับ"
         )
         self._v5_db_migration_note.setWordWrap(True)
         self._v5_db_migration_note.setStyleSheet(
@@ -5248,47 +5290,133 @@ class PageSettings(QWidget):
         )
         self._v5_db_migration_note.hide()
         l3.addWidget(self._v5_db_migration_note)
+        db_actions = QHBoxLayout(); db_actions.setSpacing(8)
+        self._btn_check_db = btn("ตรวจสอบ Database", "outline")
+        self._btn_check_db.clicked.connect(self._inspect_database)
+        self._btn_backup_db = btn("สำรอง Database", "outline")
+        self._btn_backup_db.clicked.connect(self._backup_database)
+        self._btn_restore_db = btn("นำ Backup กลับมาใช้", "outline")
+        self._btn_restore_db.clicked.connect(self._stage_database_restore)
+        db_actions.addWidget(self._btn_check_db)
+        db_actions.addWidget(self._btn_backup_db)
+        db_actions.addWidget(self._btn_restore_db)
+        db_actions.addStretch()
+        l3.addLayout(db_actions)
         self._refresh_db_path_label()
 
         # ── Imported folder path
         l3.addWidget(QLabel("โฟลเดอร์เก็บไฟล์สำรอง (Imported):", font=fnt(F_SM)))
-        dr3 = QHBoxLayout()
         default_imported = str(Path(get_cfg("db_path", str(DB_PATH))).parent / "imported")
         self.imported_lbl = QLabel(get_cfg("imported_path", default_imported))
         self.imported_lbl.setFont(fnt(F_XS))
+        self.imported_lbl.setWordWrap(True)
+        self.imported_lbl.setMinimumWidth(0)
+        self.imported_lbl.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         self.imported_lbl.setStyleSheet(f"color:{C_TEXT2}; background:#F1F5F9; padding:8px; border-radius:6px;")
         b_ch2 = btn("เปลี่ยนโฟลเดอร์สำรอง", "outline"); b_ch2.setFixedWidth(180)
         b_ch2.setStyleSheet("QPushButton { background: white !important; color: #0F172A !important; border: 1.5px solid #E2E8F0 !important; border-radius: 8px; padding: 7px 16px; font-weight: 600; } QPushButton:hover { background: #2563EB !important; color: white !important; border-color: #E2E8F0 !important; }")
         b_ch2.clicked.connect(self._change_imported_path)
-        b_open_imported = btn("📂  เปิดโฟลเดอร์", "outline"); b_open_imported.setFixedWidth(130)
+        b_open_imported = btn("📂  เปิดโฟลเดอร์", "outline"); b_open_imported.setMinimumWidth(150)
         b_open_imported.setStyleSheet("QPushButton { background: white !important; color: #0F172A !important; border: 1.5px solid #E2E8F0 !important; border-radius: 8px; padding: 7px 16px; font-weight: 600; } QPushButton:hover { background: #16A34A !important; color: white !important; border-color: #16A34A !important; }")
         b_open_imported.clicked.connect(self._open_imported_folder)
-        dr3.addWidget(self.imported_lbl, 1); dr3.addWidget(b_ch2); dr3.addWidget(b_open_imported)
-        l3.addLayout(dr3)
+        l3.addWidget(self.imported_lbl)
+        imported_actions = QHBoxLayout(); imported_actions.setSpacing(8)
+        imported_actions.addWidget(b_ch2)
+        imported_actions.addWidget(b_open_imported)
+        imported_actions.addStretch()
+        l3.addLayout(imported_actions)
 
         lay.addWidget(c3)
 
         # ── 6. Parser tuning
         c_parser = mk_card(); c_parser.setMaximumWidth(700)
         l_parser = QVBoxLayout(c_parser); l_parser.setContentsMargins(20,16,20,16); l_parser.setSpacing(10)
-        l_parser.addWidget(sub_title("🧩  Parser"))
-        p_hint = QLabel("เปิดหน้าปรับจูน Parser เพื่อแก้ Mapping ของไฟล์ .txt (Row/Column, Index/Header/Value)")
+        l_parser.addWidget(sub_title("🧩  ตรวจสอบ Parser Mapping"))
+        p_hint = QLabel(
+            "ดูข้อมูล Raw จากเครื่องแต่ละ Slot เทียบกับช่องที่จะบันทึกใน Database "
+            "และแก้ Mapping เฉพาะ Serial Number ได้"
+        )
         p_hint.setFont(fnt(F_MD)); p_hint.setStyleSheet(f"color:{C_TEXT2};")
         p_hint.setWordWrap(True)
         l_parser.addWidget(p_hint)
-        b_parser = btn("🔧  เปิดการตั้งค่า Parser", "outline"); b_parser.setFixedWidth(240)
+        b_parser = btn("🔎  ตรวจสอบ Parser Mapping", "outline"); b_parser.setFixedWidth(260)
         b_parser.clicked.connect(self._open_parser_settings)
         l_parser.addWidget(b_parser)
         lay.addWidget(c_parser)
 
-        # ── 7. Reset data / first-run setup
+        # ── 7. Program behaviour, logs and maintenance
+        c_runtime = mk_card(); c_runtime.setMaximumWidth(900)
+        l_runtime = QVBoxLayout(c_runtime)
+        l_runtime.setContentsMargins(20, 16, 20, 16)
+        l_runtime.setSpacing(12)
+        l_runtime.addWidget(sub_title("⚙️  โปรแกรม Log และการบำรุงรักษา"))
+
+        self.runtime_info = QLabel()
+        self.runtime_info.setWordWrap(True)
+        self.runtime_info.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        self.runtime_info.setStyleSheet(
+            f"color:{C_TEXT2};background:#F1F5F9;border:1px solid #D6E0EA;"
+            "border-radius:6px;padding:9px 11px;"
+        )
+        l_runtime.addWidget(self.runtime_info)
+
+        self.close_to_tray = QCheckBox(
+            "เมื่อกดปิดหน้าต่าง ให้โปรแกรมทำงานต่อใน System Tray"
+        )
+        self.close_to_tray.setChecked(get_cfg("close_to_tray", "1") != "0")
+        self.close_to_tray.setToolTip(
+            "ยกเลิกตัวเลือกนี้ หากต้องการให้ปุ่มปิดหน้าต่างหยุดโปรแกรมจริง"
+        )
+        l_runtime.addWidget(self.close_to_tray)
+
+        preference_row = QHBoxLayout(); preference_row.setSpacing(8)
+        retention_label = QLabel("เก็บ Log ย้อนหลัง")
+        retention_label.setFont(fnt(F_MD, True))
+        self.log_retention_days = QSpinBox()
+        self.log_retention_days.setRange(1, 365)
+        self.log_retention_days.setSuffix(" วัน")
+        try:
+            retention_days = int(get_cfg("log_retention_days", "30") or "30")
+        except ValueError:
+            retention_days = 30
+        self.log_retention_days.setValue(max(1, min(365, retention_days)))
+        save_program = btn("บันทึกการทำงานของโปรแกรม", "primary")
+        save_program.clicked.connect(self._save_program_preferences)
+        preference_row.addWidget(retention_label)
+        preference_row.addWidget(self.log_retention_days)
+        preference_row.addSpacing(10)
+        preference_row.addWidget(save_program)
+        preference_row.addStretch()
+        l_runtime.addLayout(preference_row)
+
+        # Two rows keep the English labels readable at the supported
+        # 1024 px desktop width without forcing horizontal scrolling.
+        log_actions = QGridLayout(); log_actions.setSpacing(8)
+        open_logs = btn("เปิดโฟลเดอร์ Log", "outline")
+        open_logs.clicked.connect(self._open_log_folder)
+        export_logs = btn("ส่งออก Log สำหรับ Support", "outline")
+        export_logs.clicked.connect(self._open_issue_log)
+        clear_logs = btn("ล้าง Log เก่า", "outline")
+        clear_logs.clicked.connect(self._clear_old_logs)
+        clear_cache = btn("ล้างไฟล์ชั่วคราว", "outline")
+        clear_cache.clicked.connect(self._clear_runtime_cache)
+        log_actions.addWidget(open_logs, 0, 0)
+        log_actions.addWidget(export_logs, 0, 1)
+        log_actions.addWidget(clear_logs, 1, 0)
+        log_actions.addWidget(clear_cache, 1, 1)
+        log_actions.setColumnStretch(2, 1)
+        l_runtime.addLayout(log_actions)
+        lay.addWidget(c_runtime)
+
+        # ── 8. Reset data / first-run setup
         c4 = mk_card(); c4.setMaximumWidth(700)
         l4 = QVBoxLayout(c4); l4.setContentsMargins(20,16,20,16); l4.setSpacing(10)
         l4.addWidget(sub_title("⚠️  ล้างข้อมูล หรือเริ่มตั้งค่าใหม่"))
         warn = QLabel("เลือกให้ตรงกับสิ่งที่ต้องการ: ล้างเฉพาะประวัติ หรือกลับสู่หน้าตั้งค่าเครื่องพิมพ์ครั้งแรก")
         warn.setFont(fnt(F_MD)); warn.setStyleSheet(f"color:{C_RED};")
+        warn.setWordWrap(True)
         l4.addWidget(warn)
-        rst_btn_row = QHBoxLayout(); rst_btn_row.setSpacing(10)
+        rst_btn_row = QGridLayout(); rst_btn_row.setSpacing(10)
         b_rst = btn("🗑  ล้างข้อมูลการใช้งาน", "danger"); b_rst.setFixedWidth(220)
         b_rst.clicked.connect(self._reset)
         b_factory = btn("↺  เริ่มตั้งค่าใหม่", "outline"); b_factory.setFixedWidth(200)
@@ -5297,15 +5425,15 @@ class PageSettings(QWidget):
         b_rst_parser = btn("🗑  รีเซท Parser ทั้งหมด", "danger"); b_rst_parser.setFixedWidth(200)
         b_rst_parser.setStyleSheet("QPushButton { background: white !important; color: #DC2626 !important; border: 1.5px solid #DC2626 !important; border-radius: 8px; padding: 8px 18px; font-weight: 600; } QPushButton:hover { background: #DC2626 !important; color: white !important; }")
         b_rst_parser.clicked.connect(self._reset_parser)
-        rst_btn_row.addWidget(b_rst)
-        rst_btn_row.addWidget(b_factory)
-        rst_btn_row.addWidget(b_rst_parser)
-        rst_btn_row.addStretch()
+        rst_btn_row.addWidget(b_rst, 0, 0)
+        rst_btn_row.addWidget(b_factory, 0, 1)
+        rst_btn_row.addWidget(b_rst_parser, 1, 0)
+        rst_btn_row.setColumnStretch(2, 1)
         l4.addLayout(rst_btn_row)
         lay.addWidget(c4)
         self._btn_reset_db = b_rst
 
-        # ── 8. Reset Settings
+        # ── 9. Reset Settings
         c5 = mk_card(); c5.setMaximumWidth(700)
         l5 = QVBoxLayout(c5); l5.setContentsMargins(20,16,20,16); l5.setSpacing(10)
         l5.addWidget(sub_title("⚠️  รีเซท การตั้งค่า"))
@@ -5316,11 +5444,7 @@ class PageSettings(QWidget):
         b_rst_cfg = btn("🔄  รีเซท การตั้งค่า", "outline"); b_rst_cfg.setFixedWidth(240)
         b_rst_cfg.setStyleSheet("QPushButton { background: white !important; color: #EA580C !important; border: 1.5px solid #EA580C !important; border-radius: 8px; padding: 8px 18px; font-weight: 600; } QPushButton:hover { background: #EA580C !important; color: white !important; }")
         b_rst_cfg.clicked.connect(self._reset_settings)
-        b_issue = btn("📋  Issue log", "outline"); b_issue.setFixedWidth(180)
-        b_issue.setStyleSheet("QPushButton { background: white !important; color: #2563EB !important; border: 1.5px solid #2563EB !important; border-radius: 8px; padding: 8px 18px; font-weight: 600; } QPushButton:hover { background: #2563EB !important; color: white !important; }")
-        b_issue.clicked.connect(self._open_issue_log)
         cfg_btn_row.addWidget(b_rst_cfg)
-        cfg_btn_row.addWidget(b_issue)
         cfg_btn_row.addStretch()
         l5.addLayout(cfg_btn_row)
         lay.addWidget(c5)
@@ -5328,7 +5452,9 @@ class PageSettings(QWidget):
         lay.addStretch()
 
         # [V4.5] เปิดใช้ระบบรหัสผ่าน — เนื้อหาถูกซ่อนจนกว่าจะ unlock ผ่าน ensure_unlocked()
-        self._protected_widgets = [c1, c2, c_waste, c_day, c_log, c3, c_parser, c4, c5]
+        self._protected_widgets = [
+            c1, c2, c_waste, c_day, c_log, c3, c_parser, c_runtime, c4, c5
+        ]
         # V5 owns devices, PricingRepository, billing day and waste discount in
         # its main Settings page.  Keep the legacy cards for V4 compatibility,
         # but hide every duplicate editor when this page is embedded in V5.
@@ -5362,13 +5488,18 @@ class PageSettings(QWidget):
         for widget in duplicates:
             widget.setVisible(False)
         if hasattr(self, "_btn_change_db_path"):
-            self._btn_change_db_path.setVisible(False)
+            self._btn_change_db_path.setVisible(True)
         if hasattr(self, "_v5_db_migration_note"):
             self._v5_db_migration_note.setVisible(True)
         # V5.1 no longer asks general users for a Settings password.  Risky
         # operations retain their explicit warning and confirmation dialogs.
         self._authenticated = True
         self._set_protected_visible(True)
+        for widget in self._protected_widgets:
+            widget.setMaximumWidth(16777215)
+        title_item = self.layout().itemAt(0) if self.layout() is not None else None
+        if title_item is not None and title_item.widget() is not None:
+            title_item.widget().hide()
         self._refresh_db_path_label()
 
     def ensure_unlocked(self) -> bool:
@@ -5661,22 +5792,142 @@ class PageSettings(QWidget):
             time_str = log["changed_at"] or "-"
             self.log_table.setItem(idx, 4, tbl_item(str(time_str)))
 
+    @staticmethod
+    def _runtime_config_path() -> Path:
+        return Path(os.environ.get("KOMI_RUNTIME_CONFIG", RUNTIME_SETTINGS.config_path))
+
+    def _next_start_database_path(self) -> Path:
+        config_path = self._runtime_config_path()
+        if not config_path.is_file():
+            return Path(get_db_path()).expanduser().resolve(strict=False)
+        return load_runtime_settings({}, config_path=config_path).db_path.resolve(strict=False)
+
+    @staticmethod
+    def _database_filename(path: str | Path) -> Path:
+        destination = Path(path).expanduser()
+        if destination.suffix.casefold() != ".db":
+            destination = destination.with_suffix(".db")
+        return destination.resolve(strict=False)
+
+    def _persist_next_database(self, destination: Path) -> None:
+        save_runtime_database_path(destination, config_path=self._runtime_config_path())
+        self._refresh_db_path_label()
+
     def _change_db(self):
-        p, _ = QFileDialog.getSaveFileName(self, "เลือก path", str(DB_PATH), "SQLite (*.db)")
-        if p:
-            set_cfg("db_path", p)
-            self._refresh_db_path_label()
-            QMessageBox.information(self, "โน้ต", "จะมีผลหลังรีสตาร์ทโปรแกรม")
+        active = Path(get_db_path()).expanduser().resolve(strict=False)
+        p, _ = QFileDialog.getSaveFileName(
+            self,
+            "เลือกตำแหน่ง Database ใหม่",
+            str(active.with_name(f"{active.stem}-copy.db")),
+            "SQLite (*.db)",
+        )
+        if not p:
+            return
+        destination = self._database_filename(p)
+        try:
+            copy_database_for_first_run(destination)
+            self._persist_next_database(destination)
+        except (OSError, ValueError) as error:
+            QMessageBox.warning(
+                self,
+                "เปลี่ยน Path ไม่สำเร็จ",
+                f"{error}\n\nDatabase ที่กำลังใช้ไม่ถูกแก้ไข",
+            )
+            return
+        QMessageBox.information(
+            self,
+            "เตรียม Database ใหม่แล้ว",
+            f"สร้างสำเนาที่ตรวจสอบแล้ว:\n{destination}\n\n"
+            "จะเริ่มใช้เมื่อปิดและเปิดโปรแกรมครั้งถัดไป",
+        )
+
+    def _inspect_database(self) -> None:
+        active = Path(get_db_path())
+        try:
+            result = inspect_database(active)
+        except (OSError, ValueError) as error:
+            QMessageBox.warning(self, "Database ไม่ผ่าน", str(error))
+            return
+        counts = result.get("critical_counts", {})
+        total_rows = sum(int(value) for value in counts.values()) if isinstance(counts, dict) else 0
+        QMessageBox.information(
+            self,
+            "Database พร้อมใช้งาน",
+            f"Integrity: OK\nSchema: {result.get('user_version', '—')}\n"
+            f"ตรวจพบข้อมูลสำคัญ {total_rows:,} รายการ\n\n{active}",
+        )
+
+    def _backup_database(self) -> None:
+        active = Path(get_db_path()).expanduser().resolve(strict=False)
+        stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        default = active.parent / "backups" / f"{active.stem}-{stamp}.db"
+        p, _ = QFileDialog.getSaveFileName(
+            self,
+            "สำรอง Database",
+            str(default),
+            "SQLite (*.db)",
+        )
+        if not p:
+            return
+        destination = self._database_filename(p)
+        try:
+            result = backup_database(active, destination)
+        except (OSError, ValueError) as error:
+            QMessageBox.warning(self, "สำรองไม่สำเร็จ", str(error))
+            return
+        QMessageBox.information(
+            self,
+            "สำรอง Database แล้ว",
+            f"Integrity: {str(result.get('integrity', '')).upper()}\n{destination}",
+        )
+
+    def _stage_database_restore(self) -> None:
+        active = Path(get_db_path()).expanduser().resolve(strict=False)
+        source, _ = QFileDialog.getOpenFileName(
+            self,
+            "เลือก Backup Database",
+            str(active.parent),
+            "SQLite (*.db)",
+        )
+        if not source:
+            return
+        stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        default = active.with_name(f"{active.stem}-restored-{stamp}.db")
+        target, _ = QFileDialog.getSaveFileName(
+            self,
+            "บันทึกฐานข้อมูลที่จะใช้ครั้งถัดไป",
+            str(default),
+            "SQLite (*.db)",
+        )
+        if not target:
+            return
+        destination = self._database_filename(target)
+        try:
+            inspect_database(Path(source))
+            backup_database(Path(source), destination)
+            self._persist_next_database(destination)
+        except (OSError, ValueError) as error:
+            QMessageBox.warning(
+                self,
+                "นำ Backup กลับมาใช้ไม่สำเร็จ",
+                f"{error}\n\nDatabase ที่กำลังใช้ไม่ถูกแก้ไข",
+            )
+            return
+        QMessageBox.information(
+            self,
+            "เตรียม Backup แล้ว",
+            f"ตรวจสอบและสร้างสำเนาแล้ว:\n{destination}\n\n"
+            "จะเริ่มใช้เมื่อปิดและเปิดโปรแกรมครั้งถัดไป",
+        )
 
     def _refresh_db_path_label(self):
         """Show the database used now and a different next-start path explicitly."""
-        active = Path(get_db_path())
-        if getattr(self, "_v5_embed_mode", False):
-            text = f"กำลังใช้งาน (อ่านอย่างเดียว): {active}"
-            self.db_lbl.setText(text)
-            self.db_lbl.setToolTip(text)
-            return
-        configured = Path(get_cfg("db_path", str(active)) or active)
+        active = Path(get_db_path()).expanduser().resolve(strict=False)
+        configured = (
+            self._next_start_database_path()
+            if getattr(self, "_v5_embed_mode", False)
+            else Path(get_cfg("db_path", str(active)) or active)
+        )
         if configured == active:
             text = f"กำลังใช้งาน: {active}"
         else:
@@ -5703,27 +5954,214 @@ class PageSettings(QWidget):
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(folder)))
 
     def _open_parser_settings(self):
-        """เปิดหน้าต่างปรับจูน parser (tools/check_parser.py)"""
-        _open_check_parser()
+        """Open the V5.2 Raw → Mapping → Database inspector."""
+        from ui.parser_mapping_inspector import ParserMappingInspector
+
+        window = ParserMappingInspector(
+            self,
+            read_requested=self.parser_read_requested.emit,
+        )
+        _parser_editor_windows.append(window)
+        window.destroyed.connect(
+            lambda: _parser_editor_windows.remove(window)
+            if window in _parser_editor_windows
+            else None
+        )
+        window.show()
+        window.raise_()
+        window.activateWindow()
+
+    def _refresh_runtime_info(self) -> None:
+        log_dir = RUNTIME_SETTINGS.log_dir.expanduser().resolve(strict=False)
+        close_behavior = (
+            tr(
+                "ปิดหน้าต่างแล้วทำงานต่อใน System Tray",
+                "Closing the window keeps the app running in the System Tray",
+            )
+            if self.close_to_tray.isChecked()
+            else tr(
+                "ปิดหน้าต่างแล้วหยุดโปรแกรม",
+                "Closing the window exits the application",
+            )
+        )
+        self.runtime_info.setText(
+            f"Version {APP_VER} · {platform.system()} / {platform.machine()}\n"
+            f"{close_behavior}\nLog: {log_dir}"
+        )
+
+    def _save_program_preferences(self) -> None:
+        set_cfg("close_to_tray", "1" if self.close_to_tray.isChecked() else "0")
+        set_cfg("log_retention_days", str(self.log_retention_days.value()))
+        self._refresh_runtime_info()
+        self.changed.emit()
+        QMessageBox.information(
+            self,
+            "บันทึกแล้ว",
+            "บันทึกพฤติกรรมการปิดโปรแกรมและระยะเวลาเก็บ Log แล้ว",
+        )
+
+    @staticmethod
+    def _active_log_paths() -> set[Path]:
+        active: set[Path] = set()
+        for handler in logging.getLogger().handlers:
+            base_filename = getattr(handler, "baseFilename", None)
+            if base_filename:
+                active.add(Path(base_filename).resolve(strict=False))
+        return active
+
+    def _open_log_folder(self) -> None:
+        log_dir = RUNTIME_SETTINGS.log_dir.expanduser().resolve(strict=False)
+        log_dir.mkdir(parents=True, exist_ok=True)
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(log_dir)))
+
+    def _clear_old_logs(self) -> None:
+        days = self.log_retention_days.value()
+        if QMessageBox.question(
+            self,
+            "ล้าง Log เก่า",
+            f"ลบเฉพาะไฟล์ Log ที่เก่ากว่า {days} วันหรือไม่?\n\n"
+            "ไฟล์ Log ที่โปรแกรมกำลังเขียนจะไม่ถูกลบ",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        ) != QMessageBox.StandardButton.Yes:
+            return
+        root = RUNTIME_SETTINGS.log_dir.expanduser().resolve(strict=False)
+        cutoff = datetime.now().timestamp() - (days * 86_400)
+        active = self._active_log_paths()
+        deleted = 0
+        if root.is_dir():
+            for candidate in root.iterdir():
+                name = candidate.name.casefold()
+                if (
+                    not candidate.is_file()
+                    or candidate.resolve(strict=False) in active
+                    or (".log" not in name and ".jsonl" not in name)
+                ):
+                    continue
+                try:
+                    if candidate.stat().st_mtime < cutoff:
+                        candidate.unlink()
+                        deleted += 1
+                except OSError:
+                    log.warning("could not delete old log %s", candidate)
+        QMessageBox.information(self, "ล้าง Log แล้ว", f"ลบ Log เก่า {deleted} ไฟล์")
+
+    def _clear_runtime_cache(self) -> None:
+        if QMessageBox.question(
+            self,
+            "ล้างไฟล์ชั่วคราว",
+            "ลบเฉพาะไฟล์ .tmp, .cache และ .part ในโฟลเดอร์ runtime-cache หรือไม่?\n\n"
+            "Database, ประวัติ, Billing, Excel และ Log จะไม่ถูกลบ",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        ) != QMessageBox.StandardButton.Yes:
+            return
+        roots = {
+            (RUNTIME_SETTINGS.app_home / "runtime-cache").expanduser().resolve(strict=False),
+            Path(get_db_path()).expanduser().resolve(strict=False).parent / "runtime-cache",
+        }
+        deleted = 0
+        for root in roots:
+            if not root.is_dir():
+                continue
+            for candidate in root.rglob("*"):
+                if not candidate.is_file() or candidate.suffix.casefold() not in {
+                    ".tmp", ".cache", ".part"
+                }:
+                    continue
+                try:
+                    candidate.unlink()
+                    deleted += 1
+                except OSError:
+                    log.warning("could not delete runtime cache %s", candidate)
+        QMessageBox.information(
+            self,
+            "ล้างไฟล์ชั่วคราวแล้ว",
+            f"ลบไฟล์ชั่วคราว {deleted} ไฟล์",
+        )
+
+    def _operation_access_granted(self) -> bool:
+        """V5 uses explicit confirmations instead of a Settings password."""
+        if getattr(self, "_v5_embed_mode", False):
+            return True
+        return self._ask_password()
+
+    def _confirm_destructive(self, title: str, message: str) -> bool:
+        first = QMessageBox.question(
+            self,
+            title,
+            message,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if first != QMessageBox.StandardButton.Yes:
+            return False
+        if not getattr(self, "_v5_embed_mode", False):
+            return True
+        second = QMessageBox.question(
+            self,
+            "ยืนยันครั้งสุดท้าย",
+            "ระบบจะสำรองข้อมูลก่อนดำเนินการ\n\nยืนยันว่าต้องการทำรายการนี้จริงหรือไม่?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        return second == QMessageBox.StandardButton.Yes
+
+    def _automatic_database_backup(self, action_slug: str) -> Path | None:
+        active = Path(get_db_path()).expanduser().resolve(strict=False)
+        stamp = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
+        destination = active.parent / "backups" / f"{active.stem}-before-{action_slug}-{stamp}.db"
+        try:
+            backup_database(active, destination)
+        except Exception as error:
+            log.exception("automatic database backup failed before %s", action_slug)
+            QMessageBox.warning(
+                self,
+                "หยุดรายการเพื่อป้องกันข้อมูล",
+                f"สำรอง Database ไม่สำเร็จ จึงยังไม่ได้เปลี่ยนหรือลบข้อมูล\n\n{error}",
+            )
+            return None
+        return destination
 
     def _reset(self):
-        if not self._ask_password():
+        if not self._operation_access_granted():
             return
-        if QMessageBox.question(self, "ยืนยัน", "ลบประวัติการใช้งานและ Log ทั้งหมดถาวร?\n\nการตั้งค่าเครื่องพิมพ์และหน้า Wizard จะยังคงอยู่") \
-                == QMessageBox.StandardButton.Yes:
-            reset_db(); self.changed.emit()
-            self._refresh_log()
-            QMessageBox.information(self, "ล้างข้อมูลแล้ว", "ลบประวัติการใช้งานและ Log เรียบร้อย\nการตั้งค่าเครื่องพิมพ์ยังคงอยู่")
+        if not self._confirm_destructive(
+            "ยืนยันล้างข้อมูลการใช้งาน",
+            "ลบประวัติการใช้งาน รายงาน Billing และ Log การตั้งค่าใน Database "
+            "ทั้งหมดถาวร?\n\n"
+            "การตั้งค่าเครื่องพิมพ์ ราคา Parser Registration และหน้า Wizard "
+            "จะยังคงอยู่",
+        ):
+            return
+        backup_path = self._automatic_database_backup("reset-usage")
+        if backup_path is None:
+            return
+        reset_db()
+        self.changed.emit()
+        self._refresh_log()
+        QMessageBox.information(
+            self,
+            "ล้างข้อมูลแล้ว",
+            "ลบประวัติการใช้งาน รายงาน Billing และ Log การตั้งค่าใน Database "
+            "เรียบร้อย\n"
+            "การตั้งค่าเครื่องพิมพ์ ราคา Parser Registration และหน้า Wizard "
+            "ยังคงอยู่\n\n"
+            f"ไฟล์สำรอง: {backup_path}",
+        )
 
     def _factory_reset(self):
         """Clear all V5 state so the next application launch opens Setup Wizard."""
-        if not self._ask_password():
+        if not self._operation_access_granted():
             return
         message = (
             "ลบเครื่องพิมพ์ ราคา รอบบิล ประวัติการใช้งาน และ Billing Audit ทั้งหมดถาวร?\n\n"
             "เมื่อเปิดโปรแกรมใหม่ ระบบจะแสดง Setup Wizard อีกครั้ง"
         )
-        if QMessageBox.question(self, "ยืนยันเริ่มตั้งค่าใหม่", message) != QMessageBox.StandardButton.Yes:
+        if not self._confirm_destructive("ยืนยันเริ่มตั้งค่าใหม่", message):
+            return
+        backup_path = self._automatic_database_backup("factory-reset")
+        if backup_path is None:
             return
         from database import factory_reset_v5
 
@@ -5733,23 +6171,41 @@ class PageSettings(QWidget):
         QMessageBox.information(
             self,
             "เริ่มตั้งค่าใหม่แล้ว",
-            "ล้างข้อมูลและการตั้งค่าเรียบร้อย\nกรุณาปิดแล้วเปิดโปรแกรมใหม่เพื่อเข้าสู่ Setup Wizard",
+            "ล้างข้อมูลและการตั้งค่าเรียบร้อย\n"
+            "กรุณาปิดแล้วเปิดโปรแกรมใหม่เพื่อเข้าสู่ Setup Wizard\n\n"
+            f"ไฟล์สำรอง: {backup_path}",
         )
 
     def _reset_parser(self):
         """ลบไฟล์ Parser Profile ทั้งหมด — เหมือนเปิดโปรแกรมครั้งแรก"""
-        if not self._ask_password():
+        if not self._operation_access_granted():
             return
-        if QMessageBox.question(
-            self, "ยืนยันรีเซท Parser",
-            "ลบ Parser Profile ทั้งหมดถาวร?และไม่สามารถกู้คืนได้",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No,
-        ) != QMessageBox.StandardButton.Yes:
+        if not self._confirm_destructive(
+            "ยืนยันรีเซท Parser",
+            "ลบ Parser Profile ทั้งหมดหรือไม่?\n\nระบบจะสำรอง Profile เดิมก่อนลบ",
+        ):
             return
         from tools.check_parser import PROFILES_DIR
+        parser_files = list(PROFILES_DIR.glob("profile_*.json"))
+        backup_dir: Path | None = None
+        if parser_files:
+            stamp = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
+            backup_dir = PROFILES_DIR.parent / "backups" / f"parser-{stamp}"
+            try:
+                backup_dir.mkdir(parents=True, exist_ok=False)
+                for parser_file in parser_files:
+                    destination = backup_dir / parser_file.name
+                    destination.write_bytes(parser_file.read_bytes())
+            except OSError as error:
+                log.exception("parser profile backup failed")
+                QMessageBox.warning(
+                    self,
+                    "หยุดรายการเพื่อป้องกันข้อมูล",
+                    f"สำรอง Parser Profile ไม่สำเร็จ จึงยังไม่ได้ลบข้อมูล\n\n{error}",
+                )
+                return
         deleted = 0
-        for pf in list(PROFILES_DIR.glob("profile_*.json")):
+        for pf in parser_files:
             try:
                 pf.unlink()
                 deleted += 1
@@ -5759,20 +6215,31 @@ class PageSettings(QWidget):
         QMessageBox.information(
             self, "รีเซทแล้ว",
             f"ลบ Parser Profile {deleted} รายการเรียบร้อย"
+            + (f"\n\nไฟล์สำรอง: {backup_dir}" if backup_dir else "")
         )
 
     def _reset_settings(self):
         """รีเซทการตั้งค่า (ชื่อเครื่อง, ราคา, วันตัดรอบ) เป็นค่าเริ่มต้น"""
-        if not self._ask_password():
+        if not self._operation_access_granted():
             return
-        if QMessageBox.question(self, "ยืนยัน",
-            "รีเซทการตั้งค่าทั้งหมด (ชื่อเครื่อง, ราคา, วันตัดรอบ) เป็นค่าเริ่มต้นหรือ?\n\nข้อมูลที่บันทึกไว้จะอัปเดตเป็นค่าเริ่มต้น") \
-                == QMessageBox.StandardButton.Yes:
-            reset_settings_to_default()
-            self.changed.emit()
-            self._refresh_log()
-            self._refresh_ui()
-            QMessageBox.information(self, "รีเซทแล้ว", "รีเซทการตั้งค่าเรียบร้อย")
+        if not self._confirm_destructive(
+            "ยืนยันรีเซทการตั้งค่า",
+            "รีเซทชื่อเครื่อง ราคา และวันตัดรอบเป็นค่าเริ่มต้นหรือไม่?\n\n"
+            "ข้อมูลที่บันทึกไว้จะถูกอัปเดตเป็นค่าเริ่มต้น",
+        ):
+            return
+        backup_path = self._automatic_database_backup("reset-settings")
+        if backup_path is None:
+            return
+        reset_settings_to_default()
+        self.changed.emit()
+        self._refresh_log()
+        self._refresh_ui()
+        QMessageBox.information(
+            self,
+            "รีเซทแล้ว",
+            f"รีเซทการตั้งค่าเรียบร้อย\n\nไฟล์สำรอง: {backup_path}",
+        )
 
     def _open_issue_log(self):
         """รวบรวม settings + 4 ไฟล์ .txt ล่าสุด + parsers + screenshots ทุกหน้า → ZIP ลง Downloads"""
@@ -5935,6 +6402,16 @@ class PageSettings(QWidget):
             self.imported_lbl.setText(get_cfg("imported_path", default_imported))
         if hasattr(self, 'db_lbl'):
             self._refresh_db_path_label()
+        if hasattr(self, 'close_to_tray'):
+            self.close_to_tray.setChecked(get_cfg("close_to_tray", "1") != "0")
+        if hasattr(self, 'log_retention_days'):
+            try:
+                days = int(get_cfg("log_retention_days", "30") or "30")
+            except ValueError:
+                days = 30
+            self.log_retention_days.setValue(max(1, min(365, days)))
+        if hasattr(self, 'runtime_info'):
+            self._refresh_runtime_info()
 
 
 # ══════════════════════════════════════════════════════════
@@ -5942,17 +6419,30 @@ class PageSettings(QWidget):
 # ══════════════════════════════════════════════════════════
 class PageManual(QWidget):
     """
-    หน้าคู่มือการใช้งาน — อธิบายวิธีดาวน์โหลดไฟล์ TXT จากเครื่อง Konica Minolta
-    และวิธีใช้งานโปรแกรม Konica Minolta Meter Reader
+    คู่มือใช้งาน KOMI Report V5.2 สำหรับผู้ใช้ทั่วไปและเจ้าหน้าที่ดูแลระบบ
+    โดยยึดพฤติกรรมของหน้าจอจริงเป็นหลัก
     """
+    FONT_SCALE = 0.80
+
+    @classmethod
+    def _manual_point_size(cls, size: int) -> int:
+        """ลด typography เฉพาะหน้าคู่มือ โดยไม่กระทบหน้าอื่นของโปรแกรม"""
+        return max(8, round(size * cls.FONT_SCALE))
+
+    @classmethod
+    def _manual_font(cls, size: int, bold: bool = False) -> QFont:
+        return fnt(cls._manual_point_size(size), bold=bold)
+
     def __init__(self, parent=None):
         super().__init__(parent)
+        # องค์ประกอบที่ไม่ได้กำหนดฟอนต์เฉพาะ จะ inherit ขนาดคู่มือที่ลดแล้ว
+        self.setFont(self._manual_font(F_LG))
         self._build()
 
     # ── helper: สร้าง section header ────────────────────────
     def _sec(self, text: str) -> QLabel:
         lbl = QLabel(text)
-        lbl.setFont(fnt(F_2XL))
+        lbl.setFont(self._manual_font(F_2XL))
         lbl.setWordWrap(True)
         lbl.setStyleSheet(
             f"color:{C_ACCENT}; font-weight:bold; padding-bottom:4px;"
@@ -5963,8 +6453,9 @@ class PageManual(QWidget):
     # ── helper: สร้าง step badge + ข้อความ ──────────────────
     def _step(self, num: int, text: str) -> QWidget:
         row = QWidget()
+        row.setStyleSheet("background:transparent; border:0;")
         lay = QHBoxLayout(row)
-        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setContentsMargins(0, 3, 0, 3)
         lay.setSpacing(10)
 
         badge = QLabel(str(num))
@@ -5972,13 +6463,13 @@ class PageManual(QWidget):
         badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
         badge.setStyleSheet(
             f"background:{C_ACCENT}; color:white; border-radius:15px;"
-            f"font-weight:bold; font-size:{F_LG}pt;"
+            f"font-weight:bold; font-size:{self._manual_point_size(F_LG)}pt;"
         )
 
         desc = QLabel(text)
-        desc.setFont(fnt(F_XL))
+        desc.setFont(self._manual_font(F_XL))
         desc.setWordWrap(True)
-        desc.setStyleSheet(f"color:{C_TEXT};")
+        desc.setStyleSheet(f"color:{C_TEXT}; background:transparent; border:0;")
 
         lay.addWidget(badge, 0, Qt.AlignmentFlag.AlignTop)
         lay.addWidget(desc, 1)
@@ -5987,23 +6478,23 @@ class PageManual(QWidget):
     # ── helper: สร้าง card พื้นขาว ────────────────────────
     def _card(self, title: str, body_widgets: list) -> QFrame:
         card = QFrame()
+        card.setObjectName("manual_document_block")
         card.setStyleSheet(
-            f"QFrame {{ background:{C_CARD}; border:1px solid {C_BORDER};"
-            f"border-radius:10px; padding:16px; }}"
+            "QFrame#manual_document_block { background:#FFFFFF; border:0; "
+            "border-radius:0; padding:0; }"
         )
         vl = QVBoxLayout(card)
-        vl.setContentsMargins(16, 14, 16, 16)
-        vl.setSpacing(10)
+        vl.setContentsMargins(8, 8, 8, 12)
+        vl.setSpacing(8)
         if title:
             t = QLabel(title)
-            t.setFont(fnt(F_2XL))
+            t.setFont(self._manual_font(F_2XL))
             t.setWordWrap(True)
-            t.setStyleSheet(f"color:{C_TEXT}; font-weight:bold;")
+            t.setStyleSheet(
+                f"color:{C_TEXT}; font-weight:bold; background:transparent; "
+                f"border:0; border-bottom:1px solid {C_ACCENT}; padding:2px 0 8px 0;"
+            )
             vl.addWidget(t)
-            line = QFrame()
-            line.setFrameShape(QFrame.Shape.HLine)
-            line.setStyleSheet(f"color:{C_BORDER};")
-            vl.addWidget(line)
         for w in body_widgets:
             vl.addWidget(w)
         return card
@@ -6011,21 +6502,108 @@ class PageManual(QWidget):
     # ── helper: ข้อความธรรมดา ────────────────────────────
     def _txt(self, text: str, bold=False, color=None) -> QLabel:
         lbl = QLabel(text)
-        lbl.setFont(fnt(F_XL))
+        lbl.setFont(self._manual_font(F_XL))
         lbl.setWordWrap(True)
         c = color or C_TEXT
-        lbl.setStyleSheet(f"color:{c}; {'font-weight:bold;' if bold else ''}")
+        lbl.setStyleSheet(
+            f"color:{c}; background:transparent; border:0; "
+            f"{'font-weight:bold;' if bold else ''}"
+        )
         return lbl
 
     # ── helper: ข้อความหมายเหตุ/tip (สีรอง) ─────────────
     def _tip(self, text: str) -> QLabel:
         lbl = QLabel(f"💡  {text}")
-        lbl.setFont(fnt(F_LG))
+        lbl.setFont(self._manual_font(F_LG))
         lbl.setWordWrap(True)
         lbl.setStyleSheet(
-            f"color:{C_TEXT2}; background:{C_BORDER}; border-radius:6px; padding:6px 10px;"
+            f"color:{C_TEXT2}; background:#EEF6FF; border:0; "
+            f"border-left:4px solid {C_ACCENT}; padding:8px 12px;"
         )
         return lbl
+
+    def _guide_screenshot(self, index: int, caption: str, *, english=False) -> QWidget:
+        filename = f"customer-guide/assets-v5.2/{index:02d}-"
+        names = {
+            1: "setup-company.png",
+            2: "setup-printers.png",
+            3: "setup-pricing.png",
+            4: "setup-review.png",
+            5: "overview.png",
+            6: "devices.png",
+            7: "reports-overview.png",
+            8: "reports-usage.png",
+            9: "reports-legacy.png",
+            10: "settings.png",
+            11: "advanced-lan.png",
+            12: "advanced-tools.png",
+            13: "manual.png",
+        }
+        image_path = self._manual_asset(filename + names[index])
+        pixmap = (
+            QPixmap(str(image_path))
+            if self._manual_asset_available(image_path)
+            else QPixmap()
+        )
+
+        block = QWidget()
+        block.setStyleSheet("background:#FFFFFF; border:0;")
+        layout = QVBoxLayout(block)
+        layout.setContentsMargins(8, 6, 8, 16)
+        layout.setSpacing(5)
+        image = _ManualDocumentImage(pixmap)
+        image.setObjectName(
+            f"manual_doc_image_{'en_' if english else ''}{index:02d}"
+        )
+        if pixmap.isNull():
+            image.setText(
+                "Screenshot is not available" if english else "ไม่พบภาพประกอบคู่มือ"
+            )
+        layout.addWidget(image)
+        label = QLabel(caption)
+        label.setFont(self._manual_font(F_SM))
+        label.setWordWrap(True)
+        label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        label.setStyleSheet(
+            f"color:{C_TEXT2}; background:transparent; border:0; "
+            "font-style:italic; padding:2px 8px;"
+        )
+        layout.addWidget(label)
+        return block
+
+    def _insert_customer_guide_screenshots(self) -> None:
+        groups = (
+            ((1, 2, 3, 4), ("ตั้งค่าบริษัทและฐานข้อมูล", "ค้นหาและเลือกเครื่องพิมพ์", "ตั้งราคาและรอบบิล", "ตรวจสอบก่อนเริ่มใช้งาน")),
+            ((5, 6), ("ภาพรวมการใช้งาน", "ข้อมูลรายเครื่อง")),
+            ((7, 8, 9), ("รายงานภาพรวม", "รายงาน Usage", "รายงาน Legacy")),
+            ((10, 11, 12), ("การตั้งค่าหลัก", "Web Report ใน LAN", "เครื่องมือขั้นสูงและ Parser Mapping")),
+            ((13,), ("คู่มือฉบับย่อในโปรแกรม",)),
+        )
+        english_captions = (
+            ("Company and Database setup", "Discover and select printers", "Prices and billing cycle", "Review before first use"),
+            ("Operational overview", "Per-device information"),
+            ("Report overview", "Usage report", "Legacy report"),
+            ("Main Settings", "LAN Web Report", "Advanced tools and Parser Mapping"),
+            ("In-app quick guide",),
+        )
+        for sections, captions, english in (
+            (self._thai_manual_sections, tuple(group[1] for group in groups), False),
+            (self._english_manual_sections, english_captions, True),
+        ):
+            for section, (indexes, _thai_captions), section_captions in zip(
+                sections,
+                groups,
+                captions,
+                strict=True,
+            ):
+                layout = section.layout()
+                insert_at = max(1, layout.count() - 1)
+                for index, caption in zip(indexes, section_captions, strict=True):
+                    layout.insertWidget(
+                        insert_at,
+                        self._guide_screenshot(index, caption, english=english),
+                    )
+                    insert_at += 1
 
     @staticmethod
     def _manual_asset(filename: str) -> Path:
@@ -6091,10 +6669,10 @@ class PageManual(QWidget):
         # ── Header ──────────────────────────────────────────
         header = QHBoxLayout()
         self.manual_title = QLabel("📖  คู่มือการใช้งาน")
-        self.manual_title.setFont(fnt(F_2XL))
+        self.manual_title.setFont(self._manual_font(F_2XL))
         self.manual_title.setStyleSheet(f"color:{C_TEXT}; font-weight:bold;")
-        self.manual_subtitle = QLabel("KOMI meter  —  คู่มือฉบับย่อ")
-        self.manual_subtitle.setFont(fnt(F_LG))
+        self.manual_subtitle = QLabel("KOMI Report V5.2 — ติดตั้ง อ่านมิเตอร์ และออกรายงาน")
+        self.manual_subtitle.setFont(self._manual_font(F_LG))
         self.manual_subtitle.setStyleSheet(f"color:{C_TEXT2};")
         title_col = QVBoxLayout()
         title_col.setSpacing(2)
@@ -6102,99 +6680,295 @@ class PageManual(QWidget):
         title_col.addWidget(self.manual_subtitle)
         header.addLayout(title_col)
         header.addStretch()
+        self.manual_toc_combo = QComboBox()
+        self.manual_toc_combo.setObjectName("manual_toc_combo")
+        self.manual_toc_combo.setMinimumWidth(210)
+        self.manual_toc_combo.setFont(self._manual_font(F_LG))
+        self.manual_toc_combo.setAccessibleName("สารบัญหน้านี้")
+        self.manual_toc_combo.currentIndexChanged.connect(
+            self._scroll_to_manual_section
+        )
+        header.addWidget(self.manual_toc_combo)
         outer.addLayout(header)
         outer.addSpacing(2)
 
-        # ── Tabs ────────────────────────────────────────────
-        self.tabs = QTabWidget()
-        self.tabs.setFont(fnt(F_LG))
-        self.tabs.setStyleSheet(
-            f"QTabBar::tab {{ padding: 8px 9px; font-size:{F_LG}pt; min-width: 0px; }}"
-            f"QTabBar::tab:selected {{ color:{C_ACCENT}; font-weight:bold; "
-            f"border-bottom: 3px solid {C_ACCENT}; }}"
+        body = QHBoxLayout()
+        body.setContentsMargins(0, 0, 0, 0)
+        body.setSpacing(18)
+
+        self.manual_scroll = QScrollArea()
+        self.manual_scroll.setObjectName("manual_single_page_scroll")
+        self.manual_scroll.setWidgetResizable(True)
+        self.manual_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self.manual_scroll.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
+        self.manual_scroll.setStyleSheet(
+            "QScrollArea#manual_single_page_scroll { background:transparent; border:0; }"
         )
 
-        tab_bar = self.tabs.tabBar()
-        tab_bar.setUsesScrollButtons(False)
-        tab_bar.setExpanding(True)
-        tab_bar.setElideMode(Qt.TextElideMode.ElideNone)
-        tab_bar.setMinimumWidth(0)
-        tab_bar.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-
-        self.tabs.addTab(self._tab_firstrun(),  "เริ่มต้น")
-        self.tabs.addTab(self._tab_workflow(),  "วิธีทำงาน")
-        self.tabs.addTab(self._tab_history(),   "รายงาน")
-        self.tabs.addTab(self._tab_settings(),  "ตั้งค่า")
-        self.tabs.addTab(self._tab_v5_system(), "ระบบ V5")
-
-        outer.addWidget(self.tabs, 1)
-
-        self.english_manual = QTextBrowser()
-        self.english_manual.setOpenExternalLinks(False)
-        self.english_manual.setStyleSheet(
-            f"QTextBrowser{{background:{C_CARD};border:1px solid {C_BORDER};"
-            "border-radius:12px;padding:22px;line-height:1.5;}"
+        self.manual_content = QWidget()
+        self.manual_content.setObjectName("manual_word_content")
+        self.manual_content.setStyleSheet(
+            "QWidget#manual_word_content { background:#FFFFFF; }"
         )
-        self.english_manual.setHtml("""
-        <h1>KOMI Report V5.1 — User Manual</h1>
-        <p>The five main areas are <b>Overview, Devices, Reports, Settings</b>, and <b>Manual</b>.
-        KOMI Report reads live counters from up to three Konica Minolta printers and preserves
-        auditable cost evidence in an append-only Billing Ledger.</p>
-        <h2>1. Getting started</h2>
-        <ol><li>Select Thai or English in the Setup Wizard.</li>
-        <li>Discover or manually add 1–3 printers and verify IP, model and serial number.</li>
-        <li>Test both SNMP and Web Connection.</li>
-        <li>Set A4/A3 Color and B&amp;W prices, the billing-cycle end day and waste-paper discount.</li>
-        <li>Review and save, then open <b>Devices → Read now</b> for the first real reading.</li></ol>
-        <h2>2. Daily workflow</h2>
-        <p><b>SNMP</b> checks status and Total Meter. <b>Web Connection</b> is the billing source.
-        User Authentication / Account Track is held in RAM for distribution and coverage analysis only.</p>
-        <p>Use <b>Devices → Read now</b> for an immediate reading, or let the background schedule run.
-        Overview separates confirmed Ledger data from today's provisional reading until a Daily Record closes.</p>
-        <h2>3. Reports</h2>
-        <p>Reports has four tabs: <b>Overview, Users, Printers</b>, and <b>Usage</b>. Every period-based tab
-        uses separate Start and End date fields. The Overview tab shows six metrics for print, copy,
-        total usage, and cost. The Printers tab compares all printer charts at once; selecting a table row
-        changes Meter detail only. Export Excel uses the same selected period.</p>
-        <p>User/Account data does not calculate cost. If it is empty, use <b>View reading status</b>
-        to check whether a successful reading exists.</p>
-        <p>Net cost = gross cost × (1 − waste-paper discount / 100). Unsafe reconciliation days are held
-        for review and excluded from billable totals.</p>
-        <h2>4. Settings</h2>
-        <p>Settings uses plain-language sections for printers and pricing, billing, automatic readings,
-        Web reports, and the current Database path. There is no Settings password. Risky staff actions
-        remain behind a clear warning and confirmation dialog.</p>
-        <p>When a reading fails, open <b>Settings → Staff information → Reading status and history</b>.
-        Staff can also review Posted/Hold billing evidence or open Advanced tools. Changes affect new
-        Ledger entries only; posted history is not recalculated.</p>
-        <h2>5. Data and background rules</h2>
-        <ul><li>Web Connection Device Meter is the billing source.</li>
-        <li>SNMP is used for status and polling triggers.</li>
-        <li>User/Account RAM snapshots never calculate cost.</li>
-        <li>Legacy TXT import remains separate from the V5 billing workflow.</li></ul>
-        """)
-        self.english_manual.setVisible(False)
-        outer.addWidget(self.english_manual, 1)
+        content_layout = QVBoxLayout(self.manual_content)
+        content_layout.setContentsMargins(12, 0, 12, 32)
+        content_layout.setSpacing(30)
+
+        self._thai_manual_sections = [
+            self._tab_firstrun(),
+            self._tab_workflow(),
+            self._tab_history(),
+            self._tab_settings(),
+            self._tab_v5_system(),
+        ]
+        self._english_manual_sections = self._build_english_manual_sections()
+        self._insert_customer_guide_screenshots()
+        for section in (*self._thai_manual_sections, *self._english_manual_sections):
+            section.setSizePolicy(
+                QSizePolicy.Policy.Expanding,
+                QSizePolicy.Policy.Maximum,
+            )
+            content_layout.addWidget(section)
+        content_layout.addStretch()
+        self.manual_scroll.setWidget(self.manual_content)
+        self.manual_scroll.verticalScrollBar().valueChanged.connect(
+            self._update_manual_toc_highlight
+        )
+        body.addWidget(self.manual_scroll, 1)
+
+        self.manual_toc_frame = QFrame()
+        self.manual_toc_frame.setObjectName("manual_toc_frame")
+        self.manual_toc_frame.setFixedWidth(224)
+        self.manual_toc_frame.setStyleSheet(
+            f"QFrame#manual_toc_frame {{ background-color:{C_CARD}; "
+            f"border:1px solid {C_BORDER}; border-radius:10px; }}"
+        )
+        toc_layout = QVBoxLayout(self.manual_toc_frame)
+        toc_layout.setContentsMargins(12, 14, 12, 14)
+        toc_layout.setSpacing(5)
+        self.manual_toc_title = QLabel("สารบัญหน้านี้")
+        self.manual_toc_title.setFont(self._manual_font(F_LG, bold=True))
+        self.manual_toc_title.setStyleSheet(f"color:{C_TEXT};padding:4px 6px 8px 6px;")
+        toc_layout.addWidget(self.manual_toc_title)
+        self.manual_toc_buttons: list[QPushButton] = []
+        for index in range(5):
+            button = QPushButton()
+            button.setFont(self._manual_font(F_LG))
+            button.setCheckable(True)
+            button.setAutoExclusive(True)
+            button.setCursor(Qt.CursorShape.PointingHandCursor)
+            button.setStyleSheet(self._manual_toc_button_style(active=False))
+            button.clicked.connect(
+                lambda _checked=False, section_index=index: self._scroll_to_manual_section(
+                    section_index
+                )
+            )
+            self.manual_toc_buttons.append(button)
+            toc_layout.addWidget(button)
+        toc_layout.addStretch()
+        body.addWidget(self.manual_toc_frame, 0, Qt.AlignmentFlag.AlignTop)
+        outer.addLayout(body, 1)
+
+        self._apply_i18n_visibility(get_language())
+        self._update_manual_responsive_layout(self.width())
 
     def _apply_i18n_visibility(self, language: str) -> None:
+        self._manual_language = language
         english = language == "en"
-        self.tabs.setVisible(not english)
-        self.english_manual.setVisible(english)
+        for section in self._thai_manual_sections:
+            section.setVisible(not english)
+        for section in self._english_manual_sections:
+            section.setVisible(english)
         self.manual_title.setText("📖  User manual" if english else "📖  คู่มือการใช้งาน")
-        self.manual_subtitle.setText("KOMI Report V5 — concise guide" if english else "KOMI meter  —  คู่มือฉบับย่อ")
+        self.manual_subtitle.setText(
+            "KOMI Report V5.2 — setup, meters and reports"
+            if english
+            else "KOMI Report V5.2 — ติดตั้ง อ่านมิเตอร์ และออกรายงาน"
+        )
+        self.manual_toc_title.setText("On this page" if english else "สารบัญหน้านี้")
+        self.manual_toc_combo.setAccessibleName(
+            "On this page" if english else "สารบัญหน้านี้"
+        )
+        labels = (
+            ("Getting started", "Daily workflow", "Reports", "Settings", "System V5.2")
+            if english
+            else ("เริ่มต้นใช้งาน", "วิธีทำงาน", "รายงาน", "ตั้งค่า", "ระบบ V5.2")
+        )
+        self.manual_toc_combo.blockSignals(True)
+        self.manual_toc_combo.clear()
+        self.manual_toc_combo.addItems(labels)
+        self.manual_toc_combo.blockSignals(False)
+        for button, label in zip(self.manual_toc_buttons, labels, strict=True):
+            button.setText(label)
+            button.setAccessibleName(label)
+        self.manual_scroll.verticalScrollBar().setValue(0)
+        self._set_manual_toc_active(0)
+
+    def _active_manual_sections(self) -> list[QWidget]:
+        return (
+            self._english_manual_sections
+            if self._manual_language == ENGLISH
+            else self._thai_manual_sections
+        )
+
+    def _scroll_to_manual_section(self, index: int) -> None:
+        sections = self._active_manual_sections()
+        if not (0 <= index < len(sections)):
+            return
+        section = sections[index]
+        top = section.mapTo(self.manual_content, QPoint(0, 0)).y()
+        self.manual_scroll.verticalScrollBar().setValue(max(0, top - 8))
+        self._set_manual_toc_active(index)
+
+    def _set_manual_toc_active(self, index: int) -> None:
+        for button_index, button in enumerate(self.manual_toc_buttons):
+            active = button_index == index
+            button.setChecked(active)
+            button.setStyleSheet(self._manual_toc_button_style(active=active))
+        self.manual_toc_combo.blockSignals(True)
+        self.manual_toc_combo.setCurrentIndex(index)
+        self.manual_toc_combo.blockSignals(False)
+
+    @staticmethod
+    def _manual_toc_button_style(*, active: bool) -> str:
+        if active:
+            return (
+                f"text-align:left; color:{C_ACCENT}; background-color:#EAF3FB; "
+                f"border:1px solid {C_ACCENT}; border-radius:6px; padding:9px 8px; "
+                "font-weight:bold;"
+            )
+        return (
+            f"text-align:left; color:{C_TEXT2}; background-color:transparent; "
+            "border:1px solid transparent; border-radius:6px; padding:9px 8px;"
+        )
+
+    def _update_manual_toc_highlight(self, value: int) -> None:
+        sections = self._active_manual_sections()
+        if not sections:
+            return
+        probe = value + 72
+        active = 0
+        for index, section in enumerate(sections):
+            if section.mapTo(self.manual_content, QPoint(0, 0)).y() <= probe:
+                active = index
+            else:
+                break
+        self._set_manual_toc_active(active)
+
+    def _update_manual_responsive_layout(self, width: int) -> None:
+        show_right_toc = width >= 980
+        self.manual_toc_frame.setVisible(show_right_toc)
+        self.manual_toc_combo.setVisible(not show_right_toc)
+
+    def _english_manual_section(
+        self,
+        title: str,
+        cards: list[tuple[str, list[QWidget]]],
+    ) -> QWidget:
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(0, 12, 0, 12)
+        layout.setSpacing(14)
+        layout.addWidget(self._sec(title))
+        for card_title, widgets in cards:
+            layout.addWidget(self._card(card_title, widgets))
+        layout.addStretch()
+        return page
+
+    def _build_english_manual_sections(self) -> list[QWidget]:
+        return [
+            self._english_manual_section("Getting started", [
+                ("Primary setup", [
+                    self._step(1, "Enter the company name. Start date and Version are filled automatically."),
+                    self._step(2, "Keep the Database path, select Browse, or use Import for an existing database."),
+                    self._step(3, "Discover or add printers manually, then select and verify up to three devices."),
+                    self._step(4, "Set A4/A3 Color and B&W prices, billing-cycle end day and waste-paper discount."),
+                    self._step(5, "Review and save. Online Registration completes before the main window opens."),
+                    self._tip("If Online Registration cannot connect, the Wizard offers the Offline License flow."),
+                ]),
+                ("Secondary setup", [
+                    self._txt("A Secondary desktop can copy the Primary configuration on the same LAN without a sync code.", bold=True),
+                    self._txt("Rejecting the offer starts a normal new setup. Printer connectivity is checked again from the Secondary desktop before saving."),
+                ]),
+            ]),
+            self._english_manual_section("Daily workflow", [
+                ("Reading printer data", [
+                    self._step(1, "Read SNMP identity and Total Meter first."),
+                    self._step(2, "Select the compatible Web Connection method automatically and request an Administrator password only when required."),
+                    self._step(3, "Store daily Print and Copy data together with the original Legacy counter labels."),
+                    self._step(4, "Close the daily record and calculate confirmed usage and cost."),
+                    self._tip("A dash means the printer did not provide the value; it does not mean zero."),
+                ]),
+                ("Device information", [
+                    self._txt("Each device card shows model, serial number, Total Meter, available toner, paper-tray status and raw counters."),
+                    self._txt("Closing the window may keep KOMI Report running in System Tray. Choose Exit to stop the application completely."),
+                ]),
+            ]),
+            self._english_manual_section("Reports", [
+                ("Normalized reports", [
+                    self._txt("Overview, Users, Printers and Usage keep Print and Copy separate.", bold=True),
+                    self._txt("The opening Meter row is a reference baseline only and is never included in usage or cost."),
+                    self._txt("The waste-paper checkbox switches net/gross cost without changing page counts."),
+                ]),
+                ("Legacy and Excel", [
+                    self._txt("Legacy preserves exact printer counter labels such as A5, Large Size or FAX instead of forcing them into A3/A4."),
+                    self._txt("Excel exports six sheets: three normalized views and three Legacy views for printer, user and daily data."),
+                ]),
+            ]),
+            self._english_manual_section("Settings", [
+                ("Everyday settings", [
+                    self._txt("Manage printers and prices, billing, automatic readings and Registration status from the main Settings page."),
+                ]),
+                ("Advanced Settings", [
+                    self._txt("Advanced Settings expands on the same page. It includes Database path, backup/restore/integrity, Auto-start, logs, maintenance, LAN Web Report and Parser Mapping.", bold=True),
+                    self._tip("Back up the Database before Restore, changing its path or starting a new Database."),
+                ]),
+                ("LAN Web Report", [
+                    self._txt("LAN Web Report starts automatically. Read-only access may be allowed without a password; staff and edit functions remain protected."),
+                ]),
+            ]),
+            self._english_manual_section("System V5.2", [
+                ("Registration and background operation", [
+                    self._step(1, "Online Registration is the normal first-run mode."),
+                    self._step(2, "Status and aggregate Total Meter are scheduled approximately every six hours."),
+                    self._step(3, "The Host marks a missing Desktop connection only after three days; this is not a printer-failure claim."),
+                    self._step(4, "Offline License stops Registration, Status and Meter telemetry without deleting local reports."),
+                ]),
+                ("Primary, Secondary and recovery", [
+                    self._txt("Primary and Secondary desktops can run together and continue serving the same read-only Web Report on the LAN."),
+                    self._txt("Back up the Database before restore, reset or moving the data path."),
+                ]),
+            ]),
+        ]
 
     def _tab_v5_system(self) -> QWidget:
         page = QWidget()
         layout = QVBoxLayout(page)
         layout.setContentsMargins(0, 12, 0, 12)
         layout.setSpacing(14)
-        layout.addWidget(self._sec("การทำงานเบื้องหลังของ KOMI Report V5"))
+        layout.addWidget(self._sec("การทำงานเบื้องหลังของ KOMI Report V5.2"))
         layout.addWidget(
             self._txt(
-                "คู่มือภาพสองส่วนนี้อธิบายว่าโปรแกรมตัดสินใจอ่านเครื่องเมื่อใด "
-                "และข้อมูลจาก SNMP / Web / RAM ถูกพักหรือบันทึกไว้ที่ไหน"
+                "โปรแกรมเก็บฐานข้อมูลและรายงานไว้ในเครือข่ายลูกค้า ส่วนการลงทะเบียนส่งเฉพาะข้อมูลที่ระบุในประกาศ "
+                "หัวข้อนี้อธิบายการอ่านเครื่อง การทำงานของ Primary/Secondary และการลงทะเบียน Online/Offline"
             )
         )
+        layout.addWidget(self._card("Primary, Secondary และ Web Report", [
+            self._step(1, "Primary เป็น Desktop เครื่องแรกที่ตั้งค่าเครื่องพิมพ์ ราคา รอบบิล และฐานข้อมูล"),
+            self._step(2, "Secondary ที่อยู่ใน LAN เดียวกันสามารถ Sync ค่าจาก Primary โดยไม่ต้องใช้รหัส Sync"),
+            self._step(3, "Primary และ Secondary เปิดพร้อมกันได้ และ Web Report แบบอ่านอย่างเดียวยังคงใช้งานผ่าน LAN"),
+            self._step(4, "เมื่อปิดหน้าต่าง โปรแกรมอาจยังทำงานใน System Tray; ใช้ Exit เมื่อต้องการหยุดจริง"),
+            self._tip("ก่อน Sync ให้ตรวจชื่อบริษัท รายการเครื่อง ราคา และรอบบิลบนหน้าสรุปทุกครั้ง"),
+        ]))
+        layout.addWidget(self._card("การลงทะเบียนและสถานะ", [
+            self._step(1, "Online Registration เป็นวิธีปกติ และทำงานก่อนเปิดหน้าหลักครั้งแรก"),
+            self._step(2, "เมื่อลงทะเบียนแล้ว โปรแกรมส่งสถานะโดยประมาณทุก 6 ชั่วโมง พร้อม Total Meter รวมของเครื่องที่เลือก"),
+            self._step(3, "Host จะแจ้งการขาดการเชื่อมต่อเมื่อไม่ได้รับข้อมูลเกิน 3 วัน โดยไม่สรุปว่าเครื่องพิมพ์เสีย"),
+            self._step(4, "กรณีไม่มี Internet ให้ส่งออก .komirequest และนำเข้า .komilicense ที่ได้รับจากผู้ดูแล"),
+            self._tip("Offline License ปิดการส่ง Registration, Status และ Meter แต่ไม่ลบฐานข้อมูลหรือรายงานในเครื่อง"),
+        ]))
         self._manual_diagram_cards = QBoxLayout(QBoxLayout.Direction.TopToBottom)
         self._manual_diagram_cards.setSpacing(14)
         self._manual_diagram_cards.addWidget(
@@ -6225,6 +6999,8 @@ class PageManual(QWidget):
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
+        if hasattr(self, "manual_toc_frame"):
+            self._update_manual_responsive_layout(event.size().width())
         if not hasattr(self, "_manual_diagram_cards"):
             return
         direction = (
@@ -6245,72 +7021,58 @@ class PageManual(QWidget):
         lay.setContentsMargins(0, 12, 0, 12)
         lay.setSpacing(14)
 
-        lay.addWidget(self._sec("ภาพรวมการทำงานของโปรแกรม"))
+        lay.addWidget(self._sec("การใช้งานประจำวัน"))
 
         # ─ วงจรการทำงานหลัก ──────────────────────────────
-        lay.addWidget(self._card("วงจรการทำงานหลัก (V5)", [
+        lay.addWidget(self._card("วงจรการอ่านข้อมูล", [
             self._txt(
-                "KOMI Report V5 อ่านข้อมูลสดจากเครื่อง Konica Minolta สูงสุด 3 เครื่อง "
-                "และเก็บหลักฐานค่าใช้จ่ายแบบ append-only ใน Billing Ledger"
+                "KOMI Report V5.2 อ่านข้อมูลจากเครื่อง Konica Minolta ที่เลือกไว้สูงสุด 3 เครื่อง "
+                "ตามตารางเวลา หรือสั่งอ่านทันทีจากหน้าอุปกรณ์"
             ),
-            self._step(1, "ตั้งค่าเครื่องและ Pricelist\n"
-                          "Settings → การตั้งค่าหลัก → เพิ่ม IP, Serial, Credential และราคาต่อหน้า"),
-            self._step(2, "Background Scheduler ตรวจเครื่อง\n"
-                          "SNMP ใช้ดูสถานะ/Total trigger · Web Connection เป็นแหล่ง Device Meter สำหรับ Billing"),
-            self._step(3, "เก็บ Daily Cache และปิด Daily Record\n"
-                          "เมื่อหลักฐานครบ ระบบสร้าง Posted Ledger; วันที่ยังไม่ปลอดภัยจะเป็น Hold และไม่คิดเงิน"),
-            self._step(4, "ตรวจผล\n"
-                          "Overview แยกยอดยืนยันแล้วจากยอดระหว่างวัน · Reports แสดงรอบบิล/ค่าใช้จ่าย · หากผิดปกติให้ดูสถานะการอ่านใน Settings"),
-            self._step(5, "ดู User / Account\n"
-                          "ข้อมูล RAM ใช้ดูการกระจายงานเท่านั้น ไม่ใช้แทน Device Meter และไม่ใช้คำนวณค่าใช้จ่าย"),
+            self._step(1, "ตรวจสถานะและ Total Meter ผ่าน SNMP ก่อน"),
+            self._step(2, "อ่าน Web Connection ด้วยวิธีที่รุ่นนั้นรองรับโดยอัตโนมัติ และขอรหัส Administrator เฉพาะเมื่อจำเป็น"),
+            self._step(3, "เก็บข้อมูลรายวัน แยก Print และ Copy พร้อมชื่อ Counter ต้นทางสำหรับ Legacy"),
+            self._step(4, "ปิด Daily Record แล้วสร้างยอดใช้งานและค่าใช้จ่ายของวันนั้น"),
+            self._step(5, "แสดงผลในภาพรวม รายงาน และ Excel โดยใช้ช่วงวันที่เดียวกัน"),
         ]))
 
         # ─ โครงสร้างข้อมูล ───────────────────────────────
-        lay.addWidget(self._card("แหล่งข้อมูลที่ต้องแยกให้ชัด", [
-            self._txt("• SNMP — Status, Model, Serial, Toner และ Total trigger"),
-            self._txt("• Web Connection — Device Meter และ Counter ที่ใช้กับ Billing"),
-            self._txt("• RAM — User Authentication / Account Track แบบดูอย่างเดียว"),
-            self._txt("• Daily Cache — snapshot ระหว่างวัน; ยังไม่ใช่ยอดเรียกเก็บ"),
-            self._txt("• Billing Ledger — Posted/Hold พร้อม Pricelist, ส่วนลด และรอบบิลที่บันทึกของแต่ละวัน"),
-            self._tip("ยอด ฿0 อาจหมายถึงวัน Hold ไม่ใช่ไม่มีการใช้งาน ให้ตรวจ Reports และ Billing Audit"),
+        lay.addWidget(self._card("ข้อมูลที่เห็นในหน้าอุปกรณ์", [
+            self._txt("• Model, Serial Number และ Total Meter ล่าสุด"),
+            self._txt("• ระดับหมึก C / M / Y / K เมื่อรุ่นนั้นส่งค่า"),
+            self._txt("• ถาดกระดาษ ขนาด/ชนิดกระดาษ และสถานะ Ready, Near Empty หรือ Empty"),
+            self._txt("• Counter รายละเอียดจากเครื่อง และ User Authentication / Account Track เมื่อเปิดใช้งาน"),
+            self._tip("เครื่องแต่ละรุ่นอาจส่งข้อมูลไม่เท่ากัน เครื่องหมาย — หมายถึงรุ่นนั้นไม่ส่งค่าหรือยังอ่านไม่ได้ ไม่ใช่ค่า 0"),
         ]))
 
         # ─ การคำนวณค่าใช้จ่าย ────────────────────────────
-        lay.addWidget(self._card("การคำนวณค่าใช้จ่าย", [
-            self._txt("สูตรคำนวณต่อ Daily Record:", bold=True),
+        lay.addWidget(self._card("การคำนวณรายงาน", [
+            self._txt("ยอดใช้งาน = Meter ปลายงวด − Meter ต้นงวด โดยแยก Print/Copy และประเภทกระดาษ", bold=True),
+            self._txt("แถว Meter เริ่มต้นมีไว้เป็นหลักฐานฐานเริ่มต้น ไม่รวมเป็นยอดใช้งานและไม่คิดค่าใช้จ่าย"),
             self._txt("ค่าใช้จ่ายก่อนส่วนลด = จำนวนหน้า × ราคาต่อหน้า"),
-            self._txt(
-                "เช่น A4 สี diff = 1,000 แผ่น × 3.50 บาท/แผ่น = 3,500 บาท\n"
-                "    A4 ขาวดำ diff = 5,000 แผ่น × 0.25 บาท/แผ่น = 1,250 บาท"
-            ),
-            self._txt("ส่วนลดกระดาษเสีย:", bold=True),
-            self._txt(
-                "ค่าใช้จ่ายสุทธิ = ค่าใช้จ่ายก่อนส่วนลด × (1 − ส่วนลดกระดาษเสีย / 100)\n"
-                "เช่น ส่วนลด 5% → คูณ 0.95"
-            ),
-            self._tip("เมื่อสร้าง Ledger แล้ว ราคา ส่วนลด และรอบบิลของรายการนั้นจะไม่เปลี่ยนตาม Settings ภายหลัง"),
+            self._txt("ค่าใช้จ่ายสุทธิ = ค่าใช้จ่ายก่อนส่วนลด × (1 − % กระดาษเสีย / 100)"),
+            self._tip("เปิดหรือปิด checkbox คิดรวม % กระดาษเสียในหน้า Reports ได้ โดยจำนวนหน้าไม่เปลี่ยน"),
         ]))
 
         # ─ ความสัมพันธ์ระหว่าง Parser กับการนำเข้า ──────
-        lay.addWidget(self._card("เครื่องมือ Legacy", [
+        lay.addWidget(self._card("Legacy และ Parser Mapping", [
             self._txt(
-                "Parser และการนำเข้าไฟล์ .txt ยังคงอยู่เพื่อเปิดดูงานเดิม แต่ไม่ใช่แหล่ง Billing หลักของ V5",
+                "Legacy แสดงชื่อ Counter ตรงตามที่เครื่องส่ง เช่น A5, Large Size หรือ FAX โดยไม่บังคับแปลงเป็น A3/A4",
                 bold=True,
             ),
-            self._step(1, "เปิด Settings → ข้อมูลและเครื่องมือ"),
-            self._step(2, "อ่านคำเตือนและยืนยันก่อนใช้ Parser หรือคำสั่ง Reset; Database path แสดงแบบอ่านอย่างเดียว"),
-            self._tip("อย่าใช้ยอดจาก Legacy Import ปะปนกับ Posted Ledger ในการสรุปค่าใช้จ่าย V5"),
+            self._step(1, "เปิด Settings → การตั้งค่าขั้นสูง → ตรวจสอบ Parser Mapping"),
+            self._step(2, "เลือก Slot แล้วตรวจ Raw Data เทียบกับช่อง Database"),
+            self._step(3, "แก้ Mapping เฉพาะรายการที่ผิด แล้วบันทึกกลับ"),
+            self._tip("ถ้าไม่แน่ใจให้เก็บเป็น No Mapping เพื่อไม่ให้ยอดถูกรวมผิดประเภท"),
         ]))
 
         # ─ วันตัดรอบบิล ──────────────────────────────────
-        lay.addWidget(self._card("วันตัดรอบบิล (Billing Cycle)", [
-            self._txt("วันสิ้นสุดรอบบิลกำหนดช่วงที่ Ledger ใหม่จะถูกจัดกลุ่ม:", bold=True),
-            self._txt(
-                "ตัวอย่าง: สิ้นสุดวันที่ 25\n"
-                "• 26 มี.ค. – 25 เม.ย. เป็นหนึ่งรอบบิล\n"
-                "• 26 เม.ย. – 25 พ.ค. เป็นรอบถัดไป"
-            ),
-            self._tip("เปลี่ยน Settings มีผลกับ Ledger ใหม่เท่านั้น รอบที่บันทึกแล้วไม่ถูกคำนวณย้อนหลัง"),
+        lay.addWidget(self._card("ปิดโปรแกรมให้ถูกวิธี", [
+            self._txt("ค่าเริ่มต้นเมื่อกดปิดหน้าต่าง โปรแกรมยังทำงานต่อใน System Tray เพื่ออ่านข้อมูลตามเวลา", bold=True),
+            self._step(1, "ต้องการเปิดหน้าต่างอีกครั้ง ให้คลิกไอคอน KOMI Report ใน System Tray"),
+            self._step(2, "ต้องการหยุดโปรแกรมจริง ให้เลือก Exit / ออกจากโปรแกรมจากเมนู System Tray"),
+            self._step(3, "ปรับพฤติกรรมนี้ได้ใน Settings → การตั้งค่าขั้นสูง → โปรแกรม Log และการบำรุงรักษา"),
+            self._tip("ก่อน Backup, Restore หรือลบ Database ควร Exit โปรแกรมให้หยุดสนิท"),
         ]))
 
         lay.addStretch()
@@ -6325,30 +7087,36 @@ class PageManual(QWidget):
         lay.setContentsMargins(0, 12, 0, 12)
         lay.setSpacing(14)
 
-        lay.addWidget(self._sec("การเริ่มต้นใช้งานครั้งแรก"))
+        lay.addWidget(self._sec("เริ่มต้นใช้งาน KOMI Report V5.2"))
 
-        lay.addWidget(self._card("ขั้นตอนภาพรวม", [
-            self._step(1, "เปิดโปรแกรมครั้งแรก แล้วเพิ่มเครื่องพิมพ์ 1–3 เครื่องใน Setup Wizard"),
-            self._step(2, "กรอกชื่อเรียก, IP/hostname, Administrator credential และตรวจ Model/Serial ให้ตรงกับเครื่องจริง"),
-            self._step(3, "กำหนด Pricelist, วันสิ้นสุดรอบบิล และส่วนลดกระดาษเสีย"),
-            self._step(4, "เปิดหน้าอุปกรณ์ แล้วกด [อ่านข้อมูลตอนนี้] เพื่ออ่านค่ารอบแรก"),
-            self._step(5, "ตรวจสถานะรายเครื่องและ Counter จาก Web Connection ก่อนใช้ยอด Billing"),
-            self._tip("ใช้ IP ทดสอบให้ถูกวงเครือข่าย และอย่าถือว่า Online เพียงอย่างเดียวแปลว่าข้อมูล Billing ครบ"),
+        lay.addWidget(self._card("เครื่อง Primary — ตั้งค่าครั้งแรก", [
+            self._step(1, "กรอกชื่อบริษัท วันที่เริ่มใช้งานและ Version จะแสดงให้อัตโนมัติ"),
+            self._step(2, "ตรวจ Database Path ใช้ [Browse] เมื่อต้องการเปลี่ยนตำแหน่ง หรือ [Import] เมื่อต้องการนำฐานข้อมูลเดิมมาใช้"),
+            self._step(3, "อ่านประกาศข้อมูลการลงทะเบียน แล้วกดค้นหาเครื่องพิมพ์ใน LAN หรือกำหนดช่วง IP/เพิ่ม IP ด้วยตนเอง"),
+            self._step(4, "เลือกไม่เกิน 3 เครื่อง ตรวจ Model, Serial และการเชื่อมต่อให้ผ่าน จากนั้นกำหนด Slot และชื่อจุดติดตั้ง"),
+            self._step(5, "ตั้งราคา A4/A3 สีและขาวดำ วันตัดรอบบิล และเปอร์เซ็นต์กระดาษเสีย แล้วตรวจสอบก่อนบันทึก"),
+            self._tip("ระหว่างสแกนจะแสดงความคืบหน้า กด Enter ในหน้ากำหนดช่วง IP เพื่อเริ่มสแกนได้"),
         ]))
 
-        lay.addWidget(self._card("หลักฐานที่ต้องเห็นก่อนเริ่มใช้งาน", [
-            self._txt(
-                "แต่ละการ์ดควรแสดงชื่อรุ่น, Serial, Total Meter และ Counter จาก Web Connection", bold=False
-            ),
-            self._step(1, "ถ้าอ่านไม่ได้ ให้เปิด Settings → สถานะและประวัติการอ่าน แล้วทำตามคำแนะนำ"),
-            self._step(2, "ถ้า Reconciliation ขึ้น Needs Review วันนั้นจะถูก Hold และไม่รวมในยอดเรียกเก็บ"),
-            self._tip("User/Account จาก RAM เป็นข้อมูลประกอบ ไม่ใช่ฐานคำนวณค่าใช้จ่าย"),
+        lay.addWidget(self._card("เครื่อง Secondary — ใช้ค่าร่วมกับ Primary", [
+            self._step(1, "เมื่อพบ Primary ใน LAN โปรแกรมจะแสดงข้อเสนอให้นำการตั้งค่ามาใช้"),
+            self._step(2, "ตรวจชื่อบริษัท เครื่องพิมพ์ ราคา และรอบบิล แล้วเลือก Sync โดยไม่ต้องกรอกรหัส"),
+            self._step(3, "ถ้าไม่ต้องการใช้ค่าที่พบ ให้ยกเลิกและตั้งค่าเครื่องนี้ใหม่ตาม Wizard ปกติ"),
+            self._tip("Primary และ Secondary เปิดพร้อมกันได้ Web Report ยังใช้งานได้ และ Desktop จะใช้ฐานข้อมูลที่ Sync มาเป็นจุดเริ่มต้นเดียวกัน"),
         ]))
 
-        lay.addWidget(self._card("แก้ไขภายหลัง", [
-            self._txt("• Settings: เครื่องและราคา, รอบบิล และการอ่านข้อมูลอัตโนมัติ", color=C_TEXT),
-            self._txt("• ข้อมูลสำหรับเจ้าหน้าที่: สถานะการอ่าน, ตรวจสอบค่าใช้จ่าย และเครื่องมือขั้นสูงพร้อมคำเตือน", color=C_TEXT),
-            self._tip("V5 local release แสดง Database path แบบอ่านอย่างเดียว และยังไม่รองรับการย้าย path"),
+        lay.addWidget(self._card("ลงทะเบียนก่อนเปิดโปรแกรม", [
+            self._step(1, "หลังคลิก [บันทึกและเปิดโปรแกรม] ระบบจะลงทะเบียน Online และแสดงสถานะรอผล"),
+            self._step(2, "เมื่อลงทะเบียนสำเร็จจะแสดงเครื่องหมายถูก แล้วเปิดหน้าหลักอัตโนมัติ"),
+            self._step(3, "ถ้าเชื่อมต่อ Host ไม่ได้ ให้เลือก [ลงทะเบียน Offline] เพื่อส่งออก Request และนำเข้า License ที่ได้รับ"),
+            self._tip("Offline License จะหยุดการส่ง Registration, Status และ Meter แต่ข้อมูลรายงานในเครื่องยังทำงานตามปกติ"),
+        ]))
+
+        lay.addWidget(self._card("ตรวจผลครั้งแรก", [
+            self._step(1, "เปิดเมนูอุปกรณ์ แล้วกด [อ่านข้อมูลตอนนี้]"),
+            self._step(2, "ตรวจชื่อรุ่น, Serial, Total Meter, หมึก, ถาดกระดาษ และ Counter จากเครื่องจริง"),
+            self._step(3, "ถ้าข้อมูลไม่อัปเดต ให้เปิด Settings → การตั้งค่าขั้นสูง → สถานะและประวัติการอ่าน"),
+            self._tip("สถานะ Online เพียงอย่างเดียวไม่ยืนยันว่าข้อมูล Meter ครบ ต้องตรวจ Total Meter และเวลาอ่านล่าสุดด้วย"),
         ]))
 
         lay.addStretch()
@@ -6468,33 +7236,35 @@ class PageManual(QWidget):
 
         lay.addWidget(self._sec("หน้า Reports — การใช้งานและค่าใช้จ่าย"))
 
-        lay.addWidget(self._card("ช่วงรายงานและภาพรวม", [
-            self._txt("แท็บ Overview, Users และ Printers ใช้กล่องวันที่เริ่มต้นและวันที่สิ้นสุดแยกกัน", bold=True),
-            self._step(1, "Overview แสดง 6 การ์ด: พิมพ์สี/ขาวดำ, สำเนาสี/ขาวดำ, ยอดรวม และค่าใช้จ่าย"),
-            self._step(2, "กราฟ Print / Copy timeline และ Color/B&W/Scan ใช้ช่วงวันที่เดียวกัน"),
-            self._step(3, "ตาราง Top users และ Top printers ใช้ตรวจสอบแหล่งที่มาของยอด"),
-            self._step(4, "กด [ส่งออก Excel] เพื่อส่งออกข้อมูลตามช่วงที่เลือก"),
+        lay.addWidget(self._card("เลือกช่วงรายงาน", [
+            self._txt("เลือกวันที่เริ่มต้นและวันที่สิ้นสุดจากคนละช่อง แล้วใช้ช่วงเดียวกันกับทุกแท็บ", bold=True),
+            self._step(1, "Overview สรุป Print สี/ขาวดำ, Copy สี/ขาวดำ, ยอดรวม และค่าใช้จ่าย"),
+            self._step(2, "Users แสดงผู้ใช้หรือ Account แยกตามเครื่องและประเภทงานที่เครื่องส่งมา"),
+            self._step(3, "Printers แสดงกราฟทุกเครื่องพร้อมกัน; การเลือกแถวเปลี่ยนเฉพาะรายละเอียด Meter"),
+            self._step(4, "Usage และ Legacy ใช้มุมมอง D / M / Y และดูรวมทุกเครื่องหรือแยกตามเครื่อง"),
         ]))
 
-        lay.addWidget(self._card("เครื่องพิมพ์", [
-            self._step(1, "กราฟ Usage timeline แสดงทุกเครื่องพร้อมกัน"),
-            self._step(2, "กราฟ Color vs B&W แยกสีต่อเครื่อง และไม่รวม Scan"),
-            self._step(3, "เลือกแถวเครื่องพิมพ์เพื่อเปลี่ยนเฉพาะ Meter detail; กราฟยังแสดงทุกเครื่อง"),
-            self._tip("ชื่อ, IP, Serial, Total Meter ล่าสุด และยอดในช่วงนี้อยู่ใน Meter detail"),
+        lay.addWidget(self._card("Usage — รายงานมาตรฐาน", [
+            self._txt("หัวตารางแบ่ง Print และ Copy อย่างชัดเจน แล้วแยก A3/A4 สี ขาวดำ และ Other", bold=True),
+            self._step(1, "แถวแรกสุดเป็น Meter เริ่มต้น ใช้เป็นฐานอ้างอิงเท่านั้น"),
+            self._step(2, "Meter เริ่มต้นไม่รวมในยอดใช้งาน ยอดรวม หรือค่าใช้จ่าย"),
+            self._step(3, "checkbox [คิดรวม % กระดาษเสีย] เปิดไว้เป็นค่าเริ่มต้น ปิดได้เพื่อดูค่าใช้จ่ายก่อนส่วนลด"),
+            self._tip("ตารางกว้างและเลื่อนซ้าย–ขวาได้เพื่อรักษาชื่อคอลัมน์ Print/Copy ให้ครบ"),
         ]))
 
-        lay.addWidget(self._card("ผู้ใช้และ Usage", [
-            self._step(1, "Users แสดงยอด User/Account จาก RAM และไม่คำนวณค่าใช้จ่าย"),
-            self._step(2, "เลือกแถวผู้ใช้เพื่อกรองกราฟตามเครื่อง; กดล้างตัวกรองเพื่อกลับมาดูทั้งหมด"),
-            self._step(3, "ถ้าไม่มีข้อมูล ให้กด [ดูสถานะการอ่าน] เพื่อเปิดคำแนะนำแก้ปัญหา"),
-            self._step(4, "Usage เลือกมุมมอง D / M / Y และดูรวมทุกเครื่องหรือแยกตามเครื่อง"),
-            self._tip("ประวัติที่นำเข้าแสดงต่อเนื่องตาม Slot แต่ไม่คำนวณ Meter ข้ามการเปลี่ยนเครื่องและไม่คิดค่าใช้จ่ายย้อนหลัง"),
+        lay.addWidget(self._card("Legacy — ข้อมูลตรงจากเครื่อง", [
+            self._txt("แสดงชื่อ Counter ตามที่เครื่องส่งจริง เช่น A5, Large Size, FAX หรือชื่อเฉพาะรุ่น โดยไม่บังคับ Map เป็น A3/A4", bold=True),
+            self._step(1, "เลือกทุกเครื่องเพื่อเปรียบเทียบ Counter ต้นทางของ Slot 1–3"),
+            self._step(2, "เลือกตามเครื่องหรือผู้ใช้เพื่อดูว่ารายการนั้นเกิดจากเครื่องใด"),
+            self._step(3, "ถ้าชื่อหรือ Mapping ผิด ให้เปิด Settings → การตั้งค่าขั้นสูง → Parser Mapping"),
+            self._tip("No Mapping หมายถึงเก็บข้อมูลต้นทางไว้ แต่ไม่รวมเข้าหมวดมาตรฐานที่อาจทำให้ยอดผิด"),
         ]))
 
-        lay.addWidget(self._card("ตรวจสอบยอดผิดปกติ", [
-            self._step(1, "เปิด Settings → ข้อมูลสำหรับเจ้าหน้าที่ → ตรวจสอบรอบบิล"),
-            self._step(2, "ตรวจ Posted/Hold, source hash และเหตุผลของรายการก่อนแก้ไข"),
-            self._tip("กราฟใช้ดูแนวโน้ม ส่วนยอดเรียกเก็บยึด Billing Ledger"),
+        lay.addWidget(self._card("ส่งออก Excel", [
+            self._step(1, "กด [ส่งออก Excel] แล้วเลือกช่วงวันที่ใน Popup"),
+            self._step(2, "ไฟล์มี 6 ชีท: รายเครื่อง, ผู้ใช้, รายวัน และ Legacy ของทั้งสามมุมมอง"),
+            self._step(3, "ชีทมาตรฐานแยก Print/Copy; ชีท Legacy คงชื่อประเภทจากเครื่องไว้ตรงๆ"),
+            self._tip("ตรวจชื่อบริษัท ช่วงวันที่ และวันเวลาส่งออกที่หัวเอกสารก่อนนำไปใช้งาน"),
         ]))
 
         lay.addStretch()
@@ -6511,23 +7281,35 @@ class PageManual(QWidget):
 
         lay.addWidget(self._sec("หน้า Settings — ตั้งค่าโปรแกรม"))
 
-        lay.addWidget(self._card("การเข้าหน้า Settings", [
-            self._txt("Settings รวมเฉพาะรายการที่จำเป็นและใช้ภาษาที่เข้าใจง่าย", bold=True),
-            self._step(1, "กด Settings ที่ Sidebar เพื่อดูเครื่องและราคา, รอบบิล และการอ่านข้อมูลอัตโนมัติ"),
-            self._step(2, "งานตรวจสอบและเครื่องมือขั้นสูงอยู่ท้ายหน้าในส่วนข้อมูลสำหรับเจ้าหน้าที่"),
-            self._step(3, "งานที่มีผลต่อข้อมูลจะแสดงคำเตือนและขอให้ยืนยันก่อนดำเนินการ"),
-            self._tip("ไม่มีรหัสผ่าน Settings; Database path เป็นข้อมูลอ่านอย่างเดียว และคำสั่งเสี่ยงยังมีหน้าต่างยืนยัน"),
+        lay.addWidget(self._card("การตั้งค่าที่ใช้ประจำ", [
+            self._step(1, "เครื่องพิมพ์และราคา — เพิ่มหรือเปลี่ยนเครื่อง 1–3 เครื่อง และแก้ราคาต่อหน้า"),
+            self._step(2, "รอบบิล — วันสิ้นสุดรอบบิลและเปอร์เซ็นต์กระดาษเสีย"),
+            self._step(3, "การอ่านข้อมูลอัตโนมัติ — เปิดพร้อมระบบและตารางเวลาที่แนะนำ"),
+            self._step(4, "การลงทะเบียน — ดูสถานะล่าสุด ลองส่งอีกครั้ง หรือใช้ Offline License"),
+            self._tip("หน้า Settings ไม่มีรหัสผ่าน แต่คำสั่งที่ลบหรือเขียนทับข้อมูลยังต้องยืนยัน"),
         ]))
 
-        lay.addWidget(self._card("ตั้งค่าต่างๆ ในหน้า Settings", [
-            self._txt("รายการที่ปรับได้:", bold=True),
-            self._step(1, "เครื่องพิมพ์และ Pricelist — เพิ่ม/แก้ 1–3 เครื่อง, IP, Serial, Credential และราคาต่อหน้า"),
-            self._step(2, "รอบบิลและรายงาน — วันสิ้นสุดรอบบิล, ส่วนลดกระดาษเสีย และ Counter ที่ปักหมุด"),
-            self._step(3, "การอ่านข้อมูลอัตโนมัติ — เปิดพร้อมระบบ และเลือกช่วงเวลาการอ่านแบบละเอียดเมื่อจำเป็น"),
-            self._step(4, "ตรวจ Database path ที่กำลังใช้งานแบบอ่านอย่างเดียว แล้วกด [บันทึกการตั้งค่า] เมื่อมีการแก้ไขค่าอื่น"),
-            self._step(5, "ตรวจสอบค่าใช้จ่าย — ดู Posted, Hold, Gross/Net, รอบบิลและเหตุผล"),
-            self._step(6, "ข้อมูลสำหรับเจ้าหน้าที่ — ดูสถานะการอ่าน, ตรวจสอบค่าใช้จ่าย, ปรับ Parser และ Reset หลังอ่านคำเตือน"),
-            self._tip("การเปลี่ยน Pricelist/ส่วนลด/รอบบิลมีผลกับ Ledger ใหม่เท่านั้น ไม่เขียนทับรายการที่ปิดแล้ว"),
+        lay.addWidget(self._card("การตั้งค่าขั้นสูง — แสดงในหน้าเดิม", [
+            self._txt("กด [เปิดการตั้งค่าขั้นสูง] แล้วข้อมูลทั้งหมดจะขยายในหน้า Settings เดิม ไม่เปิดหน้าต่างใหม่", bold=True),
+            self._step(1, "ฐานข้อมูล: ดู/เปลี่ยน Path, Backup, Restore, ตรวจความสมบูรณ์ และเริ่มฐานข้อมูลใหม่"),
+            self._step(2, "โปรแกรม: Auto-start, ทำงานใน System Tray และพฤติกรรมเมื่อปิดหน้าต่าง"),
+            self._step(3, "Log: เปิดโฟลเดอร์ ส่งออกชุด Support และกำหนดระยะเวลาเก็บ"),
+            self._step(4, "บำรุงรักษา: ล้าง Cache/ไฟล์ชั่วคราว หรือคืนค่าการตั้งค่าโดยไม่ลบฐานข้อมูล"),
+            self._tip("Backup ก่อน Restore เปลี่ยน Path หรือลบ Database ทุกครั้ง"),
+        ]))
+
+        lay.addWidget(self._card("รายงานผ่าน LAN", [
+            self._step(1, "Web Report บน LAN เปิดให้อัตโนมัติและแสดง URL สำหรับเครื่องอื่น"),
+            self._step(2, "เลือกอนุญาตให้เปิดรายงานแบบอ่านอย่างเดียวโดยไม่ใช้รหัสได้"),
+            self._step(3, "กดเปิดหน้า Web หรือคัดลอกที่อยู่ LAN แล้วทดสอบจากเครื่องอื่นในเครือข่ายเดียวกัน"),
+            self._tip("สิทธิ์เจ้าหน้าที่และการแก้ไขยังคงต้องยืนยันตัวตน แม้เปิดรายงานทั่วไปโดยไม่ใช้รหัส"),
+        ]))
+
+        lay.addWidget(self._card("Parser Mapping", [
+            self._step(1, "เปิดหน้าต่าง Parser Mapping จากการตั้งค่าขั้นสูง"),
+            self._step(2, "เลือก Slot แล้วเปรียบเทียบ Raw Data กับหมวด Database"),
+            self._step(3, "แก้เฉพาะรายการที่ Map ผิด แล้วบันทึกแยกตาม Serial Number"),
+            self._tip("รายการที่ไม่แน่ใจควรเป็น No Mapping เพื่อป้องกันการรวมยอดผิด"),
         ]))
 
         lay.addStretch()

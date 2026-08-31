@@ -31,6 +31,8 @@ data/exports/
 *.pkg
 *.exe
 *.app/
+*.komirequest
+*.komilicense
 *.csv
 *.xls
 *.xlsx

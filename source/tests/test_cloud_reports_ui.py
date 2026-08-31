@@ -10,8 +10,9 @@ from PyQt6.QtWidgets import QApplication, QDateEdit
 
 from services.device_config import DeviceConfig
 from services.monthly_history import MonthlyUsage
+from services.raw_counter_history import RawCounterDailyRecord, UsageMeterBaseline
 from services.subject_history import SubjectPeriodUsage
-from ui.cloud_reports import CloudReportsWidget
+from ui.cloud_reports import USAGE_METRICS, CloudReportsWidget
 from widgets import FrozenLeftTable
 
 
@@ -72,6 +73,38 @@ def _subject(day: date) -> SubjectPeriodUsage:
     )
 
 
+def _raw(
+    day: date,
+    *,
+    slot: int,
+    field: str,
+    label: str,
+    delta: float,
+    subject: bool = False,
+) -> RawCounterDailyRecord:
+    return RawCounterDailyRecord(
+        device_slot=slot,
+        record_date=day,
+        canonical_field=field,
+        label=label,
+        source_path="/wcd/system_counter.xml",
+        subject_type="user" if subject else "",
+        subject_id="u-1" if subject else "",
+        subject_name="alice" if subject else "",
+        opening_value=100,
+        closing_value=100 + delta,
+        delta_value=delta,
+        reset_count=0,
+        sample_count=2,
+        first_success="2026-08-06T08:00:00+07:00",
+        last_success="2026-08-06T09:00:00+07:00",
+        source_name="legacy_xml",
+        device_name_snapshot=f"MFP {slot + 1}",
+        device_serial_snapshot=f"SER-{slot + 1}",
+        incomplete=False,
+    )
+
+
 def test_cloud_reports_share_period_and_cross_filter_users_and_printers():
     app = QApplication.instance() or QApplication([])
     day = date(2026, 8, 6)
@@ -103,6 +136,11 @@ def test_cloud_reports_share_period_and_cross_filter_users_and_printers():
         ),
         period=periods[0],
         last_sync_at="2026-08-06T09:00:00+07:00",
+        raw_counter_records=(
+            _raw(day, slot=0, field="paper.a5", label="A5", delta=7),
+            _raw(day, slot=1, field="fax.total", label="FAX", delta=2),
+            _raw(day, slot=0, field="paper.a5", label="A5", delta=5, subject=True),
+        ),
     )
 
     assert [widget.tabs.tabText(index) for index in range(widget.tabs.count())] == [
@@ -110,6 +148,7 @@ def test_cloud_reports_share_period_and_cross_filter_users_and_printers():
         "Users",
         "Printers",
         "Usage",
+        "Legacy",
     ]
     assert widget.current_period() == periods[0]
     assert widget.export_button.text() == "ส่งออก Excel"
@@ -130,27 +169,72 @@ def test_cloud_reports_share_period_and_cross_filter_users_and_printers():
         "ทุกเครื่อง",
         "ตามเครื่อง",
     ]
-    assert len(widget.period_edit_pairs) == 3
+    assert len(widget.period_edit_pairs) == 4
     assert widget.usage_page.findChildren(QDateEdit) == []
     assert widget.usage_monthly_table.rowCount() == 2
     assert widget.usage_monthly_table.item(0, 0).text() == "08/2026"
-    assert widget.usage_monthly_table.item(0, 6).text() == "200"
+    assert isinstance(widget.usage_monthly_table, FrozenLeftTable)
+    assert widget.usage_monthly_table.groupedHeaderItem(0, 1).text() == "Print"
+    assert widget.usage_monthly_table.groupedHeaderSpan(0, 1) == (1, 5)
+    assert widget.usage_monthly_table.groupedHeaderItem(0, 6).text() == "Copy"
+    assert widget.usage_monthly_table.groupedHeaderSpan(0, 6) == (1, 5)
+    assert widget.usage_monthly_table.groupedHeaderItem(1, 1).text() == "A3 Color"
+    assert widget.usage_waste_checkbox.isChecked()
+    assert widget.usage_waste_checkbox.text() == "คิดรวม % กระดาษเสีย"
+    total_metric_index = next(
+        index for index, (field, _label, _availability) in enumerate(USAGE_METRICS)
+        if field == "total"
+    )
+    cost_metric_index = next(
+        index for index, (field, _label, _availability) in enumerate(USAGE_METRICS)
+        if field == "cost"
+    )
+    assert widget.usage_monthly_table.horizontalHeaderItem(
+        1 + total_metric_index
+    ).text() == "รวม"
+    assert widget.usage_monthly_table.item(0, 1 + total_metric_index).text() == "200"
+    assert widget.usage_monthly_table.item(0, 1 + cost_metric_index).text() == "58.80"
+    widget.usage_waste_checkbox.setChecked(False)
+    assert widget.usage_monthly_table.item(0, 1 + cost_metric_index).text() == "60.00"
+    assert widget.overview_kpis["total_cost"].lbl_val.text() == "฿30.00"
+    assert not widget.include_waste_adjustment()
+    widget.usage_waste_checkbox.setChecked(True)
+    assert widget.overview_kpis["total_cost"].lbl_val.text() == "฿29.40"
     # The device view is a matrix: one row per period, device names are
     # two-level header groups instead of being repeated in the table body.
     assert widget.usage_by_printer_table.rowCount() == 2
-    assert widget.usage_by_printer_table.columnCount() == 15
+    metric_count = len(USAGE_METRICS)
+    assert widget.usage_by_printer_table.columnCount() == 1 + 2 * metric_count
     assert widget.usage_by_printer_table.item(0, 0).text() == "08/2026"
-    assert widget.usage_by_printer_table.item(0, 6).text() == "120"
-    assert widget.usage_by_printer_table.item(0, 13).text() == "80"
+    assert widget.usage_by_printer_table.item(
+        0, 1 + total_metric_index
+    ).text() == "120"
+    assert widget.usage_by_printer_table.item(
+        0, 1 + metric_count + total_metric_index
+    ).text() == "80"
     matrix = widget.usage_by_printer_table
     assert isinstance(matrix, FrozenLeftTable)
     assert matrix.groupedHeaderItem(0, 0).text() == "เดือน"
     assert matrix.groupedHeaderItem(0, 1).text() == "Slot 1 · Sales Printer"
-    assert matrix.groupedHeaderItem(0, 8).text() == "Slot 2 · Archive Printer"
+    assert matrix.groupedHeaderItem(0, 1 + metric_count).text() == (
+        "Slot 2 · Archive Printer"
+    )
     assert matrix.groupedHeaderSpan(0, 0) == (2, 1)
     matrix._right.horizontalScrollBar().setValue(matrix._right.horizontalScrollBar().maximum())
     assert matrix.item(0, 0).text() == "08/2026"
     assert matrix._left.x() == 0
+    assert widget.legacy_machine_table.horizontalHeaderItem(0).text() == "กลุ่มงาน"
+    assert widget.legacy_machine_table.horizontalHeaderItem(1).text() == (
+        "ประเภท Counter (ชื่อจากเครื่อง)"
+    )
+    assert widget.legacy_machine_table.item(0, 1).text() == "A5"
+    assert widget.legacy_machine_table.item(0, 2).text() == "7"
+    assert widget.legacy_machine_table.item(0, 3).text() == "—"
+    assert widget.legacy_machine_table.item(1, 2).text() == "—"
+    assert widget.legacy_machine_table.item(1, 3).text() == "2"
+    assert widget.legacy_user_table.item(0, 0).text() == "alice (user)"
+    assert widget.legacy_user_table.item(0, 1).text() == "5"
+    assert widget.legacy_daily_table.item(0, 0).text() == "06/08/2026"
 
     widget._select_user_row(0, 0)
     assert widget.user_filter_badge.text() == "กำลังกรอง: alice"
@@ -197,6 +281,74 @@ def test_cloud_reports_header_and_date_range_fit_desktop_minimum():
     app.processEvents()
 
 
+def test_usage_starts_with_reference_meter_without_counting_it_as_usage_or_cost():
+    app = QApplication.instance() or QApplication([])
+    day = date(2026, 8, 6)
+    first = _usage(day)
+    second = replace(
+        _usage(day, 80),
+        device_slot=1,
+        device_identity="serial:SER-B",
+        device_name_snapshot="Archive Printer",
+        device_serial_snapshot="SER-B",
+    )
+    widget = CloudReportsWidget()
+    widget.set_data(
+        records=(first, second),
+        daily_records=(first, second),
+        usage_daily_records=(first, second),
+        monthly_records=(first, second),
+        subjects=(),
+        devices=(
+            DeviceConfig(0, "Sales Printer", "192.0.2.10", serial="SER-A"),
+            DeviceConfig(1, "Archive Printer", "192.0.2.11", serial="SER-B"),
+        ),
+        period=(day.isoformat(), day.isoformat()),
+        last_sync_at=None,
+        usage_meter_baselines=(
+            UsageMeterBaseline(0, date(2026, 7, 1), 10_000, "Sales Printer", "SER-A"),
+            UsageMeterBaseline(1, date(2026, 7, 1), 20_000, "Archive Printer", "SER-B"),
+        ),
+    )
+
+    total_index = next(
+        index for index, (field, _label, _availability) in enumerate(USAGE_METRICS)
+        if field == "total"
+    )
+    cost_index = next(
+        index for index, (field, _label, _availability) in enumerate(USAGE_METRICS)
+        if field == "cost"
+    )
+    assert widget.usage_monthly_table.item(0, 0).text() == "Meter เริ่มต้น"
+    assert widget.usage_monthly_table.item(0, 1 + total_index).text() == "30,000"
+    assert widget.usage_monthly_table.item(0, 1 + cost_index).text() == "—"
+    assert widget.usage_monthly_table.item(0, 1).text() == "—"
+    assert widget.usage_monthly_table.item(1, 1 + total_index).text() == "200"
+    assert widget.usage_monthly_table.item(1, 1 + cost_index).text() == "58.80"
+
+    metric_count = len(USAGE_METRICS)
+    matrix = widget.usage_by_printer_table
+    assert matrix.item(0, 0).text() == "Meter เริ่มต้น"
+    assert matrix.item(0, 1 + total_index).text() == "10,000"
+    assert matrix.item(0, 1 + metric_count + total_index).text() == "20,000"
+    assert matrix.item(0, 1 + cost_index).text() == "—"
+
+    # The baseline is display-only. Existing summaries and chart series still
+    # contain only actual usage periods.
+    assert widget.overview_kpis["total_usage"].lbl_val.text() == "200"
+    assert widget.overview_kpis["total_cost"].lbl_val.text() == "฿58.80"
+    assert all(series.count() == 1 for series in widget.usage_timeline_chart.chart().series())
+
+    widget.usage_granularity_buttons["D"].click()
+    assert widget.usage_monthly_table.item(0, 0).text() == "Meter เริ่มต้น"
+    assert widget.usage_monthly_table.item(1, 0).text() == "06/08/2026"
+    widget.usage_granularity_buttons["Y"].click()
+    assert widget.usage_monthly_table.item(0, 0).text() == "Meter เริ่มต้น"
+    assert widget.usage_monthly_table.item(1, 0).text() == "2026"
+    widget.close()
+    app.processEvents()
+
+
 def test_printer_charts_compare_all_devices_and_selection_only_changes_detail():
     app = QApplication.instance() or QApplication([])
     day = date(2026, 8, 6)
@@ -225,13 +377,19 @@ def test_printer_charts_compare_all_devices_and_selection_only_changes_detail():
     def chart_labels(chart):
         return [bar_set.label() for bar_set in chart.series()[0].barSets()]
 
-    expected = ["Sales Printer", "Archive Printer"]
-    assert chart_labels(widget.printer_mix.chart()) == expected
-    assert chart_labels(widget.printer_trend.chart()) == expected
+    expected_mix = ["Sales Printer", "Archive Printer"]
+    expected_trend = [
+        "Sales Printer · Print",
+        "Sales Printer · Copy",
+        "Archive Printer · Print",
+        "Archive Printer · Copy",
+    ]
+    assert chart_labels(widget.printer_mix.chart()) == expected_mix
+    assert chart_labels(widget.printer_trend.chart()) == expected_trend
     widget._select_printer_row(1, 0)
     assert widget.printer_detail.item(0, 1).text() == "Archive Printer"
-    assert chart_labels(widget.printer_mix.chart()) == expected
-    assert chart_labels(widget.printer_trend.chart()) == expected
+    assert chart_labels(widget.printer_mix.chart()) == expected_mix
+    assert chart_labels(widget.printer_trend.chart()) == expected_trend
     widget.close()
     app.processEvents()
 

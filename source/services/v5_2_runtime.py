@@ -26,7 +26,7 @@ from services.offline_license import (
     import_offline_license,
     write_offline_request,
 )
-from services.registration_data_notice import DRAFT_NOTICE_VERSION
+from services.registration_data_notice import REGISTRATION_NOTICE_VERSION
 from services.registration_envelope import runtime_platform
 from services.registration_vault import (
     RegistrationSecretStore,
@@ -135,7 +135,14 @@ class V52RuntimeProcessor:
             return 0
         identity = self._identity(state)
         token = self._token(state)
-        if not token:
+        registration_devices = self._registration_devices()
+        inventory_changed = self.state.registration_inventory_changed(
+            registration_devices
+        )
+        if not token or inventory_changed:
+            if self.state.registration_inventory_was_terminal(registration_devices):
+                return 0
+            queued = 0
             if self.outbox.active_count("register") == 0:
                 self.outbox.coalesce(
                     "register",
@@ -144,7 +151,7 @@ class V52RuntimeProcessor:
                         company_name=str(state["company_name"]),
                         first_started_at=str(state["first_started_at"]),
                         app_version=APP_VERSION,
-                        devices=self._registration_devices(),
+                        devices=registration_devices,
                         platform_name=runtime_platform()[0],
                         architecture=runtime_platform()[1],
                         created_at=_iso(now),
@@ -152,8 +159,10 @@ class V52RuntimeProcessor:
                     ),
                     now=now,
                 )
-            self.state.mark_status("waiting_for_internet", now=now)
-            return 1
+                queued = 1
+            if not token:
+                self.state.mark_status("waiting_for_internet", now=now)
+            return queued
 
         queued = 0
         for event_type in ("status", "meter"):
@@ -234,13 +243,41 @@ class V52RuntimeProcessor:
 
     def _send(self, operation: V52OutboxOperation, state: Mapping[str, object]) -> None:
         now = self.clock()
-        token = None if operation.event_type == "register" else self._token(state)
-        result = self.client.send(operation, installation_token=token)
+        registration_devices: list[dict[str, object]] = []
+        if operation.event_type == "register":
+            try:
+                registration_devices = self._operation_registration_devices(operation)
+            except ValueError:
+                self.outbox.complete_terminal(
+                    operation, error_code="contract_invalid", now=now
+                )
+                self.state.mark_status(
+                    "needs_review", error_code="contract_invalid", now=now
+                )
+                return
+        existing_token = self._token(state)
+        request_token = None if operation.event_type == "register" else existing_token
+        result = self.client.send(operation, installation_token=request_token)
         if result.success:
             if operation.event_type == "register":
-                self.vault.save(
-                    installation_token_reference(str(state["installation_id"])),
-                    result.installation_token,
+                if result.installation_token:
+                    self.vault.save(
+                        installation_token_reference(str(state["installation_id"])),
+                        result.installation_token,
+                    )
+                elif not existing_token:
+                    self.outbox.complete_terminal(
+                        operation, error_code="contract_invalid", now=now
+                    )
+                    self.state.mark_registration_terminal(
+                        registration_devices,
+                        error_code="contract_invalid",
+                        now=now,
+                    )
+                    return
+                self.state.mark_registration_succeeded(
+                    registration_devices,
+                    now=now,
                 )
                 self._schedule("status", 0, now)
                 self._schedule("meter", 0, now)
@@ -265,11 +302,42 @@ class V52RuntimeProcessor:
                 random_unit=self.random_unit(),
                 now=now,
             )
-            self.state.mark_status("retrying", error_code=error_code, now=now)
+            self.state.mark_status(
+                "registered"
+                if operation.event_type == "register" and existing_token
+                else "retrying",
+                error_code=error_code,
+                now=now,
+            )
         else:
-            error_code = self._curated_error(result.error_code, retryable=False)
+            error_code = (
+                "registration_conflict"
+                if operation.event_type == "register" and result.http_status == 409
+                else self._curated_error(result.error_code, retryable=False)
+            )
             self.outbox.complete_terminal(operation, error_code=error_code, now=now)
-            self.state.mark_status("needs_review", error_code=error_code, now=now)
+            if operation.event_type == "register":
+                self.state.mark_registration_terminal(
+                    registration_devices,
+                    error_code=error_code,
+                    now=now,
+                )
+            else:
+                self.state.mark_status("needs_review", error_code=error_code, now=now)
+
+    @staticmethod
+    def _operation_registration_devices(
+        operation: V52OutboxOperation,
+    ) -> list[dict[str, object]]:
+        inventory = operation.payload.get("device_inventory")
+        if not isinstance(inventory, Mapping):
+            raise ValueError("registration operation missing device inventory")
+        devices = inventory.get("devices")
+        if not isinstance(devices, list) or any(
+            not isinstance(item, Mapping) for item in devices
+        ):
+            raise ValueError("registration operation devices are invalid")
+        return [dict(item) for item in devices]
 
     def _identity(self, state: Mapping[str, object]) -> InstallationIdentity:
         return load_or_create_installation_identity(self.vault, str(state["installation_id"]))
@@ -278,6 +346,11 @@ class V52RuntimeProcessor:
         return self.vault.load(installation_token_reference(str(state["installation_id"])))
 
     def _registration_devices(self) -> list[dict[str, object]]:
+        discovered = self.state.registration_devices()
+        if discovered:
+            return discovered
+        # Additive upgrade fallback: installations created before schema 15
+        # only have their selected device table available.
         return [
             {
                 "serial_number": str(getattr(device, "serial", "")).strip(),
@@ -326,6 +399,7 @@ class V52RuntimeProcessor:
             "http_error",
             "installation_token_unavailable",
             "offline",
+            "registration_conflict",
             "request_fingerprint_mismatch",
             "validation_error",
         }
@@ -450,17 +524,44 @@ class V52RuntimeCoordinator(QObject):
         self.status_changed.emit(str(self.snapshot()["status"]))
 
     def accept_notice(self, version: str, accepted_at: str) -> None:
-        if version != DRAFT_NOTICE_VERSION:
+        if version != REGISTRATION_NOTICE_VERSION:
             raise ValueError("Registration Data Notice version is not current")
         self.state_repository.accept_notice(version, accepted_at, now=self.clock())
         self.retry_now()
 
     def snapshot(self) -> dict[str, object]:
-        return self.state_repository.snapshot()
+        return self.state_repository.snapshot(now=self.clock())
+
+    def usage_eligibility(self) -> tuple[bool, str]:
+        """Fail closed unless Registration or Offline License is usable now."""
+
+        eligible, reason = self.state_repository.usage_eligibility(now=self.clock())
+        if not eligible:
+            return eligible, reason
+        state = self.state_repository.internal()
+        if state is None or state["mode"] != "online":
+            return eligible, reason
+        try:
+            token = self.vault.load(
+                installation_token_reference(str(state["installation_id"]))
+            )
+        except CredentialStoreError:
+            return False, "vault_unavailable"
+        if not token:
+            return False, "installation_token_unavailable"
+        return True, reason
 
     def create_offline_request(self, path: Path) -> Path:
         state = self._configured_state()
         identity = self.processor._identity(state)
+        registration_devices = self.processor._registration_devices()
+        if not self.state_repository.registration_devices() and registration_devices:
+            # Additive-upgrade installations may only have the selected device
+            # table. Persist that exact inventory before issuing a bound
+            # request so the imported license can be enforced after restart.
+            self.state_repository.update_registration_devices(
+                registration_devices, now=self.clock()
+            )
         payload = create_offline_request(
             identity=identity,
             company_name=str(state["company_name"]),
@@ -473,7 +574,8 @@ class V52RuntimeCoordinator(QObject):
                     "model": item["model"],
                     "device_slot": item["device_slot"],
                 }
-                for item in self.processor._registration_devices()
+                for item in registration_devices
+                if bool(item.get("selected"))
             ],
             request_id=str(uuid4()),
             created_at=_iso(self.clock()),

@@ -2,11 +2,20 @@
 # database.py  —  จัดการ SQLite database และ parser ไฟล์
 # ═══════════════════════════════════════════════════════════
 
-import copy, sqlite3, json, shutil, hashlib, hmac, logging, threading, re, tempfile
+import copy
+import hashlib
+import hmac
+import json
+import logging
+import shutil
+import sqlite3
+import tempfile
+import threading
 from contextlib import contextmanager
-from pathlib import Path
 from datetime import datetime
-from config import DB_PATH, MAX_HIST, DEFAULT_PRICE, SLOT_NAMES
+from pathlib import Path
+
+from config import DB_PATH, DEFAULT_PRICE, MAX_HIST, SLOT_NAMES
 from migrations import (
     apply_migrations,
     backup_before_migration,
@@ -14,7 +23,15 @@ from migrations import (
     schema_version,
     validate_current_schema,
 )
-from parser import parse_file, detect_parser, parse_for_slot, compute_diff, format_warnings, has_warnings, PARSER_REGISTRY  # noqa: F401
+from parser import (  # noqa: F401
+    PARSER_REGISTRY,
+    compute_diff,
+    detect_parser,
+    format_warnings,
+    has_warnings,
+    parse_file,
+    parse_for_slot,
+)
 
 log = logging.getLogger(__name__)
 
@@ -36,6 +53,99 @@ def _clear_read_caches(slot: int | None = None):
         else:
             _all_readings_cache.pop(slot, None)
             _monthly_summary_cache.pop(slot, None)
+
+
+_USAGE_RESET_TABLES = (
+    "legacy_history_items",
+    "billing_ledger",
+    "daily_subject_records",
+    "daily_raw_counter_records",
+    "daily_meter_records",
+    "legacy_history_imports",
+    "price_snapshot",
+    "config_log",
+    "readings",
+)
+
+_USAGE_RESET_SEQUENCES = (
+    "legacy_history_items",
+    "billing_ledger",
+    "daily_subject_records",
+    "daily_raw_counter_records",
+    "daily_meter_records",
+    "legacy_history_imports",
+    "price_snapshot",
+    "config_log",
+    "readings",
+)
+
+_FACTORY_RESET_TABLES = (
+    "registration_attempt_history",
+    "registration_outbox",
+    "registration_profile",
+    "v52_telemetry_success",
+    "v52_telemetry_outbox",
+    "v52_runtime_state",
+    "legacy_history_items",
+    "billing_ledger",
+    "daily_subject_records",
+    "daily_raw_counter_records",
+    "parser_mapping_change_log",
+    "parser_mapping_overrides",
+    "cost_category_history",
+    "price_history",
+    "daily_meter_records",
+    "legacy_history_imports",
+    "price_snapshot",
+    "config_log",
+    "readings",
+    "devices",
+    "settings",
+)
+
+_FACTORY_RESET_SEQUENCES = (
+    "registration_attempt_history",
+    "legacy_history_items",
+    "billing_ledger",
+    "daily_subject_records",
+    "daily_raw_counter_records",
+    "parser_mapping_change_log",
+    "cost_category_history",
+    "price_history",
+    "daily_meter_records",
+    "legacy_history_imports",
+    "price_snapshot",
+    "config_log",
+    "readings",
+)
+
+
+def _create_billing_ledger_immutability_triggers(connection: sqlite3.Connection) -> None:
+    connection.execute(
+        """CREATE TRIGGER IF NOT EXISTS billing_ledger_no_update
+           BEFORE UPDATE ON billing_ledger
+           BEGIN SELECT RAISE(ABORT, 'billing ledger is append-only'); END"""
+    )
+    connection.execute(
+        """CREATE TRIGGER IF NOT EXISTS billing_ledger_no_delete
+           BEFORE DELETE ON billing_ledger
+           BEGIN SELECT RAISE(ABORT, 'billing ledger is append-only'); END"""
+    )
+
+
+def _ensure_first_run_setting_defaults(connection: sqlite3.Connection) -> None:
+    for slot in range(3):
+        defaults = {
+            f"machine_type_{slot}": "summary",
+            f"multiplier_{slot}": "1.0",
+            f"parser_{slot}": "",
+        }
+        for key, value in defaults.items():
+            connection.execute(
+                "INSERT OR IGNORE INTO settings(key,value) VALUES(?,?)",
+                (key, value),
+            )
+
 
 def set_db_path(path: Path):
     """เปลี่ยน path ของ database (ต้องเรียกก่อน init_db)"""
@@ -340,12 +450,7 @@ def init_db():
         c.execute("""CREATE UNIQUE INDEX IF NOT EXISTS idx_billing_one_initial_event
                      ON billing_ledger(source_daily_record_id)
                      WHERE source_daily_record_id IS NOT NULL AND entry_kind IN ('posting','hold')""")
-        c.execute("""CREATE TRIGGER IF NOT EXISTS billing_ledger_no_update
-                     BEFORE UPDATE ON billing_ledger
-                     BEGIN SELECT RAISE(ABORT, 'billing ledger is append-only'); END""")
-        c.execute("""CREATE TRIGGER IF NOT EXISTS billing_ledger_no_delete
-                     BEFORE DELETE ON billing_ledger
-                     BEGIN SELECT RAISE(ABORT, 'billing ledger is append-only'); END""")
+        _create_billing_ledger_immutability_triggers(c)
         c.execute("""CREATE TABLE IF NOT EXISTS daily_subject_records(
             id               INTEGER PRIMARY KEY AUTOINCREMENT,
             device_slot      INTEGER NOT NULL,
@@ -371,19 +476,8 @@ def init_db():
         c.execute("""CREATE INDEX IF NOT EXISTS idx_daily_subject_period
                      ON daily_subject_records(record_date, device_slot, subject_type, subject_id)""")
 
-        # ─── Migration: เพิ่มค่า default สำหรับ machine_type_ และ multiplier_ ถ้าไม่มี ───
-        for slot in range(3):
-            machine_type_key = f"machine_type_{slot}"
-            if not c.execute("SELECT 1 FROM settings WHERE key=?", (machine_type_key,)).fetchone():
-                c.execute("INSERT INTO settings(key,value) VALUES(?,?)", (machine_type_key, "summary"))
-
-            multiplier_key = f"multiplier_{slot}"
-            if not c.execute("SELECT 1 FROM settings WHERE key=?", (multiplier_key,)).fetchone():
-                c.execute("INSERT INTO settings(key,value) VALUES(?,?)", (multiplier_key, "1.0"))
-
-            parser_key = f"parser_{slot}"
-            if not c.execute("SELECT 1 FROM settings WHERE key=?", (parser_key,)).fetchone():
-                c.execute("INSERT INTO settings(key,value) VALUES(?,?)", (parser_key, ""))
+        # ─── Migration: เพิ่มค่า default สำหรับเครื่องใหม่ถ้ายังไม่มี ───
+        _ensure_first_run_setting_defaults(c)
 
         applied = apply_migrations(c)
         validate_current_schema(c)
@@ -700,12 +794,138 @@ def clear_slot(slot: int):
         c.execute("DELETE FROM readings WHERE slot=?", (slot,))
     _clear_read_caches(slot)
 
+
+def _delete_rows_and_sequences(
+    connection: sqlite3.Connection,
+    *,
+    tables: tuple[str, ...],
+    sequences: tuple[str, ...],
+) -> None:
+    for table in tables:
+        connection.execute(f"DELETE FROM {table}")
+    if sequences:
+        placeholders = ",".join("?" for _ in sequences)
+        connection.execute(
+            f"DELETE FROM sqlite_sequence WHERE name IN ({placeholders})",
+            sequences,
+        )
+
+
+def _stage_runtime_cache() -> Path | None:
+    """Atomically detach derived cache so a failed reset can restore it."""
+
+    cache_root = Path(get_db_path()).parent / "runtime-cache"
+    if not cache_root.exists():
+        return None
+    cache_root.parent.mkdir(parents=True, exist_ok=True)
+    staged = Path(
+        tempfile.mkdtemp(prefix=".runtime-cache-reset-", dir=cache_root.parent)
+    )
+    staged.rmdir()
+    cache_root.replace(staged)
+    return staged
+
+
+def _restore_runtime_cache(staged: Path | None) -> None:
+    if staged is None or not staged.exists():
+        return
+    cache_root = Path(get_db_path()).parent / "runtime-cache"
+    if cache_root.exists():
+        raise RuntimeError(
+            "คืน runtime cache หลัง rollback ไม่สำเร็จ เพราะมี cache ใหม่ถูกสร้างระหว่าง reset"
+        )
+    staged.replace(cache_root)
+
+
+def _discard_runtime_cache(staged: Path | None) -> None:
+    """Discard old and concurrently recreated derived cache after commit."""
+
+    cache_root = Path(get_db_path()).parent / "runtime-cache"
+    for candidate in (staged, cache_root):
+        if candidate is None or not candidate.exists():
+            continue
+        try:
+            shutil.rmtree(candidate)
+        except OSError:
+            log.exception("cannot remove derived runtime cache after reset: %s", candidate)
+
+
+def _registration_secret_references(
+    connection: sqlite3.Connection,
+) -> tuple[str, ...]:
+    """Collect every legacy token and V5.2 token/key reference before reset."""
+
+    from services.installation_identity import installation_private_key_reference
+    from services.registration_vault import installation_token_reference
+
+    references: set[str] = set()
+    installation_ids: set[str] = set()
+
+    legacy = connection.execute(
+        "SELECT installation_id,token_ref FROM registration_profile WHERE singleton_id=1"
+    ).fetchone()
+    if legacy:
+        if legacy[0] and str(legacy[0]).strip():
+            installation_ids.add(str(legacy[0]).strip())
+        if legacy[1] and str(legacy[1]).strip():
+            references.add(str(legacy[1]).strip())
+
+    runtime = connection.execute(
+        "SELECT installation_id FROM v52_runtime_state WHERE singleton_id=1"
+    ).fetchone()
+    if runtime and runtime[0] and str(runtime[0]).strip():
+        installation_ids.add(str(runtime[0]).strip())
+
+    for installation_id in installation_ids:
+        references.add(installation_token_reference(installation_id))
+        references.add(installation_private_key_reference(installation_id))
+    return tuple(sorted(references))
+
+
+def _restore_registration_secrets(
+    registration_secret_store,
+    secret_snapshot: dict[str, str | None],
+) -> list[Exception]:
+    failures: list[Exception] = []
+    if registration_secret_store is None:
+        return failures
+    for reference, secret in secret_snapshot.items():
+        if secret is None:
+            continue
+        try:
+            registration_secret_store.save(reference, secret)
+        except Exception as error:  # pragma: no cover - OS vault failure boundary
+            failures.append(error)
+    return failures
+
+
 def reset_usage_data():
-    """ลบเฉพาะข้อมูลการใช้งานเดิม โดยคงการตั้งค่าเครื่องและ Setup ไว้."""
-    with _open() as c:
-        c.execute("DELETE FROM readings")
-        c.execute("DELETE FROM config_log")
-        c.execute("DELETE FROM price_snapshot")
+    """Clear report/billing history while preserving setup and configuration."""
+
+    staged_cache: Path | None = None
+    try:
+        with _open() as c:
+            c.execute("BEGIN IMMEDIATE")
+            staged_cache = _stage_runtime_cache()
+            c.execute("DROP TRIGGER IF EXISTS billing_ledger_no_update")
+            c.execute("DROP TRIGGER IF EXISTS billing_ledger_no_delete")
+            _delete_rows_and_sequences(
+                c,
+                tables=_USAGE_RESET_TABLES,
+                sequences=_USAGE_RESET_SEQUENCES,
+            )
+            _create_billing_ledger_immutability_triggers(c)
+            validate_current_schema(c)
+    except Exception:
+        try:
+            _restore_runtime_cache(staged_cache)
+        except Exception as restore_error:
+            raise RuntimeError(
+                "ล้างข้อมูลไม่สำเร็จ และคืน runtime cache หลัง rollback ไม่สำเร็จ"
+            ) from restore_error
+        raise
+
+    _discard_runtime_cache(staged_cache)
     _clear_read_caches()
 
 
@@ -727,70 +947,65 @@ def _factory_reset_v5_locked(*, registration_secret_store=None) -> None:
     """Return V5 to a true first-run state without deleting the SQLite file.
 
     This removes device configuration, pricing, usage, daily evidence and the
-    local runtime cache.  The append-only ledger triggers are recreated by
-    ``init_db`` afterwards; they must be removed briefly because a deliberate
-    factory reset is the one authorised exception to ordinary ledger history.
+    local runtime cache. The append-only ledger triggers and first-run defaults
+    are restored inside the same transaction; a deliberate factory reset is
+    the one authorised exception to ordinary ledger history.
     """
     global _cfg_cache
 
-    token_ref = ""
-    previous_token = None
+    secret_references: tuple[str, ...] = ()
+    secret_snapshot: dict[str, str | None] = {}
     with _open(commit=False) as c:
-        row = c.execute(
-            "SELECT token_ref FROM registration_profile WHERE singleton_id=1"
-        ).fetchone()
-        token_ref = str(row[0]) if row and row[0] else ""
-    if token_ref:
+        secret_references = _registration_secret_references(c)
+    if secret_references:
         if registration_secret_store is None:
             from services.registration_vault import platform_registration_secret_store
 
             registration_secret_store = platform_registration_secret_store()
-        previous_token = registration_secret_store.load(token_ref)
-        registration_secret_store.delete(token_ref)
+        secret_snapshot = {
+            reference: registration_secret_store.load(reference)
+            for reference in secret_references
+        }
 
+    staged_cache: Path | None = None
     try:
         with _open() as c:
+            c.execute("BEGIN IMMEDIATE")
+            staged_cache = _stage_runtime_cache()
             c.execute("DROP TRIGGER IF EXISTS billing_ledger_no_update")
             c.execute("DROP TRIGGER IF EXISTS billing_ledger_no_delete")
-
-            # Children and immutable audit records first, then their source rows.
-            for table in (
-                "registration_attempt_history",
-                "registration_outbox",
-                "registration_profile",
-                "billing_ledger",
-                "daily_subject_records",
-                "cost_category_history",
-                "price_history",
-                "daily_meter_records",
-                "price_snapshot",
-                "config_log",
-                "readings",
-                "devices",
-                "settings",
-            ):
-                c.execute(f"DELETE FROM {table}")
-            c.execute(
-                "DELETE FROM sqlite_sequence WHERE name IN "
-                "('registration_attempt_history','billing_ledger','daily_subject_records',"
-                "'cost_category_history','price_history','daily_meter_records','price_snapshot',"
-                "'config_log','readings')"
+            _delete_rows_and_sequences(
+                c,
+                tables=_FACTORY_RESET_TABLES,
+                sequences=_FACTORY_RESET_SEQUENCES,
             )
+
+            _ensure_first_run_setting_defaults(c)
+            _create_billing_ledger_immutability_triggers(c)
+            validate_current_schema(c)
+
+            for reference in secret_references:
+                registration_secret_store.delete(reference)
     except Exception:
-        if token_ref and previous_token is not None:
-            registration_secret_store.save(token_ref, previous_token)
+        secret_failures = _restore_registration_secrets(
+            registration_secret_store,
+            secret_snapshot,
+        )
+        try:
+            _restore_runtime_cache(staged_cache)
+        except Exception as restore_error:
+            raise RuntimeError(
+                "Factory Reset ไม่สำเร็จ และคืน runtime cache หลัง rollback ไม่สำเร็จ"
+            ) from restore_error
+        if secret_failures:
+            raise RuntimeError(
+                "Factory Reset ไม่สำเร็จ และคืน Registration secret หลัง rollback ไม่ครบ"
+            ) from secret_failures[0]
         raise
 
     _cfg_cache = None
     _clear_read_caches()
-
-    # A cache can otherwise be picked up by a new device that reuses a slot.
-    cache_root = Path(get_db_path()).parent / "runtime-cache"
-    if cache_root.exists():
-        shutil.rmtree(cache_root)
-
-    # Recreate default settings and the append-only protections for the next run.
-    init_db()
+    _discard_runtime_cache(staged_cache)
 
 # ══════════════════════════════════════════════════════════
 # ARCHIVE — คัดลอกไฟล์ที่ import ไปเก็บไว้ในโฟลเดอร์ตาม machine name

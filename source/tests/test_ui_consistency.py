@@ -1,7 +1,7 @@
 from PyQt6.QtWidgets import QApplication, QPushButton, QWidget
 
 from config import BUTTON_HEIGHT, BUTTON_ICON_SIZE, BUTTON_LARGE_HEIGHT, BUTTON_LINK_HEIGHT
-from ui_consistency import install_button_system
+from ui_consistency import ButtonSystem, install_button_system
 
 
 def test_button_system_normalizes_geometry_and_radius():
@@ -31,6 +31,17 @@ def test_button_system_normalizes_geometry_and_radius():
     assert standard.styleSheet() == ""
     assert "border-radius: 8px" in icon.styleSheet() or icon.styleSheet() == ""
     assert standard.graphicsEffect() is not None
+
+
+def test_short_text_button_is_not_misclassified_from_temporary_width():
+    _app = QApplication.instance() or QApplication([])
+    button = QPushButton("OK")
+    # Native QMessageBox buttons can briefly report this width before their
+    # platform layout is complete.  Width alone must not turn a text action
+    # into a square icon button.
+    button.resize(20, 20)
+
+    assert ButtonSystem._role(button) == "standard"
 
 
 def test_import_primary_button_keeps_enabled_and_disabled_colors():

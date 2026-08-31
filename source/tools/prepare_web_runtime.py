@@ -128,19 +128,32 @@ def prepare(web_source: Path, web_runtime: Path, legacy_env: Path | None = None)
     print(f"LAN HTTPS: {material.source}; certificate SHA-256 {material.fingerprint_sha256[:16]}…")
     print("OS trust store: ไม่ถูกแก้ไขโดยโปรแกรม")
 
-    npm = _npm_command()
     dependency_hash = _sha256(web_source / "package-lock.json")
     dependency_stamp = web_runtime / DEPENDENCY_STAMP
     installed_hash = dependency_stamp.read_text(encoding="utf-8").strip() if dependency_stamp.is_file() else ""
-    if not (web_runtime / "node_modules").is_dir() or installed_hash != dependency_hash:
-        print("กำลังติดตั้ง Web dependencies ใน runtime ของเครื่องนี้...")
-        subprocess.run([npm, "ci"], cwd=web_runtime, check=True)
-        dependency_stamp.write_text(dependency_hash + "\n", encoding="utf-8")
+    needs_dependencies = (
+        not (web_runtime / "node_modules").is_dir()
+        or installed_hash != dependency_hash
+    )
 
     current_source_hash = source_hash(web_source)
     build_stamp = web_runtime / BUILD_STAMP
     built_hash = build_stamp.read_text(encoding="utf-8").strip() if build_stamp.is_file() else ""
-    if not (web_runtime / ".next" / "BUILD_ID").is_file() or built_hash != current_source_hash:
+    needs_build = (
+        not (web_runtime / ".next" / "BUILD_ID").is_file()
+        or built_hash != current_source_hash
+    )
+
+    # Customer installers contain an already-built Next standalone runtime and
+    # deliberately omit npm/build tooling. Resolve npm only when this machine
+    # genuinely needs to install dependencies or rebuild authored Web source.
+    npm = _npm_command() if needs_dependencies or needs_build else ""
+    if needs_dependencies:
+        print("กำลังติดตั้ง Web dependencies ใน runtime ของเครื่องนี้...")
+        subprocess.run([npm, "ci"], cwd=web_runtime, check=True)
+        dependency_stamp.write_text(dependency_hash + "\n", encoding="utf-8")
+
+    if needs_build:
         print("กำลัง Build หน้าเว็บจาก source กลาง...")
         subprocess.run([npm, "run", "build"], cwd=web_runtime, check=True)
         build_stamp.write_text(current_source_hash + "\n", encoding="utf-8")

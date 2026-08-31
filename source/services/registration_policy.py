@@ -18,6 +18,7 @@ from typing import Literal
 from urllib.parse import urlparse
 
 from komi_version import APP_VERSION
+from services.registration_data_notice import REGISTRATION_NOTICE_VERSION
 
 RegistrationEnvironment = Literal["staging", "production"]
 BootstrapMode = Literal["anonymous", "vault_header"]
@@ -55,7 +56,7 @@ RESERVED_BOOTSTRAP_HEADERS = frozenset(
     }
 )
 
-BUILT_IN_NOTICE_VERSION = "KOMI-REG-2026-08-25-V52"
+BUILT_IN_NOTICE_VERSION = REGISTRATION_NOTICE_VERSION
 BUILT_IN_REGISTRATION_POLICY = {
     "base_url": "https://www.dmskm.com",
     "environment": "production",
@@ -75,9 +76,8 @@ BUILT_IN_REGISTRATION_POLICY = {
         ),
         "fields": sorted(REQUIRED_NOTICE_FIELDS),
         "retention": (
-            "เก็บข้อมูล Installation และรายการอุปกรณ์ล่าสุดระหว่างที่ใช้งาน; "
-            "ประวัติ Heartbeat/สถานะไม่เกิน 12 เดือน; บันทึก Idempotency ทางเทคนิคไม่เกิน "
-            "90 วัน; เมื่อลูกค้ายกเลิกใช้งานให้ลบหรือยกเลิกการเชื่อมโยงภายใน 12 เดือน"
+            "เก็บข้อมูลการลงทะเบียน สถานะ และ Aggregate Total Meter ตลอดระยะเวลาที่ "
+            "ใช้งาน KOMI Report เพื่อรองรับการให้บริการและงาน Support ตามสัญญาหลัก"
         ),
         "deletion_contact": "ติดต่อผู้ส่งมอบโปรแกรมหรือทีม Support ของ KOMI Report",
         "legal_basis": (

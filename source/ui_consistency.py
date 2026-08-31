@@ -9,8 +9,13 @@ from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import QApplication, QGraphicsDropShadowEffect, QPushButton, QSizePolicy
 
 from config import (
-    BUTTON_HEIGHT, BUTTON_ICON_SIZE, BUTTON_LARGE_HEIGHT, BUTTON_LINK_HEIGHT,
-    BUTTON_MOTION_MS, BUTTON_RADIUS, NAV_BUTTON_HEIGHT,
+    BUTTON_HEIGHT,
+    BUTTON_ICON_SIZE,
+    BUTTON_LARGE_HEIGHT,
+    BUTTON_LINK_HEIGHT,
+    BUTTON_MOTION_MS,
+    BUTTON_RADIUS,
+    NAV_BUTTON_HEIGHT,
 )
 
 
@@ -38,7 +43,11 @@ class ButtonSystem(QObject):
         ):
             return "link"
         label = button.text().strip()
-        if len(label) <= 2 and (button.maximumWidth() <= 50 or button.width() <= 50):
+        # A native QMessageBox briefly reports a very small current width
+        # before macOS finishes laying out its textual OK/Yes/No button.  Only
+        # an explicit maximum-width constraint identifies a real icon button;
+        # using the temporary current width turns "OK" into a clipped square.
+        if len(label) <= 2 and button.maximumWidth() <= 50:
             return "icon"
         if button.minimumHeight() >= 46:
             return "large"

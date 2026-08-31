@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 
 import pytest
 
+from komi_version import APP_VERSION
 from services.contract_adapters.v1_draft import DraftV1SigningAdapter
 from services.installation_identity import load_or_create_installation_identity
 from services.registration_vault import SessionRegistrationSecretStore
@@ -39,7 +40,7 @@ def test_registration_v3_is_signed_and_keeps_strict_serial_privacy_boundary():
         identity=identity,
         company_name="Synthetic Company",
         first_started_at="2026-08-25",
-        app_version="5.2.0",
+        app_version=APP_VERSION,
         devices=_devices(),
         platform_name="TestOS",
         architecture="test64",
@@ -63,7 +64,7 @@ def test_registration_v3_is_signed_and_keeps_strict_serial_privacy_boundary():
 def test_status_has_no_online_boolean_and_policy_uses_six_hour_cadence():
     payload = build_status_payload(
         installation_id="11111111-1111-4111-8111-111111111111",
-        app_version="5.2.0",
+        app_version=APP_VERSION,
         platform_name="TestOS",
         architecture="test64",
         occurred_at="2026-08-25T03:02:00Z",
@@ -134,7 +135,7 @@ def test_meter_batch_is_latest_selected_aggregate_only_and_counter_reset_is_not_
 def test_contract_rejects_forbidden_or_detailed_counter_fields():
     payload = build_status_payload(
         installation_id="11111111-1111-4111-8111-111111111111",
-        app_version="5.2.0",
+        app_version=APP_VERSION,
         platform_name="TestOS",
         architecture="test64",
     )
