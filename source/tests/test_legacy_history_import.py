@@ -255,6 +255,7 @@ def test_cloud_reports_exposes_imported_v46_history_without_cost(tmp_path):
         period=None,
         last_sync_at=None,
     )
+    widget.tabs.setCurrentIndex(4)
 
     assert widget.tabs.indexOf(widget.legacy_history_page) == -1
     assert widget.legacy_history_table.rowCount() == 2
@@ -265,6 +266,7 @@ def test_cloud_reports_exposes_imported_v46_history_without_cost(tmp_path):
         and "ค่าใช้จ่าย" not in widget.legacy_history_table.horizontalHeaderItem(column).text()
         for column in range(widget.legacy_history_table.columnCount())
     )
+    widget.tabs.setCurrentIndex(3)
     assert widget.usage_monthly_table.rowCount() == 2
     assert widget.usage_monthly_table.item(0, 0).text() == "Meter เริ่มต้น"
     headers = [
@@ -413,6 +415,7 @@ def test_usage_timeline_keeps_one_slot_across_v46_and_v5_serials():
         period=("2026-08-01", "2026-08-31"),
         last_sync_at=None,
     )
+    widget.tabs.setCurrentIndex(3)
 
     matrix = widget.usage_by_printer_table
     assert matrix.columnCount() == 14

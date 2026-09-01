@@ -48,7 +48,10 @@ class BackgroundPollingCoordinator(QObject):
         super().__init__(parent)
         self.repository = repository or DeviceConfigRepository()
         self.probe = probe or SnmpTotalProbe()
-        self.reader = reader or MeterReader(DatabaseCredentialStore(self.repository))
+        self.reader = reader or MeterReader(
+            DatabaseCredentialStore(self.repository),
+            allow_implicit_name_export=True,
+        )
         self.cache = cache or DailyCacheStore()
         self.subject_cache = subject_cache or SubjectDailyCacheStore()
         self.raw_counter_history = raw_counter_history or RawCounterHistoryStore()

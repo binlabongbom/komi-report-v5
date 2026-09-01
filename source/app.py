@@ -851,6 +851,12 @@ class MainWindow(QMainWindow):
         if index not in self._dirty_pages:
             return
         page = self._page_widgets[index]
+        refresh_visible = getattr(page, "refresh_visible", None)
+        if callable(refresh_visible):
+            apply_language(page)
+            self._dirty_pages.discard(index)
+            QTimer.singleShot(0, refresh_visible)
+            return
         refresh = getattr(page, "refresh", None)
         if callable(refresh):
             refresh()

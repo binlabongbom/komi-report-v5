@@ -5,6 +5,7 @@ import secrets
 
 import pytest
 
+import komi_snmp_profiler.meter as meter_module
 from komi_snmp_profiler.app import meter_counter_rows
 from komi_snmp_profiler.connectors import (
     AuthenticatedWebConnectionCounterConnector,
@@ -769,6 +770,27 @@ def test_meter_reader_does_not_start_name_export_without_explicit_reader() -> No
 
     assert reading.counters[0].subject_id == "1"
     assert reading.counters[0].subject_name == ""
+
+
+def test_opted_in_meter_reader_loads_names_once_then_uses_memory_cache(monkeypatch) -> None:
+    export_reader = UserNameExportReader()
+    monkeypatch.setattr(
+        meter_module,
+        "MeterExportReader",
+        lambda *_args, **_kwargs: export_reader,
+    )
+    reader = MeterReader(
+        MemoryStore(AdminCredential(password=secrets.token_urlsafe(18))),
+        admin_connector=AdminConnectorWithUnnamedUser(),
+        allow_implicit_name_export=True,
+    )
+
+    first = reader.read("10.0.0.5")
+    second = reader.read("10.0.0.5")
+
+    assert first.counters[0].subject_name == "DMS"
+    assert second.counters[0].subject_name == "DMS"
+    assert export_reader.calls == [("10.0.0.5", "User")]
 
 
 class FakeMeterExportSession(FakeSession):

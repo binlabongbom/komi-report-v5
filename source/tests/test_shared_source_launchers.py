@@ -54,7 +54,7 @@ def test_launch_doctor_reports_the_real_canonical_source():
     )
     payload = json.loads(result.stdout)
     assert Path(payload["source_root"]).samefile(SOURCE_ROOT)
-    assert payload["version"] == "5.2.4"
+    assert payload["version"] == "5.2.5"
     assert len(payload["source_id"]) == 64
 
 

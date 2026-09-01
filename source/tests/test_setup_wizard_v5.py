@@ -147,6 +147,42 @@ def test_setup_wizard_switches_between_shared_and_per_device_prices(tmp_path):
         database.set_db_path(original_path)
 
 
+def test_successful_device_test_advances_once_and_failed_test_stays_on_device_step(tmp_path):
+    original_path = _wizard_database(tmp_path)
+    app = QApplication.instance() or QApplication([])
+    try:
+        wizard = SetupWizardV5(legacy_source_paths=[])
+        _add_selected_device(wizard, "TEST Printer", "192.0.2.10")
+        wizard._next()
+        assert wizard.stack.currentIndex() == 1
+
+        wizard._test_finished()
+        app.processEvents()
+
+        assert wizard.stack.currentIndex() == 2
+        assert wizard.step_label.text() == "3 / 4"
+        wizard._test_finished()
+        app.processEvents()
+        assert wizard.stack.currentIndex() == 2
+        wizard.close()
+
+        failed = SetupWizardV5(legacy_source_paths=[])
+        _add_selected_device(failed, "Failed Printer", "192.0.2.11")
+        failed.discovered_devices[0]["result"] = {
+            "online": True,
+            "web_ok": False,
+            "tested": True,
+        }
+        failed._next()
+        failed._test_finished()
+        app.processEvents()
+        assert failed.stack.currentIndex() == 1
+        failed.close()
+        app.processEvents()
+    finally:
+        database.set_db_path(original_path)
+
+
 def test_setup_wizard_keeps_each_per_device_price_separate(tmp_path):
     original_path = _wizard_database(tmp_path)
     app = QApplication.instance() or QApplication([])
@@ -184,7 +220,7 @@ def test_setup_wizard_uses_the_approved_four_step_flow(tmp_path):
         assert wizard.first_started_input.isReadOnly()
         assert wizard.first_started_input.text() == "20/08/2026"
         assert wizard.version_input.isReadOnly()
-        assert wizard.version_input.text() == "5.2.4"
+        assert wizard.version_input.text() == "5.2.5"
         assert wizard.scan_button.text() == "ค้นหาเครื่องพิมพ์อัตโนมัติ"
         assert wizard.advanced_scan_button.text() == "กำหนดช่วง IP"
         assert wizard.manual_setup_button.text() == "เพิ่ม IP ด้วยตนเอง"
@@ -216,7 +252,7 @@ def test_setup_wizard_uses_the_approved_four_step_flow(tmp_path):
         assert wizard.next_button.text() == "บันทึกและเปิดโปรแกรม"
         assert "พร้อมนำเครื่องพิมพ์เข้าระบบ" in wizard.review_ready_note.text()
         registration_review = wizard.review_sections["registration"].text()
-        assert "Version 5.2.4" in registration_review
+        assert "Version 5.2.5" in registration_review
         assert "bizhub C450i × 1" in registration_review
         assert "Serial Number + รุ่นเครื่อง + สถานะเลือกใช้ + Aggregate Total Meter" in registration_review
         assert "IP, MAC, hostname, Credential, Counter รายละเอียด" in registration_review
@@ -352,7 +388,7 @@ def test_secondary_setup_persists_received_schedule_only_when_local_value_is_mis
             base_url="https://192.0.2.20:3000",
             company_name="บริษัท เครื่องหลัก จำกัด",
             printer_count=1,
-            version="5.2.4",
+            version="5.2.5",
             certificate_sha256="a" * 64,
         )
         wizard.secondary_snapshot = {

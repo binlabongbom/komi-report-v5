@@ -1101,14 +1101,17 @@ def test_report_center_replaces_legacy_reports_with_cloud_overview_users_and_pri
                 provisional_days=1,
             ),
         )
-        monkeypatch.setattr(
-            v5_pages,
-            "load_usage_history",
-            lambda slots, granularity, cache: records,
-        )
+        usage_loads = []
+
+        def load_report_usage(slots, granularity, cache):
+            usage_loads.append(granularity)
+            return records
+
+        monkeypatch.setattr(v5_pages, "load_usage_history", load_report_usage)
         monkeypatch.setattr(v5_pages, "load_subject_history", lambda *args, **kwargs: ())
         app = QApplication.instance() or QApplication([])
         page = PageHistoryV5(repository=_Repository(), cache=_Cache())
+        assert usage_loads == []
 
         assert page.tabs.isHidden()
         assert [
@@ -1120,15 +1123,19 @@ def test_report_center_replaces_legacy_reports_with_cloud_overview_users_and_pri
         assert page.report_center_scroll.widgetResizable()
 
         page._refresh_report_center()
+        assert usage_loads == ["monthly", "daily"]
         cloud = page.report_center
         assert cloud.overview_kpis["total_usage"].lbl_val.text() == "1,200"
         assert cloud.overview_printers.item(0, 0).text() == "Printer 1"
+        assert cloud.usage_monthly_table.rowCount() == 0
         # This fixture has only aggregate paper totals.  Print/Copy must stay
         # explicitly unavailable instead of being guessed from Color/B&W.
+        cloud.tabs.setCurrentIndex(2)
         assert cloud.printer_kpis["print"].text() == "—"
         assert cloud.printer_kpis["copy"].text() == "—"
         assert cloud.printers_table.item(0, 0).text() == "Printer 1"
         assert cloud.printer_detail.item(0, 1).text() == "Printer 1"
+        cloud.tabs.setCurrentIndex(3)
         assert cloud.usage_monthly_table.item(0, 0).text() == current_day.strftime("%m/%Y")
         total_metric_index = next(
             index
@@ -1138,6 +1145,7 @@ def test_report_center_replaces_legacy_reports_with_cloud_overview_users_and_pri
         assert cloud.usage_monthly_table.item(
             0, 1 + total_metric_index
         ).text() == "1,200"
+        cloud.tabs.setCurrentIndex(2)
         cloud._select_printer_row(0, 0)
         assert "ทุกเครื่องพร้อมกัน" in cloud.printer_compare_note.text()
         exported = []
