@@ -38,3 +38,12 @@ def test_windows_customer_payload_builder_packages_manual_assets():
     assert 'PROJECT_ROOT / "docs" / "customer-guide" / "assets-v5.2"' in builder
     assert 'docs_destination / "customer-guide" / "assets-v5.2"' in builder
     assert "Customer guide screenshot assets are missing" in builder
+
+
+def test_source_release_packages_manual_assets_for_cross_platform_builds():
+    source_root = Path(__file__).resolve().parents[1]
+    builder = (source_root / "tools" / "build_local_release.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert 'PROJECT_ROOT / "docs" / "customer-guide" / "assets-v5.2"' in builder
