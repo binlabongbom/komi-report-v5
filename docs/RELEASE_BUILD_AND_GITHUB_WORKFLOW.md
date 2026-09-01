@@ -28,9 +28,9 @@ Only the root-level `KOMI Report Vx.y.z/` folder is available to an installer. A
 
 ## Version rule
 
-`source/komi_version.py:APP_VERSION` is the human-edited version authority.
+`source/komi_version.py:APP_VERSION` is the authoritative semantic version. A version bump is one atomic Git change that updates its companion packaging and user-facing metadata together; build scripts must derive their version and must not carry independent version literals.
 
-For every new release, update the patch/minor version there and update the user-facing release documents. The existing `source/tools/version_gate.py` must then prove alignment with:
+For every new release, update the patch/minor version and every companion metadata/document field in the same change. The existing `source/tools/version_gate.py` must then prove alignment with:
 
 - `source/pyproject.toml`
 - `web/package.json` and `web/package-lock.json`
