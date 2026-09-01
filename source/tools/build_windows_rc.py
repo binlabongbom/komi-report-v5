@@ -420,6 +420,13 @@ def build_payload(
             source = PROJECT_ROOT / "docs" / filename
             if source.is_file():
                 shutil.copy2(source, docs_destination / filename)
+        manual_assets = PROJECT_ROOT / "docs" / "customer-guide" / "assets-v5.2"
+        if not manual_assets.is_dir():
+            raise ReleaseContractError("Customer guide screenshot assets are missing")
+        shutil.copytree(
+            manual_assets,
+            docs_destination / "customer-guide" / "assets-v5.2",
+        )
 
     runtime_root = payload_root / "runtime"
     python_runtime_sha256 = download_python_runtime(runtime_root)
