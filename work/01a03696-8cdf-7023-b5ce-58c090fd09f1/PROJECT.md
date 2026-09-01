@@ -640,3 +640,25 @@ Decision boundary:
 
 - `PASS — EXACT SOURCE PRE-BUILD`; ยังไม่ใช่ Artifact PASS จน macOS/Windows build, manifest/checksum/SBOM/inventory และ packaged smoke เสร็จ
 - ชุด Windows/macOS จะคงเป็น `Unsigned`; ต้องระบุ Unknown Publisher/Gatekeeper/Smart App Control limitation ตามจริง และห้ามปิดหรือ bypass ระบบความปลอดภัยเพื่อสร้างหลักฐานผ่าน
+
+## V5.2.4 Unsigned Artifact Packaging — 2026-09-01
+
+Outcome:
+
+- สร้างชุดติดตั้ง V5.2.4 จาก exact source commit `6c8c3c35a14c0f95ba34572cc11925640ccfd91f` ครบ Windows x64 และ macOS arm64 พร้อม Source ZIP, manifest, checksum, inventory, SBOM และคู่มือภาษาไทย DOCX/PDF
+- แก้ release packaging ให้บรรจุภาพคู่มือ `assets-v5.2` ครบ 14 ไฟล์ (Screenshot 13 ภาพและ Logo 1 ภาพ) ใน Windows payload, macOS bundle และ Source ZIP
+- รวมไฟล์สำหรับผู้ใช้ไว้ที่ `/Users/wongsakornu-phonram/Projects/dev/KOMI-Report-V5.2-Installers/KOMI Report V5.2.4` แยกเป็น `ตัวติดตั้ง`, `คู่มือ` และ `ไฟล์สำหรับตรวจสอบ`
+
+Evidence:
+
+- Windows installer: `KOMI_Report_V5_2_4_Windows_x64_Installer.exe`, 112,805,058 bytes, SHA-256 `21267193c13c9bb88448b50000416a75a0d5c166bbf15f0df9be4ed260c9ed5d`; inventory 8,610 files; guide assets 14; build environment `windows-arm64-vm-preflight`
+- macOS DMG: 132,278,981 bytes, SHA-256 `a1d3ac5f239a22bb6d8fbcca23f3dd300261b8a4e503c989cafc1e0219ff037e`; ZIP SHA-256 `16d425842e813130050a49cc95fde451b70509e5892f54a8f49ae53c503207bd`; inventory 2,533 files; guide assets 14; bundle smoke exit 0 และสร้าง Database/ปิดโปรแกรมได้ตามปกติ
+- Source ZIP: 4,633,774 bytes, 298 entries, guide assets 14, SHA-256 `9822303edf484847756a7f80d34cd68a080007c3b7cdc5d4ec006cea0fba1533`
+- Customer Guide PDF จาก Microsoft Word: 17 หน้า, 1,474,663 bytes, SHA-256 `6f49e2c0593bff43147102a253b2e8d41d1255817dd0d533e49a8a4d97889088`; ตรวจอ่านข้อความภาษาไทยด้วย `pdftotext` ผ่าน
+- Focused packaging/release regression หลังแก้ asset packaging ผ่าน, Ruff และ `git diff --check` ผ่าน; hash ของไฟล์ส่งมอบตรงกับ manifest/checksum จริง
+
+Decision boundary:
+
+- `PASS — UNSIGNED ARTIFACT ASSEMBLED`; Build สำเร็จและพร้อมสำหรับการทดสอบติดตั้งโดยผู้ใช้ตามขอบเขตที่อนุมัติ
+- Manifest ยังคง `HOLD` / `production_go=false` ตามจริง เพราะ Windows ไม่ Signed และยังเป็น ARM64 VM x64-emulation preflight; macOS เป็น ad-hoc signed และไม่ Notarized; External Joint Staging/Offline License gates ยังไม่ครบ
+- ยังไม่ได้อ้าง native Windows x64 UAT, OS trust approval หรือ Signed Production GO และไม่ได้ปิด/bypass Defender, Smart App Control หรือ Gatekeeper
