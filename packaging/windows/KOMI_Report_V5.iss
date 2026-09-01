@@ -18,6 +18,7 @@
 #define AppName "KOMI Report V5"
 #define AppPublisher "Konica Minolta"
 #define AppLauncher "START_KOMI_REPORT.vbs"
+#define AppUserModelId "KonicaMinolta.KOMIReport.V5"
 
 [Setup]
 AppId={{9C32D937-21A5-4A3A-90AE-F0662E60F24A}
@@ -59,12 +60,12 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Source: "{#PayloadDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
-Name: "{autoprograms}\KOMI Report V5"; Filename: "{sys}\wscript.exe"; Parameters: """{app}\{#AppLauncher}"""; WorkingDir: "{app}"; IconFilename: "{app}\source\Logo.ico"
-Name: "{autodesktop}\KOMI Report V5"; Filename: "{sys}\wscript.exe"; Parameters: """{app}\{#AppLauncher}"""; WorkingDir: "{app}"; IconFilename: "{app}\source\Logo.ico"; Tasks: desktopicon
+Name: "{autoprograms}\KOMI Report V5"; Filename: "{sys}\wscript.exe"; Parameters: """{app}\{#AppLauncher}"""; WorkingDir: "{app}"; IconFilename: "{app}\source\Logo.ico"; AppUserModelID: "{#AppUserModelId}"
+Name: "{autodesktop}\KOMI Report V5"; Filename: "{sys}\wscript.exe"; Parameters: """{app}\{#AppLauncher}"""; WorkingDir: "{app}"; IconFilename: "{app}\source\Logo.ico"; AppUserModelID: "{#AppUserModelId}"; Tasks: desktopicon
 ; Upgrade migration: rewrite an existing customer shortcut even when the
 ; checked-once desktop task is not offered again. A fresh install that opted
 ; out still receives no Desktop shortcut.
-Name: "{autodesktop}\KOMI Report V5"; Filename: "{sys}\wscript.exe"; Parameters: """{app}\{#AppLauncher}"""; WorkingDir: "{app}"; IconFilename: "{app}\source\Logo.ico"; Check: ExistingDesktopShortcut
+Name: "{autodesktop}\KOMI Report V5"; Filename: "{sys}\wscript.exe"; Parameters: """{app}\{#AppLauncher}"""; WorkingDir: "{app}"; IconFilename: "{app}\source\Logo.ico"; AppUserModelID: "{#AppUserModelId}"; Check: ExistingDesktopShortcut
 
 [Tasks]
 Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription: "Shortcuts:"; Flags: checkedonce

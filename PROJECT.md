@@ -12,7 +12,7 @@ current_phase: V5.2.5 Reports usability and customer hang remediation
 current_task: V5.2.5 source and regression suite complete; hand off native Windows x64 customer-size UAT
 next_action: run native Windows x64 customer-size Database UAT and recheck Registration current-client E2E before release approval
 problem: RELEASE HOLD remains until native Windows x64 UAT and live current-client Registration evidence pass
-updated_at: 2026-09-01T16:19:09+07:00
+updated_at: 2026-09-01T16:45:18+07:00
 ---
 
 # KOMI Report V5.2.5
@@ -26,6 +26,7 @@ updated_at: 2026-09-01T16:19:09+07:00
 - [x] Reports > Legacy แสดง `—` เมื่อแหล่งข้อมูลไม่ระบุ Print/Copy/Scan.
 - [x] Setup Wizard ไปขั้นราคาอัตโนมัติเมื่อทุกเครื่องที่เลือกผ่าน SNMP + Web และกัน callback ซ้ำ.
 - [x] ลดอาการค้างตอนเปิด Reports ด้วย visible-tab refresh; ไม่โหลด Legacy/raw/baseline ที่ไม่ได้เปิด และไม่เรียก legacy audit refresh ตอนคลิกแท็บครั้งแรก.
+- [x] แก้ Windows Notification ที่แสดงผู้ส่งเป็น `Python`: ตั้ง Qt application metadata และ process `AppUserModelID` ก่อนสร้าง UI พร้อมผูก ID เดียวกันกับ Start Menu/Desktop shortcuts ใน Installer.
 - [ ] Native Windows x64 UAT ด้วยสำเนา Database ขนาดเท่าลูกค้า (ห้ามใช้ DB จริงแบบเขียนกลับ) และ visual verification ที่ 100%/125% scaling.
 - [ ] Real-device verification ว่าชื่อ `TEST1`/`TEST2` ถูกเก็บใน Subject history หลัง polling และยังคงตรงหลังเปิดโปรแกรมใหม่.
 
@@ -39,6 +40,7 @@ Evidence boundary: automated tests/local offscreen เป็น regression evide
 - Ruff บนโมดูลใหม่และ tests ที่แก้ — **PASS**; ไฟล์ legacy ขนาดใหญ่ยังมี lint debt เดิมนอก scope.
 - Release safety scan บน changed files — **PASS**, ไม่พบ secret/credential path ที่ห้ามส่ง.
 - Offscreen visual inspection 1700×900 — Users/Usage/ตามเครื่อง/ปุ่มปฏิทินและ horizontal scroll ตรงตาม design; ยังต้องยืนยัน native Windows x64 scaling และ customer-size DB.
+- Windows App Identity focused tests — **25 passed**; scoped Ruff/compileall **PASS**. Native Windows notification visual ยังต้องยืนยันหลังติดตั้ง RC ใหม่ เพราะ local macOS ไม่สามารถพิสูจน์ชื่อผู้ส่งของ Windows Shell ได้.
 
 ## Current release decision — 2026-08-22
 

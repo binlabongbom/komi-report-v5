@@ -174,6 +174,10 @@ from pages import (
     PageOverview,
     PageSettings,  # หน้าตั้งค่า + คู่มือ
 )
+from services.application_identity import (
+    configure_qt_application_identity,
+    configure_windows_process_identity,
+)
 from services.autostart import configure_autostart
 from services.background_polling import BackgroundPollingCoordinator
 from services.desktop_shortcuts import create_desktop_shortcuts
@@ -1750,8 +1754,13 @@ if __name__ == "__main__":
     log.info("=" * 60)
     log.info("KOMI Report V%s starting", APP_VER)
 
+    # Windows requires the process AppUserModelID before any UI is presented.
+    # Otherwise source/runtime launches are branded as the pythonw.exe host.
+    configure_windows_process_identity()
+
     # QApplication ต้องสร้างก่อนสิ่งอื่นใดทั้งหมด
     app = QApplication(sys.argv)
+    configure_qt_application_identity(app, version=APP_VER)
     install_button_system(app)
     instance_guard = SingleInstanceGuard(Path(get_db_path()).with_suffix(".instance.lock"))
     if not instance_guard.acquire():
