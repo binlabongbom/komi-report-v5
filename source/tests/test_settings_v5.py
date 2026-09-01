@@ -659,7 +659,7 @@ def test_settings_routes_local_enqueue_failure_back_to_setup(tmp_path):
         database.set_db_path(original)
 
 
-def test_offline_license_settings_export_import_and_hide_technical_secrets(
+def test_offline_license_settings_are_hidden_while_activation_is_disabled(
     tmp_path, monkeypatch
 ):
     app = QApplication.instance() or QApplication([])
@@ -692,8 +692,10 @@ def test_offline_license_settings_export_import_and_hide_technical_secrets(
         page.show()
         app.processEvents()
 
-        assert page.offline_request_button.isVisible()
-        assert page.offline_import_button.isVisible()
+        assert not page.offline_request_button.isVisible()
+        assert not page.offline_import_button.isVisible()
+        assert not page.offline_license_summary.isVisible()
+        assert not page.registration_offline_mode.isVisible()
         assert page.registration_retry_button.isVisible() is False
         visible_copy = " ".join(
             widget.text()
@@ -703,22 +705,16 @@ def test_offline_license_settings_export_import_and_hide_technical_secrets(
         for forbidden in ("api key", "public key", "token", "synthetic-public"):
             assert forbidden not in visible_copy
 
-        page.offline_request_button.click()
-        page.offline_import_button.click()
-
-        assert runtime.request_paths == [tmp_path / "desktop-request.komirequest"]
-        assert runtime.license_imports == [
-            (tmp_path / "desktop.komilicense", host_keys)
-        ]
-        assert "2031-08-25" in page.offline_license_summary.text()
-        assert messages
+        assert runtime.request_paths == []
+        assert runtime.license_imports == []
+        assert messages == []
         page.close()
         app.processEvents()
     finally:
         database.set_db_path(original)
 
 
-def test_offline_license_ui_curates_export_error_without_raw_detail(
+def test_disabled_offline_license_ui_does_not_call_export_runtime(
     tmp_path, monkeypatch
 ):
     app = QApplication.instance() or QApplication([])
@@ -744,9 +740,7 @@ def test_offline_license_ui_curates_export_error_without_raw_detail(
         page = PageFleetSettings(registration_runtime=runtime)
         page.offline_request_button.click()
 
-        assert warnings
-        assert "raw-private-key" not in " ".join(warnings)
-        assert "OS Credential Vault" in " ".join(warnings)
+        assert warnings == []
         page.close()
         app.processEvents()
     finally:

@@ -1,4 +1,4 @@
-# KOMI Report V5.2.3 — Customer Release Notes
+# KOMI Report V5.2.4 — Customer Release Notes
 
 ## Package identity
 
@@ -14,7 +14,13 @@ artifact ว่า Production Ready.
 
 ## Runtime behavior
 
-- V5.2.3 แยกกรณี Legacy Administrator session ถูกใช้งานออกจากกรณีรหัสผ่านผิด
+- V5.2.4 บรรจุภาพประกอบคู่มือภายในแอปครบถ้วนทั้ง Windows และ macOS เพื่อไม่ให้หน้า
+  คู่มือแสดงพื้นที่ว่างหรือข้อความว่าไม่พบภาพประกอบหลังติดตั้งจริง.
+- ช่องเลือกช่วงวันที่ในหน้า Report เปิดปฏิทินเมื่อคลิกได้ทั้งช่อง และไม่รับการพิมพ์วันที่โดยตรง
+  เพื่อลดวันที่ผิดรูปแบบ.
+- ซ่อน Offline Activation ออกจาก Setup Wizard และ Settings ชั่วคราว โดยคง Online Registration
+  เป็นขั้นตอนมาตรฐาน; local Database, Meter, Billing, Report และ Excel ไม่ถูกลบหรือเปลี่ยนความหมาย.
+- สืบทอดจาก V5.2.3: แยกกรณี Legacy Administrator session ถูกใช้งานออกจากกรณีรหัสผ่านผิด
   โปรแกรมจะไม่สั่ง Logout session ของผู้ใช้อื่น และจะแสดงปุ่มเปิด Web Connection
   เพื่อให้ผู้ใช้ Logout ก่อนตรวจสอบใหม่; จะขอรหัสผ่านเฉพาะเมื่อเครื่องปฏิเสธรหัสจริง.
 - สืบทอดการแก้การเชื่อมต่อ Web Connection ของเครื่อง Legacy บน Windows ที่ใช้
@@ -30,7 +36,7 @@ artifact ว่า Production Ready.
 - หาก OS vault หรือ API contract ใช้ไม่ได้ ระบบหยุดส่งแบบ fail-closed โดย local Meter, Billing, Report และ
   Excel ยังคงทำงานตามข้อมูลในเครื่อง.
 - ไม่มี Lab/test/demo mode, Virtual Printer auto-injection, mock/`.invalid` endpoint หรือ QA fallback ใน runtime.
-- Production Phase 3 Update ไม่รวมใน V5.2.3: ไม่มี silent/forced update, remote command หรือ Update telemetry.
+- Production Phase 3 Update ไม่รวมใน V5.2.4: ไม่มี silent/forced update, remote command หรือ Update telemetry.
 
 ## Evidence และ Trust state
 

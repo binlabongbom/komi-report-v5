@@ -206,6 +206,10 @@ from ui.common_dialogs import AllCountersDialog, PinnedCountersDialog
 from ui_consistency import install_button_system
 from widgets import FrozenLeftTable, VisibleCheckBox, btn, fnt
 
+# Temporarily hide every customer entry point for Offline Activation while
+# retaining the implementation for a later release.
+OFFLINE_ACTIVATION_ENABLED = False
+
 
 def CloudReportsExportData(*args, **kwargs):
     """Lazy compatibility constructor for the Excel export payload."""
@@ -4145,24 +4149,24 @@ class SetupWizardV5(QDialog):
             message
             + "\n"
             + tr(
-                "ลองอีกครั้งเมื่ออินเทอร์เน็ตพร้อม หรือลงทะเบียนแบบ Offline",
-                "Retry when the internet is available, or use Offline Registration.",
+                "ตรวจสอบอินเทอร์เน็ตแล้วกดลองอีกครั้ง หรือกดยกเลิกเพื่อกลับไปตรวจสอบการตั้งค่า",
+                "Check the internet connection and retry, or cancel to review the setup.",
             )
         )
         self.registration_retry_button.setVisible(True)
-        self.registration_offline_button.setVisible(True)
+        self.registration_offline_button.setVisible(OFFLINE_ACTIVATION_ENABLED)
         self.registration_status_label.setText(tr("ต้องลงทะเบียน", "Registration required"))
 
     def _retry_online_registration(self) -> None:
         self._start_online_registration()
 
     def _registration_service(self):
-        """Return a local-capable runtime even when no Host client is injected.
+        """Create the V5.2 runtime only when online registration is requested.
 
-        First-run source review and a temporarily unavailable Host must still be
-        able to create an installation-signed Offline License request.  The
-        coordinator remains fail-closed for network delivery when it has no
-        client, while Offline License import still requires Host public keys.
+        Setup remains local-first and the default runtime remains fail-closed
+        because it has no implicit Production client.  Offline Activation is
+        retained behind ``OFFLINE_ACTIVATION_ENABLED`` for a future release,
+        but no customer entry point can invoke it while that flag is disabled.
         """
 
         if self.registration_runtime is None:
@@ -4172,6 +4176,8 @@ class SetupWizardV5(QDialog):
         return self.registration_runtime
 
     def _open_offline_registration(self) -> None:
+        if not OFFLINE_ACTIVATION_ENABLED:
+            return
         runtime = self._registration_service()
         dialog = QDialog(self)
         dialog.setWindowTitle(tr("ลงทะเบียน Offline", "Offline Registration"))
@@ -10305,6 +10311,9 @@ class PageFleetSettings(QWidget):
         registration_card.layout().addLayout(registration_mode_row)
         self.registration_online_mode.clicked.connect(lambda: self._set_registration_mode("online"))
         self.registration_offline_mode.clicked.connect(lambda: self._set_registration_mode("offline"))
+        registration_mode_label.setVisible(OFFLINE_ACTIVATION_ENABLED)
+        self.registration_online_mode.setVisible(OFFLINE_ACTIVATION_ENABLED)
+        self.registration_offline_mode.setVisible(OFFLINE_ACTIVATION_ENABLED)
 
         self.offline_license_summary = QLabel()
         self.offline_license_summary.setWordWrap(True)
@@ -11223,9 +11232,10 @@ class PageFleetSettings(QWidget):
         )
         self.registration_retry_button.setEnabled(mode == "online")
         self.registration_retry_button.setText(tr("ลองส่งอีกครั้ง", "Retry"))
-        self.offline_request_button.setVisible(mode == "offline")
-        self.offline_import_button.setVisible(mode == "offline")
-        self.offline_license_summary.setVisible(mode == "offline")
+        offline_ui_visible = OFFLINE_ACTIVATION_ENABLED and mode == "offline"
+        self.offline_request_button.setVisible(offline_ui_visible)
+        self.offline_import_button.setVisible(offline_ui_visible)
+        self.offline_license_summary.setVisible(offline_ui_visible)
         license_metadata = snapshot.get("offline_license")
         if mode == "offline" and isinstance(license_metadata, dict):
             expires_at = str(license_metadata.get("expires_at") or "—")
@@ -11300,6 +11310,8 @@ class PageFleetSettings(QWidget):
         return self.registration_runtime
 
     def _set_registration_mode(self, mode: str) -> None:
+        if mode == "offline" and not OFFLINE_ACTIVATION_ENABLED:
+            return
         try:
             self._registration_service().set_mode(mode)
             set_cfg("v52_registration_mode", mode)
@@ -11316,6 +11328,8 @@ class PageFleetSettings(QWidget):
         self.changed.emit()
 
     def _export_offline_request(self) -> None:
+        if not OFFLINE_ACTIVATION_ENABLED:
+            return
         path, _selected_filter = QFileDialog.getSaveFileName(
             self,
             tr("สร้างคำขอ Offline License", "Export Offline License request"),
@@ -11350,6 +11364,8 @@ class PageFleetSettings(QWidget):
         )
 
     def _import_offline_license(self) -> None:
+        if not OFFLINE_ACTIVATION_ENABLED:
+            return
         path, _selected_filter = QFileDialog.getOpenFileName(
             self,
             tr("นำเข้าไฟล์ Offline License", "Import Offline License file"),

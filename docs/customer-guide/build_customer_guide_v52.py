@@ -311,7 +311,7 @@ def start(doc: Document) -> None:
     bullet(doc, "เครื่อง Windows 10/11 x64 หรือ macOS ที่จะเป็น Primary Desktop")
     bullet(doc, "ชื่อบริษัท และเครื่องพิมพ์ที่อยู่ใน LAN เดียวกัน")
     bullet(doc, "ราคา A4/A3 สีและขาวดำ หรือเลือกตั้งค่าราคาภายหลัง")
-    bullet(doc, "Internet สำหรับ Online Registration; หากไม่มี Internet ใช้ Offline License ได้เมื่อชุดติดตั้งมี Host public verification key")
+    bullet(doc, "Internet สำหรับ Online Registration; Offline Activation ถูกปิดชั่วคราวในรุ่นนี้")
     callout(doc, "Database ควรอยู่ใน Local drive", "ใช้โฟลเดอร์ Documents หรือโฟลเดอร์ข้อมูลภายในเครื่อง หลีกเลี่ยงการวางไฟล์ Database ในโฟลเดอร์ที่ Sync แบบ Real-time ระหว่างโปรแกรมทำงาน", kind="note")
     subheading(doc, "Primary และ Secondary")
     bullet(doc, "Primary เป็นเครื่องแรกที่กำหนดบริษัท เครื่องพิมพ์ ราคา รอบบิล และฐานข้อมูล")
@@ -355,7 +355,7 @@ def wizard(doc: Document) -> None:
     bullet(doc, "ใช้ราคาเดียวกันทุกเครื่อง ตั้งราคาแยกรายเครื่อง หรือตั้งค่าภายหลัง")
     figure(doc, "04-setup-review.png", "ขั้นที่ 4 — ตรวจสอบทุกส่วนก่อนบันทึก", "Setup Wizard ขั้นตรวจสอบ")
     bullet(doc, "กดบันทึกแล้วรอผล Online Registration")
-    bullet(doc, "ถ้าเชื่อม Host ไม่ได้ ระบบเสนอ Offline Registration และมีปุ่มยกเลิก")
+    bullet(doc, "ถ้าเชื่อม Host ไม่ได้ ให้ตรวจ Internet และการตั้งค่า จากนั้นกดลองใหม่หรือยกเลิกกลับไปตรวจ Wizard")
     callout(
         doc,
         "Secondary Desktop",
@@ -417,17 +417,18 @@ def settings(doc: Document) -> None:
 
 
 def registration(doc: Document) -> None:
-    heading(doc, "6. Registration และ Offline License")
+    heading(doc, "6. Registration")
     subheading(doc, "Online")
     bullet(doc, "โปรแกรมลงทะเบียนอัตโนมัติหลังจบ Wizard และเก็บ Token ใน OS vault")
     bullet(doc, "ส่ง Status และ Aggregate Total Meter ตามรอบประมาณ 6 ชั่วโมง")
     bullet(doc, "Host อาจแจ้งว่า Desktop ขาดการเชื่อมต่อหลังไม่พบข้อมูลเกิน 3 วัน ไม่ได้สรุปว่าเครื่องพิมพ์เสีย")
-    subheading(doc, "Offline")
-    bullet(doc, "เลือกลงทะเบียน Offline แล้วส่งออกไฟล์ .komirequest")
-    bullet(doc, "ส่งไฟล์ให้ผู้ดูแล และนำเข้าไฟล์ .komilicense ที่ได้รับกลับมา")
-    bullet(doc, "การนำเข้า .komilicense ใช้ได้เมื่อชุดติดตั้งมี Host public verification key ที่ตรงกับ key id ของ License; หากไม่มี โปรแกรมจะทำงานแบบ Online Registration เท่านั้น")
-    bullet(doc, "Offline License ปิด Registration/Status/Meter telemetry แต่ไม่ลบ Database, History, Billing หรือ Excel")
-    callout(doc, "อย่าเปิดหรือแก้ไฟล์ License เอง", "ไฟล์ถูกลงลายมือชื่อเพื่อผูกกับ Desktop และเครื่องพิมพ์ที่อนุญาต หากแก้เนื้อหาโปรแกรมจะปฏิเสธ", kind="stop")
+    callout(
+        doc,
+        "Offline Activation ปิดชั่วคราว",
+        "V5.2.4 ไม่แสดงปุ่มส่งออก .komirequest หรือนำเข้า .komilicense ใน Wizard และ Settings "
+        "การเปิดใช้งานครั้งแรกจึงต้องลงทะเบียน Online",
+        kind="note",
+    )
     subheading(doc, "การอัปเดตโปรแกรม")
     bullet(doc, f"V{VERSION} ไม่มีระบบ Update อัตโนมัติ, Forced Update หรือ Remote Command")
     bullet(doc, "เมื่อได้รับรุ่นใหม่ ให้ Exit โปรแกรม, Backup Database, ตรวจ SHA-256 และติดตั้งด้วยไฟล์ชุดใหม่ที่ผู้ส่งมอบอนุมัติ")
@@ -458,7 +459,7 @@ def final_check(doc: Document) -> None:
         "เลือกเครื่องพิมพ์ไม่เกิน 3 เครื่อง และ Model/Serial ตรงเครื่องจริง",
         "SNMP และ Web ผ่านทุกเครื่องที่เลือก",
         "ราคา รอบบิล และเปอร์เซ็นต์กระดาษเสียถูกต้อง",
-        "Online Registration สำเร็จ หรือ Offline License ถูกนำเข้าแล้วด้วย Host public verification key ที่ตรงกัน",
+        "Online Registration สำเร็จ",
         "อ่าน Total Meter หมึก ถาดกระดาษ และ Counter ได้ตามรุ่นที่รองรับ",
         "รายงานแยก Print/Copy และ Meter เริ่มต้นไม่ถูกนำไปคิดค่าใช้จ่าย",
         "Export Excel เปิดได้ครบ 6 ชีต",
@@ -487,7 +488,7 @@ def build() -> Path:
     props.title = f"KOMI Report V{VERSION} - คู่มือติดตั้งและใช้งาน"
     props.subject = "คู่มือลูกค้า Desktop, LAN Web, Reports, Registration และ Backup"
     props.author = "Konica Minolta - KOMI Report Team"
-    props.keywords = f"KOMI Report V{VERSION}, Setup, Report, Excel, LAN Web, Offline License"
+    props.keywords = f"KOMI Report V{VERSION}, Setup, Report, Excel, LAN Web, Online Registration"
     cover(doc)
     start(doc)
     install(doc)

@@ -14,8 +14,8 @@ from PyQt6.QtCharts import (
     QLineSeries,
     QValueAxis,
 )
-from PyQt6.QtCore import QDate, QMargins, QSignalBlocker, Qt, pyqtSignal
-from PyQt6.QtGui import QColor, QPainter
+from PyQt6.QtCore import QDate, QMargins, QPointF, QSignalBlocker, Qt, pyqtSignal
+from PyQt6.QtGui import QColor, QMouseEvent, QPainter
 from PyQt6.QtWidgets import (
     QAbstractItemView,
     QDateEdit,
@@ -92,6 +92,41 @@ USAGE_SUBLABELS = (
     "หน้า",
     "บาท",
 )
+
+
+class CalendarDateEdit(QDateEdit):
+    """A date field whose full surface opens the calendar popup.
+
+    Native QDateEdit only opens its calendar from the narrow drop-down arrow;
+    customers understandably click the date text itself.  Forwarding a left
+    click to the native drop-down sub-control keeps the platform calendar and
+    all built-in date validation while removing the typing-first behaviour.
+    """
+
+    def _popup_event(self, event: QMouseEvent) -> QMouseEvent:
+        local = QPointF(max(1, self.width() - 6), self.height() / 2)
+        global_position = QPointF(self.mapToGlobal(local.toPoint()))
+        return QMouseEvent(
+            event.type(),
+            local,
+            global_position,
+            event.button(),
+            event.buttons(),
+            event.modifiers(),
+            event.pointingDevice(),
+        )
+
+    def mousePressEvent(self, event: QMouseEvent) -> None:  # noqa: N802 - Qt API
+        if event.button() == Qt.MouseButton.LeftButton and self.calendarPopup():
+            super().mousePressEvent(self._popup_event(event))
+            return
+        super().mousePressEvent(event)
+
+    def mouseReleaseEvent(self, event: QMouseEvent) -> None:  # noqa: N802 - Qt API
+        if event.button() == Qt.MouseButton.LeftButton and self.calendarPopup():
+            super().mouseReleaseEvent(self._popup_event(event))
+            return
+        super().mouseReleaseEvent(event)
 
 
 def _number(value: float | int) -> str:
@@ -854,11 +889,12 @@ class CloudReportsWidget(QWidget):
 
     @staticmethod
     def _period_date_edit(accessible_name: str) -> QDateEdit:
-        control = QDateEdit()
+        control = CalendarDateEdit()
         control.setObjectName("cloud_period_date")
         control.setAccessibleName(accessible_name)
         control.setCalendarPopup(True)
         control.setDisplayFormat("dd/MM/yyyy")
+        control.lineEdit().setReadOnly(True)
         control.setMinimumWidth(142)
         control.setMaximumWidth(170)
         calendar = control.calendarWidget()

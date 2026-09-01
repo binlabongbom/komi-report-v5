@@ -5,7 +5,8 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from dataclasses import replace
 from datetime import date
 
-from PyQt6.QtCore import QDate, Qt
+from PyQt6.QtCore import QDate, QPoint, Qt
+from PyQt6.QtTest import QTest
 from PyQt6.QtWidgets import QApplication, QDateEdit
 
 from services.device_config import DeviceConfig
@@ -276,6 +277,18 @@ def test_cloud_reports_header_and_date_range_fit_desktop_minimum():
     assert widget.refresh_button.width() + 4 >= widget.refresh_button.sizeHint().width()
     assert widget.export_button.width() + 4 >= widget.export_button.sizeHint().width()
     assert all(start.width() >= 142 and end.width() >= 142 for start, end in widget.period_edit_pairs)
+    start_edit, _end_edit = widget.period_edit_pairs[0]
+    assert start_edit.calendarPopup()
+    assert start_edit.lineEdit().isReadOnly()
+    assert not start_edit.calendarWidget().isVisible()
+    QTest.mouseClick(
+        start_edit,
+        Qt.MouseButton.LeftButton,
+        pos=QPoint(start_edit.width() // 2, start_edit.height() // 2),
+    )
+    app.processEvents()
+    assert start_edit.calendarWidget().isVisible()
+    QTest.keyClick(start_edit, Qt.Key.Key_Escape)
 
     widget.close()
     app.processEvents()

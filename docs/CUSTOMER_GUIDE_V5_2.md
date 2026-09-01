@@ -1,8 +1,8 @@
-# KOMI Report V5.2.3 — คู่มือผู้ใช้งาน
+# KOMI Report V5.2.4 — คู่มือผู้ใช้งาน
 
 สถานะเอกสาร: Customer Review · อัปเดต 31 สิงหาคม 2569
 
-> **สถานะชุดติดตั้ง V5.2.3:** ชุดติดตั้งที่ไม่มี Authenticode/Developer ID ต้องแสดงว่าเป็น **UNSIGNED INSTALLATION CANDIDATE** ผู้ใช้ต้องตรวจ SHA-256 กับ `CHECKSUMS.sha256` ก่อนติดตั้ง Windows อาจแสดง Unknown Publisher และ Smart App Control อาจบล็อกโดยไม่มี Run anyway; macOS Gatekeeper อาจปฏิเสธแอปที่ไม่ notarized หากระบบปฏิเสธให้หยุดและติดต่อผู้ส่งมอบ/ฝ่าย IT ห้ามปิดหรือหลบระบบความปลอดภัย รายละเอียดอยู่ใน `CUSTOMER_INSTALL_GUIDE.md`
+> **สถานะชุดติดตั้ง V5.2.4:** ชุดติดตั้งที่ไม่มี Authenticode/Developer ID ต้องแสดงว่าเป็น **UNSIGNED INSTALLATION CANDIDATE** ผู้ใช้ต้องตรวจ SHA-256 กับ `CHECKSUMS.sha256` ก่อนติดตั้ง Windows อาจแสดง Unknown Publisher และ Smart App Control อาจบล็อกโดยไม่มี Run anyway; macOS Gatekeeper อาจปฏิเสธแอปที่ไม่ notarized หากระบบปฏิเสธให้หยุดและติดต่อผู้ส่งมอบ/ฝ่าย IT ห้ามปิดหรือหลบระบบความปลอดภัย รายละเอียดอยู่ใน `CUSTOMER_INSTALL_GUIDE.md`
 
 ## 1. ภาพรวม
 
@@ -25,7 +25,7 @@ KOMI Report ใช้อ่าน Total Meter และ Counter จากเค�
 5. กำหนด Slot และชื่อจุดติดตั้ง
 6. ตั้งราคา A4/A3 สีและขาวดำ วันตัดรอบบิล และเปอร์เซ็นต์กระดาษเสีย
 7. ตรวจสอบข้อมูล แล้วกด **บันทึกและเปิดโปรแกรม**
-8. รอ Online Registration สำเร็จ หาก Host ติดต่อไม่ได้ ให้เลือกขั้นตอน Offline Registration
+8. รอ Online Registration สำเร็จ หาก Host ติดต่อไม่ได้ ให้ตรวจ Internet และการตั้งค่า แล้วกดลองใหม่
 
 ระหว่างสแกน โปรแกรมแสดง Progress bar และจำนวน IP ที่ตรวจแล้ว กด Enter ในหน้ากำหนดช่วง IP เพื่อเริ่มสแกนได้
 
@@ -116,17 +116,15 @@ Web Report เปิดให้อัตโนมัติและแสดง
 
 ควรเปิดโหมดไม่ใช้รหัสเฉพาะ **Trusted LAN** เพราะผู้ที่อยู่ใน LAN เดียวกันอาจเห็นรายงาน ชื่อผู้ใช้ในรายงาน และตัวระบุเครื่องพิมพ์ ห้ามเปิด Web Report ออก Public Internet
 
-## 9. Online และ Offline Registration
+## 9. Online Registration
 
 Online Registration เป็นวิธีปกติและทำงานก่อนเปิดหน้าหลักครั้งแรก หลังลงทะเบียน โปรแกรมส่งสถานะตามรอบพร้อม Total Meter รวมของเครื่องที่เลือก
 
-หากไม่มี Internet ให้ส่งออก `.komirequest` แล้วนำเข้า `.komilicense` ที่ได้รับจากผู้ดูแล การนำเข้า License ใช้ได้เมื่อชุดติดตั้งมี **Host public verification key** ที่ตรงกับ `key id` ของไฟล์ License หากชุดติดตั้งไม่มี key ดังกล่าว โปรแกรมจะทำงานแบบ Online Registration เท่านั้น
-
-Offline License จะหยุด Registration, Status และ Meter telemetry แต่ไม่ลบ Database หรือรายงานในเครื่อง
+Offline Activation ถูกปิดชั่วคราวใน V5.2.4 และไม่มีปุ่มส่งออก `.komirequest` หรือนำเข้า `.komilicense` ใน Wizard และ Settings การเปิดใช้งานครั้งแรกจึงต้องเชื่อม Internet เพื่อลงทะเบียน Online
 
 ## 10. การอัปเดตโปรแกรม
 
-V5.2.3 ไม่มีระบบ Update อัตโนมัติ, Forced Update หรือ Remote Command เมื่อได้รับรุ่นใหม่ ให้ Exit โปรแกรม สร้าง Backup Database ตรวจ SHA-256 และติดตั้งด้วยไฟล์ชุดใหม่ที่ผู้ส่งมอบอนุมัติ
+V5.2.4 ไม่มีระบบ Update อัตโนมัติ, Forced Update หรือ Remote Command เมื่อได้รับรุ่นใหม่ ให้ Exit โปรแกรม สร้าง Backup Database ตรวจ SHA-256 และติดตั้งด้วยไฟล์ชุดใหม่ที่ผู้ส่งมอบอนุมัติ
 
 ## 11. ปิดโปรแกรมและแก้ปัญหาเบื้องต้น
 

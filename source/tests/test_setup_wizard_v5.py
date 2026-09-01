@@ -184,7 +184,7 @@ def test_setup_wizard_uses_the_approved_four_step_flow(tmp_path):
         assert wizard.first_started_input.isReadOnly()
         assert wizard.first_started_input.text() == "20/08/2026"
         assert wizard.version_input.isReadOnly()
-        assert wizard.version_input.text() == "5.2.3"
+        assert wizard.version_input.text() == "5.2.4"
         assert wizard.scan_button.text() == "ค้นหาเครื่องพิมพ์อัตโนมัติ"
         assert wizard.advanced_scan_button.text() == "กำหนดช่วง IP"
         assert wizard.manual_setup_button.text() == "เพิ่ม IP ด้วยตนเอง"
@@ -216,7 +216,7 @@ def test_setup_wizard_uses_the_approved_four_step_flow(tmp_path):
         assert wizard.next_button.text() == "บันทึกและเปิดโปรแกรม"
         assert "พร้อมนำเครื่องพิมพ์เข้าระบบ" in wizard.review_ready_note.text()
         registration_review = wizard.review_sections["registration"].text()
-        assert "Version 5.2.3" in registration_review
+        assert "Version 5.2.4" in registration_review
         assert "bizhub C450i × 1" in registration_review
         assert "Serial Number + รุ่นเครื่อง + สถานะเลือกใช้ + Aggregate Total Meter" in registration_review
         assert "IP, MAC, hostname, Credential, Counter รายละเอียด" in registration_review
@@ -352,7 +352,7 @@ def test_secondary_setup_persists_received_schedule_only_when_local_value_is_mis
             base_url="https://192.0.2.20:3000",
             company_name="บริษัท เครื่องหลัก จำกัด",
             printer_count=1,
-            version="5.2.3",
+            version="5.2.4",
             certificate_sha256="a" * 64,
         )
         wizard.secondary_snapshot = {
@@ -1497,7 +1497,7 @@ def test_setup_keeps_local_configuration_but_does_not_open_when_registration_enq
         assert wizard.result() == int(QDialog.DialogCode.Rejected)
         assert DeviceConfigRepository().setup_complete() is True
         assert database.get_cfg("registration_status") == "action_required"
-        assert wizard.registration_offline_button.isVisible()
+        assert not wizard.registration_offline_button.isVisible()
         wizard.close()
         app.processEvents()
     finally:
@@ -1548,7 +1548,7 @@ def test_setup_hidden_legacy_mode_cannot_bypass_online_registration(tmp_path):
         assert state["mode"] == "online"
         assert state["notice_version"] == REGISTRATION_NOTICE_VERSION
         assert state["notice_accepted_at"]
-        assert wizard.registration_offline_button.isVisible()
+        assert not wizard.registration_offline_button.isVisible()
         wizard.close()
         app.processEvents()
     finally:
@@ -1579,7 +1579,7 @@ def test_registration_progress_can_be_cancelled_back_to_review(tmp_path):
         database.set_db_path(original_path)
 
 
-def test_offline_registration_lazily_creates_runtime_and_exports_request(
+def test_offline_registration_entry_point_is_disabled_without_creating_runtime(
     tmp_path, monkeypatch
 ):
     original_path = _wizard_database(tmp_path)
@@ -1613,20 +1613,9 @@ def test_offline_registration_lazily_creates_runtime_and_exports_request(
         wizard._open_offline_registration()
         app.processEvents()
 
-        dialog = wizard._wizard_child_dialogs[-1]
-        buttons = {button.text(): button for button in dialog.findChildren(QPushButton)}
-        assert {"ยกเลิก", "ส่งออก Request", "นำเข้า License"} <= set(buttons)
-
-        buttons["ส่งออก Request"].click()
-        app.processEvents()
-
-        assert exported.read_text(encoding="utf-8") == "offline-request"
-        assert wizard.registration_runtime.mode == "offline"
-        assert wizard.registration_runtime.exported == exported
-
-        buttons["ยกเลิก"].click()
-        app.processEvents()
-        assert not dialog.isVisible()
+        assert wizard._wizard_child_dialogs == []
+        assert wizard.registration_runtime is None
+        assert not exported.exists()
         wizard.close()
         app.processEvents()
     finally:

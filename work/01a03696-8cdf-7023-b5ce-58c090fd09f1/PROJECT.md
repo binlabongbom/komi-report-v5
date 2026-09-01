@@ -8,11 +8,11 @@ department: dev
 status: active
 progress: 99
 owner: VEGA
-current_phase: V5.2.2 Production Unsigned — delivery complete
-current_task: Legacy Admin session collision source fix complete
-next_action: Build/reinstall only when Bom requests, then retest session collision on the exact installed runtime
-problem: none
-updated_at: 2026-08-31T22:10:00+07:00
+current_phase: V5.2.3 Production Unsigned — customer delivery package prepared
+current_task: Diagnose missing in-app Guide screenshots in installed V5.2.3
+next_action: Add the 13 customer-guide screenshots to PyInstaller datas and rebuild only when Bom requests the fix
+problem: Installed V5.2.3 opens the Guide layout but all 13 screenshots are absent from the packaged inventory
+updated_at: 2026-09-01T09:31:55+07:00
 ---
 
 # KOMI Report V5.2 — Production Print & Meter Alert
@@ -521,3 +521,122 @@ Decision boundary:
 
 - `PASS — BUILD + VM STAGING`; ยังไม่ใช่ installed-runtime acceptance ของ V5.2.3 และยังไม่ใช่ native Windows x64 UAT
 - Platform manifest คง `production_go=false` / `release_decision=HOLD` ตาม evidence gate เพราะ unsigned, VM ไม่ใช่ native x64, Joint Staging E2E และ Offline License public key ไม่ครบ; ไม่มีการแก้ผลย้อนหลังหรืออ้าง Signed build
+
+## V5.2.3 Customer Delivery Folder — 2026-09-01
+
+Outcome:
+
+- จัดชุดส่งมอบใหม่ให้ผู้ใช้เห็นเพียง 3 โฟลเดอร์: `ตัวติดตั้ง`, `คู่มือ` และ `ไฟล์สำหรับตรวจสอบ`
+- ย้ายไฟล์ Installer Windows x64 ไว้ใน `ตัวติดตั้ง`; สร้างคู่มือภาษาไทย PDF จาก Customer Guide V5.2.3 ปัจจุบันไว้ใน `คู่มือ`; แยก Manifest, SBOM, Inventory, Checksum และ Source ZIP ไว้ใน `ไฟล์สำหรับตรวจสอบ`
+- ไม่แก้ Source, Binary, Installer behavior หรือข้อมูลในโปรแกรมจากงานจัดโฟลเดอร์นี้
+
+Evidence:
+
+- Customer delivery root: `/Users/wongsakornu-phonram/Projects/dev/KOMI-Report-V5.2-Installers/KOMI Report V5.2.3`
+- Installer SHA-256 ตรวจซ้ำตรงกับ `CHECKSUMS.sha256`: `1de75a4451cfc8072389bcea66e08b2f59f14ea7a41c25db0c169cd681f72fa6`
+- คู่มือ PDF ภาษาไทย 17 หน้า render/visual QA ครบทุกหน้า ไม่มีข้อความหรือภาพถูกตัด; PDF ไม่เข้ารหัสและค้นหาข้อความภาษาไทยได้
+- คู่มือ PDF SHA-256: `ff813b039d63dd13feef145825aa2248b14b18545c8e67c41f2086417d53c46e`
+
+Decision boundary:
+
+- ลูกค้าทั่วไปใช้เฉพาะไฟล์ใน `ตัวติดตั้ง` และอ่าน `คู่มือ`; `ไฟล์สำหรับตรวจสอบ` มีไว้ให้ Support ตรวจสอบที่มา/Checksum เท่านั้น
+
+## V5.2.3 Installation Training VM Reset — 2026-09-01
+
+Outcome:
+
+- เคลียร์ VM `Window Test for KOMI` ให้เป็นสถานะก่อนติดตั้งครั้งแรก โดยลบเฉพาะตัวโปรแกรม KOMI, Database, Log, Runtime config, Shortcut, Auto-start/Scheduled Task, Service, Firewall rule และ Credential ที่เกี่ยวกับ KOMI
+- รักษาโฟลเดอร์ตัวติดตั้งบน Desktop และไฟล์ Windows อื่นของผู้ใช้ไว้; ไม่ติดตั้งหรือเปิด V5.2.3 ล่วงหน้า เพื่อให้เริ่มสอนได้ตั้งแต่การดับเบิลคลิก Installer
+- ย้ายโฟลเดอร์ Installer V5.2.2 และทางลัด Shared Installer ออกจาก Desktop ไปเก็บแบบกู้คืนได้ที่ `Documents\KOMI Training Archive`; บน Desktop เหลือโฟลเดอร์ Installer V5.2.3 เป็นชุดหลัก
+
+Evidence:
+
+- Guest Control headless authentication PASS
+- Post-clear audit: Roots/Uninstall/Tasks/Services/Firewall/Processes/Databases ว่างทั้งหมด และ `WebShortcutExists=false`
+- Credential audit: `Count=0`
+- Desktop ยังมี `KOMI_Report_V5_2_3_Installers`; ภายในมี Installer `111,525,665` bytes และไฟล์ตรวจสอบครบ
+
+Decision boundary:
+
+- `PASS — CLEAN FIRST-INSTALL TRAINING STATE`; เป็น Windows 11 ARM64 VM x64-emulation preflight ไม่ใช่ native Windows x64 UAT
+
+## One-click VM Training Reset — 2026-09-01
+
+Outcome:
+
+- เพิ่ม Script กลาง `/Users/wongsakornu-phonram/Documents/Codex/tools/reset_komi_vm_for_training.command` และ Shortcut บน Mac Desktop ชื่อ `รีเซ็ต KOMI VM สำหรับทดสอบ.command`
+- Script เปิด VM แบบ Headless เมื่อจำเป็น, ใช้ Guest Control credential จาก macOS Keychain, ล้างเฉพาะข้อมูล KOMI และบังคับตรวจว่า Install/Data/Log/Process/Task/Service/Firewall/Database/Credential ว่างก่อนรายงาน PASS
+- ไม่ฝังหรือแสดงรหัสผ่าน, ไม่ลบโฟลเดอร์ตัวติดตั้ง, ไม่แตะข้อมูล Windows อื่น และไม่ปิด Defender/Smart App Control
+
+Evidence:
+
+- Permission ของ Script เป็น owner-only executable (`700`)
+- `zsh -n` Syntax check PASS
+- ยังไม่ได้รัน Script กับ VM เพราะ Bom แจ้งว่ากำลังใช้งาน VM; ไม่มีการแตะ VM จากขั้นตอนสร้าง Script นี้
+
+Decision boundary:
+
+- `READY — STATIC CHECK ONLY`; รอบแรกที่รันจริงต้องเก็บเวลาและ audit PASS ก่อนถือว่า One-click workflow ผ่านจริง
+
+## Installed V5.2.3 Guide Images Diagnosis — 2026-09-01
+
+Outcome:
+
+- ยืนยันอาการจาก Installed Windows V5.2.3: หน้า Guide และสารบัญเปิดได้ แต่แสดง `ไม่พบภาพประกอบคู่มือ` แทนภาพทุกส่วน
+- Root cause อยู่ที่ Packaging ไม่ใช่ VM, Database หรือ Windows: `source/app.spec` บรรจุเฉพาะ Diagram 4 ไฟล์ใน `docs` แต่ไม่ได้เพิ่มโฟลเดอร์ `docs/customer-guide/assets-v5.2` ที่มี Screenshot 13 ภาพ
+- Code ขณะรันจาก Source หาไฟล์ผ่าน parent `docs` ได้ จึงไม่พบปัญหาในการตรวจ Source; Installed runtime ไม่มี parent project folder ให้ fallback
+
+Evidence:
+
+- Source มี Screenshot `01-setup-company.png` ถึง `13-manual.png` ครบ
+- Windows V5.2.3 `FILE_INVENTORY.json` มี 8,596 entries แต่ค้นหา `assets-v5.2`, `customer-guide` และ `setup-company.png` ได้ 0 entries
+- ไม่ได้แก้ Source, Installer หรือ VM ในการวินิจฉัยนี้
+
+Decision boundary:
+
+- `FAIL — INSTALLER CONTENT`; กระทบเฉพาะภาพประกอบคู่มือในโปรแกรม ส่วนคู่มือ PDF ภายนอกและฟังก์ชันหลักไม่ใช่สาเหตุเดียวกัน
+
+## V5.2.3 Source Review Fixes — Guide Assets, Report Calendar and Offline Activation — 2026-09-01
+
+Outcome:
+
+- แก้ Source สำหรับรอบตรวจทานก่อน Build ครบ 3 จุด โดยยังไม่สร้าง Installer ใหม่และไม่แตะ VM
+- เพิ่ม `docs/customer-guide/assets-v5.2` เข้า PyInstaller spec เพื่อให้ Build ถัดไปบรรจุภาพคู่มือครบ 13 ภาพ
+- ช่องวันที่เริ่มต้น/สิ้นสุดในขอบเขตรายงานเปิด Native Calendar เมื่อคลิกบริเวณใดก็ได้ของช่อง และไม่รับการพิมพ์วันที่โดยตรง
+- ปิด Customer entry point ของ Offline Activation ชั่วคราวทั้ง Setup Wizard และ Settings; การลงทะเบียนใช้งาน Online เท่านั้น ขณะที่ implementation เดิมยังเก็บไว้หลัง feature flag เพื่อเปิดในรุ่นภายหลังได้
+
+Evidence:
+
+- Focused Guide/Calendar/Wizard/Settings regression: `87 passed in 12.98s`
+- Guide asset/spec gate แยก: `4 passed in 3.08s`; ยืนยัน Screenshot 13 ไฟล์มีอยู่และ `app.spec` บรรจุ asset directory
+- Calendar UI test คลิกกึ่งกลางช่องวันที่แล้ว Native Calendar แสดงจริง; line edit เป็น read-only
+- Offline Activation UI tests ยืนยันปุ่ม/ตัวเลือก/สรุป Offline ถูกซ่อน และ method guard ไม่สร้าง runtime, request หรือ import เมื่อ feature flag ปิด
+- Scoped Ruff, compileall และ `git diff --check` ผ่าน
+- Full one-process Qt suite พบ native `Bus error` จาก accumulated Qt state ใน `i18n.apply_language` ระหว่างประมาณ 20%; exact test ที่ process ล้มผ่านเมื่อรันแยก `1 passed in 0.84s` จึงบันทึกเป็น test-harness HOLD ไม่ใช่ assertion failure ของ 3 จุดนี้
+
+Decision boundary:
+
+- `PASS — SOURCE REVIEW FIX`; ยังไม่ Build และยังไม่อ้าง Installed-runtime PASS จน Bom ตรวจ Source UX และสั่ง Build
+- Offline Activation ถูกปิดเฉพาะช่องทางผู้ใช้ ไม่ลบ code/runtime เดิมและไม่เปลี่ยนข้อมูล DB/History/Billing/Excel
+
+## V5.2.4 Exact-source Pre-build Gate — 2026-09-01
+
+Outcome:
+
+- ยก Version authority และ Build metadata จาก `5.2.3` เป็น `5.2.4` ครบทั้ง Desktop, Web, PyInstaller bundle และ Inno Setup โดยยังไม่เปลี่ยน Registration payload, Meter/Billing/History/Excel semantics หรือ Host contract
+- รวม 3 source fixes ที่ Bom ตรวจพบจาก Installed V5.2.3: บรรจุภาพคู่มือ 13 ภาพใน App bundle, ช่องช่วงวันที่รายงานคลิกพื้นที่ใดก็ได้แล้วเปิด Native Calendar และซ่อน Offline Activation ทุก customer entry point ชั่วคราว
+- สร้าง Customer Guide V5.2.4 ภาษาไทยฉบับ DOCX จาก source เดียวกันแล้ว; PDF จาก bundled renderer ยังไม่ใช้เป็น customer evidence เพราะพบการแทนฟอนต์ภาษาไทยไม่สมบูรณ์และต้องสร้างผ่าน Word/เส้นทางที่รักษา Prompt ได้ก่อนส่งมอบ
+
+Evidence:
+
+- Focused Version/Release/Wizard/Settings/Calendar/Manual packaging/Web API: `147 passed in 20.88s`
+- Python fresh-process regression ครบ `86` test files / `643 passed` / `0 failed files`; ใช้ fresh process เพื่อเลี่ยง native PyQt accumulated-lifetime crash เดิม
+- Release-focused Phase 4/5/6 + release builder: `56 passed in 5.70s`
+- Scoped Ruff, compileall, `git diff --check` และ Version gate `5.2.4` ผ่าน
+- Web TypeScript lint, security `4/4`, Next.js production build และ npm production audit `0 vulnerabilities` ผ่าน
+- Customer Guide DOCX render ได้ 17 หน้าและ assets ครบ แต่ bundled PDF render ทำข้อความไทยบางส่วนหาย จึง fail-closed ไม่ใช้ PDF ชุดนั้นเป็นไฟล์ลูกค้า
+
+Decision boundary:
+
+- `PASS — EXACT SOURCE PRE-BUILD`; ยังไม่ใช่ Artifact PASS จน macOS/Windows build, manifest/checksum/SBOM/inventory และ packaged smoke เสร็จ
+- ชุด Windows/macOS จะคงเป็น `Unsigned`; ต้องระบุ Unknown Publisher/Gatekeeper/Smart App Control limitation ตามจริง และห้ามปิดหรือ bypass ระบบความปลอดภัยเพื่อสร้างหลักฐานผ่าน

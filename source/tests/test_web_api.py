@@ -24,7 +24,7 @@ def test_peer_discovery_is_minimal_and_snapshot_is_allow_listed(monkeypatch):
         "ready": True,
         "company_name": "บริษัท ทดสอบ จำกัด",
         "printer_count": 1,
-        "version": "5.2.3",
+        "version": "5.2.4",
     }
     snapshot = {
         "contract": "komi-secondary-setup/v1",
