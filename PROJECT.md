@@ -12,7 +12,7 @@ current_phase: Production registration built-in customer runtime implementation
 current_task: package approved built-in policy and limited bootstrap identifier, then rebuild customer installers
 next_action: API team must deploy serial_number allow-list/persistence/Dashboard; rerun current-client E2E before customer release
 problem: RELEASE HOLD — live current-client Registration still returns HTTP 422 for device_inventory.devices.0.serial_number
-updated_at: 2026-08-24T10:45:00+07:00
+updated_at: 2026-09-01T13:35:00+07:00
 ---
 
 # KOMI Report V5.1
@@ -1658,6 +1658,13 @@ Task evidence แบบละเอียดอยู่ใน canonical thread 
   มีเฉพาะ EXE, DMG, checksum, manifest และ sanitized install/launch evidence พร้อมป้ายห้ามส่งลูกค้า.
 - Live current-client probe ใช้ built-in policy + bootstrap เดิมจริงแล้ว แต่ `POST /api/v1/installations/register` ยังตอบ `HTTP 422 VALIDATION_ERROR` พร้อม safe message ว่า `device_inventory.devices.0.serial_number` ไม่อยู่ใน deployed privacy allow-list. ไม่มี remote Installation ถูกสร้างและไม่ได้รับ token จึงไม่มี heartbeat/read-back/cleanup.
 - คำตัดสินยัง **RELEASE HOLD**. Code/packaging path พร้อมสำหรับ build แต่ห้ามเรียก Production-ready หรือแจกตัวติดตั้งจน API deploy `serial_number` แล้ว current-client register/replay/heartbeat/Dashboard/deactivate ผ่าน.
+
+## Build, Version and GitHub governance — 2026-09-01
+
+- จัด installer hub ภายนอก source ใหม่: คง `KOMI Report V5.2.4/` เป็นชุดลูกค้าปัจจุบัน, ย้าย raw build ไป `_Build-Staging/V5.2.4/` และย้าย V5.2.0–V5.2.3 ไป `_Archive/Previous-Releases/` พร้อม move log/checksum verification; ไม่มี DB/CSV/log/license/runtime หรือ canonical source ถูกย้าย.
+- OneDrive V5.2.0 installer set ถูกย้ายไป macOS Trash ตามคำสั่งของ Bom เพื่อเตรียมวางชุดใหม่; ยัง recover ได้จนกว่าจะล้าง Trash.
+- อนุมัติ design `docs/RELEASE_BUILD_AND_GITHUB_WORKFLOW.md`: version authority อยู่ที่ `source/komi_version.py`, build output แยกตาม `Vx.y.z/<commit>`, final customer bundle มีเพียงหนึ่ง folder ระดับ root, และ source/tag ถูก push GitHub หลัง release-safety/test gate.
+- Git tag เป็น source provenance เท่านั้น; ห้ามใช้แทน signing, native UAT, Registration E2E หรือ Production GO.
 
 ## Definition of Done
 
