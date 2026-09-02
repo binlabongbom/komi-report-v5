@@ -106,6 +106,40 @@ def test_manager_restarts_owned_worker(tmp_path, monkeypatch):
     assert len(processes) == 0
 
 
+def test_embedded_windows_install_uses_bundled_runtime_without_npm(tmp_path, monkeypatch):
+    project = tmp_path / "installed"
+    seed = project / "web-runtime-seed"
+    (seed / ".next").mkdir(parents=True)
+    (seed / ".next" / "BUILD_ID").write_text("build\n", encoding="utf-8")
+    node = project / "node-runtime" / "node.exe"
+    node.parent.mkdir()
+    node.write_bytes(b"node")
+    calls = []
+
+    class _Thread:
+        def __init__(self, *, target, args, name, daemon):
+            calls.append((target, args, name, daemon))
+            self.started = False
+
+        def start(self):
+            self.started = True
+
+        def is_alive(self):
+            return self.started
+
+    monkeypatch.setattr(web_service, "app_data_home", lambda: tmp_path / "data")
+    monkeypatch.setattr(web_service, "_port_open", lambda _port: False)
+    monkeypatch.setattr(web_service.threading, "Thread", _Thread)
+    monkeypatch.delattr(web_service.sys, "frozen", raising=False)
+    manager = web_service.WebServiceManager(project)
+
+    status = manager.start()
+
+    assert status.state == "starting"
+    assert calls[0][1] == (project, seed, node)
+    assert manager._process is None
+
+
 def test_packaged_runtime_seed_refresh_preserves_local_security_files(tmp_path):
     seed = tmp_path / "seed"
     runtime = tmp_path / "runtime"
@@ -125,6 +159,9 @@ def test_packaged_runtime_seed_refresh_preserves_local_security_files(tmp_path):
     manager._prepare_packaged_runtime(seed)
 
     assert (runtime / ".next" / "BUILD_ID").read_text(encoding="utf-8").strip() == "new-build"
+    assert (
+        runtime / web_service._PACKAGED_RUNTIME_STAMP
+    ).read_text(encoding="utf-8").strip() == "new-build"
     assert (runtime / "node_modules" / "runtime.js").read_text(encoding="utf-8") == "new"
     assert (runtime / ".env.local").read_text(encoding="utf-8") == "LOCAL=preserved\n"
     assert (runtime / "security" / "web-auth-state.json").is_file()
