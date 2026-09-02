@@ -1,0 +1,30 @@
+name: Apply V5.2.6 Performance Patch
+on:
+  push:
+    branches: [chatgpt/v5-2-6-performance]
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: chatgpt/v5-2-6-performance
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python tools/apply_v526_performance.py
+      - run: |
+          python -m py_compile source/app.py source/komi_version.py source/tests/test_v526_performance_contract.py
+          python -m pip install pytest
+          python -m pytest -q source/tests/test_v526_performance_contract.py
+      - shell: pwsh
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add source/app.py source/komi_version.py source/tests/test_v526_performance_contract.py
+          if (-not (git diff --cached --quiet)) {
+            git commit -m "perf: make V5.2.6 startup and navigation responsive"
+            git push origin HEAD:chatgpt/v5-2-6-performance
+          }
