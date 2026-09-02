@@ -413,11 +413,14 @@ class MainWindow(QMainWindow):
         self._quitting = False
         self._background_started = False
         self._registration_collection_ready = False
-        self._refresh_all()  # ดึงข้อมูลจาก DB แล้วส่งให้ทุกหน้าแสดงผล
+        # V5.2.6 performance: do not block first paint on database aggregation.
+        # The same refresh still runs immediately after the event loop gets a
+        # chance to present the workspace, preserving data and UI semantics.
         self._refresh_timer = QTimer(self)
         self._refresh_timer.setSingleShot(True)
         self._refresh_timer.setInterval(150)
         self._refresh_timer.timeout.connect(self._refresh_all)
+        self._startup_refresh_pending = True
         self.polling = BackgroundPollingCoordinator(parent=self)
         self.web_service = web_service_manager()
         self.polling.device_updated.connect(self._device_updated)
@@ -908,14 +911,24 @@ class MainWindow(QMainWindow):
         ):
             return
 
-        self._load_deferred_page(idx)
+        is_deferred = idx in self._deferred_pages
 
-        # รีเซท active state ของทุกปุ่มก่อน แล้วค่อย highlight ปุ่มที่กด
+        # Switch to the existing lightweight host first so Qt can paint the
+        # navigation response immediately. Expensive page construction then
+        # happens on the next event-loop turn instead of freezing the old tab.
         for b in self.nav_btns:
             b.set_active(False)
         clicked_btn.set_active(True)
-        self.stack.setCurrentIndex(idx)  # สลับให้แสดงหน้าตาม index
+        self.stack.setCurrentIndex(idx)
+        if is_deferred:
+            QTimer.singleShot(0, lambda index=idx: self._finish_deferred_navigation(index))
+            return
         if self._ui_ready:
+            self._refresh_visible_page()
+
+    def _finish_deferred_navigation(self, index: int) -> None:
+        self._load_deferred_page(index)
+        if self.stack.currentIndex() == index and self._ui_ready:
             self._refresh_visible_page()
 
     def _schedule_refresh_all(self) -> None:
@@ -1869,14 +1882,23 @@ if __name__ == "__main__":
         sys.exit(0)
 
     def show_configured_application() -> None:
-        # The Wizard has already completed mandatory Online Registration or a
-        # valid Offline License before this callback can open the workspace.
-        win.start_background_services()
+        # V5.2.6 performance: first paint wins. Keep the exact same startup
+        # services and data refresh, but let Qt present the workspace before
+        # synchronous local refresh and service orchestration compete for the
+        # UI thread. Background launches remain hidden as before.
         splash.close()
         if "--background" in sys.argv:
             win.hide()
         else:
             win._show_main_window()
+
+        def finish_startup() -> None:
+            if getattr(win, "_startup_refresh_pending", False):
+                win._startup_refresh_pending = False
+                win._refresh_all()
+            win.start_background_services()
+
+        QTimer.singleShot(0, finish_startup)
 
     def cancel_first_setup() -> None:
         splash.close()
