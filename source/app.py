@@ -410,9 +410,10 @@ class MainWindow(QMainWindow):
         self._ui_ready = True
 
         if splash: splash.set_message("กำลังโหลดข้อมูล...")
-        self._refresh_all()  # ดึงข้อมูลจาก DB แล้วส่งให้ทุกหน้าแสดงผล
         self._quitting = False
         self._background_started = False
+        self._registration_collection_ready = False
+        self._refresh_all()  # ดึงข้อมูลจาก DB แล้วส่งให้ทุกหน้าแสดงผล
         self._refresh_timer = QTimer(self)
         self._refresh_timer.setSingleShot(True)
         self._refresh_timer.setInterval(150)
@@ -636,6 +637,8 @@ class MainWindow(QMainWindow):
         elif index == self._reports_index:
             page.reading_status_requested.connect(self._open_sync_log)
         apply_language(page)
+        if self._background_started:
+            self._apply_registration_collection_gate()
         return page
 
     def _build_tray(self):
@@ -680,9 +683,13 @@ class MainWindow(QMainWindow):
         if self._background_started:
             return
         self._background_started = True
-        self.registration.configuration_changed()
-        self.registration.start()
+        # A persisted ``registered`` state may be stale after the Host was
+        # deactivated while the app was closed. Keep all device reads paused
+        # until the startup status probe finishes.
+        self._registration_collection_ready = False
         self._apply_registration_collection_gate()
+        self.registration.start()
+        self.registration.configuration_changed()
         self.polling.start()
         if get_cfg("web_service_enabled", "1") != "0":
             status = self.web_service.start()
@@ -690,9 +697,12 @@ class MainWindow(QMainWindow):
 
     def _registration_status_changed(self, _status: str) -> None:
         if self._background_started:
+            self._registration_collection_ready = True
             self._apply_registration_collection_gate()
 
     def _registration_usage_eligibility(self) -> tuple[bool, str]:
+        if self._background_started and not self._registration_collection_ready:
+            return False, "status_check_pending"
         try:
             return self.registration.usage_eligibility()
         except Exception:
@@ -709,19 +719,40 @@ class MainWindow(QMainWindow):
             return
         self.polling.poll_now(slot)
 
+    def _set_collection_actions_enabled(self, enabled: bool) -> None:
+        targets = [
+            getattr(self, "_tray_read_action", None),
+            getattr(getattr(self, "pg_import", None), "sync_button", None),
+            getattr(getattr(self, "pg_overview", None), "btn_sync_now", None),
+            getattr(
+                getattr(getattr(self, "pg_settings", None), "activity", None),
+                "sync_button",
+                None,
+            ),
+        ]
+        for target in targets:
+            if target is not None:
+                target.setEnabled(enabled)
+
     def _apply_registration_collection_gate(self) -> None:
         """Keep local history open while fail-closing every new device read."""
         eligible, reason = self._registration_usage_eligibility()
-        read_action = getattr(self, "_tray_read_action", None)
         if eligible:
             self.polling.resume()
-            if read_action is not None:
-                read_action.setEnabled(True)
+            self._set_collection_actions_enabled(
+                not bool(getattr(self.polling, "active", ()))
+            )
+            self.status_lbl.setText("เปิดใช้งาน · ดูประวัติและอ่านข้อมูลใหม่ได้")
+            self.status_lbl.setToolTip(f"Registration: {reason}")
             return
         self.polling.pause(reason)
-        if read_action is not None:
-            read_action.setEnabled(False)
-        self.status_lbl.setText("ปิดใช้งาน · ดูประวัติได้\nหยุดดึงข้อมูลใหม่จากเครื่อง")
+        self._set_collection_actions_enabled(False)
+        status = (
+            "กำลังตรวจสอบสถานะ · ดูประวัติได้\nยังไม่ดึงข้อมูลใหม่จากเครื่อง"
+            if reason == "status_check_pending"
+            else "ปิดใช้งาน · ดูประวัติได้\nหยุดดึงข้อมูลใหม่จากเครื่อง"
+        )
+        self.status_lbl.setText(status)
         self.status_lbl.setToolTip(f"Registration: {reason}")
 
     def _install_network_recovery_monitor(self) -> None:
@@ -758,6 +789,7 @@ class MainWindow(QMainWindow):
         if not self.polling.active:
             self.pg_import.sync_completed()
         if self.polling.is_paused:
+            self._set_collection_actions_enabled(False)
             return
         devices = DeviceConfigRepository().list(enabled_only=True)
         online = sum(device.connection_status == "online" for device in devices)
@@ -954,6 +986,10 @@ class MainWindow(QMainWindow):
             self.status_lbl.setText(
                 tr("ยังไม่มีประวัติการอ่าน", "No reading history yet")
             )
+        if self._background_started:
+            eligible, _reason = self._registration_usage_eligibility()
+            if not eligible:
+                self._apply_registration_collection_gate()
 
 
 # ══════════════════════════════════════════════════════════

@@ -386,6 +386,46 @@ def test_deactivated_host_cancels_meter_until_status_probe_confirms_reactivation
     assert [item.event_type for item in client.operations] == ["status", "status", "meter"]
 
 
+def test_startup_forces_fresh_status_before_stale_meter_inside_recovery_cooldown():
+    state = _configured()
+    state.update_registration_devices(_inventory(), now=NOW)
+    state.mark_registration_succeeded(_inventory(), now=NOW)
+    vault = SessionRegistrationSecretStore()
+    vault.save(
+        installation_token_reference(INSTALLATION_ID),
+        "synthetic-installation-token",
+    )
+    outbox = V52OutboxRepository()
+    first_client = FakeClient([_success()])
+    first = _processor(
+        client=first_client,
+        state=state,
+        outbox=outbox,
+        vault=vault,
+        now=NOW,
+    )
+    assert first.run_once() is True
+    assert first_client.operations[0].event_type == "status"
+    assert outbox.active_count("meter") == 1
+
+    restart_time = NOW + timedelta(minutes=1)
+    deactivated_client = FakeClient(
+        [_failure(retryable=False, code="installation_deactivated")]
+    )
+    restarted = _processor(
+        client=deactivated_client,
+        state=state,
+        outbox=outbox,
+        vault=vault,
+        now=restart_time,
+    )
+
+    assert restarted.run_once(force_status_probe=True) is True
+    assert deactivated_client.operations[0].event_type == "status"
+    assert state.usage_eligibility(now=restart_time) == (False, "deactivated")
+    assert outbox.active_count("meter") == 0
+
+
 def test_status_success_replaces_rotated_token_in_vault_without_exposing_it():
     state = _configured()
     state.mark_registration_succeeded(_inventory(), now=NOW)

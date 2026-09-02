@@ -37,6 +37,7 @@ class _PollingGate:
         self.paused: list[str] = []
         self.resume_count = 0
         self.manual_polls: list[int | None] = []
+        self.start_count = 0
 
     def pause(self, reason: str) -> None:
         self.paused.append(reason)
@@ -46,6 +47,9 @@ class _PollingGate:
 
     def poll_now(self, slot: int | None = None) -> None:
         self.manual_polls.append(slot)
+
+    def start(self) -> None:
+        self.start_count += 1
 
 
 class _TextTarget:
@@ -185,14 +189,23 @@ def test_deactivated_registration_pauses_collection_and_reactivation_resumes_it(
         polling=polling,
         status_lbl=status,
         _tray_read_action=read_action,
+        pg_import=SimpleNamespace(sync_button=_ActionTarget()),
+        pg_overview=SimpleNamespace(btn_sync_now=_ActionTarget()),
     )
     window._registration_usage_eligibility = runtime.usage_eligibility
+    window._set_collection_actions_enabled = (
+        lambda enabled: app.MainWindow._set_collection_actions_enabled(
+            window, enabled
+        )
+    )
     window._apply_registration_collection_gate = lambda: app.MainWindow._apply_registration_collection_gate(window)
 
     app.MainWindow._apply_registration_collection_gate(window)
 
     assert polling.paused == ["deactivated"]
     assert read_action.enabled is False
+    assert window.pg_import.sync_button.enabled is False
+    assert window.pg_overview.btn_sync_now.enabled is False
     assert "ดูประวัติได้" in status.text
     app.MainWindow._request_manual_poll(window, 1)
     assert polling.manual_polls == []
@@ -203,4 +216,61 @@ def test_deactivated_registration_pauses_collection_and_reactivation_resumes_it(
 
     assert polling.resume_count == 1
     assert read_action.enabled is True
+    assert window.pg_import.sync_button.enabled is True
+    assert window.pg_overview.btn_sync_now.enabled is True
     assert polling.manual_polls == [1]
+
+
+def test_background_start_waits_for_fresh_host_status_before_polling():
+    events: list[str] = []
+
+    class Registration:
+        def start(self) -> None:
+            events.append("registration.start")
+
+        def configuration_changed(self) -> None:
+            events.append("registration.configuration_changed")
+
+        def usage_eligibility(self) -> tuple[bool, str]:
+            return True, "registered"
+
+    class WebService:
+        def start(self):
+            return SimpleNamespace(state="starting", detail="test")
+
+    polling = _PollingGate()
+    window = SimpleNamespace(
+        _background_started=False,
+        _registration_collection_ready=True,
+        registration=Registration(),
+        polling=polling,
+        web_service=WebService(),
+        status_lbl=_TextTarget(),
+        _tray_read_action=_ActionTarget(),
+        pg_import=SimpleNamespace(sync_button=_ActionTarget()),
+        pg_overview=SimpleNamespace(btn_sync_now=_ActionTarget()),
+    )
+    window._registration_usage_eligibility = (
+        lambda: app.MainWindow._registration_usage_eligibility(window)
+    )
+    window._set_collection_actions_enabled = (
+        lambda enabled: app.MainWindow._set_collection_actions_enabled(
+            window, enabled
+        )
+    )
+    window._apply_registration_collection_gate = (
+        lambda: app.MainWindow._apply_registration_collection_gate(window)
+    )
+
+    app.MainWindow.start_background_services(window)
+
+    assert events == ["registration.start", "registration.configuration_changed"]
+    assert polling.start_count == 1
+    assert polling.paused == ["status_check_pending"]
+    assert polling.resume_count == 0
+    assert window.pg_import.sync_button.enabled is False
+
+    app.MainWindow._registration_status_changed(window, "registered")
+
+    assert polling.resume_count == 1
+    assert window.pg_import.sync_button.enabled is True

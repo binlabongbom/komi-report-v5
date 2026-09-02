@@ -67,6 +67,7 @@ class BackgroundPollingCoordinator(QObject):
         self._rollover_lock = threading.RLock()
         self._paused_reason = ""
         self._started = False
+        self._scheduler_initialized = False
         self._stopped = False
         self.timer = QTimer(self)
         self.timer.setInterval(30_000)
@@ -81,31 +82,39 @@ class BackgroundPollingCoordinator(QObject):
         if self.is_paused:
             log.info("background polling start deferred while paused: %s", self._paused_reason)
             return
+        self._activate_scheduler()
+
+    def _activate_scheduler(self) -> None:
+        """Initialize once, then start scheduling after start or resume."""
         self.reload_policy()
-        repaired = self.cache.repair_pending_ledger()
-        if repaired:
+        if not self._scheduler_initialized:
+            repaired = self.cache.repair_pending_ledger()
+            if repaired:
+                pipeline_log.append(
+                    stage="DB",
+                    action="Pending billing ledger repaired",
+                    target="billing_ledger",
+                    value=f"{repaired} daily records",
+                    detail="startup idempotency repair",
+                    status="ok",
+                )
+            self._finalize_before(date.today())
             pipeline_log.append(
-                stage="DB",
-                action="Pending billing ledger repaired",
-                target="billing_ledger",
-                value=f"{repaired} daily records",
-                detail="startup idempotency repair",
+                stage="POLICY",
+                action="Background started",
+                target="scheduler",
+                value=f"SNMP ทุก {int(self.snmp_interval.total_seconds() // 60)} นาที",
+                detail=(
+                    f"Web ปกติ {int(self.machine.policy.web_interval.total_seconds() // 60)} นาที · "
+                    f"Peak {int(self.machine.policy.peak_web_interval.total_seconds() // 60)} นาที"
+                ),
                 status="ok",
             )
-        self._finalize_before(date.today())
-        pipeline_log.append(
-            stage="POLICY",
-            action="Background started",
-            target="scheduler",
-            value=f"SNMP ทุก {int(self.snmp_interval.total_seconds() // 60)} นาที",
-            detail=(
-                f"Web ปกติ {int(self.machine.policy.web_interval.total_seconds() // 60)} นาที · "
-                f"Peak {int(self.machine.policy.peak_web_interval.total_seconds() // 60)} นาที"
-            ),
-            status="ok",
-        )
+            self._scheduler_initialized = True
         for device in self.repository.list(enabled_only=True):
-            self.states[device.slot] = DevicePollState(last_snmp_total=device.last_total)
+            self.states.setdefault(
+                device.slot, DevicePollState(last_snmp_total=device.last_total)
+            )
         self.timer.start()
         QTimer.singleShot(250, self.tick)
 
@@ -145,13 +154,7 @@ class BackgroundPollingCoordinator(QObject):
             self._paused_reason = ""
         if not was_paused or not self._started:
             return
-        self.reload_policy()
-        for device in self.repository.list(enabled_only=True):
-            self.states.setdefault(
-                device.slot, DevicePollState(last_snmp_total=device.last_total)
-            )
-        self.timer.start()
-        QTimer.singleShot(0, self.tick)
+        self._activate_scheduler()
         log.info("background polling resumed")
 
     def stop(self) -> int:

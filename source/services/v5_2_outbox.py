@@ -126,7 +126,12 @@ class V52OutboxRepository:
             row = connection.execute(
                 """SELECT * FROM v52_telemetry_outbox
                    WHERE state IN ('pending','retry') AND next_attempt_at<=?
-                   ORDER BY next_attempt_at,created_at LIMIT 1""",
+                   ORDER BY CASE event_type
+                                WHEN 'register' THEN 0
+                                WHEN 'status' THEN 1
+                                ELSE 2
+                            END,
+                            next_attempt_at,created_at LIMIT 1""",
                 (stamp,),
             ).fetchone()
             if not row:

@@ -166,6 +166,7 @@ def test_pause_blocks_scheduled_and_manual_polling_then_resume_reuses_executor(t
     coordinator.poll_now()
 
     assert coordinator.is_paused is False
+    assert coordinator._scheduler_initialized is True
     assert submissions == [(0, True)]
     coordinator.stop()
 
