@@ -11,16 +11,18 @@ _qt_app_keepalive = None
 
 @pytest.fixture(autouse=True)
 def cleanup_qt_widgets():
-    """Keep one QApplication alive and deliver deferred deletes between tests.
+    """Keep one QApplication alive and close top-level widgets between tests.
 
     Individual UI tests commonly create ``QApplication([])`` in a local
     variable.  On Windows the wrapper can otherwise be destroyed between
     tests, making the next QApplication reuse stale Qt chart/table state.
+    Native deferred-delete dispatch is intentionally left to Qt: forcing it
+    from fixture teardown can abort while accessibility/chart events still
+    reference a window that was just closed.
     """
     global _qt_app_keepalive
     yield
     try:
-        from PyQt6.QtCore import QCoreApplication, QEvent
         from PyQt6.QtWidgets import QApplication
     except ImportError:
         return
@@ -34,8 +36,6 @@ def cleanup_qt_widgets():
             widget.deleteLater()
         except RuntimeError:
             continue
-    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
-    app.processEvents()
 
 
 @pytest.fixture(autouse=True)
