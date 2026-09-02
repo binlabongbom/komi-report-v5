@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import importlib
+
 from services import web_service
 
 
@@ -19,6 +21,12 @@ def test_proxy_replaces_spoofed_remote_identity_case_insensitively():
         "x-komi-remote-address": "192.0.2.44",
         "x-forwarded-proto": "https",
     }
+
+
+def test_web_service_worker_imports_from_source_package():
+    worker = importlib.import_module("tools.web_service_worker")
+
+    assert callable(worker.main)
 
 
 class _Process:

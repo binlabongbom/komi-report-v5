@@ -621,6 +621,7 @@ class CloudReportsWidget(QWidget):
             "กราฟเปรียบเทียบเครื่องพิมพ์ทุกเครื่องพร้อมกัน · คลิกแถวด้านล่างเพื่อดู Meter detail"
         )
         self.printer_compare_note.setObjectName("cloud_subtitle")
+        self.printer_compare_note.setWordWrap(True)
         layout.addWidget(self.printer_compare_note)
         charts = QHBoxLayout()
         trend, trend_layout = _panel("Usage timeline", "เปรียบเทียบยอดรายวันของทุกเครื่อง")
@@ -862,7 +863,7 @@ class CloudReportsWidget(QWidget):
         toolbar.setObjectName("cloud_report_toolbar")
         toolbar_layout = QGridLayout(toolbar)
         toolbar_layout.setContentsMargins(14, 9, 14, 9)
-        toolbar_layout.setSpacing(10)
+        toolbar_layout.setSpacing(8)
 
         title = QLabel("ช่วงรายงาน")
         title.setStyleSheet("font-weight:750;color:#25364A;")

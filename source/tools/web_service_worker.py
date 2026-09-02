@@ -5,8 +5,8 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from prepare_web_runtime import prepare
-from run_web_servers import run
+from tools.prepare_web_runtime import prepare
+from tools.run_web_servers import run
 
 
 def main() -> int:
