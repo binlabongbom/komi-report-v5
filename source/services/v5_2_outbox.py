@@ -286,17 +286,24 @@ class V52OutboxRepository:
         self,
         *,
         reason: str = "offline_mode",
+        event_types: tuple[EventType, ...] | None = None,
         now: datetime | None = None,
     ) -> int:
-        """Terminally close all unsent telemetry when Offline License is selected."""
+        """Terminally close unsent telemetry, optionally for selected event types."""
 
         stamp = _iso(now or _now())
+        clause = "state IN ('pending','retry','in_flight')"
+        values: list[object] = [reason.strip() or "offline_mode", stamp, stamp]
+        if event_types:
+            placeholders = ",".join("?" for _event_type in event_types)
+            clause += f" AND event_type IN ({placeholders})"
+            values.extend(event_types)
         with _open() as connection:
             changed = connection.execute(
-                """UPDATE v52_telemetry_outbox
-                   SET state='terminal',last_error_code=?,updated_at=?,completed_at=?
-                   WHERE state IN ('pending','retry','in_flight')""",
-                (reason.strip() or "offline_mode", stamp, stamp),
+                f"""UPDATE v52_telemetry_outbox
+                    SET state='terminal',last_error_code=?,updated_at=?,completed_at=?
+                    WHERE {clause}""",
+                values,
             )
             return int(changed.rowcount)
 

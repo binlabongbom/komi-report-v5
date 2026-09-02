@@ -23,6 +23,51 @@ class _IneligibleRuntime:
         return False, "offline_license_expired"
 
 
+class _MutableRuntime:
+    def __init__(self, eligible: bool, reason: str) -> None:
+        self.eligible = eligible
+        self.reason = reason
+
+    def usage_eligibility(self) -> tuple[bool, str]:
+        return self.eligible, self.reason
+
+
+class _PollingGate:
+    def __init__(self) -> None:
+        self.paused: list[str] = []
+        self.resume_count = 0
+        self.manual_polls: list[int | None] = []
+
+    def pause(self, reason: str) -> None:
+        self.paused.append(reason)
+
+    def resume(self) -> None:
+        self.resume_count += 1
+
+    def poll_now(self, slot: int | None = None) -> None:
+        self.manual_polls.append(slot)
+
+
+class _TextTarget:
+    def __init__(self) -> None:
+        self.text = ""
+        self.tooltip = ""
+
+    def setText(self, value: str) -> None:
+        self.text = value
+
+    def setToolTip(self, value: str) -> None:
+        self.tooltip = value
+
+
+class _ActionTarget:
+    def __init__(self) -> None:
+        self.enabled = True
+
+    def setEnabled(self, value: bool) -> None:
+        self.enabled = value
+
+
 class _Signal:
     def __init__(self) -> None:
         self.callback = None
@@ -114,7 +159,7 @@ def test_existing_setup_does_not_rewrite_autostart(monkeypatch):
     assert calls == []
 
 
-def test_existing_setup_fails_closed_without_eligible_registration(monkeypatch):
+def test_existing_setup_opens_workspace_when_registration_is_ineligible(monkeypatch):
     monkeypatch.setattr(app, "DeviceConfigRepository", _CompletedRepository)
     monkeypatch.setattr(
         app,
@@ -124,7 +169,38 @@ def test_existing_setup_fails_closed_without_eligible_registration(monkeypatch):
         else default,
     )
 
-    assert app._check_v5_setup(None) is False
+    assert app._check_v5_setup(None) is True
     assert app._check_v5_setup(
         SimpleNamespace(registration=_IneligibleRuntime())
-    ) is False
+    ) is True
+
+
+def test_deactivated_registration_pauses_collection_and_reactivation_resumes_it():
+    runtime = _MutableRuntime(False, "deactivated")
+    polling = _PollingGate()
+    status = _TextTarget()
+    read_action = _ActionTarget()
+    window = SimpleNamespace(
+        registration=runtime,
+        polling=polling,
+        status_lbl=status,
+        _tray_read_action=read_action,
+    )
+    window._registration_usage_eligibility = runtime.usage_eligibility
+    window._apply_registration_collection_gate = lambda: app.MainWindow._apply_registration_collection_gate(window)
+
+    app.MainWindow._apply_registration_collection_gate(window)
+
+    assert polling.paused == ["deactivated"]
+    assert read_action.enabled is False
+    assert "ดูประวัติได้" in status.text
+    app.MainWindow._request_manual_poll(window, 1)
+    assert polling.manual_polls == []
+
+    runtime.eligible, runtime.reason = True, "registered"
+    app.MainWindow._apply_registration_collection_gate(window)
+    app.MainWindow._request_manual_poll(window, 1)
+
+    assert polling.resume_count == 1
+    assert read_action.enabled is True
+    assert polling.manual_polls == [1]

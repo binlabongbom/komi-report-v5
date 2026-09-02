@@ -91,6 +91,18 @@ def _parse(value: object) -> datetime | None:
     return parsed.astimezone(UTC)
 
 
+_DEACTIVATED_INSTALLATION_ERRORS = frozenset(
+    {
+        "deactivated",
+        "inactive",
+        "installation_deactivated",
+        "installation_inactive",
+        "installation_revoked",
+        "revoked",
+    }
+)
+
+
 class V52RuntimeProcessor:
     """Synchronous business core; all network ability is explicitly injected."""
 
@@ -121,6 +133,10 @@ class V52RuntimeProcessor:
         state = self.state.internal()
         if state is None or state["mode"] != "online":
             return self.outbox.cancel_unsent(now=self.clock()) if state else 0
+        if state["status"] in {"deactivated", "revoked"}:
+            return self.outbox.cancel_unsent(
+                reason=str(state["status"]), event_types=("meter",), now=self.clock()
+            )
         return self.outbox.recover_in_flight(now=self.clock())
 
     def prepare_due(self, *, force_recovery: bool = False) -> int:
@@ -130,6 +146,14 @@ class V52RuntimeProcessor:
         now = self.clock()
         if state["mode"] != "online":
             return self.outbox.cancel_unsent(now=now)
+        deactivated = state["status"] in {"deactivated", "revoked"}
+        if deactivated:
+            # Keep one status probe eligible: a Host-side activation can then
+            # restore collection without re-running local setup. Meter events
+            # are terminally closed, including stale queue entries.
+            self.outbox.cancel_unsent(
+                reason=str(state["status"]), event_types=("meter",), now=now
+            )
         if not state["notice_version"] or not state["notice_accepted_at"]:
             self.state.mark_status("needs_review", error_code="notice_required", now=now)
             return 0
@@ -165,7 +189,7 @@ class V52RuntimeProcessor:
             return queued
 
         queued = 0
-        for event_type in ("status", "meter"):
+        for event_type in (("status",) if deactivated else ("status", "meter")):
             due = _parse(state[f"next_{event_type}_at"])
             recovery_allowed = force_recovery and self.outbox.recovery_send_allowed(
                 event_type, now=now
@@ -322,6 +346,12 @@ class V52RuntimeProcessor:
                     error_code=error_code,
                     now=now,
                 )
+            elif error_code in _DEACTIVATED_INSTALLATION_ERRORS:
+                status = "revoked" if "revoked" in error_code else "deactivated"
+                self.outbox.cancel_unsent(
+                    reason=status, event_types=("meter",), now=now
+                )
+                self.state.mark_status(status, error_code=error_code, now=now)
             else:
                 self.state.mark_status("needs_review", error_code=error_code, now=now)
 
@@ -401,6 +431,12 @@ class V52RuntimeProcessor:
             "offline",
             "registration_conflict",
             "request_fingerprint_mismatch",
+            "deactivated",
+            "inactive",
+            "installation_deactivated",
+            "installation_inactive",
+            "installation_revoked",
+            "revoked",
             "validation_error",
         }
         candidate = value.strip().lower()

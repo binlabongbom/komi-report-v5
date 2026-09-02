@@ -90,6 +90,9 @@ class _WindowDouble:
     def _show_main_window(self) -> None:
         app.MainWindow._show_main_window(self)
 
+    def _apply_registration_collection_gate(self) -> None:
+        pass
+
     def _confirm_discard_settings_on_exit(self) -> bool:
         return self.allow_exit
 

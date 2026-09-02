@@ -347,6 +347,45 @@ def test_registered_runtime_batches_latest_aggregate_meter_and_status():
     assert client.tokens == ["synthetic-installation-token"] * 2
 
 
+@pytest.mark.parametrize(
+    "deactivation_code", ["installation_deactivated", "installation_inactive"]
+)
+def test_deactivated_host_cancels_meter_until_status_probe_confirms_reactivation(
+    deactivation_code: str,
+):
+    state = _configured()
+    state.update_registration_devices(_inventory(), now=NOW)
+    state.mark_registration_succeeded(_inventory(), now=NOW)
+    vault = SessionRegistrationSecretStore()
+    vault.save(
+        installation_token_reference(INSTALLATION_ID), "synthetic-installation-token"
+    )
+    outbox = V52OutboxRepository()
+    client = FakeClient(
+        [
+            _failure(retryable=False, code=deactivation_code),
+            _success(),
+            _success(),
+        ]
+    )
+    processor = _processor(client=client, state=state, outbox=outbox, vault=vault)
+
+    assert processor.run_once() is True
+    assert client.operations[0].event_type == "status"
+    assert state.snapshot()["status"] == "deactivated"
+    assert state.usage_eligibility(now=NOW) == (False, "deactivated")
+    assert outbox.active_count("meter") == 0
+
+    # A later status success is the explicit reactivation signal. It must not
+    # make a meter request until the status probe succeeds.
+    assert processor.run_once() is True
+    assert [item.event_type for item in client.operations] == ["status", "status"]
+    assert state.usage_eligibility(now=NOW) == (True, "registered")
+
+    assert processor.run_once() is True
+    assert [item.event_type for item in client.operations] == ["status", "status", "meter"]
+
+
 def test_status_success_replaces_rotated_token_in_vault_without_exposing_it():
     state = _configured()
     state.mark_registration_succeeded(_inventory(), now=NOW)
