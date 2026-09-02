@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import ipaddress
+import os
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -25,7 +26,8 @@ def test_generated_certificate_has_localhost_hostname_and_lan_ip_sans(tmp_path):
     assert {"127.0.0.1", "192.0.2.40", "::1"}.issubset(material.ip_addresses)
     assert len(material.fingerprint_sha256) == 64
     assert hashlib.sha256(material.certificate_path.read_bytes()).hexdigest() != material.fingerprint_sha256
-    assert material.private_key_path.stat().st_mode & 0o077 == 0
+    if os.name != "nt":
+        assert material.private_key_path.stat().st_mode & 0o077 == 0
 
 
 def test_generated_certificate_rotates_only_when_identity_changes(tmp_path):

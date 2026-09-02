@@ -261,6 +261,11 @@ def _initialize_git_repository(repository):
     repository.mkdir()
     subprocess.run(["git", "init", "-q"], cwd=repository, check=True)
     subprocess.run(
+        ["git", "config", "core.autocrlf", "false"],
+        cwd=repository,
+        check=True,
+    )
+    subprocess.run(
         ["git", "config", "user.email", "release-test@example.invalid"],
         cwd=repository,
         check=True,
@@ -272,7 +277,7 @@ def _initialize_git_repository(repository):
     )
     source_file = repository / "source" / "runtime.py"
     source_file.parent.mkdir()
-    source_file.write_text("VALUE = 'clean-source'\n", encoding="utf-8")
+    source_file.write_bytes(b"VALUE = 'clean-source'\n")
     subprocess.run(["git", "add", "."], cwd=repository, check=True)
     subprocess.run(["git", "commit", "-qm", "release source"], cwd=repository, check=True)
     commit = subprocess.run(

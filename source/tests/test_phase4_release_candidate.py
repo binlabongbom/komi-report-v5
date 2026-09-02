@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from contextlib import closing
 
 import pytest
 
@@ -139,7 +140,7 @@ def test_sbom_covers_locked_python_and_web_dependencies(tmp_path):
 
 def test_offline_backup_and_restore_preserve_critical_counts(tmp_path):
     database = tmp_path / "KOMI_Report_V5.db"
-    with sqlite3.connect(database) as connection:
+    with closing(sqlite3.connect(database)) as connection:
         connection.execute("CREATE TABLE devices(id INTEGER PRIMARY KEY, name TEXT)")
         connection.execute("CREATE TABLE price_snapshot(id INTEGER PRIMARY KEY, cents INTEGER)")
         connection.execute("CREATE TABLE readings(id INTEGER PRIMARY KEY, total INTEGER)")
@@ -149,12 +150,14 @@ def test_offline_backup_and_restore_preserve_critical_counts(tmp_path):
         connection.execute("INSERT INTO readings(total) VALUES (1000)")
         connection.execute("INSERT INTO billing_ledger(gross_cents) VALUES (125)")
         connection.execute("PRAGMA user_version=9")
+        connection.commit()
 
     backup = tmp_path / "backup.db"
     backup_result = backup_database(database, backup)
-    with sqlite3.connect(database) as connection:
+    with closing(sqlite3.connect(database)) as connection:
         connection.execute("DELETE FROM devices")
         connection.execute("DELETE FROM billing_ledger")
+        connection.commit()
 
     restored = restore_database(backup, database)
 

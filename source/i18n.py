@@ -31,6 +31,29 @@ ENGLISH = "en"
 SUPPORTED_LANGUAGES = (THAI, ENGLISH)
 _language = THAI
 _ITEM_SOURCE_ROLE = int(Qt.ItemDataRole.UserRole) + 37
+_TRANSLATABLE_QT_WIDGET_TYPES = frozenset(
+    {
+        "QCheckBox",
+        "QComboBox",
+        "QDateEdit",
+        "QDateTimeEdit",
+        "QDoubleSpinBox",
+        "QFrame",
+        "QGroupBox",
+        "QLabel",
+        "QLineEdit",
+        "QPlainTextEdit",
+        "QProgressBar",
+        "QPushButton",
+        "QRadioButton",
+        "QSpinBox",
+        "QTableWidget",
+        "QTabWidget",
+        "QTextEdit",
+        "QTimeEdit",
+        "QChartView",
+    }
+)
 
 
 def normalize_language(value: str | None) -> str:
@@ -881,41 +904,67 @@ def apply_language(root: QWidget) -> None:
     # Qt defers destruction for chart/table children.  A wrapper can therefore
     # still be returned by ``findChildren`` after its C++ object is gone; even
     # calling ``getattr`` on that wrapper may crash the process.
-    widgets = [
-        widget
-        for widget in (root, *root.findChildren(QWidget))
-        if not sip.isdeleted(widget)
-    ]
-    for widget in widgets:
+    widgets_with_properties = []
+    for widget in (root, *root.findChildren(QWidget)):
+        if sip.isdeleted(widget):
+            continue
+        widget_type = type(widget)
+        # Qt creates implementation children for views and calendars
+        # (headers, scrollbars, tool buttons and anonymous viewports). Their
+        # wrappers can outlive the C++ object on Windows even while
+        # sip.isdeleted() still reports False. Only visit application-defined
+        # widgets and Qt widget types to which this app assigns translatable
+        # text, accessibility metadata or tooltips.
+        if (
+            widget_type.__module__.startswith("PyQt6.")
+            and widget_type.__name__ not in _TRANSLATABLE_QT_WIDGET_TYPES
+        ):
+            continue
+        try:
+            properties = (
+                widget.accessibleName(),
+                widget.accessibleDescription(),
+                widget.toolTip(),
+            )
+        except (RuntimeError, SystemError):
+            # A deferred Qt delete can invalidate chart/table child wrappers
+            # between findChildren() and property access on Windows.
+            continue
+        widgets_with_properties.append((widget, properties))
+
+    for widget, properties in widgets_with_properties:
+        if sip.isdeleted(widget):
+            continue
         if isinstance(widget, (QLabel, QAbstractButton, QGroupBox)):
             original = _source(widget, widget.text())
             rendered = original if _language == THAI else translate_text(original)
             widget.setText(rendered)
             widget.setProperty("i18n_rendered_text", rendered)
 
-        for source_property, rendered_property, getter, setter in (
+        for source_property, rendered_property, current, setter in (
             (
                 "i18n_accessible_name",
                 "i18n_rendered_accessible_name",
-                widget.accessibleName,
+                properties[0],
                 widget.setAccessibleName,
             ),
             (
                 "i18n_accessible_description",
                 "i18n_rendered_accessible_description",
-                widget.accessibleDescription,
+                properties[1],
                 widget.setAccessibleDescription,
             ),
             (
                 "i18n_tooltip",
                 "i18n_rendered_tooltip",
-                widget.toolTip,
+                properties[2],
                 widget.setToolTip,
             ),
         ):
-            current = getter()
             if not current:
                 continue
+            if sip.isdeleted(widget):
+                break
             original = _property_source(
                 widget,
                 current,
@@ -991,7 +1040,7 @@ def apply_language(root: QWidget) -> None:
             root.setProperty("i18n_window_title", original)
         root.setWindowTitle(str(original) if _language == THAI else translate_text(str(original)))
 
-    for widget in widgets:
+    for widget, _properties in widgets_with_properties:
         if sip.isdeleted(widget):
             continue
         # Resolve the optional hook on the Python class.  Looking it up on a

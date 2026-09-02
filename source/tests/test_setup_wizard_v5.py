@@ -36,6 +36,7 @@ from komi_snmp_profiler.connectors import (
 )
 from komi_snmp_profiler.credential_store import PUBLIC_FACTORY_ADMIN_PASSWORDS
 from komi_snmp_profiler.models import MeterReading, WebAuthState, WebCounterValue
+from runtime_config import load_runtime_settings
 from services.device_config import DeviceConfig, DeviceConfigRepository
 from services.pricing import PricingRepository
 from services.registration_data_notice import REGISTRATION_NOTICE_VERSION
@@ -1890,7 +1891,7 @@ def test_setup_wizard_creates_and_persists_selected_database_path(tmp_path):
 
         assert database.get_db_path() == target.resolve()
         assert target.is_file()
-        assert f'db_path = "{target.resolve()}"' in runtime_config.read_text(encoding="utf-8")
+        assert load_runtime_settings(config_path=runtime_config).db_path == target.resolve()
         with sqlite3.connect(target) as connection:
             assert connection.execute("PRAGMA integrity_check").fetchone() == ("ok",)
             assert connection.execute(
