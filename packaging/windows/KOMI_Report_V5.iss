@@ -8,13 +8,13 @@
   #define SourceCommit "UNCOMMITTED"
 #endif
 #ifndef OutputBaseFilename
-  #define OutputBaseFilename "KOMI_Report_V5_2_5_Windows_x64_RC"
+  #define OutputBaseFilename "KOMI_Report_V5_2_6_Windows_x64_RC"
 #endif
 #ifndef VersionInfoDescription
-  #define VersionInfoDescription "KOMI Report V5.2.5 Release Candidate"
+  #define VersionInfoDescription "KOMI Report V5.2.6 Release Candidate"
 #endif
 
-#define AppVersion "5.2.5"
+#define AppVersion "5.2.6"
 #define AppName "KOMI Report V5"
 #define AppPublisher "Konica Minolta"
 #define AppLauncher "START_KOMI_REPORT.vbs"
@@ -41,10 +41,10 @@ SolidCompression=yes
 WizardStyle=modern
 SetupIconFile={#PayloadDir}\source\Logo.ico
 UninstallDisplayIcon={app}\source\Logo.ico
-VersionInfoVersion=5.2.5.0
+VersionInfoVersion=5.2.6.0
 VersionInfoDescription={#VersionInfoDescription}
 VersionInfoProductName=KOMI Report V5
-VersionInfoProductVersion=5.2.5
+VersionInfoProductVersion=5.2.6
 VersionInfoCompany=Konica Minolta
 VersionInfoCopyright=Source commit {#SourceCommit}
 UsePreviousAppDir=yes
