@@ -51,6 +51,27 @@ def _proxy_request_headers(
     return headers
 
 
+def _packaged_api_config(app: object):
+    """Build Uvicorn config without console-dependent logging.
+
+    Windows GUI launches use ``pythonw.exe``, where ``sys.stdout`` and
+    ``sys.stderr`` are ``None``.  Uvicorn's default logging formatter probes
+    ``sys.stdout.isatty()`` during configuration, so the packaged API must not
+    install that console logging configuration.
+    """
+
+    import uvicorn
+
+    return uvicorn.Config(
+        app,
+        host="127.0.0.1",
+        port=8766,
+        access_log=False,
+        log_level="warning",
+        log_config=None,
+    )
+
+
 @dataclass(frozen=True)
 class WebServiceStatus:
     state: WebServiceState
@@ -281,15 +302,7 @@ class WebServiceManager:
 
             from web_api import app as api_app
 
-            api_server = uvicorn.Server(
-                uvicorn.Config(
-                    api_app,
-                    host="127.0.0.1",
-                    port=8766,
-                    access_log=False,
-                    log_level="warning",
-                )
-            )
+            api_server = uvicorn.Server(_packaged_api_config(api_app))
             api_thread = threading.Thread(
                 target=api_server.run,
                 name="komi-packaged-web-api",

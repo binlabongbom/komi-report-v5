@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib
+import sys
 
 from services import web_service
 
@@ -27,6 +28,17 @@ def test_web_service_worker_imports_from_source_package():
     worker = importlib.import_module("tools.web_service_worker")
 
     assert callable(worker.main)
+
+
+def test_packaged_api_config_supports_pythonw_without_console_streams(monkeypatch):
+    monkeypatch.setattr(sys, "stdout", None)
+    monkeypatch.setattr(sys, "stderr", None)
+
+    config = web_service._packaged_api_config(object())
+
+    assert config.log_config is None
+    assert config.host == "127.0.0.1"
+    assert config.port == 8766
 
 
 class _Process:
