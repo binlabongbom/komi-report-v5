@@ -11,7 +11,7 @@ import shutil
 import sqlite3
 import tempfile
 import threading
-from contextlib import contextmanager
+from contextlib import closing, contextmanager
 from datetime import datetime
 from pathlib import Path
 
@@ -182,8 +182,8 @@ def copy_database_for_first_run(destination: Path) -> Path:
         ) as temporary:
             temporary_path = Path(temporary.name)
         source_uri = f"{source.as_uri()}?mode=ro"
-        with sqlite3.connect(source_uri, uri=True) as source_conn, sqlite3.connect(
-            temporary_path
+        with closing(sqlite3.connect(source_uri, uri=True)) as source_conn, closing(
+            sqlite3.connect(temporary_path)
         ) as target_conn:
             source_conn.backup(target_conn)
             result = target_conn.execute("PRAGMA integrity_check").fetchone()

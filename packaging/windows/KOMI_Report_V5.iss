@@ -8,16 +8,17 @@
   #define SourceCommit "UNCOMMITTED"
 #endif
 #ifndef OutputBaseFilename
-  #define OutputBaseFilename "KOMI_Report_V5_2_4_Windows_x64_RC"
+  #define OutputBaseFilename "KOMI_Report_V5_2_5_Windows_x64_RC"
 #endif
 #ifndef VersionInfoDescription
-  #define VersionInfoDescription "KOMI Report V5.2.4 Release Candidate"
+  #define VersionInfoDescription "KOMI Report V5.2.5 Release Candidate"
 #endif
 
-#define AppVersion "5.2.4"
+#define AppVersion "5.2.5"
 #define AppName "KOMI Report V5"
 #define AppPublisher "Konica Minolta"
 #define AppLauncher "START_KOMI_REPORT.vbs"
+#define AppUserModelId "KonicaMinolta.KOMIReport.V5"
 
 [Setup]
 AppId={{9C32D937-21A5-4A3A-90AE-F0662E60F24A}
@@ -40,10 +41,10 @@ SolidCompression=yes
 WizardStyle=modern
 SetupIconFile={#PayloadDir}\source\Logo.ico
 UninstallDisplayIcon={app}\source\Logo.ico
-VersionInfoVersion=5.2.4.0
+VersionInfoVersion=5.2.5.0
 VersionInfoDescription={#VersionInfoDescription}
 VersionInfoProductName=KOMI Report V5
-VersionInfoProductVersion=5.2.4
+VersionInfoProductVersion=5.2.5
 VersionInfoCompany=Konica Minolta
 VersionInfoCopyright=Source commit {#SourceCommit}
 UsePreviousAppDir=yes
@@ -59,12 +60,12 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Source: "{#PayloadDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
-Name: "{autoprograms}\KOMI Report V5"; Filename: "{sys}\wscript.exe"; Parameters: """{app}\{#AppLauncher}"""; WorkingDir: "{app}"; IconFilename: "{app}\source\Logo.ico"
-Name: "{autodesktop}\KOMI Report V5"; Filename: "{sys}\wscript.exe"; Parameters: """{app}\{#AppLauncher}"""; WorkingDir: "{app}"; IconFilename: "{app}\source\Logo.ico"; Tasks: desktopicon
+Name: "{autoprograms}\KOMI Report V5"; Filename: "{sys}\wscript.exe"; Parameters: """{app}\{#AppLauncher}"""; WorkingDir: "{app}"; IconFilename: "{app}\source\Logo.ico"; AppUserModelID: "{#AppUserModelId}"
+Name: "{autodesktop}\KOMI Report V5"; Filename: "{sys}\wscript.exe"; Parameters: """{app}\{#AppLauncher}"""; WorkingDir: "{app}"; IconFilename: "{app}\source\Logo.ico"; AppUserModelID: "{#AppUserModelId}"; Tasks: desktopicon
 ; Upgrade migration: rewrite an existing customer shortcut even when the
 ; checked-once desktop task is not offered again. A fresh install that opted
 ; out still receives no Desktop shortcut.
-Name: "{autodesktop}\KOMI Report V5"; Filename: "{sys}\wscript.exe"; Parameters: """{app}\{#AppLauncher}"""; WorkingDir: "{app}"; IconFilename: "{app}\source\Logo.ico"; Check: ExistingDesktopShortcut
+Name: "{autodesktop}\KOMI Report V5"; Filename: "{sys}\wscript.exe"; Parameters: """{app}\{#AppLauncher}"""; WorkingDir: "{app}"; IconFilename: "{app}\source\Logo.ico"; AppUserModelID: "{#AppUserModelId}"; Check: ExistingDesktopShortcut
 
 [Tasks]
 Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription: "Shortcuts:"; Flags: checkedonce

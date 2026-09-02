@@ -1,21 +1,46 @@
 ---
 project_id: komi-report-v5
-project_name: KOMI Report V5.1
+project_name: KOMI Report V5.2.5
 thread_id: 019f69b5-6709-7e53-8ebf-a35114d233d0
 thread_title: Komi report V5
 dashboard_visible: true
 department: dev
 status: blocked
-progress: 90
+progress: 95
 owner: VEGA
-current_phase: Production registration built-in customer runtime implementation
-current_task: package approved built-in policy and limited bootstrap identifier, then rebuild customer installers
-next_action: API team must deploy serial_number allow-list/persistence/Dashboard; rerun current-client E2E before customer release
-problem: RELEASE HOLD — live current-client Registration still returns HTTP 422 for device_inventory.devices.0.serial_number
-updated_at: 2026-09-01T15:10:00+07:00
+current_phase: V5.2.5 Reports usability and customer hang remediation
+current_task: V5.2.5 source and regression suite complete; hand off native Windows x64 customer-size UAT
+next_action: run native Windows x64 customer-size Database UAT and recheck Registration current-client E2E before release approval
+problem: RELEASE HOLD remains until native Windows x64 UAT and live current-client Registration evidence pass
+updated_at: 2026-09-01T16:45:18+07:00
 ---
 
-# KOMI Report V5.1
+# KOMI Report V5.2.5
+
+## V5.2.5 implementation — 2026-09-01
+
+- [x] คืนการอ่านชื่อ User/Account จาก RAM Meter export ใน polling path ที่อนุญาต โดย cache ตาม host/type เพื่อไม่สร้าง temporary export ทุกรอบ; ID ยังคงเป็น identity ภายใน.
+- [x] Reports > Users แสดงชื่อจริงและตาราง 3 ชั้น `User → Slot → Print/Copy/Scan/Total/Cost → A3/A4/...` โดยไม่ตัดข้อความและไม่เดาค่าใช้จ่ายราย User.
+- [x] เพิ่มปุ่ม `📅` หลังวันที่เริ่มต้น/สิ้นสุดในทุกแท็บที่ใช้ช่วงวันที่ และทั้งปุ่ม/ช่องวันที่เปิด native calendar.
+- [x] Reports > Usage เอา Timeline warning ออก, คงแท็บทุกเครื่อง/ตามเครื่อง, เพิ่ม checkbox ราย Slot ในทุกเครื่อง และหัวตามเครื่อง 3 ชั้นพร้อม horizontal scroll.
+- [x] Reports > Legacy แสดง `—` เมื่อแหล่งข้อมูลไม่ระบุ Print/Copy/Scan.
+- [x] Setup Wizard ไปขั้นราคาอัตโนมัติเมื่อทุกเครื่องที่เลือกผ่าน SNMP + Web และกัน callback ซ้ำ.
+- [x] ลดอาการค้างตอนเปิด Reports ด้วย visible-tab refresh; ไม่โหลด Legacy/raw/baseline ที่ไม่ได้เปิด และไม่เรียก legacy audit refresh ตอนคลิกแท็บครั้งแรก.
+- [x] แก้ Windows Notification ที่แสดงผู้ส่งเป็น `Python`: ตั้ง Qt application metadata และ process `AppUserModelID` ก่อนสร้าง UI พร้อมผูก ID เดียวกันกับ Start Menu/Desktop shortcuts ใน Installer.
+- [ ] Native Windows x64 UAT ด้วยสำเนา Database ขนาดเท่าลูกค้า (ห้ามใช้ DB จริงแบบเขียนกลับ) และ visual verification ที่ 100%/125% scaling.
+- [ ] Real-device verification ว่าชื่อ `TEST1`/`TEST2` ถูกเก็บใน Subject history หลัง polling และยังคงตรงหลังเปิดโปรแกรมใหม่.
+
+Evidence boundary: automated tests/local offscreen เป็น regression evidence เท่านั้น ไม่ใช่ Production GO; DB/CSV/log/license/runtime ของลูกค้าไม่ถูกแก้หรือลบในงาน source นี้.
+
+### V5.2.5 verification log
+
+- `python -m pytest -q` — **741 passed**, 1 expected TLS compatibility warning, 58.83s.
+- `tools/version_gate.py` — **PASS: 5.2.5** สำหรับ Python/Web/package/installer/document version authorities.
+- Web `tsc --noEmit` และ security tests — **PASS, 4/4**.
+- Ruff บนโมดูลใหม่และ tests ที่แก้ — **PASS**; ไฟล์ legacy ขนาดใหญ่ยังมี lint debt เดิมนอก scope.
+- Release safety scan บน changed files — **PASS**, ไม่พบ secret/credential path ที่ห้ามส่ง.
+- Offscreen visual inspection 1700×900 — Users/Usage/ตามเครื่อง/ปุ่มปฏิทินและ horizontal scroll ตรงตาม design; ยังต้องยืนยัน native Windows x64 scaling และ customer-size DB.
+- Windows App Identity focused tests — **25 passed**; scoped Ruff/compileall **PASS**. Native Windows notification visual ยังต้องยืนยันหลังติดตั้ง RC ใหม่ เพราะ local macOS ไม่สามารถพิสูจน์ชื่อผู้ส่งของ Windows Shell ได้.
 
 ## Current release decision — 2026-08-22
 

@@ -139,6 +139,38 @@ class SessionBusyReader:
         raise WebConnectionSessionBusyError("legacy session busy")
 
 
+def test_pause_blocks_scheduled_and_manual_polling_then_resume_reuses_executor(tmp_path, monkeypatch):
+    QCoreApplication.instance() or QCoreApplication([])
+    set_db_path(tmp_path / "paused-polling.db")
+    init_db()
+    repository = DeviceConfigRepository()
+    repository.replace_all([DeviceConfig(0, "Office", "192.0.2.10")])
+    coordinator = BackgroundPollingCoordinator(repository)
+    submissions: list[tuple[int, bool]] = []
+    monkeypatch.setattr(
+        coordinator,
+        "_submit",
+        lambda device, *, force_web: submissions.append((device.slot, force_web)),
+    )
+
+    coordinator.pause("deactivated")
+    coordinator.start()
+    coordinator.tick()
+    coordinator.poll_now()
+
+    assert coordinator.is_paused is True
+    assert coordinator.timer.isActive() is False
+    assert submissions == []
+
+    coordinator.resume()
+    coordinator.poll_now()
+
+    assert coordinator.is_paused is False
+    assert coordinator._scheduler_initialized is True
+    assert submissions == [(0, True)]
+    coordinator.stop()
+
+
 def test_poll_device_updates_identity_and_persistent_cache(tmp_path):
     QCoreApplication.instance() or QCoreApplication([])
     set_db_path(tmp_path / "polling.db")

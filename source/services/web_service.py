@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Literal
 
 WebServiceState = Literal["stopped", "starting", "running", "external", "failed"]
+_PACKAGED_RUNTIME_STAMP = ".komi-packaged-runtime-build-id"
 _HOP_BY_HOP_HEADERS = frozenset(
     {
         "connection",
@@ -48,6 +49,27 @@ def _proxy_request_headers(
     headers["x-komi-remote-address"] = str(remote_address)
     headers["x-forwarded-proto"] = "https"
     return headers
+
+
+def _packaged_api_config(app: object):
+    """Build Uvicorn config without console-dependent logging.
+
+    Windows GUI launches use ``pythonw.exe``, where ``sys.stdout`` and
+    ``sys.stderr`` are ``None``.  Uvicorn's default logging formatter probes
+    ``sys.stdout.isatty()`` during configuration, so the packaged API must not
+    install that console logging configuration.
+    """
+
+    import uvicorn
+
+    return uvicorn.Config(
+        app,
+        host="127.0.0.1",
+        port=8766,
+        access_log=False,
+        log_level="warning",
+        log_config=None,
+    )
 
 
 @dataclass(frozen=True)
@@ -104,10 +126,15 @@ class WebServiceManager:
             current = self.status()
             if current.state in {"starting", "running", "external"}:
                 return current
-            if getattr(sys, "frozen", False):
-                bundle_root = Path(
-                    getattr(sys, "_MEIPASS", Path(sys.executable).resolve().parent)
-                ).resolve()
+            frozen = bool(getattr(sys, "frozen", False))
+            bundle_root = Path(
+                getattr(sys, "_MEIPASS", Path(sys.executable).resolve().parent)
+            ).resolve() if frozen else self.project_root
+            packaged_layout = frozen or (
+                (bundle_root / "web-runtime-seed").is_dir()
+                and (bundle_root / "node-runtime").is_dir()
+            )
+            if packaged_layout:
                 seed = bundle_root / "web-runtime-seed"
                 node_name = "node.exe" if sys.platform.startswith("win") else "node"
                 node = bundle_root / "node-runtime" / node_name
@@ -275,15 +302,7 @@ class WebServiceManager:
 
             from web_api import app as api_app
 
-            api_server = uvicorn.Server(
-                uvicorn.Config(
-                    api_app,
-                    host="127.0.0.1",
-                    port=8766,
-                    access_log=False,
-                    log_level="warning",
-                )
-            )
+            api_server = uvicorn.Server(_packaged_api_config(api_app))
             api_thread = threading.Thread(
                 target=api_server.run,
                 name="komi-packaged-web-api",
@@ -365,14 +384,29 @@ class WebServiceManager:
             if runtime_build_path.is_file()
             else ""
         )
-        if runtime_build == seed_build:
+        completion_stamp = self.runtime_root / _PACKAGED_RUNTIME_STAMP
+        completed_build = (
+            completion_stamp.read_text(encoding="utf-8").strip()
+            if completion_stamp.is_file()
+            else ""
+        )
+        if runtime_build == seed_build and completed_build == seed_build:
             return
         self.runtime_root.mkdir(parents=True, exist_ok=True)
-        for relative in (".next", "node_modules"):
-            stale = self.runtime_root / relative
-            if stale.is_dir():
-                shutil.rmtree(stale)
-        shutil.copytree(seed, self.runtime_root, dirs_exist_ok=True)
+        seed_next = (seed / ".next").resolve()
+
+        def keep_build_id_until_copy_completes(directory: str, _names: list[str]):
+            return {"BUILD_ID"} if Path(directory).resolve() == seed_next else set()
+
+        shutil.copytree(
+            seed,
+            self.runtime_root,
+            dirs_exist_ok=True,
+            ignore=keep_build_id_until_copy_completes,
+        )
+        runtime_build_path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(seed / ".next" / "BUILD_ID", runtime_build_path)
+        completion_stamp.write_text(seed_build + "\n", encoding="utf-8")
 
     @staticmethod
     def _https_proxy_server(

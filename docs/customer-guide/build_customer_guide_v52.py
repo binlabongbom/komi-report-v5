@@ -425,7 +425,7 @@ def registration(doc: Document) -> None:
     callout(
         doc,
         "Offline Activation ปิดชั่วคราว",
-        "V5.2.4 ไม่แสดงปุ่มส่งออก .komirequest หรือนำเข้า .komilicense ใน Wizard และ Settings "
+        f"V{VERSION} ไม่แสดงปุ่มส่งออก .komirequest หรือนำเข้า .komilicense ใน Wizard และ Settings "
         "การเปิดใช้งานครั้งแรกจึงต้องลงทะเบียน Online",
         kind="note",
     )

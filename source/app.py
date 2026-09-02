@@ -174,6 +174,10 @@ from pages import (
     PageOverview,
     PageSettings,  # หน้าตั้งค่า + คู่มือ
 )
+from services.application_identity import (
+    configure_qt_application_identity,
+    configure_windows_process_identity,
+)
 from services.autostart import configure_autostart
 from services.background_polling import BackgroundPollingCoordinator
 from services.desktop_shortcuts import create_desktop_shortcuts
@@ -406,9 +410,10 @@ class MainWindow(QMainWindow):
         self._ui_ready = True
 
         if splash: splash.set_message("กำลังโหลดข้อมูล...")
-        self._refresh_all()  # ดึงข้อมูลจาก DB แล้วส่งให้ทุกหน้าแสดงผล
         self._quitting = False
         self._background_started = False
+        self._registration_collection_ready = False
+        self._refresh_all()  # ดึงข้อมูลจาก DB แล้วส่งให้ทุกหน้าแสดงผล
         self._refresh_timer = QTimer(self)
         self._refresh_timer.setSingleShot(True)
         self._refresh_timer.setInterval(150)
@@ -418,9 +423,10 @@ class MainWindow(QMainWindow):
         self.polling.device_updated.connect(self._device_updated)
         self.polling.reading_saved.connect(lambda _slot: self._schedule_refresh_all())
         self.polling.reading_saved.connect(self.registration.meter_observed)
-        self.pg_import.sync_requested.connect(self.polling.poll_now)
-        self.pg_overview.sync_requested.connect(self.polling.poll_now)
+        self.pg_import.sync_requested.connect(self._request_manual_poll)
+        self.pg_overview.sync_requested.connect(self._request_manual_poll)
         self._build_tray()
+        self.registration.status_changed.connect(self._registration_status_changed)
         self._install_network_recovery_monitor()
         apply_language(self)
 
@@ -626,11 +632,13 @@ class MainWindow(QMainWindow):
             page.changed.connect(self._refresh_all)
             page.changed.connect(self.polling.reload_policy)
             page.changed.connect(self.registration.configuration_changed)
-            page.sync_requested.connect(self.polling.poll_now)
-            page.parser_read_requested.connect(self.polling.poll_now)
+            page.sync_requested.connect(self._request_manual_poll)
+            page.parser_read_requested.connect(self._request_manual_poll)
         elif index == self._reports_index:
             page.reading_status_requested.connect(self._open_sync_log)
         apply_language(page)
+        if self._background_started:
+            self._apply_registration_collection_gate()
         return page
 
     def _build_tray(self):
@@ -651,7 +659,8 @@ class MainWindow(QMainWindow):
             open_action.triggered.connect(self._show_from_tray)
             self._tray_menu.addAction(open_action)
             read_action = QAction("อ่านค่าทุกเครื่องทันที", self)
-            read_action.triggered.connect(lambda: self.polling.poll_now())
+            read_action.triggered.connect(self._request_manual_poll)
+            self._tray_read_action = read_action
             self._tray_menu.addAction(read_action)
             self._tray_menu.addSeparator()
             exit_action = QAction("Exit", self)
@@ -674,12 +683,77 @@ class MainWindow(QMainWindow):
         if self._background_started:
             return
         self._background_started = True
-        self.polling.start()
-        self.registration.configuration_changed()
+        # A persisted ``registered`` state may be stale after the Host was
+        # deactivated while the app was closed. Keep all device reads paused
+        # until the startup status probe finishes.
+        self._registration_collection_ready = False
+        self._apply_registration_collection_gate()
         self.registration.start()
+        self.registration.configuration_changed()
+        self.polling.start()
         if get_cfg("web_service_enabled", "1") != "0":
             status = self.web_service.start()
             log.info("web service start requested: %s (%s)", status.state, status.detail)
+
+    def _registration_status_changed(self, _status: str) -> None:
+        if self._background_started:
+            self._registration_collection_ready = True
+            self._apply_registration_collection_gate()
+
+    def _registration_usage_eligibility(self) -> tuple[bool, str]:
+        if self._background_started and not self._registration_collection_ready:
+            return False, "status_check_pending"
+        try:
+            return self.registration.usage_eligibility()
+        except Exception:
+            log.exception("cannot verify registration eligibility for polling")
+            return False, "registration_unavailable"
+
+    def _request_manual_poll(self, slot: int | None = None) -> None:
+        # QAction.triggered carries a ``checked`` bool; it is not a device slot.
+        if isinstance(slot, bool):
+            slot = None
+        eligible, _reason = self._registration_usage_eligibility()
+        if not eligible:
+            self._apply_registration_collection_gate()
+            return
+        self.polling.poll_now(slot)
+
+    def _set_collection_actions_enabled(self, enabled: bool) -> None:
+        targets = [
+            getattr(self, "_tray_read_action", None),
+            getattr(getattr(self, "pg_import", None), "sync_button", None),
+            getattr(getattr(self, "pg_overview", None), "btn_sync_now", None),
+            getattr(
+                getattr(getattr(self, "pg_settings", None), "activity", None),
+                "sync_button",
+                None,
+            ),
+        ]
+        for target in targets:
+            if target is not None:
+                target.setEnabled(enabled)
+
+    def _apply_registration_collection_gate(self) -> None:
+        """Keep local history open while fail-closing every new device read."""
+        eligible, reason = self._registration_usage_eligibility()
+        if eligible:
+            self.polling.resume()
+            self._set_collection_actions_enabled(
+                not bool(getattr(self.polling, "active", ()))
+            )
+            self.status_lbl.setText("เปิดใช้งาน · ดูประวัติและอ่านข้อมูลใหม่ได้")
+            self.status_lbl.setToolTip(f"Registration: {reason}")
+            return
+        self.polling.pause(reason)
+        self._set_collection_actions_enabled(False)
+        status = (
+            "กำลังตรวจสอบสถานะ · ดูประวัติได้\nยังไม่ดึงข้อมูลใหม่จากเครื่อง"
+            if reason == "status_check_pending"
+            else "ปิดใช้งาน · ดูประวัติได้\nหยุดดึงข้อมูลใหม่จากเครื่อง"
+        )
+        self.status_lbl.setText(status)
+        self.status_lbl.setToolTip(f"Registration: {reason}")
 
     def _install_network_recovery_monitor(self) -> None:
         """Wake V5.2 only on an OS-observed connectivity recovery transition."""
@@ -714,6 +788,9 @@ class MainWindow(QMainWindow):
         self._schedule_refresh_all()
         if not self.polling.active:
             self.pg_import.sync_completed()
+        if self.polling.is_paused:
+            self._set_collection_actions_enabled(False)
+            return
         devices = DeviceConfigRepository().list(enabled_only=True)
         online = sum(device.connection_status == "online" for device in devices)
         self.status_lbl.setText(f"Background active\nOnline {online}/{len(devices)}")
@@ -851,6 +928,12 @@ class MainWindow(QMainWindow):
         if index not in self._dirty_pages:
             return
         page = self._page_widgets[index]
+        refresh_visible = getattr(page, "refresh_visible", None)
+        if callable(refresh_visible):
+            apply_language(page)
+            self._dirty_pages.discard(index)
+            QTimer.singleShot(0, refresh_visible)
+            return
         refresh = getattr(page, "refresh", None)
         if callable(refresh):
             refresh()
@@ -903,6 +986,10 @@ class MainWindow(QMainWindow):
             self.status_lbl.setText(
                 tr("ยังไม่มีประวัติการอ่าน", "No reading history yet")
             )
+        if self._background_started:
+            eligible, _reason = self._registration_usage_eligibility()
+            if not eligible:
+                self._apply_registration_collection_gate()
 
 
 # ══════════════════════════════════════════════════════════
@@ -1617,14 +1704,11 @@ def _v5_setup_is_complete(
     local_setup_complete = repository.setup_complete() and bool(
         (get_cfg("company_name", "") or "").strip()
     )
-    if not local_setup_complete or registration_runtime is None:
-        return False
-    try:
-        eligible, _reason = registration_runtime.usage_eligibility()
-    except Exception:
-        log.exception("cannot verify V5.2 registration usage eligibility")
-        return False
-    return bool(eligible)
+    # Registration eligibility controls new device reads, not whether a
+    # configured installation may open its local Report/User/Usage history.
+    # In particular, a Host deactivation must never restart first-run setup.
+    del registration_runtime
+    return local_setup_complete
 
 
 def _finish_v5_first_setup(
@@ -1744,8 +1828,13 @@ if __name__ == "__main__":
     log.info("=" * 60)
     log.info("KOMI Report V%s starting", APP_VER)
 
+    # Windows requires the process AppUserModelID before any UI is presented.
+    # Otherwise source/runtime launches are branded as the pythonw.exe host.
+    configure_windows_process_identity()
+
     # QApplication ต้องสร้างก่อนสิ่งอื่นใดทั้งหมด
     app = QApplication(sys.argv)
+    configure_qt_application_identity(app, version=APP_VER)
     install_button_system(app)
     instance_guard = SingleInstanceGuard(Path(get_db_path()).with_suffix(".instance.lock"))
     if not instance_guard.acquire():

@@ -48,7 +48,10 @@ class BackgroundPollingCoordinator(QObject):
         super().__init__(parent)
         self.repository = repository or DeviceConfigRepository()
         self.probe = probe or SnmpTotalProbe()
-        self.reader = reader or MeterReader(DatabaseCredentialStore(self.repository))
+        self.reader = reader or MeterReader(
+            DatabaseCredentialStore(self.repository),
+            allow_implicit_name_export=True,
+        )
         self.cache = cache or DailyCacheStore()
         self.subject_cache = subject_cache or SubjectDailyCacheStore()
         self.raw_counter_history = raw_counter_history or RawCounterHistoryStore()
@@ -62,38 +65,97 @@ class BackgroundPollingCoordinator(QObject):
         self._started_at: dict[int, float] = {}
         self._lock = threading.RLock()
         self._rollover_lock = threading.RLock()
+        self._paused_reason = ""
+        self._started = False
+        self._scheduler_initialized = False
+        self._stopped = False
         self.timer = QTimer(self)
         self.timer.setInterval(30_000)
         self.timer.timeout.connect(self.tick)
 
     def start(self) -> None:
+        if self._stopped:
+            raise RuntimeError("background polling cannot start after shutdown")
+        if self._started:
+            return
+        self._started = True
+        if self.is_paused:
+            log.info("background polling start deferred while paused: %s", self._paused_reason)
+            return
+        self._activate_scheduler()
+
+    def _activate_scheduler(self) -> None:
+        """Initialize once, then start scheduling after start or resume."""
         self.reload_policy()
-        repaired = self.cache.repair_pending_ledger()
-        if repaired:
+        if not self._scheduler_initialized:
+            repaired = self.cache.repair_pending_ledger()
+            if repaired:
+                pipeline_log.append(
+                    stage="DB",
+                    action="Pending billing ledger repaired",
+                    target="billing_ledger",
+                    value=f"{repaired} daily records",
+                    detail="startup idempotency repair",
+                    status="ok",
+                )
+            self._finalize_before(date.today())
             pipeline_log.append(
-                stage="DB",
-                action="Pending billing ledger repaired",
-                target="billing_ledger",
-                value=f"{repaired} daily records",
-                detail="startup idempotency repair",
+                stage="POLICY",
+                action="Background started",
+                target="scheduler",
+                value=f"SNMP ทุก {int(self.snmp_interval.total_seconds() // 60)} นาที",
+                detail=(
+                    f"Web ปกติ {int(self.machine.policy.web_interval.total_seconds() // 60)} นาที · "
+                    f"Peak {int(self.machine.policy.peak_web_interval.total_seconds() // 60)} นาที"
+                ),
                 status="ok",
             )
-        self._finalize_before(date.today())
-        pipeline_log.append(
-            stage="POLICY",
-            action="Background started",
-            target="scheduler",
-            value=f"SNMP ทุก {int(self.snmp_interval.total_seconds() // 60)} นาที",
-            detail=(
-                f"Web ปกติ {int(self.machine.policy.web_interval.total_seconds() // 60)} นาที · "
-                f"Peak {int(self.machine.policy.peak_web_interval.total_seconds() // 60)} นาที"
-            ),
-            status="ok",
-        )
+            self._scheduler_initialized = True
         for device in self.repository.list(enabled_only=True):
-            self.states[device.slot] = DevicePollState(last_snmp_total=device.last_total)
+            self.states.setdefault(
+                device.slot, DevicePollState(last_snmp_total=device.last_total)
+            )
         self.timer.start()
         QTimer.singleShot(250, self.tick)
+
+    @property
+    def is_paused(self) -> bool:
+        with self._lock:
+            return bool(self._paused_reason)
+
+    def pause(self, reason: str = "registration_ineligible") -> int:
+        """Pause future device reads without shutting down the worker executor.
+
+        A device read already executing is allowed to finish its current atomic
+        cache transaction. Queued reads are cancelled and every later timer or
+        manual-read request becomes a no-op until :meth:`resume` is called.
+        """
+        self.timer.stop()
+        with self._lock:
+            self._paused_reason = reason.strip() or "registration_ineligible"
+            cancelled = sum(future.cancel() for future in self._futures.values())
+        log.info(
+            "background polling paused: %s",
+            self._paused_reason,
+            extra={
+                "event": "polling_paused",
+                "operation": "registration_gate",
+                "cancelled_queued_polls": cancelled,
+            },
+        )
+        return cancelled
+
+    def resume(self) -> None:
+        """Resume an already-started scheduler after a temporary pause."""
+        if self._stopped:
+            raise RuntimeError("background polling cannot resume after shutdown")
+        with self._lock:
+            was_paused = bool(self._paused_reason)
+            self._paused_reason = ""
+        if not was_paused or not self._started:
+            return
+        self._activate_scheduler()
+        log.info("background polling resumed")
 
     def stop(self) -> int:
         """Stop scheduling new work and cancel queued polls where possible.
@@ -103,6 +165,7 @@ class BackgroundPollingCoordinator(QObject):
         blocking Qt's UI event loop.
         """
         self.timer.stop()
+        self._stopped = True
         with self._lock:
             remaining = sum(not future.done() for future in self._futures.values())
             for future in self._futures.values():
@@ -115,6 +178,8 @@ class BackgroundPollingCoordinator(QObject):
         return remaining
 
     def tick(self) -> None:
+        if self.is_paused:
+            return
         now = datetime.now().astimezone()
         self._finalize_before(now.date())
         interval = self.machine.policy.snmp_interval_at(now, self.snmp_interval)
@@ -145,6 +210,8 @@ class BackgroundPollingCoordinator(QObject):
         )
 
     def poll_now(self, slot: int | None = None) -> None:
+        if self.is_paused:
+            return
         for device in self.repository.list(enabled_only=True):
             if slot is None or device.slot == slot:
                 self._submit(device, force_web=True)
@@ -287,6 +354,8 @@ class BackgroundPollingCoordinator(QObject):
     def _submit(self, device: DeviceConfig, *, force_web: bool) -> None:
         with self._rollover_lock:
             with self._lock:
+                if self._paused_reason:
+                    return
                 if device.slot in self.active:
                     return
                 self.active.add(device.slot)
@@ -332,6 +401,10 @@ class BackgroundPollingCoordinator(QObject):
             self.reading_saved.emit(slot)
 
     def _poll_device(self, device: DeviceConfig, force_web: bool) -> bool:
+        # A future queued before deactivation may start after pause() raced
+        # with ThreadPoolExecutor. Do not let it issue its first SNMP/Web read.
+        if self.is_paused:
+            return False
         now = datetime.now().astimezone()
         state = self.states.setdefault(device.slot, DevicePollState(last_snmp_total=device.last_total))
         snmp_error = ""

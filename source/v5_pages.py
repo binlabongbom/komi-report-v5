@@ -417,6 +417,7 @@ class DeviceTestWorker(QObject):
                         tls_policy=effective_policy,
                         scheme=profile.web_scheme,
                     ),
+                    allow_implicit_name_export=True,
                 )
                 if profile.profile_id == "generic":
                     return reader.read(web_host)
@@ -1095,6 +1096,7 @@ class SetupWizardV5(QDialog):
         )
         self.results: dict[int, dict] = {}
         self._test_generation = 0
+        self._auto_advance_pending = False
         self._registration_in_progress = False
         self._registration_dialog: QDialog | None = None
         self._registration_poll_timer: QTimer | None = None
@@ -3492,6 +3494,7 @@ class SetupWizardV5(QDialog):
             return
         if self._thread is not None:
             return
+        self._auto_advance_pending = False
         self._test_generation += 1
         generation = self._test_generation
         for entry in self._selected_entries():
@@ -3610,6 +3613,9 @@ class SetupWizardV5(QDialog):
                 self._secondary_auto_review = False
                 self._show_review_step()
                 return
+            if self.stack.currentIndex() == 1 and not self._auto_advance_pending:
+                self._auto_advance_pending = True
+                QTimer.singleShot(0, self._auto_advance_after_successful_test)
         if self._secondary_auto_review:
             self._secondary_auto_review = False
             failed = [
@@ -3630,6 +3636,22 @@ class SetupWizardV5(QDialog):
                 )
                 + "\n".join(f"• {name}" for name in failed),
             )
+
+    def _auto_advance_after_successful_test(self) -> None:
+        """Advance exactly once after every selected printer remains verified."""
+        if not self._auto_advance_pending:
+            return
+        self._auto_advance_pending = False
+        if self.stack.currentIndex() != 1:
+            return
+        selected = self._selected_entries()
+        if not selected or not all(
+            entry.get("result", {}).get("online")
+            and entry.get("result", {}).get("web_ok")
+            for entry in selected
+        ):
+            return
+        self._next()
 
     def _update_device_actions(self) -> None:
         selected = self._selected_entries()
@@ -4476,9 +4498,9 @@ class PagePipelineLog(QWidget):
         self.status_banner = QLabel()
         self.status_banner.setWordWrap(True)
         top.addWidget(self.status_banner, 1)
-        sync_button = btn("อ่านข้อมูลตอนนี้", "primary")
-        sync_button.clicked.connect(self.sync_requested.emit)
-        top.addWidget(sync_button)
+        self.sync_button = btn("อ่านข้อมูลตอนนี้", "primary")
+        self.sync_button.clicked.connect(self.sync_requested.emit)
+        top.addWidget(self.sync_button)
         refresh_button = btn("รีเฟรช", "outline")
         refresh_button.clicked.connect(self.refresh_status)
         top.addWidget(refresh_button)
@@ -6619,10 +6641,13 @@ class PageHistoryV5(PageHistory):
         self.report_advanced_panel.setVisible(False)
         self.tabs.setVisible(False)
         self.report_center = CloudReportsWidget()
-        self.report_center.refresh_requested.connect(self.refresh)
+        self.report_center.refresh_requested.connect(self.refresh_visible)
         self.report_center.export_requested.connect(self._export_report_center_excel)
         self.report_center.period_changed.connect(self._refresh_report_center)
         self.report_center.reading_status_requested.connect(self.reading_status_requested)
+        self.report_center.tabs.currentChanged.connect(
+            lambda _index: QTimer.singleShot(0, self.refresh_visible)
+        )
         self.report_center_tabs = self.report_center.tabs
         self.report_center_scroll = QScrollArea()
         self.report_center_scroll.setObjectName("cloud_reports_scroll")
@@ -6632,8 +6657,6 @@ class PageHistoryV5(PageHistory):
         self.report_center_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.report_center_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.layout().addWidget(self.report_center_scroll, 1)
-        self._populate_report_periods()
-        self._refresh_report_center()
 
     @staticmethod
     def _report_panel() -> tuple[QFrame, QVBoxLayout]:
@@ -6896,6 +6919,8 @@ class PageHistoryV5(PageHistory):
         """Refresh the visible Cloud reports from one shared date range."""
         if not hasattr(self, "report_center"):
             return
+        if not hasattr(self, "_report_records"):
+            self._populate_report_periods()
         periods = sorted(
             {self._period_key(record) for record in getattr(self, "_report_records", ())},
             reverse=True,
@@ -6908,8 +6933,15 @@ class PageHistoryV5(PageHistory):
         if selected is None:
             selected = periods[0] if periods else None
         self.report_center.set_periods(periods, selected)
-        usage_daily_records = tuple(
-            load_usage_history(report_slots(), granularity="daily", cache=self.cache)
+        active_tab = self.report_center.tabs.currentIndex()
+        needs_daily_usage = active_tab in {0, 3}
+        needs_subjects = active_tab in {0, 1}
+        needs_raw = active_tab in {1, 4}
+        needs_legacy = active_tab in {3, 4}
+        usage_daily_records = (
+            tuple(load_usage_history(report_slots(), granularity="daily", cache=self.cache))
+            if needs_daily_usage
+            else ()
         )
         if selected:
             start = date.fromisoformat(selected[0])
@@ -6928,15 +6960,23 @@ class PageHistoryV5(PageHistory):
             # values. A custom range is built from daily usage so the two
             # date fields change the actual report instead of only the label.
             selected_records = monthly_records or daily_records
-            subjects = tuple(
-                record
-                for record in load_subject_history(
-                    report_slots(), cache=self.subject_cache
+            subjects = (
+                tuple(
+                    record
+                    for record in load_subject_history(
+                        report_slots(), cache=self.subject_cache
+                    )
+                    if record.period_start == start and record.period_end == end
                 )
-                if record.period_start == start and record.period_end == end
+                if needs_subjects
+                else ()
             )
-            raw_counter_records = load_raw_counter_history(
-                report_slots(), period_start=start, period_end=end
+            raw_counter_records = (
+                load_raw_counter_history(
+                    report_slots(), period_start=start, period_end=end
+                )
+                if needs_raw
+                else ()
             )
         else:
             daily_records = ()
@@ -6959,13 +6999,33 @@ class PageHistoryV5(PageHistory):
             monthly_records=getattr(self, "_report_records", ()),
             subjects=subjects,
             devices=devices,
-            legacy_history=load_imported_legacy_history(),
+            legacy_history=load_imported_legacy_history() if needs_legacy else (),
             raw_counter_records=raw_counter_records,
-            usage_meter_baselines=load_usage_meter_baselines(report_slots()),
+            usage_meter_baselines=(
+                load_usage_meter_baselines(report_slots()) if active_tab == 3 else ()
+            ),
             period=selected,
             last_sync_at=last_sync,
         )
         apply_language(self.report_center)
+
+    def refresh_visible(self) -> None:
+        """Load only the visible Cloud report, leaving legacy audit UI deferred."""
+        try:
+            self.reports_error.setVisible(False)
+            self.report_center.updated_label.setText("กำลังโหลดข้อมูลแท็บนี้…")
+            self._populate_report_periods()
+            self._refresh_report_center()
+        except Exception as error:
+            self.report_center.show_error(
+                "โหลด Reports ไม่สำเร็จ · ซ่อนตัวเลขไว้เพื่อป้องกันการอ่านผิด "
+                f"· {type(error).__name__}: {error}"
+            )
+            self.reports_error.setText(
+                "โหลด Reports ไม่สำเร็จ · ยอดบนหน้าจอถูกซ่อนไว้เพื่อป้องกันการอ่านผิด "
+                f"· {type(error).__name__}: {error}"
+            )
+            self.reports_error.setVisible(True)
 
     def _export_report_center_excel(self) -> None:
         """Choose a date range, then export three user-facing report views."""

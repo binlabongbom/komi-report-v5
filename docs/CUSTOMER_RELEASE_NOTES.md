@@ -1,4 +1,4 @@
-# KOMI Report V5.2.4 — Customer Release Notes
+# KOMI Report V5.2.5 — Customer Release Notes
 
 ## Package identity
 
@@ -14,7 +14,10 @@ artifact ว่า Production Ready.
 
 ## Runtime behavior
 
-- V5.2.4 บรรจุภาพประกอบคู่มือภายในแอปครบถ้วนทั้ง Windows และ macOS เพื่อไม่ให้หน้า
+- V5.2.5 คืนชื่อ User/Account จาก RAM Meter export แบบ cache แล้วแสดงตาราง Users แยกตาม Slot และประเภท Counter โดยไม่ตัดหัวคอลัมน์.
+- Usage มี checkbox เลือก Slot สำหรับยอดรวมและกราฟ, ตารางตามเครื่องใช้หัว 3 ชั้น และ Legacy แสดง `—` เมื่อเครื่องไม่ระบุประเภทงาน.
+- Setup Wizard ไปขั้นถัดไปอัตโนมัติเมื่อทุกเครื่องผ่าน SNMP + Web; หน้า Reports โหลดเฉพาะแท็บที่เปิดเพื่อลดการค้างบนฐานข้อมูลขนาดใหญ่.
+- V5.2.5 บรรจุภาพประกอบคู่มือภายในแอปครบถ้วนทั้ง Windows และ macOS เพื่อไม่ให้หน้า
   คู่มือแสดงพื้นที่ว่างหรือข้อความว่าไม่พบภาพประกอบหลังติดตั้งจริง.
 - ช่องเลือกช่วงวันที่ในหน้า Report เปิดปฏิทินเมื่อคลิกได้ทั้งช่อง และไม่รับการพิมพ์วันที่โดยตรง
   เพื่อลดวันที่ผิดรูปแบบ.
@@ -36,7 +39,7 @@ artifact ว่า Production Ready.
 - หาก OS vault หรือ API contract ใช้ไม่ได้ ระบบหยุดส่งแบบ fail-closed โดย local Meter, Billing, Report และ
   Excel ยังคงทำงานตามข้อมูลในเครื่อง.
 - ไม่มี Lab/test/demo mode, Virtual Printer auto-injection, mock/`.invalid` endpoint หรือ QA fallback ใน runtime.
-- Production Phase 3 Update ไม่รวมใน V5.2.4: ไม่มี silent/forced update, remote command หรือ Update telemetry.
+- Production Phase 3 Update ไม่รวมใน V5.2.5: ไม่มี silent/forced update, remote command หรือ Update telemetry.
 
 ## Evidence และ Trust state
 

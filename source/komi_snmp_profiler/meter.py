@@ -23,7 +23,9 @@ from .credential_store import (
 )
 from .device_profiles import WebMeterProtocol, resolve_device_meter_profile
 from .meter_export import (
+    MeterCountExportConnector,
     MeterExportKind,
+    MeterExportReader,
     MeterExportTable,
     subject_name_map,
 )
@@ -46,6 +48,7 @@ class MeterReader:
         legacy_public_connector: LegacyWebConnectionCounterConnector | None = None,
         legacy_admin_connector: LegacyAuthenticatedWebConnectionCounterConnector | None = None,
         export_reader: MeterExportReaderLike | None = None,
+        allow_implicit_name_export: bool = False,
         public_factory_credentials: tuple[AdminCredential, ...] | None = None,
     ) -> None:
         self.credential_store = credential_store
@@ -54,6 +57,8 @@ class MeterReader:
         self.legacy_public_connector = legacy_public_connector
         self.legacy_admin_connector = legacy_admin_connector
         self.export_reader = export_reader
+        self.allow_implicit_name_export = allow_implicit_name_export
+        self._subject_name_cache: dict[tuple[str, MeterExportKind], dict[str, str]] = {}
         self.public_factory_credentials = (
             tuple(AdminCredential(password=value) for value in PUBLIC_FACTORY_ADMIN_PASSWORDS)
             if public_factory_credentials is None
@@ -243,15 +248,25 @@ class MeterReader:
 
         names_by_type: dict[str, dict[str, str]] = {}
         warnings: list[str] = []
-        # Name export is a separate, explicit operator action.  It creates a
-        # short-lived export job on the device, so background polling and the
-        # normal "read now" path must never start it implicitly.  Callers that
-        # intentionally request name enrichment inject an export_reader.
-        if self.export_reader is None:
-            return counters, []
+        # The device's normal counter JSON contains AuthNo/TrackNo but omits
+        # the visible names.  Long-lived polling callers may opt in to one
+        # bounded RAM Meter export per host/kind; the result is cached so every
+        # polling cycle does not create a new temporary export job.
         export_reader = self.export_reader
+        if export_reader is None and self.allow_implicit_name_export:
+            export_reader = MeterExportReader(
+                self.credential_store,
+                connector=MeterCountExportConnector(tls_policy=tls_policy),
+            )
+        if export_reader is None:
+            return counters, []
         for kind in sorted(kinds):
             subject_type = "user" if kind == "User" else "account"
+            cache_key = (host, kind)
+            cached_names = self._subject_name_cache.get(cache_key)
+            if cached_names:
+                names_by_type[subject_type] = cached_names
+                continue
             try:
                 names = subject_name_map(export_reader.read(host, kind))
             except (CredentialStoreError, WebConnectionError, ValueError):
@@ -260,6 +275,7 @@ class MeterReader:
             if not names:
                 warnings.append(f"RAM Meter export ไม่มีชื่อ {kind}; คง subject ID ไว้")
                 continue
+            self._subject_name_cache[cache_key] = names
             names_by_type[subject_type] = names
 
         enriched = []

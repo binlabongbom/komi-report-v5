@@ -7,7 +7,7 @@ from PyQt6.QtWidgets import (
     QTableWidget, QTableWidgetItem, QHeaderView, QScrollBar, QWidget,
     QStyledItemDelegate, QCheckBox, QSizePolicy, QAbstractItemView,
 )
-from PyQt6.QtCore import QPointF, QRectF, QSize, Qt
+from PyQt6.QtCore import QPointF, QRectF, QSize, Qt, QTimer
 from PyQt6.QtGui  import QFont, QColor, QPainter, QPen
 from config import *
 
@@ -585,6 +585,8 @@ class FrozenLeftTable(QWidget):
             table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
             table.setSelectionMode(QTableWidget.SelectionMode.NoSelection)
             table.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+            table.setTextElideMode(Qt.TextElideMode.ElideNone)
+            table.setWordWrap(True)
             table.setStyleSheet(group_style)
             table.setRowHeight(0, 34)
             table.setRowHeight(1, 34)
@@ -655,6 +657,20 @@ class FrozenLeftTable(QWidget):
         )
         self._left.setViewportMargins(0, 0, 0, reserve)
 
+    def _refresh_viewport_alignment(self):
+        horizontal = self._right.horizontalScrollBar()
+        self._sync_left_bottom_margin(horizontal.minimum(), horizontal.maximum())
+        right_scroll = self._right.verticalScrollBar()
+        self._sync_range(right_scroll.minimum(), right_scroll.maximum())
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        QTimer.singleShot(0, self._refresh_viewport_alignment)
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        QTimer.singleShot(0, self._refresh_viewport_alignment)
+
     def _on_body_hscroll(self, value):
         if self._group_hscroll_guard:
             return
@@ -672,6 +688,8 @@ class FrozenLeftTable(QWidget):
     # ── Scroll sync ──────────────────────────────────────
     def _sync_range(self, mn, mx):
         sb = self._right.verticalScrollBar()
+        horizontal = self._right.horizontalScrollBar()
+        self._sync_left_bottom_margin(horizontal.minimum(), horizontal.maximum())
         left_sb = self._left.verticalScrollBar()
         # QTableWidget computes a shorter range for the frozen side because it
         # has no horizontal scrollbar of its own.  Use the scrollable body's
@@ -688,8 +706,21 @@ class FrozenLeftTable(QWidget):
         if self._scroll_guard:
             return
         self._scroll_guard = True
-        for t in (self._left, self._right):
-            t.verticalScrollBar().setValue(val)
+        right_scroll = self._right.verticalScrollBar()
+        left_scroll = self._left.verticalScrollBar()
+        right_scroll.setValue(val)
+        left_scroll.setRange(right_scroll.minimum(), right_scroll.maximum())
+        left_scroll.setPageStep(right_scroll.pageStep())
+        left_scroll.setSingleStep(right_scroll.singleStep())
+        left_scroll.setValue(right_scroll.value())
+        anchor_row = self._right.rowAt(1)
+        if anchor_row >= 0:
+            offset_delta = (
+                self._left.rowViewportPosition(anchor_row)
+                - self._right.rowViewportPosition(anchor_row)
+            )
+            if offset_delta:
+                left_scroll.setValue(left_scroll.value() + offset_delta)
         self._scroll_guard = False
 
     def _on_tbl_scroll(self, val):
@@ -801,6 +832,7 @@ class FrozenLeftTable(QWidget):
         if len(sublabels) != self._n_cols - 1:
             raise ValueError("grouped header sublabels must match scrollable columns")
 
+        self._set_group_header_rows(2)
         self._group_left.clearSpans()
         self._group_left.setRowCount(2)
         self._group_left.setColumnCount(1)
@@ -836,6 +868,86 @@ class FrozenLeftTable(QWidget):
         self._right.horizontalHeader().setVisible(False)
         self._group_header.setVisible(True)
 
+    def setThreeLevelGroupedHeader(
+        self,
+        left_label,
+        outer_groups,
+        middle_groups,
+        sublabels,
+    ):
+        """Show device, operation, and detail as three readable header rows."""
+        normalized_outer = [
+            (group[0], group[1], group[2] if len(group) > 2 else None)
+            for group in outer_groups
+        ]
+        normalized_middle = [
+            (group[0], group[1], group[2] if len(group) > 2 else None)
+            for group in middle_groups
+        ]
+        scrollable_columns = self._n_cols - 1
+        if sum(span for _label, span, _color in normalized_outer) != scrollable_columns:
+            raise ValueError("outer grouped header spans must match scrollable columns")
+        if sum(span for _label, span, _color in normalized_middle) != scrollable_columns:
+            raise ValueError("middle grouped header spans must match scrollable columns")
+        if len(sublabels) != scrollable_columns:
+            raise ValueError("grouped header sublabels must match scrollable columns")
+
+        self._set_group_header_rows(3)
+        self._group_left.clearSpans()
+        self._group_left.setRowCount(3)
+        self._group_left.setColumnCount(1)
+        self._group_left.setSpan(0, 0, 3, 1)
+        left_item = QTableWidgetItem(str(left_label))
+        left_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._group_left.setItem(0, 0, left_item)
+
+        self._group_right.clearSpans()
+        self._group_right.setRowCount(3)
+        self._group_right.setColumnCount(scrollable_columns)
+        column = 0
+        for label, span, color in normalized_outer:
+            if span > 1:
+                self._group_right.setSpan(0, column, 1, span)
+            item = QTableWidgetItem(str(label))
+            item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            if color:
+                item.setBackground(QColor(color))
+            self._group_right.setItem(0, column, item)
+            column += span
+
+        column = 0
+        for label, span, color in normalized_middle:
+            if span > 1:
+                self._group_right.setSpan(1, column, 1, span)
+            item = QTableWidgetItem(str(label))
+            item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            if color:
+                item.setBackground(QColor(color))
+            self._group_right.setItem(1, column, item)
+            for subcolumn in range(column, column + span):
+                subitem = QTableWidgetItem(str(sublabels[subcolumn]))
+                subitem.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                if color:
+                    subitem.setBackground(QColor(color).lighter(112))
+                self._group_right.setItem(2, subcolumn, subitem)
+            column += span
+
+        for column in range(scrollable_columns):
+            self._group_right.setColumnWidth(column, self._right.columnWidth(column))
+        self._left.horizontalHeader().setVisible(False)
+        self._right.horizontalHeader().setVisible(False)
+        self._group_header.setVisible(True)
+
+    def _set_group_header_rows(self, row_count):
+        row_height = 34
+        fixed_height = row_count * row_height + 2
+        for table in (self._group_left, self._group_right):
+            table.setRowCount(row_count)
+            for row in range(row_count):
+                table.setRowHeight(row, row_height)
+            table.setFixedHeight(fixed_height)
+        self._group_header.setFixedHeight(fixed_height)
+
     def groupedHeaderItem(self, row, c):
         if c == 0:
             return self._group_left.item(row, 0)
@@ -869,9 +981,7 @@ class FrozenLeftTable(QWidget):
         return self._hh_proxy
 
     def verticalHeader(self):
-        class _DV:
-            def setVisible(self, _): pass
-        return _DV()
+        return self._left.verticalHeader()
 
     def setEditTriggers(self, t):
         self._left.setEditTriggers(t)
@@ -880,6 +990,19 @@ class FrozenLeftTable(QWidget):
     def setAlternatingRowColors(self, v):
         self._left.setAlternatingRowColors(v)
         self._right.setAlternatingRowColors(v)
+
+    def alternatingRowColors(self):
+        return self._left.alternatingRowColors()
+
+    def setCurrentCell(self, row, column):
+        if column == 0:
+            self._left.setCurrentCell(row, 0)
+        else:
+            self._right.setCurrentCell(row, column - 1)
+
+    def clearSelection(self):
+        self._left.clearSelection()
+        self._right.clearSelection()
 
     def blockSignals(self, b):
         self._left.blockSignals(b)

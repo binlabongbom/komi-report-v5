@@ -387,12 +387,14 @@ class V52RuntimeStateRepository:
     def usage_eligibility(
         self, *, now: datetime | None = None
     ) -> tuple[bool, str]:
-        """Return the local lifecycle gate used before opening the workspace."""
+        """Return the local lifecycle gate used before collecting new data."""
 
         state = self.internal()
         if state is None:
             return False, "not_configured"
         if state["mode"] == "online":
+            if state["status"] in {"deactivated", "revoked"}:
+                return False, str(state["status"])
             notice_time = _parse_timestamp(state["notice_accepted_at"])
             if (
                 state["notice_version"] != REGISTRATION_NOTICE_VERSION

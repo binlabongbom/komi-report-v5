@@ -91,6 +91,18 @@ def _parse(value: object) -> datetime | None:
     return parsed.astimezone(UTC)
 
 
+_DEACTIVATED_INSTALLATION_ERRORS = frozenset(
+    {
+        "deactivated",
+        "inactive",
+        "installation_deactivated",
+        "installation_inactive",
+        "installation_revoked",
+        "revoked",
+    }
+)
+
+
 class V52RuntimeProcessor:
     """Synchronous business core; all network ability is explicitly injected."""
 
@@ -121,15 +133,32 @@ class V52RuntimeProcessor:
         state = self.state.internal()
         if state is None or state["mode"] != "online":
             return self.outbox.cancel_unsent(now=self.clock()) if state else 0
+        if state["status"] in {"deactivated", "revoked"}:
+            return self.outbox.cancel_unsent(
+                reason=str(state["status"]), event_types=("meter",), now=self.clock()
+            )
         return self.outbox.recover_in_flight(now=self.clock())
 
-    def prepare_due(self, *, force_recovery: bool = False) -> int:
+    def prepare_due(
+        self,
+        *,
+        force_recovery: bool = False,
+        force_status_probe: bool = False,
+    ) -> int:
         state = self.state.internal()
         if state is None:
             return 0
         now = self.clock()
         if state["mode"] != "online":
             return self.outbox.cancel_unsent(now=now)
+        deactivated = state["status"] in {"deactivated", "revoked"}
+        if deactivated:
+            # Keep one status probe eligible: a Host-side activation can then
+            # restore collection without re-running local setup. Meter events
+            # are terminally closed, including stale queue entries.
+            self.outbox.cancel_unsent(
+                reason=str(state["status"]), event_types=("meter",), now=now
+            )
         if not state["notice_version"] or not state["notice_accepted_at"]:
             self.state.mark_status("needs_review", error_code="notice_required", now=now)
             return 0
@@ -165,17 +194,23 @@ class V52RuntimeProcessor:
             return queued
 
         queued = 0
-        for event_type in ("status", "meter"):
+        for event_type in (("status",) if deactivated else ("status", "meter")):
             due = _parse(state[f"next_{event_type}_at"])
+            startup_status = force_status_probe and event_type == "status"
             recovery_allowed = force_recovery and self.outbox.recovery_send_allowed(
                 event_type, now=now
             )
-            if force_recovery and not recovery_allowed and (due is None or due > now):
+            force_due = startup_status or recovery_allowed
+            if (
+                (force_recovery or force_status_probe)
+                and not force_due
+                and (due is None or due > now)
+            ):
                 continue
-            if not recovery_allowed and due is not None and due > now:
+            if not force_due and due is not None and due > now:
                 continue
             if self.outbox.active_count(event_type) > 0:
-                if recovery_allowed:
+                if force_due:
                     self.outbox.make_due(event_type, now=now)
                 continue
             if event_type == "status":
@@ -200,9 +235,17 @@ class V52RuntimeProcessor:
             queued += 1
         return queued
 
-    def run_once(self, *, force_recovery: bool = False) -> bool:
+    def run_once(
+        self,
+        *,
+        force_recovery: bool = False,
+        force_status_probe: bool = False,
+    ) -> bool:
         try:
-            queued = self.prepare_due(force_recovery=force_recovery)
+            queued = self.prepare_due(
+                force_recovery=force_recovery,
+                force_status_probe=force_status_probe,
+            )
         except CredentialStoreError:
             self.state.mark_status(
                 "needs_review", error_code="vault_unavailable", now=self.clock()
@@ -322,6 +365,12 @@ class V52RuntimeProcessor:
                     error_code=error_code,
                     now=now,
                 )
+            elif error_code in _DEACTIVATED_INSTALLATION_ERRORS:
+                status = "revoked" if "revoked" in error_code else "deactivated"
+                self.outbox.cancel_unsent(
+                    reason=status, event_types=("meter",), now=now
+                )
+                self.state.mark_status(status, error_code=error_code, now=now)
             else:
                 self.state.mark_status("needs_review", error_code=error_code, now=now)
 
@@ -401,6 +450,12 @@ class V52RuntimeProcessor:
             "offline",
             "registration_conflict",
             "request_fingerprint_mismatch",
+            "deactivated",
+            "inactive",
+            "installation_deactivated",
+            "installation_inactive",
+            "installation_revoked",
+            "revoked",
             "validation_error",
         }
         candidate = value.strip().lower()
@@ -459,7 +514,11 @@ class V52RuntimeCoordinator(QObject):
             self.status_changed.emit(str(self.snapshot()["status"]))
             return
         self.timer.start()
-        QTimer.singleShot(250, lambda: self.tick(force_recovery=True))
+        # Verify Host lifecycle before Desktop collection can resume. This is
+        # intentionally stronger than network-recovery cooldown: closing and
+        # reopening after Dashboard deactivation must detect it before stale
+        # meter telemetry or a new device read can start.
+        self.tick(force_recovery=True, force_status_probe=True)
 
     def stop(self) -> int:
         self.timer.stop()
@@ -467,11 +526,18 @@ class V52RuntimeCoordinator(QObject):
         self.executor.shutdown(wait=False, cancel_futures=True)
         return remaining
 
-    def tick(self, *, force_recovery: bool = False) -> None:
+    def tick(
+        self,
+        *,
+        force_recovery: bool = False,
+        force_status_probe: bool = False,
+    ) -> None:
         if self._future is not None and not self._future.done():
             return
         self._future = self.executor.submit(
-            self.processor.run_once, force_recovery=force_recovery
+            self.processor.run_once,
+            force_recovery=force_recovery,
+            force_status_probe=force_status_probe,
         )
         self._future.add_done_callback(lambda _future: self._work_finished.emit())
 

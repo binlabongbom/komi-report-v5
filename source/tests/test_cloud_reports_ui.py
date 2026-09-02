@@ -7,7 +7,7 @@ from datetime import date
 
 from PyQt6.QtCore import QDate, QPoint, Qt
 from PyQt6.QtTest import QTest
-from PyQt6.QtWidgets import QApplication, QDateEdit
+from PyQt6.QtWidgets import QApplication, QDateEdit, QPushButton
 
 from services.device_config import DeviceConfig
 from services.monthly_history import MonthlyUsage
@@ -166,6 +166,7 @@ def test_cloud_reports_share_period_and_cross_filter_users_and_printers():
     assert widget.overview_kpis["total_usage"].lbl_val.text() == "120"
     assert widget.overview_kpis["total_usage"].lbl_detail.text() == "ช่วงรายงานที่เลือก"
     assert widget.overview_kpis["total_cost"].lbl_val.text() == "฿29.40"
+    widget.tabs.setCurrentIndex(3)
     assert [widget.usage_tabs.tabText(index) for index in range(widget.usage_tabs.count())] == [
         "ทุกเครื่อง",
         "ตามเครื่อง",
@@ -202,7 +203,7 @@ def test_cloud_reports_share_period_and_cross_filter_users_and_printers():
     widget.usage_waste_checkbox.setChecked(True)
     assert widget.overview_kpis["total_cost"].lbl_val.text() == "฿29.40"
     # The device view is a matrix: one row per period, device names are
-    # two-level header groups instead of being repeated in the table body.
+    # three-level device/operation/detail headers instead of truncated labels.
     assert widget.usage_by_printer_table.rowCount() == 2
     metric_count = len(USAGE_METRICS)
     assert widget.usage_by_printer_table.columnCount() == 1 + 2 * metric_count
@@ -220,10 +221,13 @@ def test_cloud_reports_share_period_and_cross_filter_users_and_printers():
     assert matrix.groupedHeaderItem(0, 1 + metric_count).text() == (
         "Slot 2 · Archive Printer"
     )
-    assert matrix.groupedHeaderSpan(0, 0) == (2, 1)
+    assert matrix.groupedHeaderSpan(0, 0) == (3, 1)
+    assert matrix.groupedHeaderItem(1, 1).text() == "Print"
+    assert matrix.groupedHeaderItem(2, 1).text() == "A3 Color"
     matrix._right.horizontalScrollBar().setValue(matrix._right.horizontalScrollBar().maximum())
     assert matrix.item(0, 0).text() == "08/2026"
     assert matrix._left.x() == 0
+    widget.tabs.setCurrentIndex(4)
     assert widget.legacy_machine_table.horizontalHeaderItem(0).text() == "กลุ่มงาน"
     assert widget.legacy_machine_table.horizontalHeaderItem(1).text() == (
         "ประเภท Counter (ชื่อจากเครื่อง)"
@@ -233,12 +237,15 @@ def test_cloud_reports_share_period_and_cross_filter_users_and_printers():
     assert widget.legacy_machine_table.item(0, 3).text() == "—"
     assert widget.legacy_machine_table.item(1, 2).text() == "—"
     assert widget.legacy_machine_table.item(1, 3).text() == "2"
+    assert widget.legacy_machine_table.item(0, 0).text() == "—"
     assert widget.legacy_user_table.item(0, 0).text() == "alice (user)"
     assert widget.legacy_user_table.item(0, 1).text() == "5"
     assert widget.legacy_daily_table.item(0, 0).text() == "06/08/2026"
 
+    widget.tabs.setCurrentIndex(1)
     widget._select_user_row(0, 0)
     assert widget.user_filter_badge.text() == "กำลังกรอง: alice"
+    widget.tabs.setCurrentIndex(2)
     widget._select_printer_row(0, 0)
     assert "ทุกเครื่องพร้อมกัน" in widget.printer_compare_note.text()
     assert widget.printer_detail.item(3, 1).text() == "10,000"
@@ -254,6 +261,7 @@ def test_cloud_reports_share_period_and_cross_filter_users_and_printers():
         for start, end in widget.period_edit_pairs
     )
 
+    widget.tabs.setCurrentIndex(3)
     widget.usage_granularity_buttons["D"].click()
     assert widget.usage_monthly_table.horizontalHeaderItem(0).text() == "วัน"
     assert widget.usage_monthly_table.item(0, 0).text() == "06/08/2026"
@@ -286,6 +294,16 @@ def test_cloud_reports_header_and_date_range_fit_desktop_minimum():
         Qt.MouseButton.LeftButton,
         pos=QPoint(start_edit.width() // 2, start_edit.height() // 2),
     )
+    app.processEvents()
+    assert start_edit.calendarWidget().isVisible()
+    QTest.keyClick(start_edit, Qt.Key.Key_Escape)
+    calendar_buttons = [
+        button
+        for button in widget.findChildren(QPushButton, "cloud_calendar_button")
+        if button.text() == "📅"
+    ]
+    assert len(calendar_buttons) == 8
+    calendar_buttons[0].click()
     app.processEvents()
     assert start_edit.calendarWidget().isVisible()
     QTest.keyClick(start_edit, Qt.Key.Key_Escape)
@@ -323,6 +341,7 @@ def test_usage_starts_with_reference_meter_without_counting_it_as_usage_or_cost(
             UsageMeterBaseline(1, date(2026, 7, 1), 20_000, "Archive Printer", "SER-B"),
         ),
     )
+    widget.tabs.setCurrentIndex(3)
 
     total_index = next(
         index for index, (field, _label, _availability) in enumerate(USAGE_METRICS)
@@ -362,6 +381,97 @@ def test_usage_starts_with_reference_meter_without_counting_it_as_usage_or_cost(
     app.processEvents()
 
 
+def test_users_matrix_uses_real_names_and_slot_operation_detail_headers():
+    app = QApplication.instance() or QApplication([])
+    day = date(2026, 8, 6)
+    test_user = replace(_subject(day), subject_id="1", subject_name="TEST1")
+    raw_print = replace(
+        _raw(
+            day,
+            slot=0,
+            field="counter.print.a3_color",
+            label="Print A3 Color",
+            delta=9,
+            subject=True,
+        ),
+        subject_id="1",
+        subject_name="TEST1",
+    )
+    widget = CloudReportsWidget()
+    widget.set_data(
+        records=(_usage(day),),
+        daily_records=(_usage(day),),
+        subjects=(test_user,),
+        devices=(DeviceConfig(0, "KM bizhub C450i", "192.0.2.10", serial="SER-A"),),
+        period=(day.isoformat(), day.isoformat()),
+        last_sync_at=None,
+        raw_counter_records=(raw_print,),
+    )
+    widget.tabs.setCurrentIndex(1)
+
+    table = widget.users_table
+    assert table.item(0, 0).text() == "TEST1"
+    assert table.groupedHeaderSpan(0, 0) == (3, 1)
+    assert table.groupedHeaderItem(0, 1).text() == "Slot 1 · KM bizhub C450i"
+    assert table.groupedHeaderItem(1, 1).text() == "Print"
+    assert table.groupedHeaderItem(2, 1).text() == "A3 Color"
+    assert table.item(0, 1).text() == "9"
+    assert table.item(0, 13).text() == "—"  # per-user cost is not inferred
+    assert table._right.textElideMode() == Qt.TextElideMode.ElideNone
+    widget.close()
+    app.processEvents()
+
+
+def test_usage_all_devices_checkboxes_filter_aggregate_but_keep_per_device_matrix():
+    app = QApplication.instance() or QApplication([])
+    day = date(2026, 8, 6)
+    first = _usage(day)
+    second = replace(
+        _usage(day, 80),
+        device_slot=1,
+        device_identity="serial:SER-B",
+        device_name_snapshot="Archive Printer",
+        device_serial_snapshot="SER-B",
+    )
+    widget = CloudReportsWidget()
+    widget.set_data(
+        records=(first, second),
+        daily_records=(first, second),
+        usage_daily_records=(first, second),
+        monthly_records=(first, second),
+        subjects=(),
+        devices=(
+            DeviceConfig(0, "Sales Printer", "192.0.2.10", serial="SER-A"),
+            DeviceConfig(1, "Archive Printer", "192.0.2.11", serial="SER-B"),
+        ),
+        period=(day.isoformat(), day.isoformat()),
+        last_sync_at=None,
+    )
+    widget.tabs.setCurrentIndex(3)
+    total_index = next(
+        index for index, (field, _label, _availability) in enumerate(USAGE_METRICS)
+        if field == "total"
+    )
+    cost_index = next(
+        index for index, (field, _label, _availability) in enumerate(USAGE_METRICS)
+        if field == "cost"
+    )
+    metric_count = len(USAGE_METRICS)
+    assert all(box.isChecked() for box in widget.usage_device_filters.values())
+    assert widget.usage_monthly_table.item(0, 1 + total_index).text() == "200"
+
+    widget.usage_device_filters[1].setChecked(False)
+
+    assert widget.usage_monthly_table.item(0, 1 + total_index).text() == "120"
+    assert widget.usage_monthly_table.item(0, 1 + cost_index).text() == "29.40"
+    assert widget.usage_by_printer_table.item(
+        0, 1 + metric_count + total_index
+    ).text() == "80"
+    assert all(series.count() == 1 for series in widget.usage_timeline_chart.chart().series())
+    widget.close()
+    app.processEvents()
+
+
 def test_printer_charts_compare_all_devices_and_selection_only_changes_detail():
     app = QApplication.instance() or QApplication([])
     day = date(2026, 8, 6)
@@ -386,6 +496,7 @@ def test_printer_charts_compare_all_devices_and_selection_only_changes_detail():
         period=(day.isoformat(), day.isoformat()),
         last_sync_at=None,
     )
+    widget.tabs.setCurrentIndex(2)
 
     def chart_labels(chart):
         return [bar_set.label() for bar_set in chart.series()[0].barSets()]
@@ -431,10 +542,12 @@ def test_keyboard_selection_updates_user_filter_and_printer_detail_immediately()
         last_sync_at=None,
     )
 
+    widget.tabs.setCurrentIndex(1)
     widget.users_table.setCurrentCell(0, 0)
     app.processEvents()
     assert widget.user_filter_badge.text() == "กำลังกรอง: alice"
 
+    widget.tabs.setCurrentIndex(2)
     widget.printers_table.setCurrentCell(1, 0)
     app.processEvents()
     assert widget.printer_detail.item(0, 1).text() == "Archive Printer"
@@ -455,6 +568,7 @@ def test_empty_users_offer_a_reading_status_recovery_action():
         period=(day.isoformat(), day.isoformat()),
         last_sync_at=None,
     )
+    widget.tabs.setCurrentIndex(1)
     requests = []
     widget.reading_status_requested.connect(lambda: requests.append(True))
 
@@ -468,6 +582,16 @@ def test_empty_users_offer_a_reading_status_recovery_action():
 def test_cloud_reports_use_transparent_label_surfaces_and_consistent_table_alignment():
     app = QApplication.instance() or QApplication([])
     widget = CloudReportsWidget()
+    day = date(2026, 8, 6)
+    widget.set_data(
+        records=(_usage(day),),
+        daily_records=(_usage(day),),
+        subjects=(_subject(day),),
+        devices=(DeviceConfig(0, "Sales Printer", "192.0.2.10", serial="SER-A"),),
+        period=(day.isoformat(), day.isoformat()),
+        last_sync_at=None,
+    )
+    widget.tabs.setCurrentIndex(1)
 
     left = int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
     right = int(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
@@ -481,8 +605,8 @@ def test_cloud_reports_use_transparent_label_surfaces_and_consistent_table_align
     assert table.horizontalHeaderItem(0).textAlignment() == left
     assert table.horizontalHeaderItem(2).textAlignment() == right
 
-    widget._fill_table(table, [("  Alpha Printer  ", "online", "100", "200", "1", "301", "75.00")])
-    assert table.item(0, 0).text() == "Alpha Printer"
+    widget._fill_table(table, [("  TEST1  ", *("100" for _ in range(table.columnCount() - 1)))])
+    assert table.item(0, 0).text() == "TEST1"
     assert table.item(0, 0).textAlignment() == left
     assert table.item(0, 2).textAlignment() == right
 
