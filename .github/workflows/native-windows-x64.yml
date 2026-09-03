@@ -22,7 +22,7 @@ jobs:
       - name: Prepare runner policy and tools
         run: |
           $ErrorActionPreference = 'Stop'
-          Set-ExecutionPolicy -Scope LocalMachine -ExecutionPolicy Bypass -Force
+          Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy Bypass -Force
           $gitCandidates = @(
             "$env:ProgramFiles\Git\cmd\git.exe",
             "$env:ProgramFiles\Git\bin\git.exe",
