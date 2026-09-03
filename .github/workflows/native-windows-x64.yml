@@ -19,18 +19,16 @@ jobs:
       - name: Runner identity
         shell: powershell
         run: |
-          $ErrorActionPreference = 'Stop'
           Write-Host "ComputerName=$env:COMPUTERNAME"
           Write-Host "User=$env:USERNAME"
-          Write-Host "OS=$([System.Environment]::OSVersion.VersionString)"
           Write-Host "Arch=$env:PROCESSOR_ARCHITECTURE"
+          Write-Host "Processor=$env:PROCESSOR_IDENTIFIER"
+          Write-Host "Cores=$env:NUMBER_OF_PROCESSORS"
           Write-Host "PowerShell=$($PSVersionTable.PSVersion)"
-          Get-CimInstance Win32_Processor | Select-Object Name, NumberOfCores, NumberOfLogicalProcessors | Format-List
-          $os = Get-CimInstance Win32_OperatingSystem
-          Write-Host ("RAM_GB={0:N2}" -f ($os.TotalVisibleMemorySize / 1MB))
-          Write-Host ("FreeRAM_GB={0:N2}" -f ($os.FreePhysicalMemory / 1MB))
-          $driveName = ($env:SystemDrive).TrimEnd(':')
-          Write-Host ("SystemDriveFree_GB={0:N2}" -f ((Get-PSDrive $driveName).Free / 1GB))
+          Write-Host "RunnerOS=$env:RUNNER_OS"
+          Write-Host "RunnerArch=$env:RUNNER_ARCH"
+          Write-Host "RunnerName=$env:RUNNER_NAME"
+          Write-Host "Workspace=$env:GITHUB_WORKSPACE"
 
       - uses: actions/checkout@v4
         with:
