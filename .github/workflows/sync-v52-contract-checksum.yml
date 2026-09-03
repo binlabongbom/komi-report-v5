@@ -49,7 +49,9 @@ jobs:
           $actual = (Get-FileHash -Algorithm SHA256 -LiteralPath $contract).Hash.ToLowerInvariant()
           $text = Get-Content -LiteralPath $metadata -Raw
           $text = [regex]::Replace($text, 'CONTRACT_SHA256 = "[0-9a-f]{64}"', "CONTRACT_SHA256 = `"$actual`"")
-          Set-Content -LiteralPath $metadata -Value $text -Encoding utf8
+          $text = $text.TrimEnd("`r", "`n") + "`n"
+          $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+          [System.IO.File]::WriteAllText((Resolve-Path $metadata), $text, $utf8NoBom)
           Write-Host "ContractSHA256=$actual"
 
       - name: Validate version gate
