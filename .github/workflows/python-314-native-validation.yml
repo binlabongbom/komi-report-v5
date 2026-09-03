@@ -123,21 +123,56 @@ jobs:
           $runtimeVersion = (& $runtime -c "import sys; print('.'.join(map(str, sys.version_info[:3])))").Trim()
           if ($runtimeVersion -ne '3.14.7') { throw "Bundled runtime version is $runtimeVersion, expected 3.14.7." }
 
-      - name: Attempt full Windows installer build when Inno Setup is available
+      - name: Bootstrap Inno Setup compiler
         run: |
           $ErrorActionPreference = 'Stop'
-          $iscc = @(
-            "$env:ProgramFiles(x86)\Inno Setup 6\ISCC.exe",
-            "$env:ProgramFiles\Inno Setup 6\ISCC.exe"
-          ) | Where-Object { Test-Path $_ } | Select-Object -First 1
-          if (-not $iscc) {
-            Write-Host 'ISCC=NOT_INSTALLED; bundled runtime/payload validation remains authoritative for this migration.'
-            exit 0
+          [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+          $innoRoot = 'C:\actions-runner\_komi_tools\inno-7.0.2'
+          $iscc = Join-Path $innoRoot 'ISCC.exe'
+          if (-not (Test-Path $iscc)) {
+            New-Item -ItemType Directory -Path $innoRoot -Force | Out-Null
+            $setup = Join-Path $env:RUNNER_TEMP 'innosetup-7.0.2-x64.exe'
+            Invoke-WebRequest -UseBasicParsing -Uri 'https://github.com/jrsoftware/issrc/releases/download/is-7_0_2/innosetup-7.0.2-x64.exe' -OutFile $setup
+            $args = @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/SP-','/CURRENTUSER','/PORTABLE=1',"/DIR=$innoRoot")
+            $process = Start-Process -FilePath $setup -ArgumentList $args -Wait -PassThru
+            if ($process.ExitCode -ne 0) { throw "Inno Setup bootstrap failed with exit code $($process.ExitCode)." }
           }
-          $env:PYTHONPATH = (Resolve-Path 'source').Path
+          if (-not (Test-Path $iscc)) {
+            $iscc = Get-ChildItem -LiteralPath $innoRoot -Filter ISCC.exe -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty FullName
+          }
+          if (-not $iscc -or -not (Test-Path $iscc)) { throw 'ISCC.exe was not found after Inno Setup bootstrap.' }
+          Write-Host "ISCC=$iscc"
+          $iscc | Out-File -FilePath (Join-Path $env:RUNNER_TEMP 'komi-iscc-path.txt') -Encoding ascii
+
+      - name: Compile full Windows installer from validated payload
+        run: |
+          $ErrorActionPreference = 'Stop'
           $pythonExe = 'C:\actions-runner\_komi_tools\python-3.14.7\python.exe'
-          & $pythonExe source/tools/build_windows_rc.py --output release/python314-installer --customer-release --iscc "$iscc"
-          if ($LASTEXITCODE -ne 0) { throw 'Full Python 3.14.7 Windows installer build failed.' }
+          $iscc = (Get-Content -LiteralPath (Join-Path $env:RUNNER_TEMP 'komi-iscc-path.txt') -Raw).Trim()
+          $buildEvidence = Get-Content -LiteralPath 'release/python314-native/PYTHON314_NATIVE_BUILD.json' -Raw | ConvertFrom-Json
+          $env:KOMI_PAYLOAD = [string]$buildEvidence.payload
+          $env:KOMI_ISCC = $iscc
+          $env:KOMI_COMMIT = (git rev-parse HEAD).Trim()
+          $script = Join-Path $env:RUNNER_TEMP 'komi-python314-installer.py'
+          $scriptLines = @(
+            'import os',
+            'import sys',
+            'from pathlib import Path',
+            "repo = Path.cwd().resolve()",
+            "sys.path.insert(0, str(repo / 'source'))",
+            'from tools.build_windows_rc import compile_installer',
+            "out = (repo / 'release' / 'python314-installer').resolve()",
+            'out.mkdir(parents=True, exist_ok=True)',
+            "installer = compile_installer(payload_root=Path(os.environ['KOMI_PAYLOAD']), output_root=out, source_commit=os.environ['KOMI_COMMIT'], iscc=Path(os.environ['KOMI_ISCC']), customer_release=True)",
+            "print('installer=' + str(installer))",
+            "print('size=' + str(installer.stat().st_size))"
+          )
+          $scriptLines | Set-Content -LiteralPath $script -Encoding utf8
+          & $pythonExe $script
+          if ($LASTEXITCODE -ne 0) { throw 'Full Python 3.14.7 Windows installer compile failed.' }
+          $installer = Get-ChildItem release/python314-installer -Filter *.exe -Recurse | Select-Object -First 1
+          if (-not $installer) { throw 'Installer EXE was not produced.' }
+          Get-FileHash -Algorithm SHA256 -LiteralPath $installer.FullName | ForEach-Object { "$($_.Hash.ToLowerInvariant())  $($installer.Name)" } | Set-Content -LiteralPath 'release/python314-installer/INSTALLER.sha256' -Encoding ascii
           Get-ChildItem release/python314-installer -Filter *.exe -Recurse | Select-Object FullName, Length
 
       - name: Upload Python 3.14 native validation evidence
