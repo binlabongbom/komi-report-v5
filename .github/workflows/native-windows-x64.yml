@@ -76,31 +76,50 @@ jobs:
             $getPip = Join-Path $env:RUNNER_TEMP 'get-pip.py'
             Invoke-WebRequest -UseBasicParsing -Uri 'https://bootstrap.pypa.io/get-pip.py' -OutFile $getPip
             & $pythonExe $getPip --disable-pip-version-check
+            if ($LASTEXITCODE -ne 0) { throw "get-pip failed with exit code $LASTEXITCODE" }
           }
           $pythonRoot | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
           (Join-Path $pythonRoot 'Scripts') | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
           & $pythonExe --version
+          if ($LASTEXITCODE -ne 0) { throw "python --version failed with exit code $LASTEXITCODE" }
           & $pythonExe -m pip --version
+          if ($LASTEXITCODE -ne 0) { throw "pip --version failed with exit code $LASTEXITCODE" }
 
       - name: Verify V5.2.6 source contract
         run: |
           $ErrorActionPreference = 'Stop'
+          $env:PYTHONPATH = (Resolve-Path 'source').Path
+          @'
+          import hashlib
+          from pathlib import Path
+          from services.v5_2_contract_metadata import CONTRACT_SHA256
+          p = Path('docs/V5_2_HOST_API_IMPLEMENTATION_REQUEST.md')
+          actual = hashlib.sha256(p.read_bytes()).hexdigest()
+          print(f'contract_checksum_expected={CONTRACT_SHA256}')
+          print(f'contract_checksum_actual={actual}')
+          '@ | python -
+          if ($LASTEXITCODE -ne 0) { throw "contract checksum probe failed with exit code $LASTEXITCODE" }
           python source/tools/version_gate.py
+          if ($LASTEXITCODE -ne 0) { throw "version gate failed with exit code $LASTEXITCODE" }
           python -m pip install --disable-pip-version-check pytest
+          if ($LASTEXITCODE -ne 0) { throw "pytest install failed with exit code $LASTEXITCODE" }
           python -m pytest -q source/tests/test_v526_performance_contract.py
+          if ($LASTEXITCODE -ne 0) { throw "V5.2.6 performance contract tests failed with exit code $LASTEXITCODE" }
           git status --short
+          if ($LASTEXITCODE -ne 0) { throw "git status failed with exit code $LASTEXITCODE" }
           git rev-parse HEAD
+          if ($LASTEXITCODE -ne 0) { throw "git rev-parse failed with exit code $LASTEXITCODE" }
 
       - name: Build native Windows x64 application payload
         run: |
           $ErrorActionPreference = 'Stop'
-          Push-Location source
+          $env:PYTHONPATH = (Resolve-Path 'source').Path
           @'
           import json
           from pathlib import Path
           from tools.build_windows_rc import build_payload
 
-          output = (Path('..') / 'release' / 'native-windows-x64').resolve()
+          output = Path('release/native-windows-x64').resolve()
           payload, evidence = build_payload(
               output,
               customer_release=True,
@@ -117,7 +136,7 @@ jobs:
           )
           print(json.dumps(result, ensure_ascii=False))
           '@ | python -
-          Pop-Location
+          if ($LASTEXITCODE -ne 0) { throw "native payload build failed with exit code $LASTEXITCODE" }
 
       - name: Inspect native payload and installer capability
         run: |
