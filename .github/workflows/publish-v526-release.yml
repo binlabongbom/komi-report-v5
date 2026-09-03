@@ -1,0 +1,75 @@
+name: Publish V5.2.6 Release
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/publish-v526-release.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  publish-v526:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Download validated Windows installer artifact
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: 33747619161
+          name: KOMI-Report-V5.2.6-Windows-x64-83dc5e32ab13b6a95aea48fab397e1f32c379231
+          path: release-assets
+
+      - name: Verify release assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          find release-assets -maxdepth 2 -type f -printf '%p %s bytes\n'
+          installer="$(find release-assets -type f -iname '*.exe' | head -n 1)"
+          test -n "$installer"
+          test -f release-assets/INSTALLER.sha256
+          test -f release-assets/RELEASE_INFO.json
+          echo "installer=$installer" >> "$GITHUB_ENV"
+
+      - name: Publish GitHub Release v5.2.6
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          notes=$(cat <<'EOF'
+          KOMI Report V5.2.6
+
+          Release focus:
+          - Faster perceived startup and tab navigation without changing the user experience.
+          - Bundled Windows x64 runtime migrated to CPython 3.14.7.
+          - Native Windows x64 validation completed on self-hosted runner.
+          - V5.2.6 version gate and performance contract passed.
+          - Bundled runtime smoke test passed for PyQt6, NumPy, cryptography and pydantic-core.
+          - Next.js production build and Inno Setup installer compilation passed.
+
+          Build source: main @ 83dc5e32ab13b6a95aea48fab397e1f32c379231
+          Target: Windows x64
+          EOF
+          )
+
+          if gh release view v5.2.6 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release edit v5.2.6 --repo "$GITHUB_REPOSITORY" --title "KOMI Report V5.2.6" --notes "$notes" --latest
+          else
+            gh release create v5.2.6 --repo "$GITHUB_REPOSITORY" --target 83dc5e32ab13b6a95aea48fab397e1f32c379231 --title "KOMI Report V5.2.6" --notes "$notes" --latest
+          fi
+
+          gh release upload v5.2.6 release-assets/*.exe release-assets/INSTALLER.sha256 release-assets/RELEASE_INFO.json --repo "$GITHUB_REPOSITORY" --clobber
+
+      - name: Verify published release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release view v5.2.6 --repo "$GITHUB_REPOSITORY" --json tagName,name,isDraft,isPrerelease,url,assets
