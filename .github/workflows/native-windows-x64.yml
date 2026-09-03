@@ -14,10 +14,12 @@ jobs:
   native-windows-x64:
     runs-on: [self-hosted, Windows, X64]
     timeout-minutes: 90
+    defaults:
+      run:
+        shell: powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File {0}
 
     steps:
       - name: Runner identity
-        shell: powershell
         run: |
           Write-Host "ComputerName=$env:COMPUTERNAME"
           Write-Host "User=$env:USERNAME"
@@ -39,7 +41,6 @@ jobs:
           python-version: '3.12'
 
       - name: Verify V5.2.6 source contract
-        shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
           python source/tools/version_gate.py
@@ -47,7 +48,6 @@ jobs:
           python -m pytest -q source/tests/test_v526_performance_contract.py
 
       - name: Check native build prerequisites
-        shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
           Write-Host "Python=$(python --version 2>&1)"
@@ -65,7 +65,6 @@ jobs:
           }
 
       - name: Build native Windows x64 customer candidate
-        shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
           $isccCommand = Get-Command ISCC.exe -ErrorAction SilentlyContinue
@@ -83,7 +82,6 @@ jobs:
 
       - name: Summarize native build
         if: always()
-        shell: powershell
         run: |
           $manifest = 'release/native-windows-x64/WINDOWS_MANIFEST.json'
           if (Test-Path $manifest) {
