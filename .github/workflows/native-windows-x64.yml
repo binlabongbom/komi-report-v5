@@ -1,0 +1,111 @@
+name: Native Windows x64
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/native-windows-x64.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  native-windows-x64:
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 90
+
+    steps:
+      - name: Runner identity
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Write-Host "ComputerName=$env:COMPUTERNAME"
+          Write-Host "User=$env:USERNAME"
+          Write-Host "OS=$([System.Environment]::OSVersion.VersionString)"
+          Write-Host "Arch=$env:PROCESSOR_ARCHITECTURE"
+          Write-Host "PowerShell=$($PSVersionTable.PSVersion)"
+          Get-CimInstance Win32_Processor | Select-Object Name, NumberOfCores, NumberOfLogicalProcessors | Format-List
+          $os = Get-CimInstance Win32_OperatingSystem
+          Write-Host ("RAM_GB={0:N2}" -f ($os.TotalVisibleMemorySize / 1MB))
+          Write-Host ("FreeRAM_GB={0:N2}" -f ($os.FreePhysicalMemory / 1MB))
+          Write-Host ("SystemDriveFree_GB={0:N2}" -f ((Get-PSDrive $env:SystemDrive.TrimEnd(':')).Free / 1GB))
+
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Verify V5.2.6 source contract
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          python source/tools/version_gate.py
+          python -m pip install --disable-pip-version-check pytest
+          python -m pytest -q source/tests/test_v526_performance_contract.py
+
+      - name: Check native build prerequisites
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Write-Host "Python=$(python --version 2>&1)"
+          Write-Host "Git=$(git --version)"
+          $iscc = Get-Command ISCC.exe -ErrorAction SilentlyContinue
+          if ($iscc) {
+            Write-Host "ISCC=$($iscc.Source)"
+          } else {
+            $candidates = @(
+              "$env:ProgramFiles(x86)\Inno Setup 6\ISCC.exe",
+              "$env:ProgramFiles\Inno Setup 6\ISCC.exe"
+            )
+            $found = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+            if ($found) { Write-Host "ISCC=$found" } else { Write-Host "ISCC=NOT_FOUND" }
+          }
+
+      - name: Build native Windows x64 customer candidate
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $iscc = (Get-Command ISCC.exe -ErrorAction SilentlyContinue).Source
+          if (-not $iscc) {
+            $iscc = @(
+              "$env:ProgramFiles(x86)\Inno Setup 6\ISCC.exe",
+              "$env:ProgramFiles\Inno Setup 6\ISCC.exe"
+            ) | Where-Object { Test-Path $_ } | Select-Object -First 1
+          }
+          if (-not $iscc) {
+            throw 'Inno Setup 6 (ISCC.exe) is required on the self-hosted runner.'
+          }
+          python source/tools/build_windows_rc.py --customer-release --iscc "$iscc" --output release/native-windows-x64
+
+      - name: Summarize native build
+        if: always()
+        shell: pwsh
+        run: |
+          $manifest = 'release/native-windows-x64/WINDOWS_MANIFEST.json'
+          if (Test-Path $manifest) {
+            $m = Get-Content $manifest -Raw | ConvertFrom-Json
+            Write-Host "version=$($m.version)"
+            Write-Host "environment=$($m.build_environment)"
+            Write-Host "source_commit=$($m.source_commit)"
+            Write-Host "artifact_sha256=$($m.artifact_sha256)"
+            Write-Host "release_decision=$($m.release_decision)"
+            Write-Host "production_go=$($m.production_go)"
+          } else {
+            Write-Host 'WINDOWS_MANIFEST.json was not produced.'
+          }
+
+      - name: Upload native Windows evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-windows-x64-${{ github.sha }}
+          if-no-files-found: warn
+          retention-days: 14
+          path: |
+            release/native-windows-x64/*.json
+            release/native-windows-x64/*.txt
+            release/native-windows-x64/*.sha256
