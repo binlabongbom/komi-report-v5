@@ -72,7 +72,6 @@ jobs:
       - name: Validate source and performance contracts on Python 3.14.7
         run: |
           $ErrorActionPreference = 'Stop'
-          $env:PYTHONPATH = (Resolve-Path 'source').Path
           python source/tools/version_gate.py
           if ($LASTEXITCODE -ne 0) { throw 'version_gate failed on Python 3.14.7.' }
           python -m pytest -q source/tests/test_v526_performance_contract.py
@@ -81,10 +80,12 @@ jobs:
       - name: Build customer-behavior payload with bundled CPython 3.14.7
         run: |
           $ErrorActionPreference = 'Stop'
-          $env:PYTHONPATH = (Resolve-Path 'source').Path
           @'
           import json
+          import sys
           from pathlib import Path
+
+          sys.path.insert(0, str(Path('source').resolve()))
           from tools.build_windows_rc import build_payload
 
           out = Path('release/python314-native').resolve()
@@ -139,7 +140,6 @@ jobs:
             Write-Host 'ISCC=NOT_INSTALLED; bundled runtime/payload validation remains authoritative for this migration.'
             exit 0
           }
-          $env:PYTHONPATH = (Resolve-Path 'source').Path
           python source/tools/build_windows_rc.py --output release/python314-installer --customer-release --iscc "$iscc"
           if ($LASTEXITCODE -ne 0) { throw 'Full Python 3.14.7 Windows installer build failed.' }
           Get-ChildItem release/python314-installer -Filter *.exe -Recurse | Select-Object FullName, Length
