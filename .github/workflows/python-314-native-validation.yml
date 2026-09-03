@@ -1,0 +1,192 @@
+name: Python 3.14 Native Windows Validation
+
+on:
+  push:
+    branches: [chatgpt/python-3-14-runtime]
+    paths:
+      - '.github/workflows/python-314-native-validation.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  native-python314-validation:
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 120
+    defaults:
+      run:
+        shell: powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File {0}
+
+    steps:
+      - name: Bootstrap persistent MinGit
+        run: |
+          $ErrorActionPreference = 'Stop'
+          [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+          $toolsRoot = 'C:\actions-runner\_komi_tools'
+          $portableRoot = Join-Path $toolsRoot 'mingit'
+          $gitExe = Join-Path $portableRoot 'cmd\git.exe'
+          if (-not (Test-Path $gitExe)) {
+            New-Item -ItemType Directory -Path $portableRoot -Force | Out-Null
+            $release = Invoke-RestMethod -Headers @{ 'User-Agent' = 'KOMI-Report-native-runner' } -Uri 'https://api.github.com/repos/git-for-windows/git/releases/latest'
+            $asset = $release.assets | Where-Object { $_.name -match '^MinGit-.*-64-bit\.zip$' } | Select-Object -First 1
+            if (-not $asset) { throw 'Unable to locate a 64-bit MinGit asset.' }
+            $zip = Join-Path $env:RUNNER_TEMP $asset.name
+            Invoke-WebRequest -UseBasicParsing -Uri $asset.browser_download_url -OutFile $zip
+            Expand-Archive -LiteralPath $zip -DestinationPath $portableRoot -Force
+          }
+          (Join-Path $portableRoot 'cmd') | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          & $gitExe --version
+          if ($LASTEXITCODE -ne 0) { throw 'git bootstrap failed.' }
+
+      - uses: actions/checkout@v4
+        with:
+          ref: chatgpt/python-3-14-runtime
+          fetch-depth: 0
+
+      - name: Bootstrap persistent CPython 3.14.7 build toolchain
+        run: |
+          $ErrorActionPreference = 'Stop'
+          [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+          $pythonRoot = 'C:\actions-runner\_komi_tools\python-3.14.7'
+          $pythonExe = Join-Path $pythonRoot 'python.exe'
+          if (-not (Test-Path $pythonExe)) {
+            Remove-Item $pythonRoot -Recurse -Force -ErrorAction SilentlyContinue
+            New-Item -ItemType Directory -Path $pythonRoot -Force | Out-Null
+            $zip = Join-Path $env:RUNNER_TEMP 'python-3.14.7-embed-amd64.zip'
+            Invoke-WebRequest -UseBasicParsing -Uri 'https://www.python.org/ftp/python/3.14.7/python-3.14.7-embed-amd64.zip' -OutFile $zip
+            Expand-Archive -LiteralPath $zip -DestinationPath $pythonRoot -Force
+            $pth = Join-Path $pythonRoot 'python314._pth'
+            $pthText = (Get-Content $pth -Raw) -replace '#import site', 'import site'
+            [System.IO.File]::WriteAllText($pth, $pthText, [System.Text.Encoding]::ASCII)
+            $getPip = Join-Path $env:RUNNER_TEMP 'get-pip.py'
+            Invoke-WebRequest -UseBasicParsing -Uri 'https://bootstrap.pypa.io/get-pip.py' -OutFile $getPip
+            & $pythonExe $getPip --disable-pip-version-check
+            if ($LASTEXITCODE -ne 0) { throw 'get-pip failed for Python 3.14.7.' }
+          }
+          $pythonRoot | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          (Join-Path $pythonRoot 'Scripts') | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          & $pythonExe --version
+          if ($LASTEXITCODE -ne 0) { throw 'Python 3.14.7 failed to start.' }
+          & $pythonExe -m pip install --disable-pip-version-check pytest
+          if ($LASTEXITCODE -ne 0) { throw 'pytest install failed.' }
+
+      - name: Validate source and performance contracts on Python 3.14.7
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $pythonExe = 'C:\actions-runner\_komi_tools\python-3.14.7\python.exe'
+          & $pythonExe source/tools/version_gate.py
+          if ($LASTEXITCODE -ne 0) { throw 'version_gate failed on Python 3.14.7.' }
+          & $pythonExe -m pytest -q source/tests/test_v526_performance_contract.py
+          if ($LASTEXITCODE -ne 0) { throw 'V5.2.6 performance contract failed on Python 3.14.7.' }
+
+      - name: Build customer-behavior payload with bundled CPython 3.14.7
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $pythonExe = 'C:\actions-runner\_komi_tools\python-3.14.7\python.exe'
+          $script = Join-Path $env:RUNNER_TEMP 'komi-python314-build.py'
+          $scriptLines = @(
+            'import json',
+            'import sys',
+            'from pathlib import Path',
+            "repo = Path.cwd().resolve()",
+            "source = repo / 'source'",
+            'sys.path.insert(0, str(source))',
+            'from tools.build_windows_rc import build_payload',
+            "out = (repo / 'release' / 'python314-native').resolve()",
+            "payload, evidence = build_payload(out, customer_release=True, build_evidence='windows-x64-native-python314')",
+            "result = {'payload': str(payload), 'runtime_evidence': evidence}",
+            "(out / 'PYTHON314_NATIVE_BUILD.json').write_text(json.dumps(result, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')",
+            'print(json.dumps(result, ensure_ascii=False))'
+          )
+          $scriptLines | Set-Content -LiteralPath $script -Encoding utf8
+          & $pythonExe $script
+          if ($LASTEXITCODE -ne 0) { throw 'Python 3.14 native payload build failed.' }
+
+      - name: Smoke test bundled customer runtime
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $evidencePath = 'release/python314-native/PYTHON314_NATIVE_BUILD.json'
+          if (-not (Test-Path $evidencePath)) { throw 'Native payload build evidence is missing.' }
+          $buildEvidence = Get-Content -LiteralPath $evidencePath -Raw | ConvertFrom-Json
+          $payload = [string]$buildEvidence.payload
+          if (-not $payload -or -not (Test-Path $payload)) { throw "Bundled payload root not found: $payload" }
+          $runtime = Join-Path $payload 'runtime\python.exe'
+          if (-not (Test-Path $runtime)) { throw "Bundled runtime python.exe not found under payload: $payload" }
+          Write-Host "PayloadRoot=$payload"
+          Write-Host "Runtime=$runtime"
+          & $runtime --version
+          if ($LASTEXITCODE -ne 0) { throw 'Bundled Python 3.14.7 failed to start.' }
+          $smokeCode = "import sys, numpy, cryptography, PyQt6, PyQt6.QtCore, PyQt6.QtWidgets, pydantic_core; print('runtime=' + sys.version.replace(chr(10), ' ')); print('numpy=' + numpy.__version__); print('cryptography=' + cryptography.__version__); print('pyqt6=import-ok'); print('pydantic_core=import-ok')"
+          & $runtime -c $smokeCode
+          if ($LASTEXITCODE -ne 0) { throw 'Bundled Python 3.14.7 dependency smoke test failed.' }
+          $runtimeVersion = (& $runtime -c "import sys; print('.'.join(map(str, sys.version_info[:3])))").Trim()
+          if ($runtimeVersion -ne '3.14.7') { throw "Bundled runtime version is $runtimeVersion, expected 3.14.7." }
+
+      - name: Bootstrap Inno Setup compiler
+        run: |
+          $ErrorActionPreference = 'Stop'
+          [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+          $innoRoot = 'C:\actions-runner\_komi_tools\inno-7.0.2'
+          $iscc = Join-Path $innoRoot 'ISCC.exe'
+          if (-not (Test-Path $iscc)) {
+            New-Item -ItemType Directory -Path $innoRoot -Force | Out-Null
+            $setup = Join-Path $env:RUNNER_TEMP 'innosetup-7.0.2-x64.exe'
+            Invoke-WebRequest -UseBasicParsing -Uri 'https://github.com/jrsoftware/issrc/releases/download/is-7_0_2/innosetup-7.0.2-x64.exe' -OutFile $setup
+            $args = @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/SP-','/CURRENTUSER','/PORTABLE=1',"/DIR=$innoRoot")
+            $process = Start-Process -FilePath $setup -ArgumentList $args -Wait -PassThru
+            if ($process.ExitCode -ne 0) { throw "Inno Setup bootstrap failed with exit code $($process.ExitCode)." }
+          }
+          if (-not (Test-Path $iscc)) {
+            $iscc = Get-ChildItem -LiteralPath $innoRoot -Filter ISCC.exe -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty FullName
+          }
+          if (-not $iscc -or -not (Test-Path $iscc)) { throw 'ISCC.exe was not found after Inno Setup bootstrap.' }
+          Write-Host "ISCC=$iscc"
+          $iscc | Out-File -FilePath (Join-Path $env:RUNNER_TEMP 'komi-iscc-path.txt') -Encoding ascii
+
+      - name: Compile full Windows installer from validated payload
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $pythonExe = 'C:\actions-runner\_komi_tools\python-3.14.7\python.exe'
+          $iscc = (Get-Content -LiteralPath (Join-Path $env:RUNNER_TEMP 'komi-iscc-path.txt') -Raw).Trim()
+          $buildEvidence = Get-Content -LiteralPath 'release/python314-native/PYTHON314_NATIVE_BUILD.json' -Raw | ConvertFrom-Json
+          $env:KOMI_PAYLOAD = [string]$buildEvidence.payload
+          $env:KOMI_ISCC = $iscc
+          $env:KOMI_COMMIT = (git rev-parse HEAD).Trim()
+          $script = Join-Path $env:RUNNER_TEMP 'komi-python314-installer.py'
+          $scriptLines = @(
+            'import os',
+            'import sys',
+            'from pathlib import Path',
+            "repo = Path.cwd().resolve()",
+            "sys.path.insert(0, str(repo / 'source'))",
+            'from tools.build_windows_rc import compile_installer',
+            "out = (repo / 'release' / 'python314-installer').resolve()",
+            'out.mkdir(parents=True, exist_ok=True)',
+            "installer = compile_installer(payload_root=Path(os.environ['KOMI_PAYLOAD']), output_root=out, source_commit=os.environ['KOMI_COMMIT'], iscc=Path(os.environ['KOMI_ISCC']), customer_release=True)",
+            "print('installer=' + str(installer))",
+            "print('size=' + str(installer.stat().st_size))"
+          )
+          $scriptLines | Set-Content -LiteralPath $script -Encoding utf8
+          & $pythonExe $script
+          if ($LASTEXITCODE -ne 0) { throw 'Full Python 3.14.7 Windows installer compile failed.' }
+          $installer = Get-ChildItem release/python314-installer -Filter *.exe -Recurse | Select-Object -First 1
+          if (-not $installer) { throw 'Installer EXE was not produced.' }
+          Get-FileHash -Algorithm SHA256 -LiteralPath $installer.FullName | ForEach-Object { "$($_.Hash.ToLowerInvariant())  $($installer.Name)" } | Set-Content -LiteralPath 'release/python314-installer/INSTALLER.sha256' -Encoding ascii
+          Get-ChildItem release/python314-installer -Filter *.exe -Recurse | Select-Object FullName, Length
+
+      - name: Upload Python 3.14 native validation evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: python314-native-${{ github.sha }}
+          retention-days: 14
+          if-no-files-found: warn
+          path: |
+            release/python314-native/*.json
+            release/python314-native/*.txt
+            release/python314-native/*.sha256
+            release/python314-installer/*.json
+            release/python314-installer/*.txt
+            release/python314-installer/*.sha256
+            release/python314-installer/*.exe
