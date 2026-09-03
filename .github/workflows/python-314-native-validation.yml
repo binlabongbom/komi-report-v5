@@ -110,9 +110,15 @@ print(json.dumps(result, ensure_ascii=False))
       - name: Smoke test bundled customer runtime
         run: |
           $ErrorActionPreference = 'Stop'
-          $payload = Resolve-Path 'release/python314-native/payload'
+          $evidencePath = 'release/python314-native/PYTHON314_NATIVE_BUILD.json'
+          if (-not (Test-Path $evidencePath)) { throw 'Native payload build evidence is missing.' }
+          $buildEvidence = Get-Content -LiteralPath $evidencePath -Raw | ConvertFrom-Json
+          $payload = [string]$buildEvidence.payload
+          if (-not $payload -or -not (Test-Path $payload)) { throw "Bundled payload root not found: $payload" }
           $runtime = Join-Path $payload 'runtime\python.exe'
-          if (-not (Test-Path $runtime)) { throw 'Bundled runtime python.exe not found.' }
+          if (-not (Test-Path $runtime)) { throw "Bundled runtime python.exe not found under payload: $payload" }
+          Write-Host "PayloadRoot=$payload"
+          Write-Host "Runtime=$runtime"
           & $runtime --version
           if ($LASTEXITCODE -ne 0) { throw 'Bundled Python 3.14.7 failed to start.' }
           $smoke = Join-Path $env:RUNNER_TEMP 'komi-python314-smoke.py'
@@ -146,6 +152,7 @@ print('pydantic_core=import-ok')
             Write-Host 'ISCC=NOT_INSTALLED; bundled runtime/payload validation remains authoritative for this migration.'
             exit 0
           }
+          $env:PYTHONPATH = (Resolve-Path 'source').Path
           & 'C:\actions-runner\_komi_tools\python-3.14.7\python.exe' source/tools/build_windows_rc.py --output release/python314-installer --customer-release --iscc "$iscc"
           if ($LASTEXITCODE -ne 0) { throw 'Full Python 3.14.7 Windows installer build failed.' }
           Get-ChildItem release/python314-installer -Filter *.exe -Recurse | Select-Object FullName, Length
