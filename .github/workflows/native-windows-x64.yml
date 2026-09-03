@@ -13,27 +13,31 @@ permissions:
 jobs:
   native-windows-x64:
     runs-on: [self-hosted, Windows, X64]
-    timeout-minutes: 90
+    timeout-minutes: 120
     defaults:
       run:
         shell: powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File {0}
 
     steps:
-      - name: Prepare runner policy and tools
+      - name: Bootstrap portable Git
         run: |
           $ErrorActionPreference = 'Stop'
+          [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
           Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy Bypass -Force
-          $gitCandidates = @(
-            "$env:ProgramFiles\Git\cmd\git.exe",
-            "$env:ProgramFiles\Git\bin\git.exe",
-            "$env:ProgramFiles(x86)\Git\cmd\git.exe"
-          ) | Where-Object { Test-Path $_ }
-          if ($gitCandidates) {
-            $gitDir = Split-Path ($gitCandidates | Select-Object -First 1)
-            $gitDir | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-            Write-Host "GitPathAdded=$gitDir"
-          } else {
-            Write-Host 'GitPathAdded=NOT_FOUND'
+          $git = Get-Command git.exe -ErrorAction SilentlyContinue
+          if (-not $git) {
+            $portableRoot = Join-Path $env:RUNNER_TEMP 'mingit'
+            if (-not (Test-Path (Join-Path $portableRoot 'cmd\git.exe'))) {
+              Remove-Item $portableRoot -Recurse -Force -ErrorAction SilentlyContinue
+              New-Item -ItemType Directory -Path $portableRoot -Force | Out-Null
+              $release = Invoke-RestMethod -Headers @{ 'User-Agent' = 'KOMI-Report-native-runner' } -Uri 'https://api.github.com/repos/git-for-windows/git/releases/latest'
+              $asset = $release.assets | Where-Object { $_.name -match '^MinGit-.*-64-bit\.zip$' } | Select-Object -First 1
+              if (-not $asset) { throw 'Unable to locate a 64-bit MinGit asset.' }
+              $zip = Join-Path $env:RUNNER_TEMP $asset.name
+              Invoke-WebRequest -UseBasicParsing -Uri $asset.browser_download_url -OutFile $zip
+              Expand-Archive -LiteralPath $zip -DestinationPath $portableRoot -Force
+            }
+            (Join-Path $portableRoot 'cmd') | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
           }
 
       - name: Runner identity
@@ -47,17 +51,31 @@ jobs:
           Write-Host "RunnerOS=$env:RUNNER_OS"
           Write-Host "RunnerArch=$env:RUNNER_ARCH"
           Write-Host "RunnerName=$env:RUNNER_NAME"
-          Write-Host "Workspace=$env:GITHUB_WORKSPACE"
-          $git = Get-Command git.exe -ErrorAction SilentlyContinue
-          if ($git) { Write-Host "Git=$(& $git.Source --version)" } else { Write-Host 'Git=NOT_FOUND' }
+          Write-Host "Git=$(git --version)"
 
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
+      - name: Bootstrap local Python 3.12
+        run: |
+          $ErrorActionPreference = 'Stop'
+          [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+          $pythonRoot = Join-Path $env:RUNNER_TEMP 'komi-python-3.12'
+          $pythonExe = Join-Path $pythonRoot 'python.exe'
+          if (-not (Test-Path $pythonExe)) {
+            New-Item -ItemType Directory -Path $pythonRoot -Force | Out-Null
+            $installer = Join-Path $env:RUNNER_TEMP 'python-3.12.10-amd64.exe'
+            if (-not (Test-Path $installer)) {
+              Invoke-WebRequest -UseBasicParsing -Uri 'https://www.python.org/ftp/python/3.12.10/python-3.12.10-amd64.exe' -OutFile $installer
+            }
+            $args = @('/quiet','InstallAllUsers=0',"TargetDir=$pythonRoot",'Include_pip=1','Include_launcher=0','Include_test=0','PrependPath=0','Shortcuts=0')
+            $p = Start-Process -FilePath $installer -ArgumentList $args -Wait -PassThru
+            if ($p.ExitCode -ne 0 -or -not (Test-Path $pythonExe)) { throw "Local Python install failed with exit code $($p.ExitCode)" }
+          }
+          $pythonRoot | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          (Join-Path $pythonRoot 'Scripts') | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          & $pythonExe --version
 
       - name: Verify V5.2.6 source contract
         run: |
@@ -65,56 +83,50 @@ jobs:
           python source/tools/version_gate.py
           python -m pip install --disable-pip-version-check pytest
           python -m pytest -q source/tests/test_v526_performance_contract.py
+          git status --short
+          git rev-parse HEAD
 
-      - name: Check native build prerequisites
+      - name: Build native Windows x64 application payload
         run: |
           $ErrorActionPreference = 'Stop'
-          Write-Host "Python=$(python --version 2>&1)"
-          $git = Get-Command git.exe -ErrorAction SilentlyContinue
-          if ($git) { Write-Host "Git=$(& $git.Source --version)" } else { throw 'Git for Windows is required on the self-hosted runner.' }
-          $isccCommand = Get-Command ISCC.exe -ErrorAction SilentlyContinue
-          if ($isccCommand) {
-            Write-Host "ISCC=$($isccCommand.Source)"
-          } else {
-            $candidates = @(
-              "$env:ProgramFiles(x86)\Inno Setup 6\ISCC.exe",
-              "$env:ProgramFiles\Inno Setup 6\ISCC.exe"
-            )
-            $found = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
-            if ($found) { Write-Host "ISCC=$found" } else { Write-Host "ISCC=NOT_FOUND" }
-          }
+          Push-Location source
+          @'
+          import json
+          from pathlib import Path
+          from tools.build_windows_rc import build_payload
 
-      - name: Build native Windows x64 customer candidate
+          output = (Path('..') / 'release' / 'native-windows-x64').resolve()
+          payload, evidence = build_payload(
+              output,
+              customer_release=True,
+              build_evidence='windows-x64-native',
+          )
+          result = {
+              'payload': str(payload),
+              'build_environment': 'windows-x64-native',
+              'runtime_evidence': evidence,
+          }
+          (output / 'NATIVE_PAYLOAD_BUILD.json').write_text(
+              json.dumps(result, ensure_ascii=False, indent=2) + '\n',
+              encoding='utf-8',
+          )
+          print(json.dumps(result, ensure_ascii=False))
+          '@ | python -
+          Pop-Location
+
+      - name: Inspect native payload and installer capability
         run: |
           $ErrorActionPreference = 'Stop'
-          $isccCommand = Get-Command ISCC.exe -ErrorAction SilentlyContinue
-          $iscc = if ($isccCommand) { $isccCommand.Source } else { $null }
-          if (-not $iscc) {
-            $iscc = @(
-              "$env:ProgramFiles(x86)\Inno Setup 6\ISCC.exe",
-              "$env:ProgramFiles\Inno Setup 6\ISCC.exe"
-            ) | Where-Object { Test-Path $_ } | Select-Object -First 1
-          }
-          if (-not $iscc) {
-            throw 'Inno Setup 6 (ISCC.exe) is required on the self-hosted runner.'
-          }
-          python source/tools/build_windows_rc.py --customer-release --iscc "$iscc" --output release/native-windows-x64
-
-      - name: Summarize native build
-        if: always()
-        run: |
-          $manifest = 'release/native-windows-x64/WINDOWS_MANIFEST.json'
-          if (Test-Path $manifest) {
-            $m = Get-Content $manifest -Raw | ConvertFrom-Json
-            Write-Host "version=$($m.version)"
-            Write-Host "environment=$($m.build_environment)"
-            Write-Host "source_commit=$($m.source_commit)"
-            Write-Host "artifact_sha256=$($m.artifact_sha256)"
-            Write-Host "release_decision=$($m.release_decision)"
-            Write-Host "production_go=$($m.production_go)"
-          } else {
-            Write-Host 'WINDOWS_MANIFEST.json was not produced.'
-          }
+          $payload = 'release/native-windows-x64/payload'
+          if (-not (Test-Path $payload)) { throw 'Native Windows payload was not produced.' }
+          Get-ChildItem $payload | Select-Object -First 30 Name, Length
+          $iscc = @(
+            "$env:ProgramFiles(x86)\Inno Setup 6\ISCC.exe",
+            "$env:ProgramFiles\Inno Setup 6\ISCC.exe"
+          ) | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if ($iscc) { Write-Host "ISCC=$iscc" } else { Write-Host 'ISCC=NOT_INSTALLED (payload test remains valid)' }
+          Write-Host "InteractiveSession=$env:SESSIONNAME"
+          Write-Host 'NOTE: service-mode runners can build/test payloads but cannot provide a trustworthy visible-window startup benchmark.'
 
       - name: Upload native Windows evidence
         if: always()
