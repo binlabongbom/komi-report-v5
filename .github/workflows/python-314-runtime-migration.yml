@@ -90,14 +90,20 @@ jobs:
             'Windows CPython 3.11 wheels' = 'Windows CPython 3.14 wheels'
           }
           foreach ($pair in $replacements.GetEnumerator()) {
-            if (-not $kit.Contains($pair.Key)) { Write-Host "NOTE: source token not found: $($pair.Key)" }
             $kit = $kit.Replace($pair.Key, $pair.Value)
           }
           Set-Content -LiteralPath $kitPath -Value $kit -Encoding utf8
 
           $builderPath = 'source/tools/build_windows_rc.py'
           $builder = Get-Content $builderPath -Raw
-          $builder = $builder.Replace('bundled CPython 3.11 x64', 'bundled CPython 3.14.7 x64')
+          $builderReplacements = [ordered]@{
+            'bundled CPython 3.11 x64' = 'bundled CPython 3.14.7 x64'
+            'python311._pth' = 'python314._pth'
+            'python311.zip' = 'python314.zip'
+          }
+          foreach ($pair in $builderReplacements.GetEnumerator()) {
+            $builder = $builder.Replace($pair.Key, $pair.Value)
+          }
           Set-Content -LiteralPath $builderPath -Value $builder -Encoding utf8
 
       - name: Regenerate Windows x64 dependency lock for Python 3.14
