@@ -17,7 +17,7 @@ jobs:
 
     steps:
       - name: Runner identity
-        shell: pwsh
+        shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
           Write-Host "ComputerName=$env:COMPUTERNAME"
@@ -29,7 +29,8 @@ jobs:
           $os = Get-CimInstance Win32_OperatingSystem
           Write-Host ("RAM_GB={0:N2}" -f ($os.TotalVisibleMemorySize / 1MB))
           Write-Host ("FreeRAM_GB={0:N2}" -f ($os.FreePhysicalMemory / 1MB))
-          Write-Host ("SystemDriveFree_GB={0:N2}" -f ((Get-PSDrive $env:SystemDrive.TrimEnd(':')).Free / 1GB))
+          $driveName = ($env:SystemDrive).TrimEnd(':')
+          Write-Host ("SystemDriveFree_GB={0:N2}" -f ((Get-PSDrive $driveName).Free / 1GB))
 
       - uses: actions/checkout@v4
         with:
@@ -40,7 +41,7 @@ jobs:
           python-version: '3.12'
 
       - name: Verify V5.2.6 source contract
-        shell: pwsh
+        shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
           python source/tools/version_gate.py
@@ -48,14 +49,14 @@ jobs:
           python -m pytest -q source/tests/test_v526_performance_contract.py
 
       - name: Check native build prerequisites
-        shell: pwsh
+        shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
           Write-Host "Python=$(python --version 2>&1)"
           Write-Host "Git=$(git --version)"
-          $iscc = Get-Command ISCC.exe -ErrorAction SilentlyContinue
-          if ($iscc) {
-            Write-Host "ISCC=$($iscc.Source)"
+          $isccCommand = Get-Command ISCC.exe -ErrorAction SilentlyContinue
+          if ($isccCommand) {
+            Write-Host "ISCC=$($isccCommand.Source)"
           } else {
             $candidates = @(
               "$env:ProgramFiles(x86)\Inno Setup 6\ISCC.exe",
@@ -66,10 +67,11 @@ jobs:
           }
 
       - name: Build native Windows x64 customer candidate
-        shell: pwsh
+        shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
-          $iscc = (Get-Command ISCC.exe -ErrorAction SilentlyContinue).Source
+          $isccCommand = Get-Command ISCC.exe -ErrorAction SilentlyContinue
+          $iscc = if ($isccCommand) { $isccCommand.Source } else { $null }
           if (-not $iscc) {
             $iscc = @(
               "$env:ProgramFiles(x86)\Inno Setup 6\ISCC.exe",
@@ -83,7 +85,7 @@ jobs:
 
       - name: Summarize native build
         if: always()
-        shell: pwsh
+        shell: powershell
         run: |
           $manifest = 'release/native-windows-x64/WINDOWS_MANIFEST.json'
           if (Test-Path $manifest) {
@@ -109,5 +111,3 @@ jobs:
             release/native-windows-x64/*.json
             release/native-windows-x64/*.txt
             release/native-windows-x64/*.sha256
-
-# Trigger marker: native-runner lane enabled
