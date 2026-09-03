@@ -72,34 +72,39 @@ jobs:
       - name: Validate source and performance contracts on Python 3.14.7
         run: |
           $ErrorActionPreference = 'Stop'
-          python source/tools/version_gate.py
+          & 'C:\actions-runner\_komi_tools\python-3.14.7\python.exe' source/tools/version_gate.py
           if ($LASTEXITCODE -ne 0) { throw 'version_gate failed on Python 3.14.7.' }
-          python -m pytest -q source/tests/test_v526_performance_contract.py
+          & 'C:\actions-runner\_komi_tools\python-3.14.7\python.exe' -m pytest -q source/tests/test_v526_performance_contract.py
           if ($LASTEXITCODE -ne 0) { throw 'V5.2.6 performance contract failed on Python 3.14.7.' }
 
       - name: Build customer-behavior payload with bundled CPython 3.14.7
         run: |
           $ErrorActionPreference = 'Stop'
+          $pythonExe = 'C:\actions-runner\_komi_tools\python-3.14.7\python.exe'
+          $script = Join-Path $env:RUNNER_TEMP 'komi-python314-build.py'
           @'
-          import json
-          import sys
-          from pathlib import Path
+import json
+import sys
+from pathlib import Path
 
-          sys.path.insert(0, str(Path('source').resolve()))
-          from tools.build_windows_rc import build_payload
+repo = Path.cwd().resolve()
+source = repo / 'source'
+sys.path.insert(0, str(source))
+from tools.build_windows_rc import build_payload
 
-          out = Path('release/python314-native').resolve()
-          payload, evidence = build_payload(
-              out,
-              customer_release=True,
-              build_evidence='windows-x64-native-python314',
-          )
-          result = {'payload': str(payload), 'runtime_evidence': evidence}
-          (out / 'PYTHON314_NATIVE_BUILD.json').write_text(
-              json.dumps(result, ensure_ascii=False, indent=2) + '\n', encoding='utf-8'
-          )
-          print(json.dumps(result, ensure_ascii=False))
-          '@ | python -
+out = (repo / 'release' / 'python314-native').resolve()
+payload, evidence = build_payload(
+    out,
+    customer_release=True,
+    build_evidence='windows-x64-native-python314',
+)
+result = {'payload': str(payload), 'runtime_evidence': evidence}
+(out / 'PYTHON314_NATIVE_BUILD.json').write_text(
+    json.dumps(result, ensure_ascii=False, indent=2) + '\n', encoding='utf-8'
+)
+print(json.dumps(result, ensure_ascii=False))
+'@ | Set-Content -LiteralPath $script -Encoding utf8
+          & $pythonExe $script
           if ($LASTEXITCODE -ne 0) { throw 'Python 3.14 native payload build failed.' }
 
       - name: Smoke test bundled customer runtime
@@ -110,24 +115,25 @@ jobs:
           if (-not (Test-Path $runtime)) { throw 'Bundled runtime python.exe not found.' }
           & $runtime --version
           if ($LASTEXITCODE -ne 0) { throw 'Bundled Python 3.14.7 failed to start.' }
+          $smoke = Join-Path $env:RUNNER_TEMP 'komi-python314-smoke.py'
           @'
-          import sys
-          import numpy
-          import cryptography
-          import PyQt6
-          import PyQt6.QtCore
-          import PyQt6.QtWidgets
-          import pydantic_core
-          print('runtime=' + sys.version.replace('\n', ' '))
-          print('numpy=' + numpy.__version__)
-          print('cryptography=' + cryptography.__version__)
-          print('pyqt6=import-ok')
-          print('pydantic_core=import-ok')
-          '@ | & $runtime -
+import sys
+import numpy
+import cryptography
+import PyQt6
+import PyQt6.QtCore
+import PyQt6.QtWidgets
+import pydantic_core
+print('runtime=' + sys.version.replace('\n', ' '))
+print('numpy=' + numpy.__version__)
+print('cryptography=' + cryptography.__version__)
+print('pyqt6=import-ok')
+print('pydantic_core=import-ok')
+'@ | Set-Content -LiteralPath $smoke -Encoding utf8
+          & $runtime $smoke
           if ($LASTEXITCODE -ne 0) { throw 'Bundled Python 3.14.7 dependency smoke test failed.' }
-          if ((& $runtime -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}')").Trim() -ne '3.14.7') {
-            throw 'Bundled runtime version is not exactly Python 3.14.7.'
-          }
+          $runtimeVersion = (& $runtime -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}')").Trim()
+          if ($runtimeVersion -ne '3.14.7') { throw "Bundled runtime version is $runtimeVersion, expected 3.14.7." }
 
       - name: Attempt full Windows installer build when Inno Setup is available
         run: |
@@ -140,7 +146,7 @@ jobs:
             Write-Host 'ISCC=NOT_INSTALLED; bundled runtime/payload validation remains authoritative for this migration.'
             exit 0
           }
-          python source/tools/build_windows_rc.py --output release/python314-installer --customer-release --iscc "$iscc"
+          & 'C:\actions-runner\_komi_tools\python-3.14.7\python.exe' source/tools/build_windows_rc.py --output release/python314-installer --customer-release --iscc "$iscc"
           if ($LASTEXITCODE -ne 0) { throw 'Full Python 3.14.7 Windows installer build failed.' }
           Get-ChildItem release/python314-installer -Filter *.exe -Recurse | Select-Object FullName, Length
 
