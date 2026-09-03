@@ -19,6 +19,23 @@ jobs:
         shell: powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File {0}
 
     steps:
+      - name: Prepare runner policy and tools
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Set-ExecutionPolicy -Scope LocalMachine -ExecutionPolicy Bypass -Force
+          $gitCandidates = @(
+            "$env:ProgramFiles\Git\cmd\git.exe",
+            "$env:ProgramFiles\Git\bin\git.exe",
+            "$env:ProgramFiles(x86)\Git\cmd\git.exe"
+          ) | Where-Object { Test-Path $_ }
+          if ($gitCandidates) {
+            $gitDir = Split-Path ($gitCandidates | Select-Object -First 1)
+            $gitDir | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+            Write-Host "GitPathAdded=$gitDir"
+          } else {
+            Write-Host 'GitPathAdded=NOT_FOUND'
+          }
+
       - name: Runner identity
         run: |
           Write-Host "ComputerName=$env:COMPUTERNAME"
@@ -31,6 +48,8 @@ jobs:
           Write-Host "RunnerArch=$env:RUNNER_ARCH"
           Write-Host "RunnerName=$env:RUNNER_NAME"
           Write-Host "Workspace=$env:GITHUB_WORKSPACE"
+          $git = Get-Command git.exe -ErrorAction SilentlyContinue
+          if ($git) { Write-Host "Git=$(& $git.Source --version)" } else { Write-Host 'Git=NOT_FOUND' }
 
       - uses: actions/checkout@v4
         with:
@@ -51,7 +70,8 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           Write-Host "Python=$(python --version 2>&1)"
-          Write-Host "Git=$(git --version)"
+          $git = Get-Command git.exe -ErrorAction SilentlyContinue
+          if ($git) { Write-Host "Git=$(& $git.Source --version)" } else { throw 'Git for Windows is required on the self-hosted runner.' }
           $isccCommand = Get-Command ISCC.exe -ErrorAction SilentlyContinue
           if ($isccCommand) {
             Write-Host "ISCC=$($isccCommand.Source)"
