@@ -166,10 +166,10 @@ popd
 exit /b %KOMI_EXIT_CODE%
 """
 
-README = f"""KOMI Report V{VERSION} — Windows x64 Unsigned Pilot Candidate
+README = f"""KOMI Report V{VERSION} â€” Windows x64 Unsigned Pilot Candidate
 
 Target: Windows 10/11 x64
-Runtime: bundled CPython 3.11 x64 and Node.js {{node_version}} LTS x64
+Runtime: bundled CPython 3.14.7 x64 and Node.js {{node_version}} LTS x64
 
 This RC includes Desktop, local SQLite, OS-vault integration and LAN Web HTTPS.
 It does not include an Update client, updater, remote update command or Update telemetry.
@@ -186,11 +186,11 @@ Follow docs/PILOT_RELEASE_CHECKLIST.md and docs/RELEASE_SUPPORT_AND_RECOVERY.md
 before installation, upgrade, restore, rollback or data cleanup.
 """
 
-CUSTOMER_README = f"""KOMI Report V{VERSION} — Windows Customer Release Package
+CUSTOMER_README = f"""KOMI Report V{VERSION} â€” Windows Customer Release Package
 
 Target runtime: Windows 10/11 x64
 Build evidence: {{build_evidence}}
-Runtime: bundled CPython 3.11 x64 and Node.js {{node_version}} LTS x64
+Runtime: bundled CPython 3.14.7 x64 and Node.js {{node_version}} LTS x64
 
 This package runs the production Desktop, local SQLite, OS-vault integration
 and LAN Web HTTPS behavior. It contains no Lab/test/demo/Virtual Printer auto-
@@ -430,9 +430,9 @@ def build_payload(
 
     runtime_root = payload_root / "runtime"
     python_runtime_sha256 = download_python_runtime(runtime_root)
-    pth = runtime_root / "python311._pth"
+    pth = runtime_root / "python314._pth"
     pth.write_text(
-        "python311.zip\n.\n..\\source\nLib/site-packages\nimport site\n",
+        "python314.zip\n.\n..\\source\nLib/site-packages\nimport site\n",
         encoding="utf-8",
         newline="\r\n",
     )

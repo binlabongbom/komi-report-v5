@@ -1,6 +1,6 @@
 """Build a clean, self-contained Windows x64 test kit.
 
-The kit bundles the official CPython 3.11 embeddable runtime and Windows wheels,
+The kit bundles the official CPython 3.14.7 embeddable runtime and Windows wheels,
 so the target computer does not need Python, pip, or internet access.  This is a
 portable source/runtime bundle, not a cross-built Windows executable.
 """
@@ -31,7 +31,7 @@ RELEASE_ROOT = PROJECT_ROOT / "release"
 WINDOWS_REQUIREMENTS = SOURCE_ROOT / "requirements-windows-x64.lock.txt"
 KIT_NAME = "KOMI Report V5 Windows Portable"
 ARCHIVE_NAME = f"KOMI_Report_V{VERSION.replace('.', '_')}_Windows_x64_Portable.zip"
-PYTHON_VERSION = "3.11.9"
+PYTHON_VERSION = "3.14.7"
 PYTHON_EMBED_ARCHIVE = f"python-{PYTHON_VERSION}-embed-amd64.zip"
 PYTHON_EMBED_URL = (
     f"https://www.python.org/ftp/python/{PYTHON_VERSION}/{PYTHON_EMBED_ARCHIVE}"
@@ -161,31 +161,31 @@ popd
 exit /b %KOMI_EXIT_CODE%
 """
 
-README = """KOMI Report V5 — Windows Portable Test Kit
-วันที่แพ็ก: {built_date}
+README = """KOMI Report V5 â€” Windows Portable Test Kit
+à¸§à¸±à¸™à¸—à¸µà¹ˆà¹à¸žà¹‡à¸: {built_date}
 
-รองรับ
-- Windows 10 หรือ Windows 11 แบบ 64-bit
-- เครื่องทดสอบต้องอยู่ในเครือข่ายเดียวกับเครื่องพิมพ์
-- รวม Python {python_version} x64 และ Library ที่จำเป็นไว้แล้ว
-- ไม่ต้องติดตั้ง Python, pip หรือเชื่อมต่ออินเทอร์เน็ต
+à¸£à¸­à¸‡à¸£à¸±à¸š
+- Windows 10 à¸«à¸£à¸·à¸­ Windows 11 à¹à¸šà¸š 64-bit
+- à¹€à¸„à¸£à¸·à¹ˆà¸­à¸‡à¸—à¸”à¸ªà¸­à¸šà¸•à¹‰à¸­à¸‡à¸­à¸¢à¸¹à¹ˆà¹ƒà¸™à¹€à¸„à¸£à¸·à¸­à¸‚à¹ˆà¸²à¸¢à¹€à¸”à¸µà¸¢à¸§à¸à¸±à¸šà¹€à¸„à¸£à¸·à¹ˆà¸­à¸‡à¸žà¸´à¸¡à¸žà¹Œ
+- à¸£à¸§à¸¡ Python {python_version} x64 à¹à¸¥à¸° Library à¸—à¸µà¹ˆà¸ˆà¸³à¹€à¸›à¹‡à¸™à¹„à¸§à¹‰à¹à¸¥à¹‰à¸§
+- à¹„à¸¡à¹ˆà¸•à¹‰à¸­à¸‡à¸•à¸´à¸”à¸•à¸±à¹‰à¸‡ Python, pip à¸«à¸£à¸·à¸­à¹€à¸Šà¸·à¹ˆà¸­à¸¡à¸•à¹ˆà¸­à¸­à¸´à¸™à¹€à¸—à¸­à¸£à¹Œà¹€à¸™à¹‡à¸•
 
-วิธีใช้
-1. คัดลอกโฟลเดอร์นี้จาก SSD ไปไว้บน Desktop ของเครื่อง Windows
-2. ดับเบิลคลิก START_KOMI_REPORT.cmd
-3. โปรแกรมจะเปิด Setup Wizard และสร้าง Database ใหม่ใน
-   C:\\Users\\<ชื่อผู้ใช้>\\KOMI Report V5\\
+à¸§à¸´à¸˜à¸µà¹ƒà¸Šà¹‰
+1. à¸„à¸±à¸”à¸¥à¸­à¸à¹‚à¸Ÿà¸¥à¹€à¸”à¸­à¸£à¹Œà¸™à¸µà¹‰à¸ˆà¸²à¸ SSD à¹„à¸›à¹„à¸§à¹‰à¸šà¸™ Desktop à¸‚à¸­à¸‡à¹€à¸„à¸£à¸·à¹ˆà¸­à¸‡ Windows
+2. à¸”à¸±à¸šà¹€à¸šà¸´à¸¥à¸„à¸¥à¸´à¸ START_KOMI_REPORT.cmd
+3. à¹‚à¸›à¸£à¹à¸à¸£à¸¡à¸ˆà¸°à¹€à¸›à¸´à¸” Setup Wizard à¹à¸¥à¸°à¸ªà¸£à¹‰à¸²à¸‡ Database à¹ƒà¸«à¸¡à¹ˆà¹ƒà¸™
+   C:\\Users\\<à¸Šà¸·à¹ˆà¸­à¸œà¸¹à¹‰à¹ƒà¸Šà¹‰>\\KOMI Report V5\\
 
-หากโปรแกรมปิดหรือไม่แสดงหน้าต่าง
-- ดับเบิลคลิก START_DEBUG.cmd แล้วถ่ายภาพข้อความในหน้าต่าง Command Prompt
-- Log อยู่ที่ C:\\Users\\<ชื่อผู้ใช้>\\KOMI Report V5\\logs\\
+à¸«à¸²à¸à¹‚à¸›à¸£à¹à¸à¸£à¸¡à¸›à¸´à¸”à¸«à¸£à¸·à¸­à¹„à¸¡à¹ˆà¹à¸ªà¸”à¸‡à¸«à¸™à¹‰à¸²à¸•à¹ˆà¸²à¸‡
+- à¸”à¸±à¸šà¹€à¸šà¸´à¸¥à¸„à¸¥à¸´à¸ START_DEBUG.cmd à¹à¸¥à¹‰à¸§à¸–à¹ˆà¸²à¸¢à¸ à¸²à¸žà¸‚à¹‰à¸­à¸„à¸§à¸²à¸¡à¹ƒà¸™à¸«à¸™à¹‰à¸²à¸•à¹ˆà¸²à¸‡ Command Prompt
+- Log à¸­à¸¢à¸¹à¹ˆà¸—à¸µà¹ˆ C:\\Users\\<à¸Šà¸·à¹ˆà¸­à¸œà¸¹à¹‰à¹ƒà¸Šà¹‰>\\KOMI Report V5\\logs\\
 
-ข้อควรทราบ
-- ชุดนี้เป็น Portable Runtime Test Kit ไม่ใช่ไฟล์ EXE เดี่ยว
-- ต้องเก็บโฟลเดอร์ runtime และไฟล์โปรแกรมไว้ด้วยกัน ห้ามย้ายเฉพาะ app.py
-- Python ที่รวมไว้เป็น official CPython embeddable package สำหรับ Windows x64
-- ชุดนี้ไม่มี Database, Log, Runtime Cache หรือ Password จากเครื่องพัฒนา
-- โปรแกรมไม่มี SNMP write และ Web Connection ใช้การอ่าน Meter เท่านั้น
+à¸‚à¹‰à¸­à¸„à¸§à¸£à¸—à¸£à¸²à¸š
+- à¸Šà¸¸à¸”à¸™à¸µà¹‰à¹€à¸›à¹‡à¸™ Portable Runtime Test Kit à¹„à¸¡à¹ˆà¹ƒà¸Šà¹ˆà¹„à¸Ÿà¸¥à¹Œ EXE à¹€à¸”à¸µà¹ˆà¸¢à¸§
+- à¸•à¹‰à¸­à¸‡à¹€à¸à¹‡à¸šà¹‚à¸Ÿà¸¥à¹€à¸”à¸­à¸£à¹Œ runtime à¹à¸¥à¸°à¹„à¸Ÿà¸¥à¹Œà¹‚à¸›à¸£à¹à¸à¸£à¸¡à¹„à¸§à¹‰à¸”à¹‰à¸§à¸¢à¸à¸±à¸™ à¸«à¹‰à¸²à¸¡à¸¢à¹‰à¸²à¸¢à¹€à¸‰à¸žà¸²à¸° app.py
+- Python à¸—à¸µà¹ˆà¸£à¸§à¸¡à¹„à¸§à¹‰à¹€à¸›à¹‡à¸™ official CPython embeddable package à¸ªà¸³à¸«à¸£à¸±à¸š Windows x64
+- à¸Šà¸¸à¸”à¸™à¸µà¹‰à¹„à¸¡à¹ˆà¸¡à¸µ Database, Log, Runtime Cache à¸«à¸£à¸·à¸­ Password à¸ˆà¸²à¸à¹€à¸„à¸£à¸·à¹ˆà¸­à¸‡à¸žà¸±à¸’à¸™à¸²
+- à¹‚à¸›à¸£à¹à¸à¸£à¸¡à¹„à¸¡à¹ˆà¸¡à¸µ SNMP write à¹à¸¥à¸° Web Connection à¹ƒà¸Šà¹‰à¸à¸²à¸£à¸­à¹ˆà¸²à¸™ Meter à¹€à¸—à¹ˆà¸²à¸™à¸±à¹‰à¸™
 """
 
 
@@ -226,9 +226,9 @@ def download_wheelhouse(destination: Path) -> None:
         "--implementation",
         "cp",
         "--python-version",
-        "3.11",
+        "3.14",
         "--abi",
-        "cp311",
+        "cp314",
         "--require-hashes",
         "-r",
         str(WINDOWS_REQUIREMENTS),
@@ -246,11 +246,11 @@ def download_python_runtime(destination: Path) -> str:
         with zipfile.ZipFile(archive) as zipped:
             zipped.extractall(destination)
 
-    pth_file = destination / "python311._pth"
+    pth_file = destination / "python314._pth"
     if not pth_file.exists():
-        raise RuntimeError("official Python runtime is missing python311._pth")
+        raise RuntimeError("official Python runtime is missing python314._pth")
     pth_file.write_text(
-        "python311.zip\n.\n..\nLib/site-packages\nimport site\n",
+        "python314.zip\n.\n..\nLib/site-packages\nimport site\n",
         encoding="utf-8",
         newline="\r\n",
     )
@@ -258,7 +258,7 @@ def download_python_runtime(destination: Path) -> str:
 
 
 def install_windows_dependencies(wheelhouse: Path, destination: Path) -> None:
-    """Unpack Windows CPython 3.11 wheels into the portable runtime."""
+    """Unpack Windows CPython 3.14 wheels into the portable runtime."""
     destination.mkdir(parents=True, exist_ok=True)
     command = [
         sys.executable,
@@ -276,9 +276,9 @@ def install_windows_dependencies(wheelhouse: Path, destination: Path) -> None:
         "--implementation",
         "cp",
         "--python-version",
-        "3.11",
+        "3.14",
         "--abi",
-        "cp311",
+        "cp314",
         "--ignore-installed",
         "--no-warn-conflicts",
         "--upgrade",
