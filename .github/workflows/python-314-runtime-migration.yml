@@ -78,6 +78,8 @@ jobs:
       - name: Migrate Windows bundled runtime source to CPython 3.14.7
         run: |
           $ErrorActionPreference = 'Stop'
+          $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+
           $kitPath = 'source/tools/package_windows_test_kit.py'
           $kit = Get-Content $kitPath -Raw
           $replacements = [ordered]@{
@@ -92,7 +94,8 @@ jobs:
           foreach ($pair in $replacements.GetEnumerator()) {
             $kit = $kit.Replace($pair.Key, $pair.Value)
           }
-          Set-Content -LiteralPath $kitPath -Value $kit -Encoding utf8
+          $kit = $kit.TrimEnd("`r", "`n") + "`n"
+          [System.IO.File]::WriteAllText((Resolve-Path $kitPath), $kit, $utf8NoBom)
 
           $builderPath = 'source/tools/build_windows_rc.py'
           $builder = Get-Content $builderPath -Raw
@@ -104,7 +107,8 @@ jobs:
           foreach ($pair in $builderReplacements.GetEnumerator()) {
             $builder = $builder.Replace($pair.Key, $pair.Value)
           }
-          Set-Content -LiteralPath $builderPath -Value $builder -Encoding utf8
+          $builder = $builder.TrimEnd("`r", "`n") + "`n"
+          [System.IO.File]::WriteAllText((Resolve-Path $builderPath), $builder, $utf8NoBom)
 
       - name: Regenerate Windows x64 dependency lock for Python 3.14
         run: |
