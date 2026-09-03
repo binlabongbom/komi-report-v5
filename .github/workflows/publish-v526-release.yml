@@ -29,12 +29,16 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          find release-assets -maxdepth 2 -type f -printf '%p %s bytes\n'
+          find release-assets -type f -printf '%p %s bytes\n'
           installer="$(find release-assets -type f -iname '*.exe' | head -n 1)"
-          test -n "$installer"
-          test -f release-assets/INSTALLER.sha256
-          test -f release-assets/RELEASE_INFO.json
+          checksum="$(find release-assets -type f -name 'INSTALLER.sha256' | head -n 1)"
+          release_info="$(find release-assets -type f -name 'RELEASE_INFO.json' | head -n 1)"
+          test -n "$installer" && test -f "$installer"
+          test -n "$checksum" && test -f "$checksum"
+          test -n "$release_info" && test -f "$release_info"
           echo "installer=$installer" >> "$GITHUB_ENV"
+          echo "checksum=$checksum" >> "$GITHUB_ENV"
+          echo "release_info=$release_info" >> "$GITHUB_ENV"
 
       - name: Publish GitHub Release v5.2.6
         env:
@@ -64,7 +68,7 @@ jobs:
             gh release create v5.2.6 --repo "$GITHUB_REPOSITORY" --target 83dc5e32ab13b6a95aea48fab397e1f32c379231 --title "KOMI Report V5.2.6" --notes "$notes" --latest
           fi
 
-          gh release upload v5.2.6 release-assets/*.exe release-assets/INSTALLER.sha256 release-assets/RELEASE_INFO.json --repo "$GITHUB_REPOSITORY" --clobber
+          gh release upload v5.2.6 "$installer" "$checksum" "$release_info" --repo "$GITHUB_REPOSITORY" --clobber
 
       - name: Verify published release
         env:
