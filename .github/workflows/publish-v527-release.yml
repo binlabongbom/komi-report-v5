@@ -16,6 +16,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
+      - name: Checkout repository metadata
+        uses: actions/checkout@v4
+
       - name: Download validated Windows installer artifact
         uses: actions/download-artifact@v4
         with:
@@ -35,6 +38,7 @@ jobs:
           test -n "$installer" && test -f "$installer"
           test -n "$checksum" && test -f "$checksum"
           test -n "$release_info" && test -f "$release_info"
+
           python3 - "$release_info" <<'PY'
           import json, sys
           with open(sys.argv[1], encoding='utf-8-sig') as f:
@@ -44,12 +48,67 @@ jobs:
           assert info.get('target') == 'Windows x64', info
           print(json.dumps(info, indent=2, ensure_ascii=False))
           PY
+
           installer_dir="$(dirname "$installer")"
           checksum_name="$(basename "$checksum")"
           (cd "$installer_dir" && sha256sum -c "$checksum_name")
+
+          expected_sha256="$(awk '{print tolower($1)}' "$checksum" | head -n 1)"
+          actual_sha256="$(sha256sum "$installer" | awk '{print tolower($1)}')"
+          test "$actual_sha256" = "$expected_sha256"
+
+          json_sha256="$(python3 - "$release_info" <<'PY'
+          import json, sys
+          with open(sys.argv[1], encoding='utf-8-sig') as f:
+              print(str(json.load(f).get('installer_sha256', '')).lower())
+          PY
+          )"
+          test -n "$json_sha256"
+          test "$json_sha256" = "$actual_sha256"
+
           echo "installer=$installer" >> "$GITHUB_ENV"
           echo "checksum=$checksum" >> "$GITHUB_ENV"
           echo "release_info=$release_info" >> "$GITHUB_ENV"
+          echo "installer_sha256=$actual_sha256" >> "$GITHUB_ENV"
+          echo "installer_name=$(basename "$installer")" >> "$GITHUB_ENV"
+
+      - name: Create free integrity verification files
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          verifier="release-assets/VERIFY-INTEGRITY.ps1"
+          sha256sums="release-assets/SHA256SUMS.txt"
+          cp "$checksum" "$sha256sums"
+
+          cat > "$verifier" <<EOF
+          param(
+              [string]\$Installer = ".\\$installer_name"
+          )
+
+          \$ErrorActionPreference = 'Stop'
+          \$ExpectedSha256 = '$installer_sha256'
+
+          if (-not (Test-Path -LiteralPath \$Installer)) {
+              throw "Installer not found: \$Installer"
+          }
+
+          \$ActualSha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath \$Installer).Hash.ToLowerInvariant()
+
+          Write-Host "KOMI Report installer integrity verification"
+          Write-Host "File:     \$Installer"
+          Write-Host "Expected: \$ExpectedSha256"
+          Write-Host "Actual:   \$ActualSha256"
+
+          if (\$ActualSha256 -ne \$ExpectedSha256) {
+              throw 'Integrity check FAILED. Do not install this file.'
+          }
+
+          Write-Host 'Integrity check PASSED. The installer matches the official release hash.'
+          EOF
+
+          echo "verifier=$verifier" >> "$GITHUB_ENV"
+          echo "sha256sums=$sha256sums" >> "$GITHUB_ENV"
 
       - name: Publish GitHub Release v5.2.7
         env:
@@ -57,7 +116,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          notes=$(cat <<'EOF'
+          notes=$(cat <<EOF
           KOMI Report V5.2.7
 
           Hotfix focus:
@@ -71,6 +130,17 @@ jobs:
           - Silent in-place upgrade on the self-hosted runner passed.
           - Installed V5.2.7 smoke test passed and existing database hash was preserved across the installer upgrade.
 
+          Security & integrity:
+          - Official installer SHA-256: $installer_sha256
+          - INSTALLER.sha256 and SHA256SUMS.txt are included with this release.
+          - VERIFY-INTEGRITY.ps1 can verify the downloaded installer on Windows using Get-FileHash.
+          - GitHub also records a SHA-256 digest for every uploaded release asset.
+          - This release does not use a publicly trusted Authenticode certificate, so Windows may still display Unknown Publisher.
+
+          License:
+          - Free to use under the KOMI Report proprietary license.
+          - Modification, reverse engineering, resale, and unauthorized redistribution are prohibited.
+
           Validated build source: release/v5.2.7 @ 1888e8b3be1ad3fdb595a3ca4e155d4168f4a976
           Validation run: 33853353266
           Target: Windows x64
@@ -82,7 +152,16 @@ jobs:
           else
             gh release create v5.2.7 --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "KOMI Report V5.2.7" --notes "$notes" --latest
           fi
-          gh release upload v5.2.7 "$installer" "$checksum" "$release_info" --repo "$GITHUB_REPOSITORY" --clobber
+
+          gh release upload v5.2.7 \
+            "$installer" \
+            "$checksum" \
+            "$sha256sums" \
+            "$release_info" \
+            "$verifier" \
+            LICENSE \
+            --repo "$GITHUB_REPOSITORY" \
+            --clobber
 
       - name: Verify published release
         env:
