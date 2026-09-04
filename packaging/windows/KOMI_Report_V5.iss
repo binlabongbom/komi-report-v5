@@ -16,9 +16,9 @@
 
 #define AppVersion "5.2.7"
 #define AppName "KOMI Report V5"
-#define AppPublisher "Konica Minolta"
+#define AppPublisher "Wongsakorn Uphonram"
 #define AppLauncher "START_KOMI_REPORT.vbs"
-#define AppUserModelId "KonicaMinolta.KOMIReport.V5"
+#define AppUserModelId "WongsakornUphonram.KOMIReport.V5"
 
 [Setup]
 AppId={{9C32D937-21A5-4A3A-90AE-F0662E60F24A}
@@ -41,12 +41,13 @@ SolidCompression=yes
 WizardStyle=modern
 SetupIconFile={#PayloadDir}\source\Logo.ico
 UninstallDisplayIcon={app}\source\Logo.ico
+LicenseFile=..\..\LICENSE
 VersionInfoVersion=5.2.7.0
 VersionInfoDescription={#VersionInfoDescription}
 VersionInfoProductName=KOMI Report V5
 VersionInfoProductVersion=5.2.7
-VersionInfoCompany=Konica Minolta
-VersionInfoCopyright=Source commit {#SourceCommit}
+VersionInfoCompany={#AppPublisher}
+VersionInfoCopyright=Copyright (c) 2026 Wongsakorn Uphonram. All Rights Reserved.
 UsePreviousAppDir=yes
 CloseApplications=yes
 RestartApplications=no
