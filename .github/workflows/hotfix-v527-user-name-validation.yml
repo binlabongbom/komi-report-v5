@@ -1,0 +1,67 @@
+name: Hotfix V5.2.7 User Name Validation
+
+on:
+  push:
+    branches:
+      - hotfix/v5.2.7-user-name-enrichment
+    paths:
+      - '.github/workflows/hotfix-v527-user-name-validation.yml'
+      - 'source/komi_snmp_profiler/meter.py'
+      - 'source/tests/profiler/test_meter_reader.py'
+      - 'source/tests/profiler/test_meter_reader_public_name_enrichment.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate-user-name-hotfix:
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File {0}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Runner identity
+        run: |
+          Write-Host "ComputerName=$env:COMPUTERNAME"
+          Write-Host "RunnerName=$env:RUNNER_NAME"
+          Write-Host "RunnerOS=$env:RUNNER_OS"
+          Write-Host "RunnerArch=$env:RUNNER_ARCH"
+          git rev-parse HEAD
+
+      - name: Locate Python 3.14.7
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $pythonExe = 'C:\actions-runner\_komi_tools\python-3.14.7\python.exe'
+          if (-not (Test-Path $pythonExe)) { throw "Python runtime not found: $pythonExe" }
+          & $pythonExe --version
+          if ($LASTEXITCODE -ne 0) { throw 'Python 3.14.7 failed to start.' }
+          & $pythonExe -m pip install --disable-pip-version-check pytest
+          if ($LASTEXITCODE -ne 0) { throw 'pytest install failed.' }
+
+      - name: Run user-name regression tests
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $pythonExe = 'C:\actions-runner\_komi_tools\python-3.14.7\python.exe'
+          & $pythonExe -m pytest -q source/tests/profiler/test_meter_reader_public_name_enrichment.py
+          if ($LASTEXITCODE -ne 0) { throw 'Public user-name enrichment regression test failed.' }
+
+      - name: Run meter reader regression suite
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $pythonExe = 'C:\actions-runner\_komi_tools\python-3.14.7\python.exe'
+          & $pythonExe -m pytest -q source/tests/profiler/test_meter_reader.py
+          if ($LASTEXITCODE -ne 0) { throw 'Meter reader regression suite failed.' }
+
+      - name: Run related history tests
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $pythonExe = 'C:\actions-runner\_komi_tools\python-3.14.7\python.exe'
+          & $pythonExe -m pytest -q source/tests/test_history_v5_users.py source/tests/test_subject_history.py source/tests/test_history_v5_current.py
+          if ($LASTEXITCODE -ne 0) { throw 'User/history regression suite failed.' }
