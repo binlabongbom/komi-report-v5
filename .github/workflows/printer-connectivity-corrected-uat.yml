@@ -1,0 +1,363 @@
+name: Corrected Printer Connectivity UAT
+
+on:
+  push:
+    branches: ['diagnostics/printer-connectivity-corrected-20260904']
+    paths:
+      - '.github/workflows/printer-connectivity-corrected-uat.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File {0}
+
+    steps:
+      - name: Run corrected read-only connectivity diagnostic
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $env:PYTHONUTF8 = '1'
+          $env:PYTHONIOENCODING = 'utf-8'
+
+          $installRoot = Join-Path $env:LOCALAPPDATA 'Programs\KOMI Report V5'
+          $runtime = Join-Path $installRoot 'runtime\python.exe'
+          $sourceRoot = Join-Path $installRoot 'source'
+          if (-not (Test-Path $runtime)) { throw "Installed KOMI runtime not found: $runtime" }
+          if (-not (Test-Path $sourceRoot)) { throw "Installed KOMI source not found: $sourceRoot" }
+
+          $outputDir = Join-Path $env:GITHUB_WORKSPACE 'diagnostic-output'
+          New-Item -ItemType Directory -Path $outputDir -Force | Out-Null
+          $env:KOMI_SOURCE_ROOT = $sourceRoot
+          $env:KOMI_OUTPUT = Join-Path $outputDir 'printer-connectivity-corrected.json'
+
+          $script = Join-Path $env:RUNNER_TEMP 'printer-connectivity-corrected.py'
+          @'
+          from __future__ import annotations
+
+          import json
+          import os
+          import socket
+          import ssl
+          import subprocess
+          import sys
+          import time
+          from pathlib import Path
+          from typing import Any
+
+          TARGETS = ("10.244.116.8", "10.244.116.6")
+          SOURCE_ADDRESSES = {
+              "automatic": "",
+              "ethernet": "10.244.116.72",
+              "tailscale": "100.80.139.46",
+          }
+          PORTS = (80, 443, 515, 631, 9100)
+
+          sys.path.insert(0, os.environ["KOMI_SOURCE_ROOT"])
+          from komi_version import APP_VERSION
+          from komi_snmp_profiler.connectors import TlsPolicy, WebConnectionCounterConnector
+          from services.snmp_probe import SnmpTotalProbe
+
+
+          def error_payload(exc: BaseException) -> dict[str, str]:
+              return {"type": type(exc).__name__, "message": str(exc)}
+
+
+          def run_command(args: list[str], timeout: float) -> dict[str, Any]:
+              started = time.perf_counter()
+              try:
+                  completed = subprocess.run(
+                      args,
+                      capture_output=True,
+                      text=True,
+                      errors="replace",
+                      timeout=timeout,
+                  )
+                  return {
+                      "ok": completed.returncode == 0,
+                      "return_code": completed.returncode,
+                      "elapsed_ms": round((time.perf_counter() - started) * 1000),
+                      "stdout": completed.stdout.strip(),
+                      "stderr": completed.stderr.strip(),
+                  }
+              except Exception as exc:
+                  return {
+                      "ok": False,
+                      "elapsed_ms": round((time.perf_counter() - started) * 1000),
+                      "error": error_payload(exc),
+                  }
+
+
+          def ping_probe(host: str) -> dict[str, Any]:
+              result = run_command(["ping", "-n", "3", "-w", "1500", host], 10)
+              if result.get("stdout"):
+                  result["tail"] = [
+                      line.strip() for line in str(result.pop("stdout")).splitlines() if line.strip()
+                  ][-6:]
+              result.pop("stderr", None)
+              return result
+
+
+          def route_probe(host: str) -> dict[str, Any]:
+              command = (
+                  "$r=Test-NetConnection -ComputerName '"
+                  + host
+                  + "' -DiagnoseRouting -WarningAction SilentlyContinue; "
+                  + "[pscustomobject]@{SelectedSourceAddress=[string]$r.SelectedSourceAddress;"
+                  + "OutgoingInterfaceAlias=[string]$r.OutgoingInterfaceAlias;"
+                  + "OutgoingInterfaceIndex=[int]$r.OutgoingInterfaceIndex;"
+                  + "RouteDiagnosticsSucceeded=[bool]$r.RouteDiagnosticsSucceeded}"
+                  + "|ConvertTo-Json -Compress"
+              )
+              result = run_command(
+                  ["powershell.exe", "-NoLogo", "-NoProfile", "-Command", command],
+                  35,
+              )
+              raw = str(result.pop("stdout", "")).strip()
+              result.pop("stderr", None)
+              if raw:
+                  try:
+                      result["selection"] = json.loads(raw)
+                  except json.JSONDecodeError:
+                      result["raw"] = raw[-2000:]
+              return result
+
+
+          def subnet_routes() -> dict[str, Any]:
+              command = (
+                  "Get-NetRoute -AddressFamily IPv4 | "
+                  "Where-Object {$_.DestinationPrefix -eq '10.244.116.0/24'} | "
+                  "Select-Object DestinationPrefix,NextHop,InterfaceAlias,RouteMetric,InterfaceMetric,State | "
+                  "ConvertTo-Json -Depth 3 -Compress"
+              )
+              result = run_command(
+                  ["powershell.exe", "-NoLogo", "-NoProfile", "-Command", command],
+                  20,
+              )
+              raw = str(result.pop("stdout", "")).strip()
+              result.pop("stderr", None)
+              if raw:
+                  try:
+                      parsed = json.loads(raw)
+                      result["routes"] = parsed if isinstance(parsed, list) else [parsed]
+                  except json.JSONDecodeError:
+                      result["raw"] = raw[-4000:]
+              return result
+
+
+          def tcp_probe(host: str, port: int, source: str = "", timeout: float = 3.0) -> dict[str, Any]:
+              started = time.perf_counter()
+              sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+              sock.settimeout(timeout)
+              try:
+                  if source:
+                      sock.bind((source, 0))
+                  sock.connect((host, port))
+                  return {
+                      "ok": True,
+                      "port": port,
+                      "source": source or "automatic",
+                      "local_socket": sock.getsockname()[0],
+                      "elapsed_ms": round((time.perf_counter() - started) * 1000),
+                  }
+              except Exception as exc:
+                  return {
+                      "ok": False,
+                      "port": port,
+                      "source": source or "automatic",
+                      "elapsed_ms": round((time.perf_counter() - started) * 1000),
+                      "error": error_payload(exc),
+                  }
+              finally:
+                  sock.close()
+
+
+          def ssl_context() -> ssl.SSLContext:
+              context = ssl.create_default_context()
+              context.check_hostname = False
+              context.verify_mode = ssl.CERT_NONE
+              try:
+                  context.set_ciphers("DEFAULT:@SECLEVEL=0")
+              except ssl.SSLError:
+                  pass
+              context.options |= getattr(ssl, "OP_LEGACY_SERVER_CONNECT", 1 << 2)
+              return context
+
+
+          def http_probe(host: str, scheme: str, source: str = "") -> dict[str, Any]:
+              started = time.perf_counter()
+              port = 443 if scheme == "https" else 80
+              sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+              sock.settimeout(5)
+              wrapped = None
+              try:
+                  if source:
+                      sock.bind((source, 0))
+                  sock.connect((host, port))
+                  stream = sock
+                  tls_version = ""
+                  cipher = ""
+                  if scheme == "https":
+                      wrapped = ssl_context().wrap_socket(sock, server_hostname=host)
+                      stream = wrapped
+                      tls_version = wrapped.version() or ""
+                      cipher = wrapped.cipher()[0] if wrapped.cipher() else ""
+                  request = (
+                      f"GET /wcd/index.html HTTP/1.1\r\nHost: {host}\r\n"
+                      "User-Agent: KOMI-Corrected-UAT/5.2.7\r\nConnection: close\r\n\r\n"
+                  ).encode("ascii")
+                  stream.sendall(request)
+                  payload = b""
+                  while len(payload) < 16384:
+                      chunk = stream.recv(4096)
+                      if not chunk:
+                          break
+                      payload += chunk
+                      if b"\r\n\r\n" in payload:
+                          break
+                  header = payload.split(b"\r\n\r\n", 1)[0].decode("iso-8859-1", errors="replace")
+                  lines = header.split("\r\n")
+                  status_line = lines[0] if lines else ""
+                  headers: dict[str, str] = {}
+                  for line in lines[1:]:
+                      if ":" in line:
+                          key, value = line.split(":", 1)
+                          headers[key.strip().lower()] = value.strip()
+                  parts = status_line.split(" ", 2)
+                  status = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else None
+                  return {
+                      "ok": status is not None and 100 <= status < 500,
+                      "scheme": scheme,
+                      "source": source or "automatic",
+                      "local_socket": stream.getsockname()[0],
+                      "status": status,
+                      "status_line": status_line,
+                      "location": headers.get("location", ""),
+                      "content_type": headers.get("content-type", ""),
+                      "tls_version": tls_version,
+                      "cipher": cipher,
+                      "elapsed_ms": round((time.perf_counter() - started) * 1000),
+                  }
+              except Exception as exc:
+                  return {
+                      "ok": False,
+                      "scheme": scheme,
+                      "source": source or "automatic",
+                      "elapsed_ms": round((time.perf_counter() - started) * 1000),
+                      "error": error_payload(exc),
+                  }
+              finally:
+                  try:
+                      if wrapped is not None:
+                          wrapped.close()
+                      else:
+                          sock.close()
+                  except Exception:
+                      pass
+
+
+          def snmp_probe(host: str) -> dict[str, Any]:
+              started = time.perf_counter()
+              try:
+                  reading = SnmpTotalProbe(timeout=2.0, retries=1).read(host)
+                  return {
+                      "ok": True,
+                      "elapsed_ms": round((time.perf_counter() - started) * 1000),
+                      "model": reading.model,
+                      "serial": reading.serial,
+                      "total": reading.total,
+                      "total_oid": reading.total_oid,
+                      "total_candidates": list(reading.total_candidates),
+                      "toner": list(reading.toner),
+                      "paper_trays": [tray.to_cache() for tray in reading.paper_trays],
+                  }
+              except Exception as exc:
+                  return {
+                      "ok": False,
+                      "elapsed_ms": round((time.perf_counter() - started) * 1000),
+                      "error": error_payload(exc),
+                  }
+
+
+          def public_web_probe(host: str, scheme: str) -> dict[str, Any]:
+              started = time.perf_counter()
+              try:
+                  result = WebConnectionCounterConnector(
+                      tls_policy=TlsPolicy(mode="insecure"),
+                      scheme=scheme,
+                  ).collect_result(host)
+                  subjects = [counter for counter in result.counters if counter.subject_type]
+                  return {
+                      "ok": True,
+                      "scheme": scheme,
+                      "elapsed_ms": round((time.perf_counter() - started) * 1000),
+                      "source": result.source,
+                      "auth_state": str(result.auth_state),
+                      "counter_count": len(result.counters),
+                      "subject_count": len(subjects),
+                      "warnings": list(result.warnings),
+                  }
+              except Exception as exc:
+                  return {
+                      "ok": False,
+                      "scheme": scheme,
+                      "elapsed_ms": round((time.perf_counter() - started) * 1000),
+                      "error": error_payload(exc),
+                  }
+
+
+          output: dict[str, Any] = {
+              "schema": "komi.printer.connectivity.corrected.v1",
+              "installed_version": APP_VERSION,
+              "targets": list(TARGETS),
+              "mode": "read-only; no administrator password attempts; no printer or database writes",
+              "subnet_routes": subnet_routes(),
+              "devices": {},
+          }
+
+          for target in TARGETS:
+              source_tests: dict[str, Any] = {}
+              for label, address in SOURCE_ADDRESSES.items():
+                  source_tests[label] = {
+                      "tcp_80": tcp_probe(target, 80, address),
+                      "tcp_443": tcp_probe(target, 443, address),
+                      "http": http_probe(target, "http", address),
+                      "https": http_probe(target, "https", address),
+                  }
+              output["devices"][target] = {
+                  "ping": ping_probe(target),
+                  "route_selection": route_probe(target),
+                  "tcp_ports_automatic": {
+                      str(port): tcp_probe(target, port) for port in PORTS
+                  },
+                  "source_comparison": source_tests,
+                  "snmp": snmp_probe(target),
+                  "public_web": {
+                      "http": public_web_probe(target, "http"),
+                      "https": public_web_probe(target, "https"),
+                  },
+              }
+
+          destination = Path(os.environ["KOMI_OUTPUT"])
+          destination.write_text(
+              json.dumps(output, ensure_ascii=False, indent=2, default=str) + "\n",
+              encoding="utf-8",
+          )
+          print(json.dumps(output, ensure_ascii=True, indent=2, default=str))
+          '@ | Set-Content -LiteralPath $script -Encoding utf8
+
+          & $runtime $script
+          if ($LASTEXITCODE -ne 0) { throw "Corrected printer diagnostic exited with code $LASTEXITCODE" }
+
+      - name: Upload corrected diagnostic evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: printer-connectivity-corrected-${{ github.run_id }}
+          retention-days: 14
+          if-no-files-found: error
+          path: diagnostic-output/printer-connectivity-corrected.json
