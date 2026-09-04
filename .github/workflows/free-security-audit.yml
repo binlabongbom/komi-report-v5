@@ -21,7 +21,7 @@ permissions:
 jobs:
   audit:
     runs-on: [self-hosted, Windows, X64]
-    timeout-minutes: 75
+    timeout-minutes: 60
     defaults:
       run:
         shell: powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File {0}
@@ -43,7 +43,7 @@ jobs:
             Remove-Item $pythonRoot -Recurse -Force -ErrorAction SilentlyContinue
             New-Item -ItemType Directory -Path $pythonRoot -Force | Out-Null
             $zip = Join-Path $env:RUNNER_TEMP "python-$pythonVersion-embed-amd64.zip"
-            Invoke-WebRequest -UseBasicParsing -Uri "https://www.python.org/ftp/python/$pythonVersion/python-$pythonVersion-embed-amd64.zip" -OutFile $zip
+            Invoke-WebRequest -UseBasicParsing -TimeoutSec 180 -Uri "https://www.python.org/ftp/python/$pythonVersion/python-$pythonVersion-embed-amd64.zip" -OutFile $zip
             Expand-Archive -LiteralPath $zip -DestinationPath $pythonRoot -Force
 
             $pth = Join-Path $pythonRoot 'python313._pth'
@@ -51,7 +51,7 @@ jobs:
             [System.IO.File]::WriteAllText($pth, $pthText, [System.Text.Encoding]::ASCII)
 
             $getPip = Join-Path $env:RUNNER_TEMP 'get-pip-security.py'
-            Invoke-WebRequest -UseBasicParsing -Uri 'https://bootstrap.pypa.io/get-pip.py' -OutFile $getPip
+            Invoke-WebRequest -UseBasicParsing -TimeoutSec 180 -Uri 'https://bootstrap.pypa.io/get-pip.py' -OutFile $getPip
             & $pythonExe $getPip --disable-pip-version-check
             if ($LASTEXITCODE -ne 0) { throw 'get-pip failed for security Python runtime.' }
           }
@@ -62,24 +62,47 @@ jobs:
           & $pythonExe --version
           if ($LASTEXITCODE -ne 0) { throw 'Security Python runtime failed to start.' }
 
-      - name: Bootstrap persistent Node.js 24 runtime
+      - name: Bootstrap verified persistent Node.js 24 runtime
         run: |
           $ErrorActionPreference = 'Stop'
           [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+          $nodeVersion = '24.18.0'
           $nodeRoot = 'C:\actions-runner\_komi_tools\node-24-security'
           $nodeExe = Join-Path $nodeRoot 'node.exe'
+          $npmCmd = Join-Path $nodeRoot 'npm.cmd'
 
-          if (-not (Test-Path $nodeExe)) {
+          $needsInstall = -not (Test-Path $nodeExe) -or -not (Test-Path $npmCmd)
+          if (-not $needsInstall) {
+            try {
+              $actualVersion = (& $nodeExe --version).Trim().TrimStart('v')
+              if ($actualVersion -ne $nodeVersion) { $needsInstall = $true }
+            }
+            catch { $needsInstall = $true }
+          }
+
+          if ($needsInstall) {
             Remove-Item $nodeRoot -Recurse -Force -ErrorAction SilentlyContinue
             New-Item -ItemType Directory -Path $nodeRoot -Force | Out-Null
-            $releases = Invoke-RestMethod -UseBasicParsing -Uri 'https://nodejs.org/dist/index.json'
-            $release = $releases | Where-Object { $_.version -like 'v24.*' -and $_.lts } | Select-Object -First 1
-            if (-not $release) { throw 'Unable to locate a Node.js 24 LTS release.' }
-            $version = [string]$release.version
-            $archiveName = "node-$version-win-x64.zip"
+            $archiveName = "node-v$nodeVersion-win-x64.zip"
             $zip = Join-Path $env:RUNNER_TEMP $archiveName
-            Invoke-WebRequest -UseBasicParsing -Uri "https://nodejs.org/dist/$version/$archiveName" -OutFile $zip
-            $extractRoot = Join-Path $env:RUNNER_TEMP "node-security-$version"
+            $sums = Join-Path $env:RUNNER_TEMP "node-v$nodeVersion-SHASUMS256.txt"
+            $base = "https://nodejs.org/dist/v$nodeVersion"
+
+            Invoke-WebRequest -UseBasicParsing -TimeoutSec 180 -Uri "$base/$archiveName" -OutFile $zip
+            Invoke-WebRequest -UseBasicParsing -TimeoutSec 60 -Uri "$base/SHASUMS256.txt" -OutFile $sums
+
+            $expected = $null
+            foreach ($line in Get-Content -LiteralPath $sums) {
+              if ($line -match '^([0-9a-fA-F]{64})\s+\*?(.+)$' -and $Matches[2] -eq $archiveName) {
+                $expected = $Matches[1].ToLowerInvariant()
+                break
+              }
+            }
+            if (-not $expected) { throw "Unable to find $archiveName in official SHASUMS256.txt." }
+            $actual = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+            if ($actual -ne $expected) { throw "Node.js archive checksum mismatch. Expected $expected, got $actual." }
+
+            $extractRoot = Join-Path $env:RUNNER_TEMP "node-security-$nodeVersion"
             Remove-Item $extractRoot -Recurse -Force -ErrorAction SilentlyContinue
             Expand-Archive -LiteralPath $zip -DestinationPath $extractRoot -Force
             $inner = Get-ChildItem $extractRoot -Directory | Select-Object -First 1
@@ -89,7 +112,7 @@ jobs:
 
           $nodeRoot | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
           & $nodeExe --version
-          & (Join-Path $nodeRoot 'npm.cmd') --version
+          & $npmCmd --version
           if ($LASTEXITCODE -ne 0) { throw 'Node.js/npm security runtime failed to start.' }
 
       - name: Install free security tools
