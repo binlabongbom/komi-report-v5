@@ -1,0 +1,177 @@
+name: Corrected Target Meter and User UAT
+
+on:
+  push:
+    branches: ['diagnostics/printer-connectivity-corrected-20260904']
+    paths:
+      - '.github/workflows/printer-6-meter-user-uat.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File {0}
+
+    steps:
+      - name: Run read-only MeterReader and User export verification
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $env:PYTHONUTF8 = '1'
+          $env:PYTHONIOENCODING = 'utf-8'
+
+          $installRoot = Join-Path $env:LOCALAPPDATA 'Programs\KOMI Report V5'
+          $runtime = Join-Path $installRoot 'runtime\python.exe'
+          $sourceRoot = Join-Path $installRoot 'source'
+          if (-not (Test-Path $runtime)) { throw "Installed KOMI runtime not found: $runtime" }
+          if (-not (Test-Path $sourceRoot)) { throw "Installed KOMI source not found: $sourceRoot" }
+
+          $outputDir = Join-Path $env:GITHUB_WORKSPACE 'diagnostic-output'
+          New-Item -ItemType Directory -Path $outputDir -Force | Out-Null
+          $env:KOMI_SOURCE_ROOT = $sourceRoot
+          $env:KOMI_OUTPUT = Join-Path $outputDir 'printer-6-meter-user-uat.json'
+
+          $script = Join-Path $env:RUNNER_TEMP 'printer-6-meter-user-uat.py'
+          @'
+          from __future__ import annotations
+
+          import hashlib
+          import json
+          import os
+          import sys
+          import time
+          from pathlib import Path
+
+          HOST = "10.244.116.6"
+          MODEL = "KONICA MINOLTA bizhub C450i"
+
+          sys.path.insert(0, os.environ["KOMI_SOURCE_ROOT"])
+
+          from komi_version import APP_VERSION
+          from komi_snmp_profiler.connectors import TlsPolicy
+          from komi_snmp_profiler.meter import MeterReader
+          from komi_snmp_profiler.meter_export import (
+              MeterCountExportConnector,
+              MeterExportReader,
+              subject_name_map,
+          )
+
+
+          class MemoryStore:
+              def __init__(self) -> None:
+                  self.credential = None
+                  self.policy = TlsPolicy(mode="insecure")
+
+              def save(self, _host, credential) -> None:
+                  self.credential = credential
+
+              def load(self, _host):
+                  return self.credential
+
+              def delete(self, _host) -> None:
+                  self.credential = None
+
+              def tls_policy(self, _host) -> TlsPolicy:
+                  return self.policy
+
+
+          started = time.perf_counter()
+          result = {
+              "schema": "komi.printer.corrected-target-meter-user-uat.v1",
+              "installed_version": APP_VERSION,
+              "target": HOST,
+              "model": MODEL,
+              "mode": "read-only; temporary admin session/export; memory-only credential; names redacted",
+              "meter_read_ok": False,
+              "user_export_ok": False,
+          }
+
+          try:
+              store = MemoryStore()
+              reading = MeterReader(
+                  store,
+                  allow_implicit_name_export=True,
+              ).read(HOST, model=MODEL)
+              subjects = [counter for counter in reading.counters if counter.subject_type]
+              names = [counter.subject_name.strip() for counter in subjects if counter.subject_name]
+              result.update(
+                  {
+                      "meter_read_ok": True,
+                      "meter_source": reading.source,
+                      "meter_auth_state": str(reading.auth_state),
+                      "meter_counter_count": len(reading.counters),
+                      "subject_count": len(subjects),
+                      "named_subject_count": sum(bool(counter.subject_name) for counter in subjects),
+                      "unnamed_subject_count": sum(not bool(counter.subject_name) for counter in subjects),
+                      "numeric_unnamed_risk_count": sum(
+                          bool(counter.subject_id and counter.subject_id.isdigit() and not counter.subject_name)
+                          for counter in subjects
+                      ),
+                      "subject_types": sorted({str(counter.subject_type) for counter in subjects}),
+                      "subject_ids": sorted(
+                          {str(counter.subject_id) for counter in subjects if counter.subject_id}
+                      ),
+                      "all_subject_names_non_numeric": all(not name.isdigit() for name in names),
+                      "subject_name_digest_sha256": hashlib.sha256(
+                          "\n".join(sorted(set(names))).encode("utf-8")
+                      ).hexdigest(),
+                      "credential_obtained_in_memory": store.credential is not None,
+                      "warnings": list(reading.warnings),
+                  }
+              )
+
+              connector = MeterCountExportConnector(
+                  timeout=8.0,
+                  tls_policy=TlsPolicy(mode="insecure"),
+                  max_polls=30,
+              )
+              table = MeterExportReader(store, connector=connector).read(HOST, "User")
+              mapping = subject_name_map(table)
+              export_names = [name.strip() for name in mapping.values() if name.strip()]
+              result.update(
+                  {
+                      "user_export_ok": True,
+                      "export_encoding": table.encoding,
+                      "export_delimiter_codepoint": ord(table.delimiter) if table.delimiter else None,
+                      "export_column_count": len(table.columns),
+                      "export_row_count": len(table.rows),
+                      "mapped_user_count": len(mapping),
+                      "mapped_user_ids": list(mapping.keys()),
+                      "mapped_unique_name_count": len(set(export_names)),
+                      "mapped_empty_name_count": sum(not name.strip() for name in mapping.values()),
+                      "mapped_names_non_numeric": all(not name.isdigit() for name in export_names),
+                      "mapped_name_digest_sha256": hashlib.sha256(
+                          "\n".join(export_names).encode("utf-8")
+                      ).hexdigest(),
+                  }
+              )
+          except Exception as exc:
+              result["error"] = {"type": type(exc).__name__, "message": str(exc)}
+
+          result["elapsed_ms"] = round((time.perf_counter() - started) * 1000)
+          destination = Path(os.environ["KOMI_OUTPUT"])
+          destination.write_text(
+              json.dumps(result, ensure_ascii=False, indent=2, default=str) + "\n",
+              encoding="utf-8",
+          )
+          print(json.dumps(result, ensure_ascii=True, indent=2, default=str))
+          if not result["meter_read_ok"]:
+              raise SystemExit(2)
+          '@ | Set-Content -LiteralPath $script -Encoding utf8
+
+          & $runtime $script
+          if ($LASTEXITCODE -ne 0) { throw "Corrected target meter UAT exited with code $LASTEXITCODE" }
+
+      - name: Upload redacted corrected-target evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: printer-6-meter-user-uat-${{ github.run_id }}
+          retention-days: 14
+          if-no-files-found: warn
+          path: diagnostic-output/printer-6-meter-user-uat.json
