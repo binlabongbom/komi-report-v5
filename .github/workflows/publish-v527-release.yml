@@ -12,11 +12,15 @@ permissions:
   actions: read
 
 jobs:
-  publish-v527:
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
+  self-sign-v527:
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File {0}
+
     steps:
-      - name: Checkout repository metadata
+      - name: Checkout release security tooling
         uses: actions/checkout@v4
 
       - name: Download validated Windows installer artifact
@@ -28,87 +32,178 @@ jobs:
           name: KOMI-Report-V5.2.7-Windows-x64-1888e8b3be1ad3fdb595a3ca4e155d4168f4a976
           path: release-assets
 
-      - name: Verify release assets
+      - name: Verify original validated build
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $installer = Get-ChildItem release-assets -Filter *.exe -Recurse | Select-Object -First 1
+          $checksum = Get-ChildItem release-assets -Filter INSTALLER.sha256 -Recurse | Select-Object -First 1
+          $releaseInfo = Get-ChildItem release-assets -Filter RELEASE_INFO.json -Recurse | Select-Object -First 1
+
+          if (-not $installer) { throw 'Validated installer artifact was not found.' }
+          if (-not $checksum) { throw 'INSTALLER.sha256 was not found.' }
+          if (-not $releaseInfo) { throw 'RELEASE_INFO.json was not found.' }
+
+          $expected = ((Get-Content -LiteralPath $checksum.FullName -Raw).Trim() -split '\s+')[0].ToLowerInvariant()
+          $actual = (Get-FileHash -LiteralPath $installer.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actual -ne $expected) {
+            throw "Original artifact SHA-256 mismatch. Expected $expected, got $actual."
+          }
+
+          $info = Get-Content -LiteralPath $releaseInfo.FullName -Raw | ConvertFrom-Json
+          if ([string]$info.version -ne '5.2.7') { throw "Unexpected version: $($info.version)" }
+          if ([string]$info.python_runtime -ne '3.14.7') { throw "Unexpected Python runtime: $($info.python_runtime)" }
+          if ([string]$info.target -ne 'Windows x64') { throw "Unexpected target: $($info.target)" }
+          if ([string]$info.installer_sha256 -and ([string]$info.installer_sha256).ToLowerInvariant() -ne $actual) {
+            throw 'RELEASE_INFO.json installer SHA-256 does not match the validated installer.'
+          }
+
+          "installer=$($installer.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "release_info=$($releaseInfo.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          Write-Host "Validated original SHA-256: $actual"
+
+      - name: Self-sign installer with persistent free certificate
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $output = Join-Path $PWD 'release-signed'
+          & .\packaging\windows\Sign-KomiSelfSigned.ps1 `
+            -InstallerPath $env:installer `
+            -ReleaseInfoPath $env:release_info `
+            -OutputDirectory $output
+          if ($LASTEXITCODE -ne 0) { throw 'Self-signing script failed.' }
+          Copy-Item -LiteralPath LICENSE -Destination (Join-Path $output 'LICENSE') -Force
+
+      - name: Windows Defender scan when available
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $report = Join-Path $PWD 'release-signed\DEFENDER_SCAN.txt'
+          $installer = Get-ChildItem release-signed -Filter *.exe | Select-Object -First 1
+          if (-not $installer) { throw 'Signed installer was not found for Defender scan.' }
+
+          $lines = New-Object System.Collections.Generic.List[string]
+          $lines.Add("file=$($installer.Name)")
+          $lines.Add("sha256=$((Get-FileHash -LiteralPath $installer.FullName -Algorithm SHA256).Hash.ToLowerInvariant())")
+          $lines.Add("scan_time_utc=$([DateTime]::UtcNow.ToString('o'))")
+
+          try {
+            $mpStatusCommand = Get-Command Get-MpComputerStatus -ErrorAction SilentlyContinue
+            $mpScanCommand = Get-Command Start-MpScan -ErrorAction SilentlyContinue
+            if (-not $mpStatusCommand -or -not $mpScanCommand) {
+              $lines.Add('defender_scan=unavailable')
+              $lines.Add('reason=Microsoft Defender PowerShell cmdlets are unavailable on this runner.')
+            }
+            else {
+              $status = Get-MpComputerStatus
+              $lines.Add("antivirus_enabled=$($status.AntivirusEnabled)")
+              $lines.Add("real_time_protection_enabled=$($status.RealTimeProtectionEnabled)")
+              Start-MpScan -ScanType CustomScan -ScanPath $installer.FullName
+              $lines.Add('defender_scan=completed')
+            }
+          }
+          catch {
+            $lines.Add('defender_scan=unavailable_or_failed')
+            $lines.Add("reason=$($_.Exception.Message.Replace([Environment]::NewLine, ' '))")
+            Write-Warning "Defender scan could not be completed: $($_.Exception.Message)"
+          }
+
+          $lines | Set-Content -LiteralPath $report -Encoding ascii
+          Get-Content -LiteralPath $report
+
+      - name: Verify signed release package on Windows
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $installer = Get-ChildItem release-signed -Filter *.exe | Select-Object -First 1
+          $signatureInfo = Get-Content release-signed\SIGNATURE_INFO.json -Raw | ConvertFrom-Json
+          $releaseInfo = Get-Content release-signed\RELEASE_INFO.json -Raw | ConvertFrom-Json
+          $signature = Get-AuthenticodeSignature -FilePath $installer.FullName
+          $actualSha = (Get-FileHash -LiteralPath $installer.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+
+          if ($actualSha -ne ([string]$signatureInfo.installer_sha256).ToLowerInvariant()) {
+            throw 'Signed installer SHA-256 does not match SIGNATURE_INFO.json.'
+          }
+          if ($actualSha -ne ([string]$releaseInfo.installer_sha256).ToLowerInvariant()) {
+            throw 'Signed installer SHA-256 does not match RELEASE_INFO.json.'
+          }
+          if (-not $signature.SignerCertificate) { throw 'Installer is not Authenticode signed.' }
+          if ($signature.SignerCertificate.Thumbprint.ToUpperInvariant() -ne ([string]$signatureInfo.certificate_thumbprint_sha1).ToUpperInvariant()) {
+            throw 'Authenticode signer thumbprint mismatch.'
+          }
+          if ($signature.Status -in @('HashMismatch', 'NotSigned')) {
+            throw "Authenticode verification failed: $($signature.Status)"
+          }
+
+          & .\release-signed\VERIFY-INTEGRITY.ps1 -Installer $installer.FullName
+          & .\release-signed\VERIFY-SIGNATURE.ps1 -Installer $installer.FullName
+          Write-Host "Signed installer SHA-256: $actualSha"
+          Write-Host "Signer: $($signature.SignerCertificate.Subject)"
+          Write-Host "Thumbprint: $($signature.SignerCertificate.Thumbprint)"
+          Write-Host "Authenticode status: $($signature.Status)"
+
+      - name: Upload self-signed hardened release artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: KOMI-Report-V5.2.7-Free-Signed
+          retention-days: 30
+          if-no-files-found: error
+          compression-level: 0
+          path: release-signed/*
+
+  publish-v527:
+    needs: self-sign-v527
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Download self-signed hardened release artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: KOMI-Report-V5.2.7-Free-Signed
+          path: release-assets
+
+      - name: Verify release assets before publication
         shell: bash
         run: |
           set -euo pipefail
-          installer="$(find release-assets -type f -iname '*.exe' | head -n 1)"
-          checksum="$(find release-assets -type f -name 'INSTALLER.sha256' | head -n 1)"
-          release_info="$(find release-assets -type f -name 'RELEASE_INFO.json' | head -n 1)"
+          installer="$(find release-assets -maxdepth 1 -type f -iname '*.exe' | head -n 1)"
           test -n "$installer" && test -f "$installer"
-          test -n "$checksum" && test -f "$checksum"
-          test -n "$release_info" && test -f "$release_info"
+          test -f release-assets/INSTALLER.sha256
+          test -f release-assets/SHA256SUMS.txt
+          test -f release-assets/CERTIFICATE.sha256
+          test -f release-assets/KOMI-Report-Code-Signing.cer
+          test -f release-assets/SIGNATURE_INFO.json
+          test -f release-assets/RELEASE_INFO.json
+          test -f release-assets/VERIFY-INTEGRITY.ps1
+          test -f release-assets/VERIFY-SIGNATURE.ps1
+          test -f release-assets/TRUST-KOMI-CERT.ps1
+          test -f release-assets/LICENSE
 
-          python3 - "$release_info" <<'PY'
-          import json, sys
-          with open(sys.argv[1], encoding='utf-8-sig') as f:
-              info = json.load(f)
-          assert info.get('version') == '5.2.7', info
-          assert info.get('python_runtime') == '3.14.7', info
-          assert info.get('target') == 'Windows x64', info
-          print(json.dumps(info, indent=2, ensure_ascii=False))
+          (cd release-assets && sha256sum -c INSTALLER.sha256)
+          (cd release-assets && sha256sum -c CERTIFICATE.sha256)
+
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          sig = json.loads(Path('release-assets/SIGNATURE_INFO.json').read_text(encoding='utf-8-sig'))
+          rel = json.loads(Path('release-assets/RELEASE_INFO.json').read_text(encoding='utf-8-sig'))
+          assert sig['signing_mode'] == 'self-signed Authenticode', sig
+          assert sig['public_trust'] is False, sig
+          assert rel['version'] == '5.2.7', rel
+          assert rel['signing_mode'] == 'self-signed Authenticode', rel
+          assert rel['installer_sha256'].lower() == sig['installer_sha256'].lower(), (rel, sig)
+          print(json.dumps(sig, indent=2))
           PY
 
-          installer_dir="$(dirname "$installer")"
-          checksum_name="$(basename "$checksum")"
-          (cd "$installer_dir" && sha256sum -c "$checksum_name")
+          installer_sha256="$(python3 -c "import json; print(json.load(open('release-assets/SIGNATURE_INFO.json', encoding='utf-8-sig'))['installer_sha256'])")"
+          cert_thumbprint="$(python3 -c "import json; print(json.load(open('release-assets/SIGNATURE_INFO.json', encoding='utf-8-sig'))['certificate_thumbprint_sha1'])")"
+          cert_sha256="$(python3 -c "import json; print(json.load(open('release-assets/SIGNATURE_INFO.json', encoding='utf-8-sig'))['certificate_file_sha256'])")"
+          timestamp_used="$(python3 -c "import json; print(str(json.load(open('release-assets/SIGNATURE_INFO.json', encoding='utf-8-sig'))['timestamp_used']).lower())")"
+          signer_subject="$(python3 -c "import json; print(json.load(open('release-assets/SIGNATURE_INFO.json', encoding='utf-8-sig'))['publisher_subject'])")"
 
-          expected_sha256="$(awk '{print tolower($1)}' "$checksum" | head -n 1)"
-          actual_sha256="$(sha256sum "$installer" | awk '{print tolower($1)}')"
-          test "$actual_sha256" = "$expected_sha256"
-
-          json_sha256="$(python3 - "$release_info" <<'PY'
-          import json, sys
-          with open(sys.argv[1], encoding='utf-8-sig') as f:
-              print(str(json.load(f).get('installer_sha256', '')).lower())
-          PY
-          )"
-          test -n "$json_sha256"
-          test "$json_sha256" = "$actual_sha256"
-
-          echo "installer=$installer" >> "$GITHUB_ENV"
-          echo "checksum=$checksum" >> "$GITHUB_ENV"
-          echo "release_info=$release_info" >> "$GITHUB_ENV"
-          echo "installer_sha256=$actual_sha256" >> "$GITHUB_ENV"
-          echo "installer_name=$(basename "$installer")" >> "$GITHUB_ENV"
-
-      - name: Create free integrity verification files
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          verifier="release-assets/VERIFY-INTEGRITY.ps1"
-          sha256sums="release-assets/SHA256SUMS.txt"
-          cp "$checksum" "$sha256sums"
-
-          cat > "$verifier" <<EOF
-          param(
-              [string]\$Installer = ".\\$installer_name"
-          )
-
-          \$ErrorActionPreference = 'Stop'
-          \$ExpectedSha256 = '$installer_sha256'
-
-          if (-not (Test-Path -LiteralPath \$Installer)) {
-              throw "Installer not found: \$Installer"
-          }
-
-          \$ActualSha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath \$Installer).Hash.ToLowerInvariant()
-
-          Write-Host "KOMI Report installer integrity verification"
-          Write-Host "File:     \$Installer"
-          Write-Host "Expected: \$ExpectedSha256"
-          Write-Host "Actual:   \$ActualSha256"
-
-          if (\$ActualSha256 -ne \$ExpectedSha256) {
-              throw 'Integrity check FAILED. Do not install this file.'
-          }
-
-          Write-Host 'Integrity check PASSED. The installer matches the official release hash.'
-          EOF
-
-          echo "verifier=$verifier" >> "$GITHUB_ENV"
-          echo "sha256sums=$sha256sums" >> "$GITHUB_ENV"
+          echo "installer_sha256=$installer_sha256" >> "$GITHUB_ENV"
+          echo "cert_thumbprint=$cert_thumbprint" >> "$GITHUB_ENV"
+          echo "cert_sha256=$cert_sha256" >> "$GITHUB_ENV"
+          echo "timestamp_used=$timestamp_used" >> "$GITHUB_ENV"
+          echo "signer_subject=$signer_subject" >> "$GITHUB_ENV"
 
       - name: Publish GitHub Release v5.2.7
         env:
@@ -124,18 +219,25 @@ jobs:
           - Prevent numeric subject IDs such as 1, 2, 3 from leaking into User/report history when RAM Meter Export provides the real user name.
           - Added targeted regression coverage for public meter reads and cached user-name mappings.
           - Version gate passed for V5.2.7.
-          - Native Windows x64 payload build passed on self-hosted runner DESKTOP-P9TSQEJ.
-          - Bundled CPython 3.14.7 dependency smoke test passed.
-          - Inno Setup installer compilation passed.
-          - Silent in-place upgrade on the self-hosted runner passed.
-          - Installed V5.2.7 smoke test passed and existing database hash was preserved across the installer upgrade.
+          - Native Windows x64 payload build, silent upgrade, and installed smoke validation passed on the self-hosted runner.
 
-          Security & integrity:
-          - Official installer SHA-256: $installer_sha256
-          - INSTALLER.sha256 and SHA256SUMS.txt are included with this release.
-          - VERIFY-INTEGRITY.ps1 can verify the downloaded installer on Windows using Get-FileHash.
-          - GitHub also records a SHA-256 digest for every uploaded release asset.
-          - This release does not use a publicly trusted Authenticode certificate, so Windows may still display Unknown Publisher.
+          Security & integrity — free baseline:
+          - Windows installer is Authenticode self-signed with SHA-256.
+          - Signer: $signer_subject
+          - Signing certificate thumbprint: $cert_thumbprint
+          - Public certificate SHA-256: $cert_sha256
+          - Signed installer SHA-256: $installer_sha256
+          - External timestamp used: $timestamp_used
+          - INSTALLER.sha256, SHA256SUMS.txt, CERTIFICATE.sha256, SIGNATURE_INFO.json and RELEASE_INFO.json are included.
+          - VERIFY-INTEGRITY.ps1 verifies the installer hash.
+          - VERIFY-SIGNATURE.ps1 verifies both the installer hash and signer thumbprint.
+          - TRUST-KOMI-CERT.ps1 is an optional explicit helper for managed machines that choose to trust this self-signed certificate.
+          - The private signing key remains only in the self-hosted Windows runner certificate store and is not published.
+          - GitHub also records a SHA-256 digest for uploaded release assets.
+
+          Important:
+          - This is a SELF-SIGNED certificate, not a publicly trusted commercial code-signing certificate.
+          - A clean Windows machine may still show Unknown Publisher, NotTrusted, or SmartScreen warnings until the certificate is explicitly trusted.
 
           License:
           - Free to use under the KOMI Report proprietary license.
@@ -153,15 +255,7 @@ jobs:
             gh release create v5.2.7 --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "KOMI Report V5.2.7" --notes "$notes" --latest
           fi
 
-          gh release upload v5.2.7 \
-            "$installer" \
-            "$checksum" \
-            "$sha256sums" \
-            "$release_info" \
-            "$verifier" \
-            LICENSE \
-            --repo "$GITHUB_REPOSITORY" \
-            --clobber
+          gh release upload v5.2.7 release-assets/* --repo "$GITHUB_REPOSITORY" --clobber
 
       - name: Verify published release
         env:
