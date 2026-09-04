@@ -1,0 +1,137 @@
+name: Printer User RAM Meter Export UAT
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/printer-user-export-uat.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-user-export:
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 15
+    env:
+      TARGET: '10.244.116.8'
+    defaults:
+      run:
+        shell: powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File {0}
+
+    steps:
+      - name: Run direct read-only User export verification
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $env:PYTHONUTF8 = '1'
+          $env:PYTHONIOENCODING = 'utf-8'
+          $installRoot = Join-Path $env:LOCALAPPDATA 'Programs\KOMI Report V5'
+          $runtime = Join-Path $installRoot 'runtime\python.exe'
+          $sourceRoot = Join-Path $installRoot 'source'
+          if (-not (Test-Path $runtime)) { throw "Installed KOMI runtime not found: $runtime" }
+          $env:KOMI_SOURCE_ROOT = $sourceRoot
+          $script = Join-Path $env:RUNNER_TEMP 'komi-user-export-uat.py'
+          @'
+          from __future__ import annotations
+
+          import hashlib
+          import json
+          import os
+          import sys
+          import time
+          from pathlib import Path
+
+          sys.path.insert(0, os.environ['KOMI_SOURCE_ROOT'])
+
+          from komi_version import APP_VERSION
+          from komi_snmp_profiler.connectors import TlsPolicy
+          from komi_snmp_profiler.meter import MeterReader
+          from komi_snmp_profiler.meter_export import (
+              MeterCountExportConnector,
+              MeterExportReader,
+              subject_name_map,
+          )
+
+
+          class MemoryStore:
+              def __init__(self) -> None:
+                  self.credential = None
+                  self.policy = TlsPolicy(mode='insecure')
+
+              def save(self, _host, credential) -> None:
+                  self.credential = credential
+
+              def load(self, _host):
+                  return self.credential
+
+              def delete(self, _host) -> None:
+                  self.credential = None
+
+              def tls_policy(self, _host) -> TlsPolicy:
+                  return self.policy
+
+
+          host = os.environ['TARGET']
+          started = time.perf_counter()
+          result = {
+              'schema': 'komi.printer.user-export.uat.v1',
+              'installed_version': APP_VERSION,
+              'target': host,
+              'meter_read_ok': False,
+              'credential_obtained_in_memory': False,
+              'export_ok': False,
+          }
+          try:
+              store = MemoryStore()
+              meter = MeterReader(store, allow_implicit_name_export=False).read(host)
+              result['meter_read_ok'] = True
+              result['meter_source'] = meter.source
+              result['meter_auth_state'] = str(meter.auth_state)
+              result['meter_counter_count'] = len(meter.counters)
+              result['credential_obtained_in_memory'] = store.credential is not None
+              connector = MeterCountExportConnector(
+                  timeout=8.0,
+                  tls_policy=TlsPolicy(mode='insecure'),
+                  max_polls=30,
+              )
+              table = MeterExportReader(store, connector=connector).read(host, 'User')
+              mapping = subject_name_map(table)
+              normalized_names = [name.strip() for name in mapping.values() if name.strip()]
+              result.update({
+                  'export_ok': True,
+                  'encoding': table.encoding,
+                  'delimiter_codepoint': ord(table.delimiter) if table.delimiter else None,
+                  'column_count': len(table.columns),
+                  'row_count': len(table.rows),
+                  'mapped_user_count': len(mapping),
+                  'mapped_ids': list(mapping.keys()),
+                  'unique_user_count': len(set(normalized_names)),
+                  'all_names_non_numeric': all(not name.isdigit() for name in normalized_names),
+                  'empty_name_count': sum(not name for name in mapping.values()),
+                  'name_digest_sha256': hashlib.sha256(
+                      '\n'.join(normalized_names).encode('utf-8')
+                  ).hexdigest(),
+              })
+          except Exception as exc:
+              result['error'] = {'type': type(exc).__name__, 'message': str(exc)}
+          result['elapsed_ms'] = round((time.perf_counter() - started) * 1000)
+
+          output = Path.cwd() / 'diagnostics' / 'printer-user-export-uat.json'
+          output.parent.mkdir(parents=True, exist_ok=True)
+          output.write_text(json.dumps(result, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+          print(json.dumps(result, ensure_ascii=True, indent=2))
+          if not result['export_ok']:
+              raise SystemExit(2)
+          '@ | Set-Content -LiteralPath $script -Encoding utf8
+          & $runtime $script
+          if ($LASTEXITCODE -ne 0) { throw "Direct User export verification exited with code $LASTEXITCODE" }
+
+      - name: Upload redacted User export evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: printer-user-export-uat-${{ github.run_id }}
+          retention-days: 14
+          if-no-files-found: warn
+          path: diagnostics/printer-user-export-uat.json
