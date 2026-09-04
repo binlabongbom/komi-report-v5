@@ -1,0 +1,332 @@
+name: V5.2.7 Rebuild Free-Signed
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/rebuild-v527-free-signed.yml'
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  rebuild-sign-publish:
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 210
+    defaults:
+      run:
+        shell: powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File {0}
+
+    steps:
+      - name: Bootstrap MinGit
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $root = 'C:\actions-runner\_komi_tools\mingit'
+          $git = Join-Path $root 'cmd\git.exe'
+          if (-not (Test-Path $git)) { throw 'Persistent MinGit missing.' }
+          (Join-Path $root 'cmd') | Out-File $env:GITHUB_PATH -Encoding utf8 -Append
+          & $git --version
+          if ($LASTEXITCODE -ne 0) { throw 'MinGit failed.' }
+
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify V5.2.7 source and regression
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $py = 'C:\actions-runner\_komi_tools\python-3.14.7\python.exe'
+          if (-not (Test-Path $py)) { throw 'Python 3.14.7 runtime missing.' }
+          & $py source/tools/version_gate.py
+          if ($LASTEXITCODE -ne 0) { throw 'Version gate failed.' }
+          & $py -m pytest -q source/tests/profiler/test_meter_reader_public_name_enrichment.py
+          if ($LASTEXITCODE -ne 0) { throw 'User-name regression test failed.' }
+          & $py -m pytest -q source/tests/test_v526_performance_contract.py
+          if ($LASTEXITCODE -ne 0) { throw 'Performance contract failed.' }
+
+      - name: Build native Windows x64 payload
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $py = 'C:\actions-runner\_komi_tools\python-3.14.7\python.exe'
+          $script = Join-Path $env:RUNNER_TEMP 'komi-v527-security-rebuild.py'
+          @'
+          import json, sys
+          from pathlib import Path
+          repo = Path.cwd().resolve()
+          sys.path.insert(0, str(repo / 'source'))
+          from tools.build_windows_rc import build_payload
+          out = (repo / 'release' / 'v5.2.7-security-native').resolve()
+          payload, evidence = build_payload(out, customer_release=True, build_evidence='windows-x64-native')
+          info = {'payload': str(payload), 'runtime_evidence': evidence}
+          (out / 'NATIVE_PAYLOAD_BUILD.json').write_text(json.dumps(info, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+          print(json.dumps(info, ensure_ascii=False))
+          '@ | Set-Content -LiteralPath $script -Encoding utf8
+          & $py $script
+          if ($LASTEXITCODE -ne 0) { throw 'Native payload build failed.' }
+
+      - name: Smoke bundled Python runtime
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $info = Get-Content 'release/v5.2.7-security-native/NATIVE_PAYLOAD_BUILD.json' -Raw | ConvertFrom-Json
+          $runtime = Join-Path ([string]$info.payload) 'runtime\python.exe'
+          if (-not (Test-Path $runtime)) { throw 'Bundled Python missing.' }
+          $v = (& $runtime -c "import sys,numpy,cryptography,PyQt6.QtCore,PyQt6.QtWidgets,pydantic_core; print('.'.join(map(str,sys.version_info[:3])))").Trim()
+          if ($LASTEXITCODE -ne 0 -or $v -ne '3.14.7') { throw "Bundled runtime smoke failed: $v" }
+
+      - name: Locate Inno Setup
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $root = 'C:\actions-runner\_komi_tools\inno-7.0.2'
+          $iscc = Get-ChildItem -LiteralPath $root -Filter ISCC.exe -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty FullName
+          if (-not $iscc) { throw 'ISCC.exe not found.' }
+          $iscc | Set-Content (Join-Path $env:RUNNER_TEMP 'komi-iscc-v527-security.txt') -Encoding ascii
+
+      - name: Compile V5.2.7 installer with personal publisher and EULA
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $py = 'C:\actions-runner\_komi_tools\python-3.14.7\python.exe'
+          $info = Get-Content 'release/v5.2.7-security-native/NATIVE_PAYLOAD_BUILD.json' -Raw | ConvertFrom-Json
+          $env:KOMI_PAYLOAD = [string]$info.payload
+          $env:KOMI_ISCC = (Get-Content (Join-Path $env:RUNNER_TEMP 'komi-iscc-v527-security.txt') -Raw).Trim()
+          $env:KOMI_COMMIT = (git rev-parse HEAD).Trim()
+          $script = Join-Path $env:RUNNER_TEMP 'komi-v527-security-installer.py'
+          @'
+          import os, sys
+          from pathlib import Path
+          repo = Path.cwd().resolve()
+          sys.path.insert(0, str(repo / 'source'))
+          from tools.build_windows_rc import compile_installer
+          out = (repo / 'release' / 'v5.2.7-security-installer').resolve()
+          out.mkdir(parents=True, exist_ok=True)
+          installer = compile_installer(
+              payload_root=Path(os.environ['KOMI_PAYLOAD']),
+              output_root=out,
+              source_commit=os.environ['KOMI_COMMIT'],
+              iscc=Path(os.environ['KOMI_ISCC']),
+              customer_release=True,
+          )
+          print(installer)
+          '@ | Set-Content -LiteralPath $script -Encoding utf8
+          & $py $script
+          if ($LASTEXITCODE -ne 0) { throw 'Installer compile failed.' }
+
+          $installer = Get-ChildItem 'release/v5.2.7-security-installer' -Filter '*.exe' | Select-Object -First 1
+          if (-not $installer) { throw 'Installer EXE missing.' }
+          $hash = Get-FileHash -Algorithm SHA256 $installer.FullName
+          "$($hash.Hash.ToLowerInvariant())  $($installer.Name)" | Set-Content 'release/v5.2.7-security-installer/INSTALLER.sha256' -Encoding ascii
+          [ordered]@{
+            version = '5.2.7'
+            source_commit = $env:KOMI_COMMIT
+            python_runtime = '3.14.7'
+            target = 'Windows x64'
+            installer = $installer.Name
+            installer_bytes = $installer.Length
+            installer_sha256 = $hash.Hash.ToLowerInvariant()
+            workflow_run = $env:GITHUB_RUN_ID
+            publisher = 'Wongsakorn Uphonram'
+            license = 'KOMI Report proprietary freeware'
+          } | ConvertTo-Json | Set-Content 'release/v5.2.7-security-installer/RELEASE_INFO.json' -Encoding utf8
+
+      - name: Self-sign rebuilt installer
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $installer = Get-ChildItem 'release/v5.2.7-security-installer' -Filter '*.exe' | Select-Object -First 1
+          if (-not $installer) { throw 'Installer missing before self-signing.' }
+          $out = Join-Path $PWD 'release\v5.2.7-security-signed'
+          & .\packaging\windows\Sign-KomiSelfSigned.ps1 `
+            -InstallerPath $installer.FullName `
+            -ReleaseInfoPath 'release\v5.2.7-security-installer\RELEASE_INFO.json' `
+            -OutputDirectory $out
+          if ($LASTEXITCODE -ne 0) { throw 'Self-signing failed.' }
+          Copy-Item -LiteralPath LICENSE -Destination (Join-Path $out 'LICENSE') -Force
+          Copy-Item -LiteralPath 'release\v5.2.7-security-native\NATIVE_PAYLOAD_BUILD.json' -Destination (Join-Path $out 'NATIVE_PAYLOAD_BUILD.json') -Force
+
+      - name: Windows Defender scan when available
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $out = 'release\v5.2.7-security-signed'
+          $installer = Get-ChildItem $out -Filter '*.exe' | Select-Object -First 1
+          if (-not $installer) { throw 'Signed installer missing for Defender scan.' }
+          $report = Join-Path $out 'DEFENDER_SCAN.txt'
+          $lines = New-Object System.Collections.Generic.List[string]
+          $lines.Add("file=$($installer.Name)")
+          $lines.Add("sha256=$((Get-FileHash -LiteralPath $installer.FullName -Algorithm SHA256).Hash.ToLowerInvariant())")
+          $lines.Add("scan_time_utc=$([DateTime]::UtcNow.ToString('o'))")
+          try {
+            if ((Get-Command Get-MpComputerStatus -ErrorAction SilentlyContinue) -and (Get-Command Start-MpScan -ErrorAction SilentlyContinue)) {
+              $status = Get-MpComputerStatus
+              $lines.Add("antivirus_enabled=$($status.AntivirusEnabled)")
+              $lines.Add("real_time_protection_enabled=$($status.RealTimeProtectionEnabled)")
+              Start-MpScan -ScanType CustomScan -ScanPath $installer.FullName
+              $lines.Add('defender_scan=completed')
+            }
+            else {
+              $lines.Add('defender_scan=unavailable')
+            }
+          }
+          catch {
+            $lines.Add('defender_scan=unavailable_or_failed')
+            $lines.Add("reason=$($_.Exception.Message.Replace([Environment]::NewLine, ' '))")
+            Write-Warning $_.Exception.Message
+          }
+          $lines | Set-Content -LiteralPath $report -Encoding ascii
+
+      - name: Backup existing runner data
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $dataHome = Join-Path $HOME 'KOMI Report V5'
+          $runtimeToml = Join-Path $dataHome 'runtime.toml'
+          $db = Join-Path $dataHome 'KOMI_Report_V5.db'
+          if (Test-Path $runtimeToml) {
+            $m = Select-String -Path $runtimeToml -Pattern '^\s*db_path\s*=\s*["''](.+)["'']\s*$' | Select-Object -First 1
+            if ($m) {
+              $candidate = $m.Matches[0].Groups[1].Value
+              if (Test-Path $candidate) { $db = $candidate }
+            }
+          }
+          $state = [ordered]@{db_path=$db; db_exists=(Test-Path $db); db_sha256=''; backup_path=''}
+          if (Test-Path $db) {
+            $state.db_sha256 = (Get-FileHash -Algorithm SHA256 $db).Hash.ToLowerInvariant()
+            $backupRoot = Join-Path $dataHome 'backups\v5.2.7-security-rebuild'
+            New-Item -ItemType Directory -Path $backupRoot -Force | Out-Null
+            $backup = Join-Path $backupRoot ('KOMI_Report_V5_before_5.2.7_security_' + (Get-Date -Format 'yyyyMMdd_HHmmss') + '.db')
+            Copy-Item -LiteralPath $db -Destination $backup -Force
+            $state.backup_path = $backup
+          }
+          $state | ConvertTo-Json | Set-Content (Join-Path $env:RUNNER_TEMP 'komi-v527-security-preinstall.json') -Encoding utf8
+
+      - name: Silent upgrade using signed installer
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Get-Process pythonw,wscript -ErrorAction SilentlyContinue | Where-Object { $_.Path -like '*KOMI Report V5*' } | Stop-Process -Force -ErrorAction SilentlyContinue
+          $installer = Get-ChildItem 'release\v5.2.7-security-signed' -Filter '*.exe' | Select-Object -First 1
+          if (-not $installer) { throw 'Signed installer missing before installation.' }
+          $signature = Get-AuthenticodeSignature -FilePath $installer.FullName
+          if (-not $signature.SignerCertificate) { throw 'Signed installer has no Authenticode signer.' }
+          if ($signature.Status -in @('HashMismatch','NotSigned')) { throw "Signed installer validation failed: $($signature.Status)" }
+          $p = Start-Process -FilePath $installer.FullName -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/SP-') -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "Installer exited $($p.ExitCode)" }
+
+      - name: Validate installed V5.2.7 and preserved database
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $install = Join-Path $env:LOCALAPPDATA 'Programs\KOMI Report V5'
+          $runtime = Join-Path $install 'runtime\python.exe'
+          $app = Join-Path $install 'source\app.py'
+          $versionFile = Join-Path $install 'source\komi_version.py'
+          if (-not (Test-Path $runtime) -or -not (Test-Path $app)) { throw "Installed payload missing at $install" }
+          $versionText = Get-Content $versionFile -Raw
+          if ($versionText -notmatch '5\.2\.7') { throw 'Installed version authority is not 5.2.7.' }
+          $smokeDb = Join-Path $env:RUNNER_TEMP 'komi-v527-security-smoke.db'
+          Remove-Item $smokeDb -Force -ErrorAction SilentlyContinue
+          $env:KOMI_DB_PATH = $smokeDb
+          & $runtime $app --smoke-test
+          if ($LASTEXITCODE -ne 0) { throw 'Installed application smoke test failed.' }
+          Remove-Item Env:KOMI_DB_PATH -ErrorAction SilentlyContinue
+          $state = Get-Content (Join-Path $env:RUNNER_TEMP 'komi-v527-security-preinstall.json') -Raw | ConvertFrom-Json
+          if ($state.db_exists) {
+            if (-not (Test-Path ([string]$state.db_path))) { throw 'Existing database disappeared during upgrade.' }
+            $after = (Get-FileHash -Algorithm SHA256 ([string]$state.db_path)).Hash.ToLowerInvariant()
+            if ($after -ne [string]$state.db_sha256) { throw 'Existing database content changed during installer upgrade.' }
+          }
+          Write-Host 'RUNNER_INSTALL_V527_SECURITY_REBUILD_PASS'
+
+      - name: Verify final signature and release evidence
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $root = 'release\v5.2.7-security-signed'
+          $installer = Get-ChildItem $root -Filter '*.exe' | Select-Object -First 1
+          & (Join-Path $root 'VERIFY-INTEGRITY.ps1') -Installer $installer.FullName
+          & (Join-Path $root 'VERIFY-SIGNATURE.ps1') -Installer $installer.FullName
+          $sigInfo = Get-Content (Join-Path $root 'SIGNATURE_INFO.json') -Raw | ConvertFrom-Json
+          $relInfo = Get-Content (Join-Path $root 'RELEASE_INFO.json') -Raw | ConvertFrom-Json
+          if ([string]$relInfo.publisher -ne 'Wongsakorn Uphonram') { throw 'Publisher metadata is not the expected personal publisher.' }
+          if ([string]$sigInfo.installer_sha256 -ne [string]$relInfo.installer_sha256) { throw 'Release/signature SHA mismatch.' }
+
+      - name: Bootstrap portable GitHub CLI
+        run: |
+          $ErrorActionPreference = 'Stop'
+          [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+          $root = 'C:\actions-runner\_komi_tools\gh-cli'
+          $gh = Join-Path $root 'bin\gh.exe'
+          if (-not (Test-Path $gh)) {
+            Remove-Item $root -Recurse -Force -ErrorAction SilentlyContinue
+            New-Item -ItemType Directory -Path $root -Force | Out-Null
+            $release = Invoke-RestMethod -Headers @{ 'User-Agent'='KOMI-Report-release-runner' } -Uri 'https://api.github.com/repos/cli/cli/releases/latest'
+            $asset = $release.assets | Where-Object { $_.name -match '^gh_.*_windows_amd64\.zip$' } | Select-Object -First 1
+            if (-not $asset) { throw 'GitHub CLI Windows x64 ZIP was not found.' }
+            $zip = Join-Path $env:RUNNER_TEMP $asset.name
+            Invoke-WebRequest -UseBasicParsing -Uri $asset.browser_download_url -OutFile $zip
+            $extract = Join-Path $env:RUNNER_TEMP 'gh-cli-extract'
+            Remove-Item $extract -Recurse -Force -ErrorAction SilentlyContinue
+            Expand-Archive -LiteralPath $zip -DestinationPath $extract -Force
+            $found = Get-ChildItem $extract -Filter gh.exe -Recurse | Select-Object -First 1
+            if (-not $found) { throw 'gh.exe was not found after extraction.' }
+            New-Item -ItemType Directory -Path (Join-Path $root 'bin') -Force | Out-Null
+            Copy-Item -LiteralPath $found.FullName -Destination $gh -Force
+          }
+          "GH_EXE=$gh" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          & $gh --version
+
+      - name: Publish rebuilt self-signed V5.2.7 release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $root = (Resolve-Path 'release\v5.2.7-security-signed').Path
+          $sig = Get-Content (Join-Path $root 'SIGNATURE_INFO.json') -Raw | ConvertFrom-Json
+          $rel = Get-Content (Join-Path $root 'RELEASE_INFO.json') -Raw | ConvertFrom-Json
+          $notes = @"
+          KOMI Report V5.2.7
+
+          Free security-hardened Windows build
+          - Publisher metadata: Wongsakorn Uphonram
+          - Proprietary freeware LICENSE is shown by the Windows installer.
+          - Installer is Authenticode self-signed with SHA-256.
+          - Signer: $($sig.publisher_subject)
+          - Signing certificate thumbprint: $($sig.certificate_thumbprint_sha1)
+          - Public certificate SHA-256: $($sig.certificate_file_sha256)
+          - Signed installer SHA-256: $($sig.installer_sha256)
+          - External timestamp used: $($sig.timestamp_used)
+          - Silent upgrade and installed smoke validation passed on the self-hosted Windows x64 runner.
+          - Existing runner database was preserved across the validated upgrade.
+          - Windows Defender scan evidence is included when Defender is available on the runner.
+          - VERIFY-INTEGRITY.ps1 verifies the installer hash.
+          - VERIFY-SIGNATURE.ps1 verifies the installer hash and signer thumbprint.
+          - TRUST-KOMI-CERT.ps1 is optional for machines that explicitly choose to trust the self-signed certificate.
+
+          Important: this is a self-signed certificate, not a publicly trusted commercial certificate. A clean Windows machine can still show Unknown Publisher, NotTrusted, or SmartScreen warnings until the certificate is explicitly trusted.
+
+          Build source commit: $($rel.source_commit)
+          Build workflow run: $env:GITHUB_RUN_ID
+          Target: Windows x64
+          "@
+
+          & $env:GH_EXE release view v5.2.7 --repo $env:GITHUB_REPOSITORY *> $null
+          if ($LASTEXITCODE -eq 0) {
+            & $env:GH_EXE release edit v5.2.7 --repo $env:GITHUB_REPOSITORY --title 'KOMI Report V5.2.7' --notes $notes --latest
+          }
+          else {
+            & $env:GH_EXE release create v5.2.7 --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --title 'KOMI Report V5.2.7' --notes $notes --latest
+          }
+          if ($LASTEXITCODE -ne 0) { throw 'Unable to create/update GitHub Release.' }
+
+          $assets = Get-ChildItem $root -File | ForEach-Object { $_.FullName }
+          & $env:GH_EXE release upload v5.2.7 @assets --repo $env:GITHUB_REPOSITORY --clobber
+          if ($LASTEXITCODE -ne 0) { throw 'Release asset upload failed.' }
+          & $env:GH_EXE release view v5.2.7 --repo $env:GITHUB_REPOSITORY --json tagName,name,isDraft,isPrerelease,url,assets
+          if ($LASTEXITCODE -ne 0) { throw 'Published release verification failed.' }
+
+      - name: Upload rebuild evidence artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: KOMI-Report-V5.2.7-Free-Signed-Rebuild-${{ github.sha }}
+          retention-days: 30
+          if-no-files-found: warn
+          compression-level: 0
+          path: |
+            release/v5.2.7-security-signed/*
+            release/v5.2.7-security-native/NATIVE_PAYLOAD_BUILD.json
