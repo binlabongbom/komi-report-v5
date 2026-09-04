@@ -9,6 +9,10 @@
 !.env.example
 *.key
 *.pem
+*.pfx
+*.p12
+*.pvk
+*.snk
 id_rsa*
 credentials.json
 credential*.json
