@@ -1,0 +1,67 @@
+name: Printer Network Route Diagnostic
+
+on:
+  push:
+    branches: ['diagnostics/printer-connectivity-20260904']
+    paths:
+      - '.github/workflows/printer-network-route-diagnostic.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose-route:
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File {0}
+
+    steps:
+      - name: Capture route, ping and hop diagnostics
+        run: |
+          $ErrorActionPreference = 'Continue'
+          $outputDir = Join-Path $PWD 'diagnostic-output'
+          New-Item -ItemType Directory -Path $outputDir -Force | Out-Null
+          $report = Join-Path $outputDir 'printer-network-route-results.txt'
+          "Printer network route diagnostic" | Set-Content -LiteralPath $report -Encoding utf8
+          "Timestamp: $([DateTimeOffset]::Now.ToString('o'))" | Add-Content -LiteralPath $report -Encoding utf8
+          "Computer: $env:COMPUTERNAME" | Add-Content -LiteralPath $report -Encoding utf8
+          "User: $env:USERNAME" | Add-Content -LiteralPath $report -Encoding utf8
+
+          "`r`n=== IP CONFIGURATION ===" | Add-Content -LiteralPath $report -Encoding utf8
+          Get-NetIPConfiguration |
+            Select-Object InterfaceAlias,InterfaceDescription,IPv4Address,IPv4DefaultGateway,NetProfile |
+            Format-List | Out-String | Add-Content -LiteralPath $report -Encoding utf8
+
+          "`r`n=== RELEVANT IPV4 ROUTES ===" | Add-Content -LiteralPath $report -Encoding utf8
+          Get-NetRoute -AddressFamily IPv4 |
+            Where-Object { $_.DestinationPrefix -eq '0.0.0.0/0' -or $_.DestinationPrefix -like '10.*' } |
+            Sort-Object RouteMetric,DestinationPrefix |
+            Select-Object DestinationPrefix,NextHop,InterfaceAlias,RouteMetric,InterfaceMetric,State |
+            Format-Table -AutoSize | Out-String | Add-Content -LiteralPath $report -Encoding utf8
+
+          foreach ($target in @('10.244.116.8','10.244.116.6')) {
+            "`r`n=== TARGET $target ===" | Add-Content -LiteralPath $report -Encoding utf8
+            "-- ping --" | Add-Content -LiteralPath $report -Encoding utf8
+            (& ping.exe -n 2 -w 1500 $target 2>&1 | Out-String) | Add-Content -LiteralPath $report -Encoding utf8
+            "-- route selection --" | Add-Content -LiteralPath $report -Encoding utf8
+            (Test-NetConnection -ComputerName $target -DiagnoseRouting -InformationLevel Detailed 2>&1 |
+              Format-List * | Out-String) | Add-Content -LiteralPath $report -Encoding utf8
+            "-- TCP 80 --" | Add-Content -LiteralPath $report -Encoding utf8
+            (Test-NetConnection -ComputerName $target -Port 80 -InformationLevel Detailed 2>&1 |
+              Format-List * | Out-String) | Add-Content -LiteralPath $report -Encoding utf8
+            "-- tracert --" | Add-Content -LiteralPath $report -Encoding utf8
+            (& tracert.exe -d -h 5 -w 1200 $target 2>&1 | Out-String) | Add-Content -LiteralPath $report -Encoding utf8
+          }
+
+          Get-Content -LiteralPath $report -Raw
+
+      - name: Upload route diagnostic
+        uses: actions/upload-artifact@v4
+        with:
+          name: printer-network-route-results-20260904
+          retention-days: 7
+          if-no-files-found: error
+          path: diagnostic-output/printer-network-route-results.txt
