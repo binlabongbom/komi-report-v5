@@ -44,7 +44,7 @@ jobs:
           if (-not (Test-Path $pythonExe)) { throw "Python runtime not found: $pythonExe" }
           & $pythonExe --version
           if ($LASTEXITCODE -ne 0) { throw 'Python 3.14.7 failed to start.' }
-          & $pythonExe -m pip install --disable-pip-version-check pytest PyQt6
+          & $pythonExe -m pip install --disable-pip-version-check pytest PyQt6 PyQt6-Charts
           if ($LASTEXITCODE -ne 0) { throw 'validation dependencies install failed.' }
 
       - name: Compile changed meter module
