@@ -1,0 +1,160 @@
+name: Free Security Audit
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '20 2 * * 1'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/free-security-audit.yml'
+      - 'source/pyproject.toml'
+      - 'source/requirements*.txt'
+      - 'source/uv.lock'
+      - 'web/package.json'
+      - 'web/package-lock.json'
+      - 'web/tests/security.test.ts'
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File {0}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Set up Python 3.13 for security tooling
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Set up Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+          cache-dependency-path: 'web/package-lock.json'
+
+      - name: Install free security tools
+        run: |
+          $ErrorActionPreference = 'Stop'
+          python -m pip install --disable-pip-version-check --upgrade pip
+          python -m pip install --disable-pip-version-check pip-audit bandit ruff detect-secrets cyclonedx-bom
+          if ($LASTEXITCODE -ne 0) { throw 'Security tool installation failed.' }
+
+      - name: Audit Python dependencies and source
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Path security-reports -Force | Out-Null
+
+          python -m pip_audit -r source/requirements-windows-x64.lock.txt --format json --output security-reports/pip-audit.json
+          $pipAuditExit = $LASTEXITCODE
+
+          python -m bandit -r source -x source/tests -f json -o security-reports/bandit.json
+          $banditExit = $LASTEXITCODE
+
+          ruff check source --output-format json | Out-File -FilePath security-reports/ruff.json -Encoding utf8
+          $ruffExit = $LASTEXITCODE
+
+          detect-secrets scan --all-files --exclude-files '(^|[\\/])(\.git|node_modules|release|dist|build)([\\/]|$)' | Out-File -FilePath security-reports/detect-secrets.json -Encoding utf8
+          $secretsExit = $LASTEXITCODE
+
+          try {
+            cyclonedx-py requirements source/requirements-windows-x64.lock.txt --output-reproducible --of JSON -o security-reports/python-sbom.cdx.json
+            $sbomExit = $LASTEXITCODE
+          }
+          catch {
+            $sbomExit = 1
+            $_.Exception.Message | Out-File -FilePath security-reports/python-sbom-error.txt -Encoding utf8
+          }
+
+          @"
+          pip_audit_exit=$pipAuditExit
+          bandit_exit=$banditExit
+          ruff_exit=$ruffExit
+          detect_secrets_exit=$secretsExit
+          python_sbom_exit=$sbomExit
+          "@ | Out-File -FilePath security-reports/python-audit-status.txt -Encoding ascii
+
+          Write-Host "pip-audit exit: $pipAuditExit"
+          Write-Host "Bandit exit: $banditExit"
+          Write-Host "Ruff exit: $ruffExit"
+          Write-Host "detect-secrets exit: $secretsExit"
+          Write-Host "Python SBOM exit: $sbomExit"
+          Write-Host 'Dependency/static-analysis findings are report-only so an existing finding cannot silently block a release.'
+
+      - name: Audit web dependencies and run security tests
+        id: web_security
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Push-Location web
+          try {
+            npm ci
+            if ($LASTEXITCODE -ne 0) { throw 'npm ci failed.' }
+
+            $npmAudit = (& npm audit --json 2>&1 | Out-String)
+            $npmAuditExit = $LASTEXITCODE
+            [System.IO.File]::WriteAllText((Join-Path $PWD '..\security-reports\npm-audit.json'), $npmAudit, (New-Object System.Text.UTF8Encoding($false)))
+
+            $lintOutput = (& npm run lint 2>&1 | Out-String)
+            $lintExit = $LASTEXITCODE
+            [System.IO.File]::WriteAllText((Join-Path $PWD '..\security-reports\web-typecheck.txt'), $lintOutput, (New-Object System.Text.UTF8Encoding($false)))
+
+            $securityOutput = (& npm run test:security 2>&1 | Out-String)
+            $securityTestExit = $LASTEXITCODE
+            [System.IO.File]::WriteAllText((Join-Path $PWD '..\security-reports\web-security-tests.txt'), $securityOutput, (New-Object System.Text.UTF8Encoding($false)))
+
+            try {
+              $npmSbom = (& npm sbom --sbom-format cyclonedx 2>&1 | Out-String)
+              $npmSbomExit = $LASTEXITCODE
+              [System.IO.File]::WriteAllText((Join-Path $PWD '..\security-reports\npm-sbom.cdx.json'), $npmSbom, (New-Object System.Text.UTF8Encoding($false)))
+            }
+            catch {
+              $npmSbomExit = 1
+              $_.Exception.Message | Out-File -FilePath '..\security-reports\npm-sbom-error.txt' -Encoding utf8
+            }
+          }
+          finally {
+            Pop-Location
+          }
+
+          @"
+          npm_audit_exit=$npmAuditExit
+          web_typecheck_exit=$lintExit
+          web_security_tests_exit=$securityTestExit
+          npm_sbom_exit=$npmSbomExit
+          "@ | Out-File -FilePath security-reports/web-audit-status.txt -Encoding ascii
+
+          if ($securityTestExit -ne 0) {
+            throw 'Existing web security tests failed. Review security-reports/web-security-tests.txt.'
+          }
+
+      - name: Hash audit evidence
+        if: always()
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (-not (Test-Path security-reports)) {
+            New-Item -ItemType Directory -Path security-reports -Force | Out-Null
+          }
+          $lines = foreach ($file in Get-ChildItem security-reports -File | Sort-Object Name) {
+            $hash = (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            "$hash  $($file.Name)"
+          }
+          $lines | Set-Content -LiteralPath security-reports/REPORT_SHA256SUMS.txt -Encoding ascii
+
+      - name: Upload security evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: KOMI-Report-Free-Security-Audit-${{ github.sha }}
+          retention-days: 30
+          if-no-files-found: warn
+          path: security-reports/
