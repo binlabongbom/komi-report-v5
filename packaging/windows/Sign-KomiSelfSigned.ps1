@@ -66,10 +66,10 @@ $certificate = Get-OrCreateSigningCertificate
 $certificatePath = Join-Path $outputRoot 'KOMI-Report-Code-Signing.cer'
 Export-Certificate -Cert $certificate -FilePath $certificatePath -Type CERT -Force | Out-Null
 
-# Trust the certificate only for the account running the self-hosted runner.
-# This makes local CI verification meaningful without changing customer machines.
-Import-Certificate -FilePath $certificatePath -CertStoreLocation 'Cert:\CurrentUser\Root' | Out-Null
-Import-Certificate -FilePath $certificatePath -CertStoreLocation 'Cert:\CurrentUser\TrustedPublisher' | Out-Null
+# Do not add the self-signed certificate to the runner's Root/TrustedPublisher stores.
+# The self-hosted runner can sign without trusting its own certificate. This avoids
+# certificate-store UI/policy failures under non-interactive Windows service accounts.
+# Customer trust, when explicitly desired, is handled by TRUST-KOMI-CERT.ps1.
 
 $timestampServer = 'http://timestamp.digicert.com'
 $timestampUsed = $false
@@ -83,10 +83,10 @@ try {
         -HashAlgorithm SHA256 `
         -TimestampServer $timestampServer
 
-    if ($signature.Status -notin @('Valid', 'NotTrusted')) {
-        throw "Timestamped signing returned status $($signature.Status): $($signature.StatusMessage)"
+    if (-not $signature.SignerCertificate) {
+        throw 'Timestamped signing did not produce a signer certificate.'
     }
-    $timestampUsed = $true
+    $timestampUsed = $null -ne $signature.TimeStamperCertificate
 }
 catch {
     Write-Warning "Timestamped signing was unavailable: $($_.Exception.Message)"
