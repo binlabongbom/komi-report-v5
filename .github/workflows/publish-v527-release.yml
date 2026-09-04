@@ -90,4 +90,4 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          gh release view v5.2.7 --repo "$GITHUB_REPOSITORY" --json tagName,name,isDraft,isPrerelease,isLatest,url,assets
+          gh release view v5.2.7 --repo "$GITHUB_REPOSITORY" --json tagName,name,isDraft,isPrerelease,url,assets
