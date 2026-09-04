@@ -1,0 +1,201 @@
+name: Printer Protocol Diagnostic V3
+
+on:
+  push:
+    branches: ['diagnostics/printer-connectivity-20260904']
+    paths:
+      - '.github/workflows/printer-protocol-diagnostic-v3.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose-protocols:
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File {0}
+
+    steps:
+      - name: Compare source interfaces and public Web Connection protocols
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $install = Join-Path $env:LOCALAPPDATA 'Programs\KOMI Report V5'
+          $runtime = Join-Path $install 'runtime\python.exe'
+          if (-not (Test-Path $runtime)) { throw "Installed runtime not found: $runtime" }
+          $outputDir = Join-Path $PWD 'diagnostic-output'
+          New-Item -ItemType Directory -Path $outputDir -Force | Out-Null
+          $output = Join-Path $outputDir 'printer-protocol-results.json'
+          $script = Join-Path $env:RUNNER_TEMP 'printer-protocol-diagnostic-v3.py'
+          @'
+          from __future__ import annotations
+
+          import http.client
+          import json
+          import os
+          import socket
+          import sys
+          import time
+          from pathlib import Path
+
+          HOSTS = ("10.244.116.8", "10.244.116.6")
+          SOURCES = {
+              "automatic": None,
+              "ethernet_10.244.116.72": "10.244.116.72",
+              "tailscale_100.80.139.46": "100.80.139.46",
+          }
+          PORTS = (80, 443, 515, 631, 9100)
+          install = Path(os.environ["KOMI_INSTALL"])
+          sys.path.insert(0, str(install / "source"))
+
+          from komi_snmp_profiler.connectors import (
+              LegacyWebConnectionCounterConnector,
+              TlsPolicy,
+              WebConnectionCounterConnector,
+          )
+
+
+          def error(exc: BaseException) -> str:
+              return f"{type(exc).__name__}: {exc}"
+
+
+          def tcp_probe(host: str, port: int, source: str | None) -> dict[str, object]:
+              started = time.perf_counter()
+              sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+              sock.settimeout(5)
+              try:
+                  if source:
+                      sock.bind((source, 0))
+                  sock.connect((host, port))
+                  return {
+                      "ok": True,
+                      "local_address": sock.getsockname()[0],
+                      "elapsed_ms": round((time.perf_counter() - started) * 1000),
+                      "error": "",
+                  }
+              except Exception as exc:
+                  return {
+                      "ok": False,
+                      "local_address": source or "automatic",
+                      "elapsed_ms": round((time.perf_counter() - started) * 1000),
+                      "error": error(exc),
+                  }
+              finally:
+                  sock.close()
+
+
+          def http_probe(host: str, path: str, source: str | None) -> dict[str, object]:
+              started = time.perf_counter()
+              connection = http.client.HTTPConnection(
+                  host,
+                  80,
+                  timeout=8,
+                  source_address=(source, 0) if source else None,
+              )
+              try:
+                  connection.request(
+                      "GET",
+                      path,
+                      headers={"User-Agent": "KOMI-Report-V5.2.7-protocol-diagnostic"},
+                  )
+                  response = connection.getresponse()
+                  payload = response.read(512)
+                  return {
+                      "ok": True,
+                      "status": response.status,
+                      "reason": response.reason,
+                      "server": response.getheader("Server") or "",
+                      "content_type": response.getheader("Content-Type") or "",
+                      "location": response.getheader("Location") or "",
+                      "body_bytes": len(payload),
+                      "elapsed_ms": round((time.perf_counter() - started) * 1000),
+                      "error": "",
+                  }
+              except Exception as exc:
+                  return {
+                      "ok": False,
+                      "status": None,
+                      "elapsed_ms": round((time.perf_counter() - started) * 1000),
+                      "error": error(exc),
+                  }
+              finally:
+                  connection.close()
+
+
+          def connector_probe(host: str, kind: str) -> dict[str, object]:
+              started = time.perf_counter()
+              try:
+                  if kind == "modern_http":
+                      collection = WebConnectionCounterConnector(
+                          tls_policy=TlsPolicy(mode="insecure"),
+                          scheme="http",
+                      ).collect_result(host)
+                  else:
+                      collection = LegacyWebConnectionCounterConnector(
+                          tls_policy=TlsPolicy(mode="insecure"),
+                          scheme="http",
+                      ).collect_result(host, scheme="http")
+                  subjects = [counter for counter in collection.counters if counter.subject_type]
+                  return {
+                      "ok": True,
+                      "source": collection.source,
+                      "auth_state": getattr(collection.auth_state, "value", str(collection.auth_state)),
+                      "counter_count": len(collection.counters),
+                      "subject_count": len(subjects),
+                      "named_subject_count": sum(bool(str(item.subject_name or "").strip()) for item in subjects),
+                      "numeric_unnamed_ids": sorted({
+                          str(item.subject_id)
+                          for item in subjects
+                          if str(item.subject_id or "").isdigit() and not str(item.subject_name or "").strip()
+                      })[:30],
+                      "elapsed_ms": round((time.perf_counter() - started) * 1000),
+                      "warnings": list(collection.warnings),
+                      "error": "",
+                  }
+              except Exception as exc:
+                  return {
+                      "ok": False,
+                      "elapsed_ms": round((time.perf_counter() - started) * 1000),
+                      "error": error(exc),
+                  }
+
+
+          results: dict[str, object] = {
+              "mode": "read-only",
+              "computer": os.environ.get("COMPUTERNAME", ""),
+              "targets": {},
+          }
+          for host in HOSTS:
+              target: dict[str, object] = {"sources": {}}
+              for label, source in SOURCES.items():
+                  target["sources"][label] = {
+                      "tcp": {str(port): tcp_probe(host, port, source) for port in PORTS},
+                      "http_root": http_probe(host, "/", source),
+                      "http_wcd": http_probe(host, "/wcd/index.html", source),
+                  }
+              target["public_connectors_automatic_route"] = {
+                  "modern_http": connector_probe(host, "modern_http"),
+                  "legacy_http": connector_probe(host, "legacy_http"),
+              }
+              results["targets"][host] = target
+
+          destination = Path(os.environ["KOMI_OUTPUT"])
+          destination.write_text(json.dumps(results, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+          print(json.dumps(results, ensure_ascii=True, indent=2))
+          '@ | Set-Content -LiteralPath $script -Encoding utf8
+          $env:KOMI_INSTALL = $install
+          $env:KOMI_OUTPUT = $output
+          $env:PYTHONUTF8 = '1'
+          $env:PYTHONIOENCODING = 'utf-8'
+          & $runtime $script
+          if ($LASTEXITCODE -ne 0) { throw "Protocol diagnostic failed: $LASTEXITCODE" }
+
+      - name: Upload protocol diagnostic
+        uses: actions/upload-artifact@v4
+        with:
+          name: printer-protocol-results-20260904
+          retention-days: 7
+          if-no-files-found: error
+          path: diagnostic-output/printer-protocol-results.json
