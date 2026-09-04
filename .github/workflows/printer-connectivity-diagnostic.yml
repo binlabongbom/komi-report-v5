@@ -1,0 +1,336 @@
+name: Printer Connectivity Diagnostic
+
+on:
+  push:
+    branches: ['diagnostics/printer-connectivity-20260904']
+    paths:
+      - '.github/workflows/printer-connectivity-diagnostic.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe-printers:
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File {0}
+
+    steps:
+      - name: Verify installed KOMI Report V5.2.7
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $install = Join-Path $env:LOCALAPPDATA 'Programs\KOMI Report V5'
+          $runtime = Join-Path $install 'runtime\python.exe'
+          $versionFile = Join-Path $install 'source\komi_version.py'
+          if (-not (Test-Path $runtime)) { throw "Installed runtime not found: $runtime" }
+          if (-not (Test-Path $versionFile)) { throw "Installed version file not found: $versionFile" }
+          $versionText = Get-Content -LiteralPath $versionFile -Raw
+          if ($versionText -notmatch '5\.2\.7') { throw 'Runner installation is not KOMI Report V5.2.7.' }
+          Write-Host "Computer=$env:COMPUTERNAME"
+          Write-Host "User=$env:USERNAME"
+          Write-Host "Install=$install"
+          & $runtime --version
+          "KOMI_INSTALL=$install" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "KOMI_RUNTIME=$runtime" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Run read-only network, SNMP and Web Connection probes
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $script = Join-Path $env:RUNNER_TEMP 'komi-printer-connectivity-probe.py'
+          $output = Join-Path $env:RUNNER_TEMP 'printer-connectivity-results.json'
+          @'
+          from __future__ import annotations
+
+          import json
+          import os
+          import socket
+          import sqlite3
+          import ssl
+          import sys
+          import time
+          import urllib.error
+          import urllib.request
+          from pathlib import Path
+
+          HOSTS = ("10.244.116.8", "10.244.116.6")
+          install_root = Path(os.environ["KOMI_INSTALL"])
+          source_root = install_root / "source"
+          sys.path.insert(0, str(source_root))
+
+          from komi_snmp_profiler.connectors import TlsPolicy
+          from komi_snmp_profiler.credential_store import platform_credential_store
+          from komi_snmp_profiler.meter import MeterReader
+          from runtime_config import load_runtime_settings
+          from services.snmp_probe import SnmpTotalProbe
+
+
+          class ReadOnlyInstalledCredentialStore:
+              """Read the installed DB/vault without changing device settings or trying default passwords."""
+
+              def __init__(self, db_path: Path) -> None:
+                  self.db_path = db_path.expanduser().resolve(strict=False)
+                  self.credential_errors: dict[str, str] = {}
+                  try:
+                      self.vault = platform_credential_store()
+                  except Exception as exc:
+                      self.vault = None
+                      self.vault_init_error = f"{type(exc).__name__}: {exc}"
+                  else:
+                      self.vault_init_error = ""
+
+              def _device_row(self, host: str) -> dict[str, object] | None:
+                  if not self.db_path.is_file():
+                      return None
+                  uri = self.db_path.as_uri() + "?mode=ro"
+                  with sqlite3.connect(uri, uri=True, timeout=5) as connection:
+                      connection.row_factory = sqlite3.Row
+                      row = connection.execute(
+                          """SELECT slot,name,host,model,serial,credential_ref,tls_mode,tls_fingerprint,
+                                    connection_status,last_success_at,last_error
+                             FROM devices WHERE host=? LIMIT 1""",
+                          (host,),
+                      ).fetchone()
+                  return dict(row) if row is not None else None
+
+              def device_info(self, host: str) -> dict[str, object] | None:
+                  try:
+                      return self._device_row(host)
+                  except Exception as exc:
+                      self.credential_errors[host] = f"DB lookup failed: {type(exc).__name__}: {exc}"
+                      return None
+
+              def load(self, host: str):
+                  row = self.device_info(host)
+                  reference = str((row or {}).get("credential_ref") or "")
+                  if not reference or self.vault is None:
+                      return None
+                  try:
+                      return self.vault.load(reference)
+                  except Exception as exc:
+                      self.credential_errors[host] = f"Vault read failed: {type(exc).__name__}: {exc}"
+                      return None
+
+              def tls_policy(self, host: str) -> TlsPolicy:
+                  row = self.device_info(host) or {}
+                  try:
+                      return TlsPolicy(
+                          mode=str(row.get("tls_mode") or "system"),
+                          fingerprint_sha256=str(row.get("tls_fingerprint") or ""),
+                      )
+                  except Exception as exc:
+                      self.credential_errors[host] = f"TLS policy invalid: {type(exc).__name__}: {exc}"
+                      return TlsPolicy()
+
+              def save(self, _host: str, _credential) -> None:
+                  raise RuntimeError("diagnostic credential store is read-only")
+
+              def delete(self, _host: str) -> None:
+                  raise RuntimeError("diagnostic credential store is read-only")
+
+
+          def tcp_probe(host: str, port: int) -> dict[str, object]:
+              started = time.perf_counter()
+              try:
+                  with socket.create_connection((host, port), timeout=4):
+                      pass
+              except Exception as exc:
+                  return {
+                      "reachable": False,
+                      "elapsed_ms": round((time.perf_counter() - started) * 1000),
+                      "error": f"{type(exc).__name__}: {exc}",
+                  }
+              return {
+                  "reachable": True,
+                  "elapsed_ms": round((time.perf_counter() - started) * 1000),
+                  "error": "",
+              }
+
+
+          def http_probe(host: str, scheme: str) -> dict[str, object]:
+              started = time.perf_counter()
+              request = urllib.request.Request(
+                  f"{scheme}://{host}/",
+                  headers={"User-Agent": "KOMI-Report-V5.2.7-diagnostic"},
+                  method="GET",
+              )
+              context = ssl._create_unverified_context() if scheme == "https" else None
+              try:
+                  with urllib.request.urlopen(request, timeout=6, context=context) as response:
+                      return {
+                          "reachable": True,
+                          "status": int(response.status),
+                          "final_url": response.geturl(),
+                          "content_type": response.headers.get("Content-Type", ""),
+                          "server": response.headers.get("Server", ""),
+                          "elapsed_ms": round((time.perf_counter() - started) * 1000),
+                          "error": "",
+                      }
+              except urllib.error.HTTPError as exc:
+                  return {
+                      "reachable": True,
+                      "status": int(exc.code),
+                      "final_url": exc.geturl(),
+                      "content_type": exc.headers.get("Content-Type", "") if exc.headers else "",
+                      "server": exc.headers.get("Server", "") if exc.headers else "",
+                      "elapsed_ms": round((time.perf_counter() - started) * 1000),
+                      "error": f"HTTPError: {exc}",
+                  }
+              except Exception as exc:
+                  return {
+                      "reachable": False,
+                      "status": None,
+                      "final_url": "",
+                      "content_type": "",
+                      "server": "",
+                      "elapsed_ms": round((time.perf_counter() - started) * 1000),
+                      "error": f"{type(exc).__name__}: {exc}",
+                  }
+
+
+          settings = load_runtime_settings()
+          store = ReadOnlyInstalledCredentialStore(settings.db_path)
+          results: dict[str, object] = {
+              "diagnostic_mode": "read-only; no counter/history writes; no default-password attempts",
+              "computer": os.environ.get("COMPUTERNAME", ""),
+              "runner_user": os.environ.get("USERNAME", ""),
+              "installed_version": "5.2.7",
+              "database_path": str(store.db_path),
+              "database_exists": store.db_path.is_file(),
+              "vault_init_error": store.vault_init_error,
+              "targets": {},
+          }
+
+          reader = MeterReader(
+              store,
+              allow_implicit_name_export=True,
+              public_factory_credentials=(),
+          )
+
+          for host in HOSTS:
+              target: dict[str, object] = {
+                  "tcp": {
+                      "80": tcp_probe(host, 80),
+                      "443": tcp_probe(host, 443),
+                  },
+                  "http": http_probe(host, "http"),
+                  "https": http_probe(host, "https"),
+              }
+              device = store.device_info(host)
+              target["configured_device"] = device or {}
+              credential = store.load(host)
+              target["credential_available"] = credential is not None
+              target["credential_error"] = store.credential_errors.get(host, "")
+
+              model_hint = str((device or {}).get("model") or "")
+              try:
+                  snmp = SnmpTotalProbe(timeout=1.5, retries=0).read(host)
+                  target["snmp"] = {
+                      "success": True,
+                      "total": snmp.total,
+                      "total_oid": snmp.total_oid,
+                      "model": snmp.model,
+                      "serial": snmp.serial,
+                      "toner": dict(snmp.toner),
+                      "paper_tray_count": len(snmp.paper_trays),
+                      "error": "",
+                  }
+                  if not model_hint:
+                      model_hint = snmp.model
+              except Exception as exc:
+                  target["snmp"] = {
+                      "success": False,
+                      "error": f"{type(exc).__name__}: {exc}",
+                  }
+
+              try:
+                  reading = reader.read(host, model=model_hint)
+                  subject_counters = [counter for counter in reading.counters if counter.subject_type]
+                  resolved = [
+                      counter for counter in subject_counters
+                      if (counter.subject_name or "").strip()
+                  ]
+                  unresolved = [
+                      counter for counter in subject_counters
+                      if (counter.subject_id or "").strip() and not (counter.subject_name or "").strip()
+                  ]
+                  seen: set[tuple[str, str, str]] = set()
+                  samples: list[dict[str, object]] = []
+                  for counter in subject_counters:
+                      key = (
+                          str(counter.subject_type or ""),
+                          str(counter.subject_id or ""),
+                          str(counter.subject_name or ""),
+                      )
+                      if key in seen:
+                          continue
+                      seen.add(key)
+                      samples.append({
+                          "type": counter.subject_type,
+                          "id": counter.subject_id,
+                          "name": counter.subject_name,
+                          "canonical_field": counter.canonical_field,
+                          "count": counter.count,
+                      })
+                      if len(samples) >= 30:
+                          break
+                  target["web_meter"] = {
+                      "success": True,
+                      "source": reading.source,
+                      "auth_state": getattr(reading.auth_state, "value", str(reading.auth_state)),
+                      "counter_count": len(reading.counters),
+                      "subject_counter_count": len(subject_counters),
+                      "resolved_subject_counter_count": len(resolved),
+                      "unresolved_subject_counter_count": len(unresolved),
+                      "resolved_names": sorted({
+                          str(counter.subject_name).strip()
+                          for counter in resolved
+                          if str(counter.subject_name).strip()
+                      })[:30],
+                      "unresolved_ids": sorted({
+                          str(counter.subject_id).strip()
+                          for counter in unresolved
+                          if str(counter.subject_id).strip()
+                      })[:30],
+                      "subject_samples": samples,
+                      "warnings": list(reading.warnings),
+                      "error": "",
+                  }
+              except Exception as exc:
+                  target["web_meter"] = {
+                      "success": False,
+                      "source": "",
+                      "auth_state": "",
+                      "counter_count": 0,
+                      "subject_counter_count": 0,
+                      "resolved_subject_counter_count": 0,
+                      "unresolved_subject_counter_count": 0,
+                      "resolved_names": [],
+                      "unresolved_ids": [],
+                      "subject_samples": [],
+                      "warnings": [],
+                      "error": f"{type(exc).__name__}: {exc}",
+                  }
+
+              results["targets"][host] = target
+
+          output = Path(os.environ["KOMI_PROBE_OUTPUT"])
+          output.write_text(json.dumps(results, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+          print(json.dumps(results, ensure_ascii=False, indent=2))
+          '@ | Set-Content -LiteralPath $script -Encoding utf8
+
+          $env:KOMI_PROBE_OUTPUT = $output
+          & $env:KOMI_RUNTIME $script
+          if ($LASTEXITCODE -ne 0) { throw "Printer diagnostic failed with exit code $LASTEXITCODE" }
+          if (-not (Test-Path $output)) { throw 'Printer diagnostic output was not created.' }
+          "KOMI_PROBE_RESULT=$output" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Upload diagnostic result
+        uses: actions/upload-artifact@v4
+        with:
+          name: printer-connectivity-10.244.116.8-10.244.116.6
+          retention-days: 7
+          if-no-files-found: error
+          path: ${{ env.KOMI_PROBE_RESULT }}
