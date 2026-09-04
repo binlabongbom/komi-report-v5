@@ -1,0 +1,84 @@
+name: Publish V5.2.7 Release
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/publish-v527-release.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  publish-v527:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Download validated Windows installer artifact
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: 33853353266
+          name: KOMI-Report-V5.2.7-Windows-x64-1888e8b3be1ad3fdb595a3ca4e155d4168f4a976
+          path: release-assets
+
+      - name: Verify release assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          installer="$(find release-assets -type f -iname '*.exe' | head -n 1)"
+          checksum="$(find release-assets -type f -name 'INSTALLER.sha256' | head -n 1)"
+          release_info="$(find release-assets -type f -name 'RELEASE_INFO.json' | head -n 1)"
+          test -n "$installer" && test -f "$installer"
+          test -n "$checksum" && test -f "$checksum"
+          test -n "$release_info" && test -f "$release_info"
+          grep -q '"version": "5.2.7"' "$release_info"
+          echo "installer=$installer" >> "$GITHUB_ENV"
+          echo "checksum=$checksum" >> "$GITHUB_ENV"
+          echo "release_info=$release_info" >> "$GITHUB_ENV"
+          cat "$release_info"
+          cat "$checksum"
+
+      - name: Publish GitHub Release v5.2.7
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          notes=$(cat <<'EOF'
+          KOMI Report V5.2.7
+
+          Hotfix focus:
+          - Fix user-name enrichment on successful public Web Connection meter reads.
+          - Prevent numeric subject IDs such as 1, 2, 3 from leaking into User/report history when RAM Meter Export provides the real user name.
+          - Added targeted regression coverage for public meter reads and cached user-name mappings.
+          - Version gate passed for V5.2.7.
+          - Native Windows x64 payload build passed on self-hosted runner DESKTOP-P9TSQEJ.
+          - Bundled CPython 3.14.7 dependency smoke test passed.
+          - Inno Setup installer compilation passed.
+          - Silent in-place upgrade on the self-hosted runner passed.
+          - Installed V5.2.7 smoke test passed and existing database hash was preserved across the installer upgrade.
+
+          Validated build source: release/v5.2.7 @ 1888e8b3be1ad3fdb595a3ca4e155d4168f4a976
+          Validation run: 33853353266
+          Target: Windows x64
+          EOF
+          )
+
+          if gh release view v5.2.7 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release edit v5.2.7 --repo "$GITHUB_REPOSITORY" --title "KOMI Report V5.2.7" --notes "$notes" --latest
+          else
+            gh release create v5.2.7 --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "KOMI Report V5.2.7" --notes "$notes" --latest
+          fi
+          gh release upload v5.2.7 "$installer" "$checksum" "$release_info" --repo "$GITHUB_REPOSITORY" --clobber
+
+      - name: Verify published release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release view v5.2.7 --repo "$GITHUB_REPOSITORY" --json tagName,name,isDraft,isPrerelease,isLatest,url,assets
