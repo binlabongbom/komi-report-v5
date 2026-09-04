@@ -1,0 +1,465 @@
+name: Printer Connectivity UAT
+
+on:
+  workflow_dispatch:
+    inputs:
+      targets:
+        description: Comma-separated printer IP addresses or hostnames
+        required: true
+        default: '10.244.116.8,10.244.116.10'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/printer-connectivity-uat.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 30
+    env:
+      TARGETS: ${{ inputs.targets || '10.244.116.8,10.244.116.10' }}
+    defaults:
+      run:
+        shell: powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File {0}
+
+    steps:
+      - name: Bootstrap persistent MinGit
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $root = 'C:\actions-runner\_komi_tools\mingit'
+          $git = Join-Path $root 'cmd\git.exe'
+          if (-not (Test-Path $git)) { throw 'Persistent MinGit is missing.' }
+          (Join-Path $root 'cmd') | Out-File $env:GITHUB_PATH -Encoding utf8 -Append
+          & $git --version
+          if ($LASTEXITCODE -ne 0) { throw 'MinGit failed to start.' }
+
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Run read-only network and KOMI meter diagnostics
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $installRoot = Join-Path $env:LOCALAPPDATA 'Programs\KOMI Report V5'
+          $runtime = Join-Path $installRoot 'runtime\python.exe'
+          $sourceRoot = Join-Path $installRoot 'source'
+          if (-not (Test-Path $runtime)) { throw "Installed KOMI runtime not found: $runtime" }
+          if (-not (Test-Path $sourceRoot)) { throw "Installed KOMI source not found: $sourceRoot" }
+
+          $env:KOMI_INSTALL_ROOT = $installRoot
+          $script = Join-Path $env:RUNNER_TEMP 'komi-printer-connectivity-uat.py'
+          @'
+          from __future__ import annotations
+
+          import hashlib
+          import http.client
+          import json
+          import os
+          import socket
+          import sqlite3
+          import ssl
+          import subprocess
+          import sys
+          import time
+          import tomllib
+          from pathlib import Path
+          from typing import Any
+
+          targets = [item.strip() for item in os.environ.get('TARGETS', '').split(',') if item.strip()]
+          install_root = Path(os.environ['KOMI_INSTALL_ROOT'])
+          source_root = install_root / 'source'
+          sys.path.insert(0, str(source_root))
+
+          from komi_version import APP_VERSION
+          from komi_snmp_profiler.connectors import (
+              TlsPolicy,
+              WebConnectionCounterConnector,
+              server_certificate_fingerprint,
+          )
+          from komi_snmp_profiler.credential_store import KeyringCredentialStore
+          from komi_snmp_profiler.meter import MeterReader
+          from services.snmp_probe import SnmpTotalProbe
+
+
+          def error_payload(exc: BaseException) -> dict[str, str]:
+              return {'type': type(exc).__name__, 'message': str(exc)}
+
+
+          def ping_probe(host: str) -> dict[str, Any]:
+              started = time.perf_counter()
+              try:
+                  process = subprocess.run(
+                      ['ping', '-n', '2', '-w', '1500', host],
+                      capture_output=True,
+                      text=True,
+                      errors='replace',
+                      timeout=8,
+                  )
+                  return {
+                      'ok': process.returncode == 0,
+                      'return_code': process.returncode,
+                      'elapsed_ms': round((time.perf_counter() - started) * 1000),
+                      'tail': [line.strip() for line in process.stdout.splitlines() if line.strip()][-4:],
+                  }
+              except Exception as exc:
+                  return {'ok': False, 'elapsed_ms': round((time.perf_counter() - started) * 1000), 'error': error_payload(exc)}
+
+
+          def tcp_probe(host: str, port: int, timeout: float = 2.5) -> dict[str, Any]:
+              started = time.perf_counter()
+              try:
+                  with socket.create_connection((host, port), timeout=timeout):
+                      pass
+                  return {'ok': True, 'port': port, 'elapsed_ms': round((time.perf_counter() - started) * 1000)}
+              except Exception as exc:
+                  return {
+                      'ok': False,
+                      'port': port,
+                      'elapsed_ms': round((time.perf_counter() - started) * 1000),
+                      'error': error_payload(exc),
+                  }
+
+
+          def diagnostic_ssl_context() -> ssl.SSLContext:
+              context = ssl.create_default_context()
+              context.check_hostname = False
+              context.verify_mode = ssl.CERT_NONE
+              try:
+                  context.minimum_version = ssl.TLSVersion.TLSv1
+              except Exception:
+                  pass
+              try:
+                  context.set_ciphers('DEFAULT:@SECLEVEL=0')
+              except ssl.SSLError:
+                  pass
+              context.options |= getattr(ssl, 'OP_LEGACY_SERVER_CONNECT', 1 << 2)
+              return context
+
+
+          def https_certificate_probe(host: str) -> dict[str, Any]:
+              started = time.perf_counter()
+              try:
+                  context = diagnostic_ssl_context()
+                  with socket.create_connection((host, 443), timeout=4) as raw:
+                      with context.wrap_socket(raw, server_hostname=host) as secured:
+                          certificate = secured.getpeercert(binary_form=True)
+                          return {
+                              'ok': bool(certificate),
+                              'elapsed_ms': round((time.perf_counter() - started) * 1000),
+                              'sha256': hashlib.sha256(certificate).hexdigest() if certificate else '',
+                              'tls_version': secured.version() or '',
+                              'cipher': secured.cipher()[0] if secured.cipher() else '',
+                          }
+              except Exception as exc:
+                  return {'ok': False, 'elapsed_ms': round((time.perf_counter() - started) * 1000), 'error': error_payload(exc)}
+
+
+          def http_probe(host: str, scheme: str) -> dict[str, Any]:
+              started = time.perf_counter()
+              connection = None
+              try:
+                  if scheme == 'https':
+                      connection = http.client.HTTPSConnection(host, 443, timeout=5, context=diagnostic_ssl_context())
+                  else:
+                      connection = http.client.HTTPConnection(host, 80, timeout=5)
+                  connection.request('GET', '/wcd/index.html', headers={'User-Agent': 'KOMI-Report-Connectivity-UAT/5.2.7'})
+                  response = connection.getresponse()
+                  response.read(512)
+                  return {
+                      'ok': 100 <= response.status < 500,
+                      'scheme': scheme,
+                      'status': response.status,
+                      'reason': response.reason,
+                      'server': response.getheader('Server') or '',
+                      'content_type': response.getheader('Content-Type') or '',
+                      'location': response.getheader('Location') or '',
+                      'elapsed_ms': round((time.perf_counter() - started) * 1000),
+                  }
+              except Exception as exc:
+                  return {
+                      'ok': False,
+                      'scheme': scheme,
+                      'elapsed_ms': round((time.perf_counter() - started) * 1000),
+                      'error': error_payload(exc),
+                  }
+              finally:
+                  if connection is not None:
+                      try:
+                          connection.close()
+                      except Exception:
+                          pass
+
+
+          def load_local_configuration() -> dict[str, Any]:
+              home = Path.home() / 'KOMI Report V5'
+              runtime_toml = home / 'runtime.toml'
+              db_path = home / 'KOMI_Report_V5.db'
+              if runtime_toml.is_file():
+                  try:
+                      payload = tomllib.loads(runtime_toml.read_text(encoding='utf-8'))
+                      configured = payload.get('runtime', {}).get('db_path')
+                      if configured:
+                          db_path = Path(str(configured)).expanduser()
+                  except Exception:
+                      pass
+              result: dict[str, Any] = {
+                  'data_home': str(home),
+                  'runtime_toml': str(runtime_toml),
+                  'db_path': str(db_path),
+                  'db_exists': db_path.is_file(),
+                  'devices': {},
+                  'vault_available': False,
+                  'vault_error': '',
+              }
+              if not db_path.is_file():
+                  return result
+              try:
+                  uri = f'{db_path.resolve().as_uri()}?mode=ro'
+                  with sqlite3.connect(uri, uri=True, timeout=5) as connection:
+                      rows = connection.execute(
+                          'SELECT slot,name,host,credential_ref,tls_mode,tls_fingerprint,model FROM devices ORDER BY slot'
+                      ).fetchall()
+                  for slot, name, host, reference, tls_mode, fingerprint, model in rows:
+                      result['devices'][str(host)] = {
+                          'slot': int(slot),
+                          'name': str(name or ''),
+                          'credential_ref': str(reference or ''),
+                          'tls_mode': str(tls_mode or 'system'),
+                          'tls_fingerprint': str(fingerprint or ''),
+                          'model': str(model or ''),
+                          'credential_available': False,
+                      }
+              except Exception as exc:
+                  result['db_error'] = error_payload(exc)
+                  return result
+              try:
+                  vault = KeyringCredentialStore()
+                  result['vault_available'] = True
+                  for device in result['devices'].values():
+                      reference = device.get('credential_ref') or ''
+                      if reference:
+                          try:
+                              device['_credential'] = vault.load(reference)
+                              device['credential_available'] = device['_credential'] is not None
+                          except Exception as exc:
+                              device['credential_error'] = error_payload(exc)
+              except Exception as exc:
+                  result['vault_error'] = str(exc)
+              return result
+
+
+          class MemoryDiagnosticStore:
+              def __init__(self, credential, policy: TlsPolicy) -> None:
+                  self.credential = credential
+                  self.policy = policy
+
+              def save(self, _host: str, credential) -> None:
+                  self.credential = credential
+
+              def load(self, _host: str):
+                  return self.credential
+
+              def delete(self, _host: str) -> None:
+                  self.credential = None
+
+              def tls_policy(self, _host: str) -> TlsPolicy:
+                  return self.policy
+
+
+          def snmp_probe(host: str) -> dict[str, Any]:
+              started = time.perf_counter()
+              try:
+                  value = SnmpTotalProbe(timeout=1.5, retries=0).read(host)
+                  return {
+                      'ok': True,
+                      'elapsed_ms': round((time.perf_counter() - started) * 1000),
+                      'total': value.total,
+                      'total_oid': value.total_oid,
+                      'model': value.model,
+                      'serial': value.serial,
+                      'total_candidates': list(value.total_candidates),
+                      'toner': list(value.toner),
+                      'paper_trays': [tray.to_cache() for tray in value.paper_trays],
+                  }
+              except Exception as exc:
+                  return {'ok': False, 'elapsed_ms': round((time.perf_counter() - started) * 1000), 'error': error_payload(exc)}
+
+
+          def public_web_probe(host: str, scheme: str) -> dict[str, Any]:
+              started = time.perf_counter()
+              try:
+                  connector = WebConnectionCounterConnector(
+                      tls_policy=TlsPolicy(mode='insecure'),
+                      scheme=scheme,
+                  )
+                  reading = connector.collect_result(host)
+                  subjects = [counter for counter in reading.counters if counter.subject_type]
+                  return {
+                      'ok': True,
+                      'scheme': scheme,
+                      'elapsed_ms': round((time.perf_counter() - started) * 1000),
+                      'source': reading.source,
+                      'auth_state': str(reading.auth_state),
+                      'counter_count': len(reading.counters),
+                      'subject_count': len(subjects),
+                      'named_subject_count': sum(bool(counter.subject_name) for counter in subjects),
+                      'numeric_unnamed_count': sum(
+                          bool(counter.subject_id and counter.subject_id.isdigit() and not counter.subject_name)
+                          for counter in subjects
+                      ),
+                      'warnings': list(reading.warnings),
+                  }
+              except Exception as exc:
+                  return {
+                      'ok': False,
+                      'scheme': scheme,
+                      'elapsed_ms': round((time.perf_counter() - started) * 1000),
+                      'error': error_payload(exc),
+                  }
+
+
+          def full_meter_probe(host: str, *, model: str, device: dict[str, Any] | None) -> dict[str, Any]:
+              started = time.perf_counter()
+              if device is not None:
+                  try:
+                      policy = TlsPolicy(
+                          mode=str(device.get('tls_mode') or 'system'),
+                          fingerprint_sha256=str(device.get('tls_fingerprint') or ''),
+                      )
+                  except Exception as exc:
+                      return {'ok': False, 'error': error_payload(exc), 'policy_source': 'configured_invalid'}
+                  credential = device.get('_credential')
+                  policy_source = 'configured'
+              else:
+                  policy = TlsPolicy(mode='insecure')
+                  credential = None
+                  policy_source = 'diagnostic_insecure_unconfigured'
+              store = MemoryDiagnosticStore(credential, policy)
+              try:
+                  reading = MeterReader(store, allow_implicit_name_export=True).read(host, model=model)
+                  subjects = [counter for counter in reading.counters if counter.subject_type]
+                  samples = [
+                      {
+                          'type': counter.subject_type,
+                          'id': counter.subject_id,
+                          'name': counter.subject_name,
+                          'count': counter.count,
+                      }
+                      for counter in subjects[:20]
+                  ]
+                  return {
+                      'ok': True,
+                      'elapsed_ms': round((time.perf_counter() - started) * 1000),
+                      'model_used': model,
+                      'policy_source': policy_source,
+                      'credential_present_before_test': credential is not None,
+                      'credential_obtained_in_memory': store.credential is not None,
+                      'source': reading.source,
+                      'auth_state': str(reading.auth_state),
+                      'counter_count': len(reading.counters),
+                      'subject_count': len(subjects),
+                      'named_subject_count': sum(bool(counter.subject_name) for counter in subjects),
+                      'unnamed_subject_count': sum(not bool(counter.subject_name) for counter in subjects),
+                      'numeric_display_risk_count': sum(
+                          bool(counter.subject_id and counter.subject_id.isdigit() and not counter.subject_name)
+                          for counter in subjects
+                      ),
+                      'subject_samples': samples,
+                      'warnings': list(reading.warnings),
+                  }
+              except Exception as exc:
+                  return {
+                      'ok': False,
+                      'elapsed_ms': round((time.perf_counter() - started) * 1000),
+                      'model_used': model,
+                      'policy_source': policy_source,
+                      'credential_present_before_test': credential is not None,
+                      'error': error_payload(exc),
+                  }
+
+
+          configuration = load_local_configuration()
+          results: dict[str, Any] = {
+              'schema': 'komi.printer.connectivity.uat.v1',
+              'installed_version': APP_VERSION,
+              'install_root': str(install_root),
+              'targets': targets,
+              'configuration': {
+                  key: value for key, value in configuration.items() if key != 'devices'
+              },
+              'devices': {},
+          }
+
+          for host in targets:
+              configured = configuration.get('devices', {}).get(host)
+              snmp = snmp_probe(host)
+              model = str((configured or {}).get('model') or snmp.get('model') or '')
+              configured_public = None
+              if configured:
+                  configured_public = {
+                      key: value for key, value in configured.items() if key != '_credential'
+                  }
+              results['devices'][host] = {
+                  'configured': configured_public,
+                  'ping': ping_probe(host),
+                  'tcp': {str(port): tcp_probe(host, port) for port in (80, 443, 515, 631, 9100)},
+                  'http': {
+                      'http': http_probe(host, 'http'),
+                      'https': http_probe(host, 'https'),
+                  },
+                  'https_certificate': https_certificate_probe(host),
+                  'snmp': snmp,
+                  'public_web': {
+                      'http': public_web_probe(host, 'http'),
+                      'https': public_web_probe(host, 'https'),
+                  },
+                  'full_meter': full_meter_probe(host, model=model, device=configured),
+              }
+
+          output = Path.cwd() / 'diagnostics' / 'printer-connectivity-uat.json'
+          output.parent.mkdir(parents=True, exist_ok=True)
+          output.write_text(json.dumps(results, ensure_ascii=False, indent=2, default=str) + '\n', encoding='utf-8')
+          print(json.dumps(results, ensure_ascii=False, indent=2, default=str))
+          '@ | Set-Content -LiteralPath $script -Encoding utf8
+
+          & $runtime $script
+          if ($LASTEXITCODE -ne 0) { throw "Printer diagnostic script exited with code $LASTEXITCODE" }
+
+      - name: Publish diagnostic summary
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $result = Get-Content 'diagnostics/printer-connectivity-uat.json' -Raw | ConvertFrom-Json
+          @('# Printer Connectivity UAT', '', "Installed version: $($result.installed_version)", '') | Out-File $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+          foreach ($property in $result.devices.PSObject.Properties) {
+            $host = $property.Name
+            $device = $property.Value
+            $ping = $device.ping.ok
+            $p80 = $device.tcp.'80'.ok
+            $p443 = $device.tcp.'443'.ok
+            $snmp = $device.snmp.ok
+            $meter = $device.full_meter.ok
+            $named = $device.full_meter.named_subject_count
+            $risk = $device.full_meter.numeric_display_risk_count
+            @(
+              "## $host",
+              "- Ping: $ping",
+              "- TCP 80: $p80",
+              "- TCP 443: $p443",
+              "- SNMP: $snmp",
+              "- Full KOMI meter read: $meter",
+              "- Named subjects: $named",
+              "- Numeric unnamed risk: $risk",
+              ''
+            ) | Out-File $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+          }
+
+      - name: Upload connectivity evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: printer-connectivity-uat-${{ github.run_id }}
+          retention-days: 14
+          if-no-files-found: error
+          path: diagnostics/printer-connectivity-uat.json
