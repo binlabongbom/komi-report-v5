@@ -1,0 +1,52 @@
+name: Printer Connectivity Diagnostic V2
+
+on:
+  push:
+    branches: ['diagnostics/printer-connectivity-20260904']
+    paths:
+      - '.github/workflows/printer-connectivity-diagnostic-v2.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe-printers:
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File {0}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run installed V5.2.7 read-only printer probe
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $install = Join-Path $env:LOCALAPPDATA 'Programs\KOMI Report V5'
+          $runtime = Join-Path $install 'runtime\python.exe'
+          $versionFile = Join-Path $install 'source\komi_version.py'
+          if (-not (Test-Path $runtime)) { throw "Installed runtime not found: $runtime" }
+          if (-not (Test-Path $versionFile)) { throw "Installed version file not found: $versionFile" }
+          if ((Get-Content -LiteralPath $versionFile -Raw) -notmatch '5\.2\.7') {
+            throw 'Runner installation is not KOMI Report V5.2.7.'
+          }
+          $outputDir = Join-Path $PWD 'diagnostic-output'
+          New-Item -ItemType Directory -Path $outputDir -Force | Out-Null
+          $output = Join-Path $outputDir 'printer-connectivity-results.json'
+          $env:KOMI_INSTALL = $install
+          $env:PYTHONUTF8 = '1'
+          $env:PYTHONIOENCODING = 'utf-8'
+          & $runtime 'diagnostics/printer_connectivity_probe.py' $output
+          if ($LASTEXITCODE -ne 0) { throw "Printer diagnostic failed with exit code $LASTEXITCODE" }
+          if (-not (Test-Path $output)) { throw 'Diagnostic JSON was not created.' }
+          Get-Content -LiteralPath $output -Raw
+
+      - name: Upload diagnostic result
+        uses: actions/upload-artifact@v4
+        with:
+          name: printer-connectivity-results-20260904
+          retention-days: 7
+          if-no-files-found: error
+          path: diagnostic-output/printer-connectivity-results.json
