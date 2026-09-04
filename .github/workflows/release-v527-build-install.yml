@@ -40,7 +40,7 @@ jobs:
           if(-not(Test-Path $py)){throw 'Python 3.14.7 runtime missing.'}
           & $py source/tools/version_gate.py
           if($LASTEXITCODE -ne 0){throw 'Version gate failed.'}
-          & $py -m pytest -q source/tests/test_meter_reader_public_name_enrichment.py
+          & $py -m pytest -q source/tests/profiler/test_meter_reader_public_name_enrichment.py
           if($LASTEXITCODE -ne 0){throw 'User-name regression test failed.'}
           & $py -m pytest -q source/tests/test_v526_performance_contract.py
           if($LASTEXITCODE -ne 0){throw 'Performance contract failed.'}
