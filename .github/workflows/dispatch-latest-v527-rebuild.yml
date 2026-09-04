@@ -1,0 +1,24 @@
+name: Dispatch Latest V5.2.7 Rebuild
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/dispatch-latest-v527-rebuild.yml'
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Dispatch corrected rebuild from latest main
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh workflow run rebuild-v527-free-signed.yml --repo "$GITHUB_REPOSITORY" --ref main
+          echo "Dispatched rebuild-v527-free-signed.yml from latest main."
