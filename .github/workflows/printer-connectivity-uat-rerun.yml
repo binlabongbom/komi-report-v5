@@ -1,0 +1,102 @@
+name: Printer Connectivity UAT UTF-8 Rerun
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/printer-connectivity-uat-rerun.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 30
+    env:
+      TARGETS: '10.244.116.8,10.244.116.10'
+    defaults:
+      run:
+        shell: powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File {0}
+
+    steps:
+      - name: Bootstrap persistent MinGit
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $root = 'C:\actions-runner\_komi_tools\mingit'
+          $git = Join-Path $root 'cmd\git.exe'
+          if (-not (Test-Path $git)) { throw 'Persistent MinGit is missing.' }
+          (Join-Path $root 'cmd') | Out-File $env:GITHUB_PATH -Encoding utf8 -Append
+          & $git --version
+          if ($LASTEXITCODE -ne 0) { throw 'MinGit failed to start.' }
+
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Extract and rerun read-only diagnostic with UTF-8 output
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $env:PYTHONUTF8 = '1'
+          $env:PYTHONIOENCODING = 'utf-8'
+          $installRoot = Join-Path $env:LOCALAPPDATA 'Programs\KOMI Report V5'
+          $runtime = Join-Path $installRoot 'runtime\python.exe'
+          if (-not (Test-Path $runtime)) { throw "Installed KOMI runtime not found: $runtime" }
+          $env:KOMI_INSTALL_ROOT = $installRoot
+
+          $sourceWorkflow = '.github/workflows/printer-connectivity-uat.yml'
+          $lines = Get-Content -LiteralPath $sourceWorkflow
+          $start = -1
+          $end = -1
+          for ($i = 0; $i -lt $lines.Count; $i++) {
+            if ($start -lt 0 -and $lines[$i].Trim() -eq "@'") {
+              $start = $i + 1
+              continue
+            }
+            if ($start -ge 0 -and $lines[$i].Trim().StartsWith("'@ | Set-Content")) {
+              $end = $i - 1
+              break
+            }
+          }
+          if ($start -lt 0 -or $end -lt $start) { throw 'Embedded diagnostic script was not found.' }
+          $scriptLines = @()
+          for ($i = $start; $i -le $end; $i++) {
+            $scriptLines += ($lines[$i] -replace '^ {10}', '')
+          }
+          $script = Join-Path $env:RUNNER_TEMP 'komi-printer-connectivity-uat-utf8.py'
+          [IO.File]::WriteAllLines($script, $scriptLines, (New-Object Text.UTF8Encoding($false)))
+          & $runtime $script
+          if ($LASTEXITCODE -ne 0) { throw "Printer diagnostic script exited with code $LASTEXITCODE" }
+          if (-not (Test-Path 'diagnostics/printer-connectivity-uat.json')) { throw 'Diagnostic evidence was not produced.' }
+
+      - name: Publish diagnostic summary
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $result = Get-Content 'diagnostics/printer-connectivity-uat.json' -Raw -Encoding utf8 | ConvertFrom-Json
+          @('# Printer Connectivity UAT', '', "Installed version: $($result.installed_version)", '') | Out-File $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+          foreach ($property in $result.devices.PSObject.Properties) {
+            $host = $property.Name
+            $device = $property.Value
+            @(
+              "## $host",
+              "- Ping: $($device.ping.ok)",
+              "- TCP 80: $($device.tcp.'80'.ok)",
+              "- TCP 443: $($device.tcp.'443'.ok)",
+              "- TCP 9100: $($device.tcp.'9100'.ok)",
+              "- SNMP: $($device.snmp.ok)",
+              "- Model: $($device.snmp.model)",
+              "- Full KOMI meter read: $($device.full_meter.ok)",
+              "- Named subjects: $($device.full_meter.named_subject_count)",
+              "- Numeric unnamed risk: $($device.full_meter.numeric_display_risk_count)",
+              ''
+            ) | Out-File $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+          }
+
+      - name: Upload connectivity evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: printer-connectivity-uat-utf8-${{ github.run_id }}
+          retention-days: 14
+          if-no-files-found: error
+          path: diagnostics/printer-connectivity-uat.json
