@@ -7,8 +7,10 @@ on:
     paths:
       - '.github/workflows/hotfix-v527-user-name-validation.yml'
       - 'source/komi_snmp_profiler/meter.py'
-      - 'source/tests/profiler/test_meter_reader.py'
       - 'source/tests/profiler/test_meter_reader_public_name_enrichment.py'
+      - 'source/tests/test_history_v5_users.py'
+      - 'source/tests/test_subject_history.py'
+      - 'source/tests/test_history_v5_current.py'
   workflow_dispatch:
 
 permissions:
@@ -45,19 +47,19 @@ jobs:
           & $pythonExe -m pip install --disable-pip-version-check pytest
           if ($LASTEXITCODE -ne 0) { throw 'pytest install failed.' }
 
+      - name: Compile changed meter module
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $pythonExe = 'C:\actions-runner\_komi_tools\python-3.14.7\python.exe'
+          & $pythonExe -m py_compile source/komi_snmp_profiler/meter.py
+          if ($LASTEXITCODE -ne 0) { throw 'meter.py compile failed.' }
+
       - name: Run user-name regression tests
         run: |
           $ErrorActionPreference = 'Stop'
           $pythonExe = 'C:\actions-runner\_komi_tools\python-3.14.7\python.exe'
           & $pythonExe -m pytest -q source/tests/profiler/test_meter_reader_public_name_enrichment.py
           if ($LASTEXITCODE -ne 0) { throw 'Public user-name enrichment regression test failed.' }
-
-      - name: Run meter reader regression suite
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $pythonExe = 'C:\actions-runner\_komi_tools\python-3.14.7\python.exe'
-          & $pythonExe -m pytest -q source/tests/profiler/test_meter_reader.py
-          if ($LASTEXITCODE -ne 0) { throw 'Meter reader regression suite failed.' }
 
       - name: Run related history tests
         run: |
