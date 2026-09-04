@@ -33,7 +33,7 @@ jobs:
           Write-Host "RunnerName=$env:RUNNER_NAME"
           Write-Host "RunnerOS=$env:RUNNER_OS"
           Write-Host "RunnerArch=$env:RUNNER_ARCH"
-          git rev-parse HEAD
+          Write-Host "Commit=$env:GITHUB_SHA"
 
       - name: Locate Python 3.14.7
         run: |
