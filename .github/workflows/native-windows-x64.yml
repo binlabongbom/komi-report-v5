@@ -53,7 +53,7 @@ jobs:
           Write-Host "RunnerName=$env:RUNNER_NAME"
           Write-Host "Git=$(git --version)"
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 

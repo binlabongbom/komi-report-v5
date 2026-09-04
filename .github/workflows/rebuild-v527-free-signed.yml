@@ -30,7 +30,7 @@ jobs:
           & $git --version
           if ($LASTEXITCODE -ne 0) { throw 'MinGit failed.' }
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 

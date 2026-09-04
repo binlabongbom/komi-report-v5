@@ -39,7 +39,7 @@ jobs:
           & $gitExe --version
           if ($LASTEXITCODE -ne 0) { throw 'git bootstrap failed.' }
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: chatgpt/python-3-14-runtime
           fetch-depth: 0

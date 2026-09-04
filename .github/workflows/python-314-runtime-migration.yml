@@ -40,7 +40,7 @@ jobs:
             (Join-Path $portableRoot 'cmd') | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
           }
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: chatgpt/python-3-14-runtime
           fetch-depth: 0
