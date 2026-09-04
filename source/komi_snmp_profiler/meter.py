@@ -194,12 +194,14 @@ class MeterReader:
                 raise admin_failure from None
             raise
         auth_state = WebAuthState.PUBLIC_FALLBACK if warnings else WebAuthState.PUBLIC
+        counters = list(result.counters)
+        counters, identity_warnings = self._enrich_subject_names(host, counters, tls_policy)
         return MeterReading.create(
             host,
-            list(result.counters),
+            counters,
             result.source,
             auth_state,
-            warnings + list(result.warnings),
+            warnings + list(result.warnings) + identity_warnings,
         )
 
     def _read_with_public_factory_credentials(
