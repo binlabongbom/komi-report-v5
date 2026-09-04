@@ -1,0 +1,141 @@
+name: Printer Existing Config Locator
+
+on:
+  push:
+    branches: ['diagnostics/printer-connectivity-20260904']
+    paths:
+      - '.github/workflows/printer-existing-config-locator.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  locate-config:
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File {0}
+
+    steps:
+      - name: Locate existing database and target device configuration read-only
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $install = Join-Path $env:LOCALAPPDATA 'Programs\KOMI Report V5'
+          $runtime = Join-Path $install 'runtime\python.exe'
+          if (-not (Test-Path $runtime)) { throw "Installed runtime not found: $runtime" }
+          $outputDir = Join-Path $PWD 'diagnostic-output'
+          New-Item -ItemType Directory -Path $outputDir -Force | Out-Null
+          $output = Join-Path $outputDir 'printer-existing-config.json'
+          $script = Join-Path $env:RUNNER_TEMP 'printer-existing-config-locator.py'
+          @'
+          from __future__ import annotations
+
+          import json
+          import os
+          import sqlite3
+          import sys
+          import tomllib
+          from pathlib import Path
+
+          TARGETS = {"10.244.116.8", "10.244.116.6"}
+          candidates: set[Path] = set()
+          runtime_configs: list[dict[str, object]] = []
+
+          roots = [Path("C:/Users"), Path("C:/ProgramData"), Path(os.environ.get("SystemRoot", "C:/Windows")) / "ServiceProfiles"]
+          for root in roots:
+              if not root.exists():
+                  continue
+              patterns = (
+                  "*/KOMI Report V5/runtime.toml",
+                  "*/AppData/Local/KOMI Report V5/runtime.toml",
+                  "*/KOMI Report V5/*.db",
+                  "*/AppData/Local/KOMI Report V5/*.db",
+              )
+              for pattern in patterns:
+                  try:
+                      paths = list(root.glob(pattern))
+                  except OSError:
+                      paths = []
+                  for path in paths:
+                      if path.name.casefold() == "runtime.toml":
+                          entry: dict[str, object] = {
+                              "profile": path.parts[2] if len(path.parts) > 2 and path.drive else path.parent.name,
+                              "path": str(path),
+                              "readable": False,
+                              "configured_db_exists": False,
+                              "error": "",
+                          }
+                          try:
+                              payload = tomllib.loads(path.read_text(encoding="utf-8"))
+                              db_value = payload.get("runtime", {}).get("db_path")
+                              entry["readable"] = True
+                              if db_value:
+                                  db_path = Path(str(db_value)).expanduser()
+                                  entry["configured_db_exists"] = db_path.is_file()
+                                  entry["configured_db_path"] = str(db_path)
+                                  candidates.add(db_path)
+                          except Exception as exc:
+                              entry["error"] = f"{type(exc).__name__}: {exc}"
+                          runtime_configs.append(entry)
+                      elif path.suffix.casefold() == ".db":
+                          candidates.add(path)
+
+          results: dict[str, object] = {
+              "mode": "read-only; no credential values accessed",
+              "runner_user": os.environ.get("USERNAME", ""),
+              "runtime_configs": runtime_configs,
+              "databases": [],
+          }
+
+          for db_path in sorted(candidates, key=lambda item: str(item).casefold()):
+              entry: dict[str, object] = {
+                  "path": str(db_path),
+                  "exists": db_path.is_file(),
+                  "readable": False,
+                  "target_devices": [],
+                  "error": "",
+              }
+              if not db_path.is_file():
+                  results["databases"].append(entry)
+                  continue
+              try:
+                  with sqlite3.connect(db_path.resolve().as_uri() + "?mode=ro", uri=True, timeout=5) as connection:
+                      connection.row_factory = sqlite3.Row
+                      tables = {
+                          str(row[0])
+                          for row in connection.execute("SELECT name FROM sqlite_master WHERE type='table'")
+                      }
+                      entry["readable"] = True
+                      entry["has_devices_table"] = "devices" in tables
+                      if "devices" in tables:
+                          rows = connection.execute(
+                              """SELECT slot,name,host,model,serial,tls_mode,
+                                        CASE WHEN credential_ref <> '' THEN 1 ELSE 0 END AS has_credential_ref,
+                                        connection_status,last_success_at,last_error
+                                 FROM devices WHERE host IN (?,?) ORDER BY slot""",
+                              tuple(sorted(TARGETS)),
+                          ).fetchall()
+                          entry["target_devices"] = [dict(row) for row in rows]
+              except Exception as exc:
+                  entry["error"] = f"{type(exc).__name__}: {exc}"
+              results["databases"].append(entry)
+
+          destination = Path(os.environ["KOMI_OUTPUT"])
+          destination.write_text(json.dumps(results, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+          print(json.dumps(results, ensure_ascii=True, indent=2))
+          '@ | Set-Content -LiteralPath $script -Encoding utf8
+          $env:KOMI_OUTPUT = $output
+          $env:PYTHONUTF8 = '1'
+          $env:PYTHONIOENCODING = 'utf-8'
+          & $runtime $script
+          if ($LASTEXITCODE -ne 0) { throw "Config locator failed: $LASTEXITCODE" }
+
+      - name: Upload config locator result
+        uses: actions/upload-artifact@v4
+        with:
+          name: printer-existing-config-results-20260904
+          retention-days: 7
+          if-no-files-found: error
+          path: diagnostic-output/printer-existing-config.json
