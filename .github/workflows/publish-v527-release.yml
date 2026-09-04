@@ -35,12 +35,21 @@ jobs:
           test -n "$installer" && test -f "$installer"
           test -n "$checksum" && test -f "$checksum"
           test -n "$release_info" && test -f "$release_info"
-          grep -q '"version": "5.2.7"' "$release_info"
+          python3 - "$release_info" <<'PY'
+          import json, sys
+          with open(sys.argv[1], encoding='utf-8-sig') as f:
+              info = json.load(f)
+          assert info.get('version') == '5.2.7', info
+          assert info.get('python_runtime') == '3.14.7', info
+          assert info.get('target') == 'Windows x64', info
+          print(json.dumps(info, indent=2, ensure_ascii=False))
+          PY
+          installer_dir="$(dirname "$installer")"
+          checksum_name="$(basename "$checksum")"
+          (cd "$installer_dir" && sha256sum -c "$checksum_name")
           echo "installer=$installer" >> "$GITHUB_ENV"
           echo "checksum=$checksum" >> "$GITHUB_ENV"
           echo "release_info=$release_info" >> "$GITHUB_ENV"
-          cat "$release_info"
-          cat "$checksum"
 
       - name: Publish GitHub Release v5.2.7
         env:
