@@ -8,13 +8,13 @@
   #define SourceCommit "UNCOMMITTED"
 #endif
 #ifndef OutputBaseFilename
-  #define OutputBaseFilename "KOMI_Report_V5_2_7_Windows_x64_RC"
+  #define OutputBaseFilename "KOMI_Report_V5_2_8_Windows_x64_RC"
 #endif
 #ifndef VersionInfoDescription
-  #define VersionInfoDescription "KOMI Report V5.2.7 Release Candidate"
+  #define VersionInfoDescription "KOMI Report V5.2.8 Release Candidate"
 #endif
 
-#define AppVersion "5.2.7"
+#define AppVersion "5.2.8"
 #define AppName "KOMI Report V5"
 #define AppPublisher "Wongsakorn Uphonram"
 #define AppLauncher "START_KOMI_REPORT.vbs"
@@ -42,10 +42,10 @@ WizardStyle=modern
 SetupIconFile={#PayloadDir}\source\Logo.ico
 UninstallDisplayIcon={app}\source\Logo.ico
 LicenseFile=..\..\LICENSE
-VersionInfoVersion=5.2.7.0
+VersionInfoVersion=5.2.8.0
 VersionInfoDescription={#VersionInfoDescription}
 VersionInfoProductName=KOMI Report V5
-VersionInfoProductVersion=5.2.7
+VersionInfoProductVersion=5.2.8
 VersionInfoCompany={#AppPublisher}
 VersionInfoCopyright=Copyright (c) 2026 Wongsakorn Uphonram. All Rights Reserved.
 UsePreviousAppDir=yes
