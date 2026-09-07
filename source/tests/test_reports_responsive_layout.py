@@ -105,7 +105,10 @@ def report_widget():
         device_name_snapshot="Sales Printer",
         device_serial_snapshot="TEST-A",
     )
-    widget = CloudReportsWidget()
+    # Exercise logical report widths independently of the runner's physical
+    # desktop. Native top-level windows can be clamped below the wide breakpoint.
+    host = QWidget()
+    widget = CloudReportsWidget(parent=host)
     widget.set_periods((period, ("2026-08-05", "2026-08-05")), period)
     widget.set_data(
         records=(usage,),
@@ -117,10 +120,12 @@ def report_widget():
         last_sync_at="2026-08-06T09:00:00+07:00",
     )
     widget.resize(800, 620)
+    host.show()
     widget.show()
     _settle()
     yield widget
     widget.close()
+    host.close()
     app.processEvents()
 
 
