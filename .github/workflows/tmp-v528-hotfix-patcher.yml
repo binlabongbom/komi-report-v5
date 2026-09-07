@@ -1,0 +1,106 @@
+name: Temporary V5.2.8 Hotfix Patcher
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/tmp-v528-hotfix-patcher.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch-hotfix:
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: hotfix/v5.2.8-customer-user-and-nav
+          fetch-depth: 0
+
+      - name: Apply fail-closed customer regression patches
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          @'
+          from pathlib import Path
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              p = Path(path)
+              text = p.read_text(encoding='utf-8')
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{path}: expected exactly 1 match, got {count}')
+              p.write_text(text.replace(old, new, 1), encoding='utf-8')
+
+          # Coalesce rapid Legacy -> Main switches and prevent overlapping refreshes.
+          replace_once(
+              'source/v5_pages.py',
+              '''        self.report_center.tabs.currentChanged.connect(\n            lambda _index: QTimer.singleShot(0, self.refresh_visible)\n        )\n        self.report_center_tabs = self.report_center.tabs\n''',
+              '''        self._report_refresh_busy = False\n        self._report_refresh_pending = False\n        self._report_refresh_timer = QTimer(self)\n        self._report_refresh_timer.setSingleShot(True)\n        self._report_refresh_timer.setInterval(120)\n        self._report_refresh_timer.timeout.connect(self.refresh_visible)\n        self.report_center.tabs.currentChanged.connect(self._schedule_report_refresh)\n        self.report_center_tabs = self.report_center.tabs\n''',
+          )
+          replace_once(
+              'source/v5_pages.py',
+              '''    @staticmethod\n    def _report_panel() -> tuple[QFrame, QVBoxLayout]:\n''',
+              '''    def _schedule_report_refresh(self, _index: int | None = None) -> None:\n        # QTabWidget can emit multiple changes while the user moves Legacy -> Main.\n        # Coalesce them so only the final visible tab hits SQLite/report aggregation.\n        self._report_refresh_timer.start()\n\n    @staticmethod\n    def _report_panel() -> tuple[QFrame, QVBoxLayout]:\n''',
+          )
+          replace_once(
+              'source/v5_pages.py',
+              '''    def refresh_visible(self) -> None:\n        \"\"\"Load only the visible Cloud report, leaving legacy audit UI deferred.\"\"\"\n        try:\n            self.reports_error.setVisible(False)\n            self.report_center.updated_label.setText(\"กำลังโหลดข้อมูลแท็บนี้…\")\n            self._populate_report_periods()\n            self._refresh_report_center()\n        except Exception as error:\n            self.report_center.show_error(\n                \"โหลด Reports ไม่สำเร็จ · ซ่อนตัวเลขไว้เพื่อป้องกันการอ่านผิด \"\n                f\"· {type(error).__name__}: {error}\"\n            )\n            self.reports_error.setText(\n                \"โหลด Reports ไม่สำเร็จ · ยอดบนหน้าจอถูกซ่อนไว้เพื่อป้องกันการอ่านผิด \"\n                f\"· {type(error).__name__}: {error}\"\n            )\n            self.reports_error.setVisible(True)\n''',
+              '''    def refresh_visible(self) -> None:\n        \"\"\"Load the visible report once; coalesce tab changes while a refresh is active.\"\"\"\n        if self._report_refresh_busy:\n            self._report_refresh_pending = True\n            return\n        self._report_refresh_busy = True\n        try:\n            self.reports_error.setVisible(False)\n            self.report_center.updated_label.setText(\"กำลังโหลดข้อมูลแท็บนี้…\")\n            self._populate_report_periods()\n            self._refresh_report_center()\n        except Exception as error:\n            self.report_center.show_error(\n                \"โหลด Reports ไม่สำเร็จ · ซ่อนตัวเลขไว้เพื่อป้องกันการอ่านผิด \"\n                f\"· {type(error).__name__}: {error}\"\n            )\n            self.reports_error.setText(\n                \"โหลด Reports ไม่สำเร็จ · ยอดบนหน้าจอถูกซ่อนไว้เพื่อป้องกันการอ่านผิด \"\n                f\"· {type(error).__name__}: {error}\"\n            )\n            self.reports_error.setVisible(True)\n        finally:\n            self._report_refresh_busy = False\n            if self._report_refresh_pending:\n                self._report_refresh_pending = False\n                self._report_refresh_timer.start()\n''',
+          )
+
+          # When several historical rows collapse into the same Top-user identity,
+          # prefer a real name over a numeric ID placeholder.
+          replace_once(
+              'source/services/summary_service.py',
+              '''def _runtime_status(device, *, now: datetime) -> str:\n''',
+              '''def _subject_name_is_placeholder(subject_id: str, subject_name: str) -> bool:\n    sid = str(subject_id or \"\").strip()\n    name = str(subject_name or \"\").strip()\n    if not name:\n        return True\n    if name.casefold() == sid.casefold():\n        return True\n    if name.isdigit() and sid.isdigit():\n        return int(name) == int(sid)\n    return False\n\n\ndef _runtime_status(device, *, now: datetime) -> str:\n''',
+          )
+          replace_once(
+              'source/services/summary_service.py',
+              '''        item = subject_totals.setdefault(\n            (subject.device_identity, subject.subject_type, subject.subject_id),\n            [subject_name, 0.0],\n        )\n        item[1] += subject.period_usage\n''',
+              '''        item = subject_totals.setdefault(\n            (subject.device_identity, subject.subject_type, subject.subject_id),\n            [subject_name, 0.0],\n        )\n        if (\n            _subject_name_is_placeholder(subject.subject_id, item[0])\n            and not _subject_name_is_placeholder(subject.subject_id, subject_name)\n        ):\n            item[0] = subject_name\n        item[1] += subject.period_usage\n''',
+          )
+          '@ | Set-Content -LiteralPath "$env:RUNNER_TEMP\apply_v528.py" -Encoding utf8
+          python "$env:RUNNER_TEMP\apply_v528.py"
+
+      - name: Add navigation source-contract regression
+        shell: powershell
+        run: |
+          @'
+          from pathlib import Path
+
+          def test_report_tab_refresh_is_debounced_and_guarded():
+              text = Path(__file__).resolve().parents[1].joinpath('v5_pages.py').read_text(encoding='utf-8')
+              assert 'lambda _index: QTimer.singleShot(0, self.refresh_visible)' not in text
+              assert 'self.report_center.tabs.currentChanged.connect(self._schedule_report_refresh)' in text
+              assert 'self._report_refresh_busy' in text
+              assert 'self._report_refresh_pending' in text
+
+          def test_top_users_prefers_real_name_over_numeric_placeholder():
+              text = Path(__file__).resolve().parents[1].joinpath('services', 'summary_service.py').read_text(encoding='utf-8')
+              assert '_subject_name_is_placeholder' in text
+              assert 'item[0] = subject_name' in text
+          '@ | Set-Content -LiteralPath 'source/tests/test_v528_customer_navigation.py' -Encoding utf8
+
+      - name: Run targeted regressions
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $python = 'C:\actions-runner\_komi_tools\cpython-3.14.7\python.exe'
+          if (-not (Test-Path $python)) { $python = 'python' }
+          & $python -m pytest -q source/tests/test_v528_numeric_subject_names.py source/tests/test_v528_customer_navigation.py
+          if ($LASTEXITCODE -ne 0) { throw 'V5.2.8 targeted regressions failed' }
+
+      - name: Commit hotfix branch
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          git config user.name 'KOMI Release Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add source/v5_pages.py source/services/summary_service.py source/tests/test_v528_customer_navigation.py
+          if (-not (git status --porcelain)) { throw 'No V5.2.8 patch changes were produced' }
+          git commit -m 'fix: resolve customer user names and report tab freeze'
+          git push origin HEAD:hotfix/v5.2.8-customer-user-and-nav
