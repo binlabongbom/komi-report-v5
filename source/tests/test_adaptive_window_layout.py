@@ -40,7 +40,12 @@ def test_sidebar_text_and_footer_fit_at_both_sizes(window, language, width, side
     window.language_combo.setCurrentIndex(window.language_combo.findData(language))
     QApplication.processEvents()
 
-    assert window.sidebar.width() == sidebar_width
+    # The native window manager may constrain a requested width to its desktop.
+    actual_width = window.width()
+    expected_sidebar = sidebar_width if actual_width == width else (
+        200 if actual_width <= 1280 else SIDEBAR_WIDTH
+    )
+    assert window.sidebar.width() == expected_sidebar
     title = window._sidebar_logo_title
     assert title.fontMetrics().horizontalAdvance(title.text()) <= title.contentsRect().width()
     for button in window.nav_btns:

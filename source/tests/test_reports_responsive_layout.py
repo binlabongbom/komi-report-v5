@@ -19,6 +19,8 @@ from services.monthly_history import MonthlyUsage
 from services.subject_history import SubjectPeriodUsage
 from ui.cloud_reports import CloudReportsWidget
 
+_qt_app_keepalive = None
+
 
 def _settle() -> None:
     QApplication.processEvents()
@@ -46,7 +48,10 @@ def _content_scroll(widget: CloudReportsWidget, content: QWidget) -> QScrollArea
 
 @pytest.fixture
 def report_widget():
+    global _qt_app_keepalive
     app = QApplication.instance() or QApplication([])
+    # Retain QApplication before the first fixture teardown on native Windows.
+    _qt_app_keepalive = app
     day = date(2026, 8, 6)
     period = (day.isoformat(), day.isoformat())
     usage = MonthlyUsage(
