@@ -36,6 +36,25 @@ class MeterExportReaderLike(Protocol):
     def read(self, host: str, kind: MeterExportKind) -> MeterExportTable: ...
 
 
+def _subject_name_is_placeholder(subject_id: str | None, subject_name: str | None) -> bool:
+    """Return True when a device echoed the numeric subject ID as its display name."""
+
+    subject_id_text = str(subject_id or "").strip()
+    name_text = str(subject_name or "").strip()
+    if not name_text:
+        return True
+    if not subject_id_text:
+        return False
+    if name_text.casefold() == subject_id_text.casefold():
+        return True
+    if name_text.isdigit() and subject_id_text.isdigit():
+        try:
+            return int(name_text) == int(subject_id_text)
+        except ValueError:
+            return False
+    return False
+
+
 class MeterReader:
     """Select one Administrator read attempt when available, otherwise use the public counter API."""
 
@@ -239,7 +258,9 @@ class MeterReader:
     ) -> tuple[list, list[str]]:
         kinds: set[MeterExportKind] = set()
         for counter in counters:
-            if counter.subject_name or not counter.subject_id:
+            if not counter.subject_id:
+                continue
+            if not _subject_name_is_placeholder(counter.subject_id, counter.subject_name):
                 continue
             if counter.subject_type == "user":
                 kinds.add("User")
@@ -250,10 +271,10 @@ class MeterReader:
 
         names_by_type: dict[str, dict[str, str]] = {}
         warnings: list[str] = []
-        # The device's normal counter JSON contains AuthNo/TrackNo but omits
-        # the visible names.  Long-lived polling callers may opt in to one
-        # bounded RAM Meter export per host/kind; the result is cached so every
-        # polling cycle does not create a new temporary export job.
+        # The device's normal counter JSON contains AuthNo/TrackNo but may omit
+        # the visible names or echo the numeric ID as the visible name. Long-lived
+        # polling callers may opt in to one bounded RAM Meter export per host/kind;
+        # the result is cached so every polling cycle does not create a new job.
         export_reader = self.export_reader
         if export_reader is None and self.allow_implicit_name_export:
             export_reader = MeterExportReader(
@@ -284,7 +305,11 @@ class MeterReader:
         for counter in counters:
             lookup_type = "account" if counter.subject_type == "track" else counter.subject_type
             name = names_by_type.get(lookup_type or "", {}).get(counter.subject_id or "")
-            enriched.append(replace(counter, subject_name=name) if name and not counter.subject_name else counter)
+            should_replace = bool(name) and _subject_name_is_placeholder(
+                counter.subject_id,
+                counter.subject_name,
+            )
+            enriched.append(replace(counter, subject_name=name) if should_replace else counter)
         return enriched, warnings
 
     @staticmethod
