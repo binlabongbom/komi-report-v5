@@ -6653,14 +6653,9 @@ class PageHistoryV5(PageHistory):
         self._report_refresh_timer.timeout.connect(self.refresh_visible)
         self.report_center.tabs.currentChanged.connect(self._schedule_report_refresh)
         self.report_center_tabs = self.report_center.tabs
-        self.report_center_scroll = QScrollArea()
-        self.report_center_scroll.setObjectName("cloud_reports_scroll")
-        self.report_center_scroll.setWidget(self.report_center)
-        self.report_center_scroll.setWidgetResizable(True)
-        self.report_center_scroll.setFrameShape(QFrame.Shape.NoFrame)
-        self.report_center_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self.report_center_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        self.layout().addWidget(self.report_center_scroll, 1)
+        # Cloud Reports owns scrolling within each tab so its header, tab bar
+        # and period controls remain visible and hidden pages cannot expand it.
+        self.layout().addWidget(self.report_center, 1)
 
     def _schedule_report_refresh(self, _index: int | None = None) -> None:
         # Coalesce rapid Legacy -> Main changes before touching SQLite/report aggregation.
@@ -6942,7 +6937,10 @@ class PageHistoryV5(PageHistory):
             selected = periods[0] if periods else None
         self.report_center.set_periods(periods, selected)
         active_tab = self.report_center.tabs.currentIndex()
-        needs_daily_usage = active_tab in {0, 3}
+        is_custom_period = selected is not None and selected not in periods
+        # Printers can use posted monthly records for a billing period, but a
+        # custom range must aggregate only the daily records inside its dates.
+        needs_daily_usage = active_tab in {0, 3} or (active_tab == 2 and is_custom_period)
         needs_subjects = active_tab in {0, 1}
         needs_raw = active_tab in {1, 4}
         needs_legacy = active_tab in {3, 4}
@@ -6968,11 +6966,14 @@ class PageHistoryV5(PageHistory):
             # values. A custom range is built from daily usage so the two
             # date fields change the actual report instead of only the label.
             selected_records = monthly_records or daily_records
+            subject_range = (
+                {"period_start": start, "period_end": end} if is_custom_period else {}
+            )
             subjects = (
                 tuple(
                     record
                     for record in load_subject_history(
-                        report_slots(), cache=self.subject_cache
+                        report_slots(), cache=self.subject_cache, **subject_range
                     )
                     if record.period_start == start and record.period_end == end
                 )
@@ -7047,7 +7048,20 @@ class PageHistoryV5(PageHistory):
     def _export_report_center_excel(self) -> None:
         """Choose a date range, then export three user-facing report views."""
         cloud = self.report_center
-        available_records = tuple(cloud._usage_daily_records)
+        # Hidden tabs intentionally skip daily data during refresh. Export
+        # needs its own read so it works from any tab without making every
+        # navigation load the complete daily history.
+        try:
+            available_records = tuple(
+                load_usage_history(report_slots(), granularity="daily", cache=self.cache)
+            )
+        except Exception as error:
+            QMessageBox.critical(
+                self,
+                "Export ไม่สำเร็จ",
+                f"ไม่สามารถโหลดข้อมูลรายงานได้:\n{error}",
+            )
+            return
         available_start = min(
             (record.period_start for record in available_records),
             default=None,

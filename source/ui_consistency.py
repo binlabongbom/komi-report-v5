@@ -69,6 +69,10 @@ class ButtonSystem(QObject):
             button.setFixedHeight(BUTTON_LINK_HEIGHT)
         elif role == "icon":
             button.setFixedSize(BUTTON_ICON_SIZE, BUTTON_ICON_SIZE)
+        elif role == "compact-icon":
+            button.setFixedSize(24, 24)
+        elif role == "compact":
+            button.setFixedHeight(28)
         elif role == "large":
             button.setFixedHeight(BUTTON_LARGE_HEIGHT)
         else:

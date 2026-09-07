@@ -5,9 +5,10 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from dataclasses import replace
 from datetime import date
 
-from PyQt6.QtCore import QDate, QPoint, Qt
-from PyQt6.QtTest import QTest
-from PyQt6.QtWidgets import QApplication, QDateEdit, QPushButton
+import pytest
+from PyQt6.QtCore import QDate, QLocale, QPoint, Qt, QTimer
+from PyQt6.QtTest import QSignalSpy, QTest
+from PyQt6.QtWidgets import QApplication, QDateEdit, QPushButton, QTableView, QToolButton
 
 from services.device_config import DeviceConfig
 from services.monthly_history import MonthlyUsage
@@ -15,6 +16,116 @@ from services.raw_counter_history import RawCounterDailyRecord, UsageMeterBaseli
 from services.subject_history import SubjectPeriodUsage
 from ui.cloud_reports import USAGE_METRICS, CloudReportsWidget
 from widgets import FrozenLeftTable
+
+
+@pytest.mark.parametrize("field,target", [("start", QDate(2026, 8, 15)), ("end", QDate(2026, 10, 15))])
+def test_calendar_month_menu_and_day_click_allow_dates_outside_report_history(field, target):
+    qt_app = QApplication.instance() or QApplication([])
+    widget = CloudReportsWidget()
+    history = (("2026-09-01", "2026-09-30"),)
+    widget.set_periods(history, history[0])
+    widget.resize(1000, 720)
+    widget.show()
+    qt_app.processEvents()
+    QTest.qWait(20)
+    start, end = widget.period_edit_pairs[0]
+    editor = start if field == "start" else end
+    calendar = editor.calendarWidget()
+    calendar.setLocale(QLocale(QLocale.Language.English))
+    changed = QSignalSpy(widget.period_changed)
+    QTest.mouseClick(editor, Qt.MouseButton.LeftButton, pos=editor.rect().center())
+    qt_app.processEvents()
+    assert calendar.isVisible()
+    month_button = calendar.findChild(QToolButton, "qt_calendar_monthbutton")
+    assert month_button is not None
+    menu = month_button.menu()
+    assert menu is not None
+    interaction = {}
+
+    def choose_month():
+        # A native menu can enter a nested event loop. Record failures here;
+        # assertions belong outside Qt callbacks to avoid aborting the process.
+        try:
+            actions = [action for action in menu.actions() if not action.isSeparator()]
+            interaction["visible"] = menu.isVisible()
+            interaction["action_count"] = len(actions)
+            action = actions[target.month() - 1]
+            interaction["enabled"] = action.isEnabled()
+            if action.isEnabled():
+                QTest.mouseClick(menu, Qt.MouseButton.LeftButton, pos=menu.actionGeometry(action).center())
+        except Exception as error:
+            interaction["error"] = repr(error)
+        finally:
+            menu.close()
+
+    watchdog = QTimer()
+    watchdog.setSingleShot(True)
+    watchdog.timeout.connect(menu.close)
+    watchdog.start(1000)
+    QTimer.singleShot(0, choose_month)
+    QTest.mouseClick(month_button, Qt.MouseButton.LeftButton, pos=month_button.rect().center())
+    qt_app.processEvents()
+    watchdog.stop()
+    assert "error" not in interaction, interaction
+    assert interaction.get("visible"), interaction
+    assert interaction.get("action_count") == 12, interaction
+    assert interaction.get("enabled"), "Month selection must not be disabled by the available history range"
+    assert (calendar.yearShown(), calendar.monthShown()) == (target.year(), target.month())
+    assert len(changed) == 0, "Changing the displayed month must not change the report period yet"
+    view = calendar.findChild(QTableView, "qt_calendar_calendarview")
+    assert view is not None
+    model = view.model()
+    day_cells = [
+        model.index(row, column)
+        for row in range(model.rowCount())
+        for column in range(model.columnCount())
+        if str(model.index(row, column).data()) == str(target.day())
+    ]
+    assert len(day_cells) == 1
+    QTest.mouseClick(view.viewport(), Qt.MouseButton.LeftButton, pos=view.visualRect(day_cells[0]).center())
+    qt_app.processEvents()
+    assert editor.date() == target
+    assert not calendar.isVisible()
+    expected = ("2026-08-15", "2026-09-30") if field == "start" else ("2026-09-01", "2026-10-15")
+    assert len(changed) == 1
+    assert changed[0][0] == expected
+    assert widget.current_period() == expected
+    assert len(widget.period_edit_pairs) == 4
+    for pair in widget.period_edit_pairs:
+        for control in pair:
+            assert control.minimumDate() <= QDate(2026, 8, 15)
+            assert control.maximumDate() >= QDate(2026, 10, 15)
+        assert pair[0].date().toString("yyyy-MM-dd") == expected[0]
+        assert pair[1].date().toString("yyyy-MM-dd") == expected[1]
+    widget.close()
+
+
+def test_custom_calendar_range_survives_history_refresh_and_empty_report_data():
+    qt_app = QApplication.instance() or QApplication([])
+    widget = CloudReportsWidget()
+    history = (("2026-09-01", "2026-09-30"),)
+    widget.set_periods(history, history[0])
+    start, end = widget.period_edit_pairs[0]
+    start.setDate(QDate(2026, 8, 15))
+    end.setDate(QDate(2026, 10, 15))
+    expected = ("2026-08-15", "2026-10-15")
+    assert widget.current_period() == expected
+    changes = QSignalSpy(widget.period_changed)
+    for refreshed_history in (history, (), (("2026-09-07", "2026-09-07"),)):
+        widget.set_periods(refreshed_history, widget.current_period())
+        widget.set_data(
+            records=(), daily_records=(), monthly_records=(), subjects=(), devices=(),
+            period=widget.current_period(), last_sync_at=None,
+        )
+        for index in (1, 2, 4, 0):
+            widget.tabs.setCurrentIndex(index)
+        qt_app.processEvents()
+        assert widget.current_period() == expected
+        for first, last in widget.period_edit_pairs:
+            assert first.date() == QDate(2026, 8, 15)
+            assert last.date() == QDate(2026, 10, 15)
+    assert len(changes) == 0, "History refresh must not emit a replacement selection"
+    widget.close()
 
 
 def _usage(day: date, total: float = 120) -> MonthlyUsage:
@@ -303,10 +414,22 @@ def test_cloud_reports_header_and_date_range_fit_desktop_minimum():
         if button.text() == "📅"
     ]
     assert len(calendar_buttons) == 8
+    for button in calendar_buttons[:2]:
+        assert button.width() == button.height() == 24
+        assert button.height() <= start_edit.height()
     calendar_buttons[0].click()
     app.processEvents()
     assert start_edit.calendarWidget().isVisible()
     QTest.keyClick(start_edit, Qt.Key.Key_Escape)
+
+    export_requests = QSignalSpy(widget.export_requested)
+    date_exports = widget.findChildren(QPushButton, "cloud_period_export")
+    assert len(date_exports) == 4
+    selected_period = (start_edit.date(), _end_edit.date())
+    for index, button in enumerate(date_exports, start=1):
+        button.click()
+        assert len(export_requests) == index
+        assert (start_edit.date(), _end_edit.date()) == selected_period
 
     widget.close()
     app.processEvents()

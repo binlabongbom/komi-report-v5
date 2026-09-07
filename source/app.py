@@ -127,7 +127,7 @@ def validate_parser_json(path: str) -> list:
 #   QFrame         — กล่องที่ใส่ border หรือ background ได้
 #   QStackedWidget — ซ้อนหลาย Widget ไว้แต่แสดงทีละอัน (ใช้สลับหน้า)
 #   QScrollArea    — ห่อ Widget ให้เลื่อน scroll ได้ถ้าเนื้อหายาวเกิน
-from PyQt6.QtCore import Qt, QTimer  # ค่าคงที่ของ Qt เช่น alignment, cursor shape
+from PyQt6.QtCore import QSize, Qt, QTimer  # ค่าคงที่ของ Qt เช่น alignment, cursor shape
 from PyQt6.QtGui import QAction, QCloseEvent, QFont, QIcon, QPixmap  # QFont = ฟอนต์, QPixmap = รูปภาพ
 from PyQt6.QtNetwork import QNetworkInformation
 from PyQt6.QtWidgets import (
@@ -149,6 +149,7 @@ from PyQt6.QtWidgets import (
     QSizePolicy,
     QSpinBox,
     QStackedWidget,
+    QStyle,
     QSystemTrayIcon,
     QVBoxLayout,
     QWidget,
@@ -364,8 +365,10 @@ class MainWindow(QMainWindow):
         super().__init__()
         install_button_system(QApplication.instance())
         self.setWindowTitle(f"{APP_TITLE} V{APP_VER}")  # ชื่อโปรแกรมบน titlebar
-        self.setMinimumSize(WINDOW_MIN_WIDTH, WINDOW_MIN_HEIGHT)  # ขนาดเล็กสุดที่ resize ได้
-        self.resize(WINDOW_DEFAULT_WIDTH, WINDOW_DEFAULT_HEIGHT)   # ขนาดเริ่มต้นเมื่อเปิด
+        self._layout_screen = None
+        self._screen_signal_connected = False
+        self._compact_sidebar = None
+        self._fit_to_available_screen(initial=True)
 
         # โหลด QSS (คือ CSS สำหรับ Qt) เพื่อกำหนดหน้าตาทุก widget ในโปรแกรม
         # ถ้าต้องการเปลี่ยนสี/ฟอนต์/ขอบ → แก้ที่ config.py ฟังก์ชัน build_qss()
@@ -407,12 +410,17 @@ class MainWindow(QMainWindow):
 
         if splash: splash.set_message("กำลังสร้างหน้าจอ...")
         self._build_ui()  # สร้าง UI ทั้งหมด: sidebar + stack ของหน้าต่างๆ
+        self._update_sidebar_layout()
         self._ui_ready = True
 
         if splash: splash.set_message("กำลังโหลดข้อมูล...")
         self._quitting = False
         self._background_started = False
         self._registration_collection_ready = False
+        self._startup_poll_pending = True
+        self._startup_poll_timer = QTimer(self)
+        self._startup_poll_timer.setSingleShot(True)
+        self._startup_poll_timer.timeout.connect(self._run_startup_poll)
         # V5.2.6 performance: do not block first paint on database aggregation.
         # The same refresh still runs immediately after the event loop gets a
         # chance to present the workspace, preserving data and UI semantics.
@@ -433,6 +441,80 @@ class MainWindow(QMainWindow):
         self._install_network_recovery_monitor()
         apply_language(self)
 
+    def _fit_to_available_screen(self, *, initial: bool = False) -> None:
+        """Keep the decorated window inside the current display's work area."""
+        screen = self._layout_screen or self.screen() or QApplication.primaryScreen()
+        if screen is None:
+            return
+        available = screen.availableGeometry()
+        frame = self.frameGeometry().size() - self.size()
+        # Before the first native show, Qt has not measured the title bar yet.
+        if not self.isVisible():
+            title_height = self.style().pixelMetric(QStyle.PixelMetric.PM_TitleBarHeight)
+            frame.setHeight(max(frame.height(), title_height))
+        usable = QSize(
+            max(1, available.width() - max(0, frame.width())),
+            max(1, available.height() - max(0, frame.height())),
+        )
+        self.setMinimumSize(min(WINDOW_MIN_WIDTH, usable.width()), min(560, usable.height()))
+        if self.isMaximized() or self.isFullScreen():
+            return
+        requested = QSize(WINDOW_DEFAULT_WIDTH, WINDOW_DEFAULT_HEIGHT) if initial else self.size()
+        self.resize(requested.boundedTo(usable))
+        if self.isVisible():
+            decorated = self.frameGeometry()
+            self.move(
+                max(available.left(), min(decorated.left(), available.right() - decorated.width() + 1)),
+                max(available.top(), min(decorated.top(), available.bottom() - decorated.height() + 1)),
+            )
+
+    def _watch_layout_screen(self, screen) -> None:
+        if screen is not self._layout_screen:
+            if self._layout_screen is not None:
+                try:
+                    self._layout_screen.availableGeometryChanged.disconnect(self._screen_workarea_changed)
+                except (TypeError, RuntimeError):
+                    pass  # The previous screen may already have been disconnected.
+            self._layout_screen = screen
+            if screen is not None:
+                screen.availableGeometryChanged.connect(self._screen_workarea_changed)
+        self._fit_to_available_screen()
+
+    def _screen_workarea_changed(self, _geometry) -> None:
+        self._fit_to_available_screen()
+
+    def showEvent(self, event) -> None:
+        super().showEvent(event)
+        handle = self.windowHandle()
+        if handle is not None and not self._screen_signal_connected:
+            handle.screenChanged.connect(self._watch_layout_screen)
+            self._screen_signal_connected = True
+        self._watch_layout_screen(self.screen())
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        if hasattr(self, "sidebar"):
+            self._update_sidebar_layout()
+
+    def _update_sidebar_layout(self) -> None:
+        compact = self.width() <= 1280
+        if compact == self._compact_sidebar:
+            return
+        self._compact_sidebar = compact
+        self.sidebar.setFixedWidth(200 if compact else SIDEBAR_WIDTH)
+        icon_width = 44 if compact else LOGO_SCALED_WIDTH
+        if not self._sidebar_logo_pixmap.isNull():
+            self._sidebar_logo_image.setPixmap(self._sidebar_logo_pixmap.scaled(
+                icon_width, icon_width, Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation,
+            ))
+        self._sidebar_logo_image.setFixedSize(icon_width, icon_width)
+        self._sidebar_logo_layout.setSpacing(6 if compact else 10)
+        self._sidebar_logo_title.setStyleSheet(
+            "color:#FFFFFF;background:transparent;border:none;letter-spacing:0.4px;"
+            f"font-size:{F_MD if compact else F_LG}pt;font-weight:bold;"
+        )
+
     # ──────────────────────────────────────────────────────
     # BUILD UI — สร้างโครงสร้างหน้าตาทั้งหมด
     # โครงสร้างหน้าต่าง:
@@ -452,8 +534,9 @@ class MainWindow(QMainWindow):
         main_lay.setSpacing(0)                    # ไม่มีช่องว่างระหว่าง sidebar กับ content
 
         # ─ SIDEBAR ────────────────────────────────────────
-        # Widget แถบซ้าย มีความกว้างคงที่ (SIDEBAR_WIDTH จาก config.py)
+        # Use a compact sidebar on smaller workspaces without shrinking navigation text.
         sidebar = QWidget()
+        self.sidebar = sidebar
         sidebar.setObjectName("sidebar")  # QSS ใน config.py ใช้ #sidebar เพื่อกำหนดสีพื้นหลัง
         sidebar.setFixedWidth(SIDEBAR_WIDTH)
         sb_lay = QVBoxLayout(sidebar)  # layout แนวตั้งภายใน sidebar
@@ -472,6 +555,9 @@ class MainWindow(QMainWindow):
         # หา path ของไฟล์รูปโลโก้ โดยเริ่มจากโฟลเดอร์เดียวกับไฟล์ app.py นี้
         logo_path = os.path.join(os.path.dirname(__file__), LOGO_FILENAME)
         logo_pixmap = QPixmap(logo_path)
+        self._sidebar_logo_pixmap = logo_pixmap
+        self._sidebar_logo_image = logo_img
+        self._sidebar_logo_layout = ll
         if not logo_pixmap.isNull():  # โหลดรูปสำเร็จ
             logo_pixmap = logo_pixmap.scaledToWidth(
                 LOGO_SCALED_WIDTH, Qt.TransformationMode.SmoothTransformation
@@ -486,6 +572,7 @@ class MainWindow(QMainWindow):
 
         ll.addWidget(logo_img)
         logo_title = QLabel("KOMI REPORT")
+        self._sidebar_logo_title = logo_title
         logo_title.setFont(fnt(F_LG, bold=True))
         logo_title.setStyleSheet(
             "color:#FFFFFF;background:transparent;border:none;letter-spacing:0.4px;"
@@ -722,6 +809,34 @@ class MainWindow(QMainWindow):
             return
         self.polling.poll_now(slot)
 
+    def _schedule_startup_poll(self) -> None:
+        """Queue one full read after the configured app passes its fresh status gate."""
+        if (
+            self._background_started
+            and self._startup_poll_pending
+            and not self._quitting
+            and not self._startup_poll_timer.isActive()
+        ):
+            self._startup_poll_timer.start(0)
+
+    def _run_startup_poll(self) -> None:
+        if not self._startup_poll_pending or not self._background_started or self._quitting:
+            return
+        eligible, _reason = self._registration_usage_eligibility()
+        if not eligible:
+            # Status can change between queueing and dispatch; retain the
+            # one-shot until eligibility returns instead of reading while paused.
+            self._apply_registration_collection_gate()
+            return
+        self._startup_poll_pending = False
+        log.info("startup_sync_requested", extra={"event": "startup_sync_requested"})
+        try:
+            # The coordinator submits work to its executor and skips slots
+            # already being read by a manual or scheduled poll.
+            self.polling.poll_now()
+        except Exception:
+            log.exception("startup_sync_request_failed")
+
     def _set_collection_actions_enabled(self, enabled: bool) -> None:
         targets = [
             getattr(self, "_tray_read_action", None),
@@ -747,6 +862,8 @@ class MainWindow(QMainWindow):
             )
             self.status_lbl.setText("เปิดใช้งาน · ดูประวัติและอ่านข้อมูลใหม่ได้")
             self.status_lbl.setToolTip(f"Registration: {reason}")
+            if getattr(self, "_startup_poll_pending", False):
+                self._schedule_startup_poll()
             return
         self.polling.pause(reason)
         self._set_collection_actions_enabled(False)
