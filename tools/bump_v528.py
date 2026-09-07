@@ -27,6 +27,10 @@ def main() -> None:
         if "5.2.7" not in text and "V5_2_7" not in text:
             raise RuntimeError(f"{filename}: no V5.2.7 version token found")
         updated = text.replace("5.2.7", "5.2.8").replace("V5_2_7", "V5_2_8")
+        if filename == "source/app.spec":
+            if 'CFBundleVersion": "50207"' not in updated:
+                raise RuntimeError("source/app.spec: expected CFBundleVersion 50207")
+            updated = updated.replace('CFBundleVersion": "50207"', 'CFBundleVersion": "50208"')
         if updated == text:
             raise RuntimeError(f"{filename}: version bump produced no change")
         path.write_text(updated, encoding="utf-8")
