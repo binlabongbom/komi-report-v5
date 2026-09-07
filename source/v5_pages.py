@@ -6645,9 +6645,13 @@ class PageHistoryV5(PageHistory):
         self.report_center.export_requested.connect(self._export_report_center_excel)
         self.report_center.period_changed.connect(self._refresh_report_center)
         self.report_center.reading_status_requested.connect(self.reading_status_requested)
-        self.report_center.tabs.currentChanged.connect(
-            lambda _index: QTimer.singleShot(0, self.refresh_visible)
-        )
+        self._report_refresh_busy = False
+        self._report_refresh_pending = False
+        self._report_refresh_timer = QTimer(self)
+        self._report_refresh_timer.setSingleShot(True)
+        self._report_refresh_timer.setInterval(120)
+        self._report_refresh_timer.timeout.connect(self.refresh_visible)
+        self.report_center.tabs.currentChanged.connect(self._schedule_report_refresh)
         self.report_center_tabs = self.report_center.tabs
         self.report_center_scroll = QScrollArea()
         self.report_center_scroll.setObjectName("cloud_reports_scroll")
@@ -6657,6 +6661,10 @@ class PageHistoryV5(PageHistory):
         self.report_center_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.report_center_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.layout().addWidget(self.report_center_scroll, 1)
+
+    def _schedule_report_refresh(self, _index: int | None = None) -> None:
+        # Coalesce rapid Legacy -> Main changes before touching SQLite/report aggregation.
+        self._report_refresh_timer.start()
 
     @staticmethod
     def _report_panel() -> tuple[QFrame, QVBoxLayout]:
@@ -7010,7 +7018,11 @@ class PageHistoryV5(PageHistory):
         apply_language(self.report_center)
 
     def refresh_visible(self) -> None:
-        """Load only the visible Cloud report, leaving legacy audit UI deferred."""
+        """Load the visible report once; coalesce tab changes while a refresh is active."""
+        if self._report_refresh_busy:
+            self._report_refresh_pending = True
+            return
+        self._report_refresh_busy = True
         try:
             self.reports_error.setVisible(False)
             self.report_center.updated_label.setText("กำลังโหลดข้อมูลแท็บนี้…")
@@ -7026,6 +7038,11 @@ class PageHistoryV5(PageHistory):
                 f"· {type(error).__name__}: {error}"
             )
             self.reports_error.setVisible(True)
+        finally:
+            self._report_refresh_busy = False
+            if self._report_refresh_pending:
+                self._report_refresh_pending = False
+                self._report_refresh_timer.start()
 
     def _export_report_center_excel(self) -> None:
         """Choose a date range, then export three user-facing report views."""
