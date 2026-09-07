@@ -1,4 +1,4 @@
-name: Temporary V5.2.8 Hotfix Patcher
+name: Temporary V5.2.8 Metadata Bump
 
 on:
   push:
@@ -11,7 +11,7 @@ permissions:
   contents: write
 
 jobs:
-  patch-hotfix:
+  bump-v528:
     runs-on: windows-latest
     timeout-minutes: 30
     steps:
@@ -21,24 +21,22 @@ jobs:
           ref: hotfix/v5.2.8-customer-user-and-nav
           fetch-depth: 0
 
-      - name: Apply hotfix
+      - name: Bump metadata
         shell: powershell
-        run: python tools/apply_v528_customer_hotfix.py
+        run: python tools/bump_v528.py
 
-      - name: Validate source
+      - name: Run version gate
         shell: powershell
         run: |
-          python -m pip install pytest
-          python -m py_compile source/komi_snmp_profiler/meter.py source/services/summary_service.py source/v5_pages.py
-          python -m pytest -q source/tests/test_v528_customer_navigation.py
-          if ($LASTEXITCODE -ne 0) { throw 'V5.2.8 regression validation failed' }
+          python source/tools/version_gate.py
+          if ($LASTEXITCODE -ne 0) { throw 'V5.2.8 version gate failed' }
 
-      - name: Commit hotfix branch
+      - name: Commit V5.2.8 metadata
         shell: powershell
         run: |
           git config user.name 'KOMI Release Bot'
           git config user.email 'actions@users.noreply.github.com'
-          git add source/v5_pages.py source/services/summary_service.py source/tests/test_v528_customer_navigation.py
-          if (-not (git status --porcelain)) { throw 'No V5.2.8 patch changes were produced' }
-          git commit -m 'fix: resolve customer user names and report tab freeze'
+          git add docs packaging source/app.spec source/komi_version.py source/pyproject.toml source/uv.lock web/package.json web/package-lock.json
+          if (-not (git status --porcelain)) { throw 'No V5.2.8 metadata changes were produced' }
+          git commit -m 'release: bump KOMI Report to V5.2.8'
           git push origin HEAD:hotfix/v5.2.8-customer-user-and-nav
