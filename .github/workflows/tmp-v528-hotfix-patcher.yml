@@ -40,3 +40,7 @@ jobs:
           if (-not (git status --porcelain)) { throw 'No V5.2.8 metadata changes were produced' }
           git commit -m 'release: bump KOMI Report to V5.2.8'
           git push origin HEAD:hotfix/v5.2.8-customer-user-and-nav
+
+      - name: Gate marker
+        shell: powershell
+        run: Write-Host 'V5.2.8 metadata gate rerun'
