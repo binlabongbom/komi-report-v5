@@ -10,7 +10,7 @@
     "test:security": "tsx --test tests/security.test.ts"
   },
   "dependencies": {
-    "next": "^16.3.2",
+    "next": "^16.3.4",
     "react": "^19.2.8",
     "react-dom": "^19.2.8"
   },
@@ -22,8 +22,8 @@
   "devDependencies": {
     "@types/node": "24.13.3",
     "@types/react": "19.2.18",
-    "@types/react-dom": "^19.0.0",
-    "tsx": "4.23.12",
+    "@types/react-dom": "^19.2.7",
+    "tsx": "4.23.13",
     "typescript": "5.9.3"
   }
 }
