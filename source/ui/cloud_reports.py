@@ -26,6 +26,7 @@ from PyQt6.QtWidgets import (
     QLabel,
     QLayout,
     QPushButton,
+    QProgressBar,
     QScrollArea,
     QSizePolicy,
     QTableWidget,
@@ -425,8 +426,29 @@ class CloudReportsWidget(QWidget):
     period_changed = pyqtSignal(object)
     reading_status_requested = pyqtSignal()
 
-    def __init__(self, parent=None) -> None:
+    def __init__(self, parent=None, *, staged: bool = False) -> None:
         super().__init__(parent)
+        self._staged = staged
+        self._has_data = False
+        self._data_tab: int | None = None
+        self._loaded_tabs: set[int] = set()
+        self._data_revision = 0
+        self._render_generation = 0
+        self._pending_render_tail = None
+        self._render_tail_timer = QTimer(self)
+        self._render_tail_timer.setSingleShot(True)
+        self._render_tail_timer.timeout.connect(self._run_render_tail)
+        self._row_revisions = {"users": -1, "printers": -1}
+        self._loading = False
+        self._tab_loading: set[int] = set()
+        self._built_tabs: set[int] = set()
+        self._tab_hosts: dict[int, QWidget] = {}
+        self._tab_placeholders: dict[int, QLabel] = {}
+        self.user_metric_cards = {}
+        self.printer_metric_cards = {}
+        self._usage_meter_baselines: tuple = ()
+        self.users_page = self.printers_page = self.usage_page = None
+        self.legacy_raw_page = self.legacy_history_page = None
         self._records: tuple = ()
         self._daily_records: tuple = ()
         self._usage_daily_records: tuple = ()
@@ -451,6 +473,8 @@ class CloudReportsWidget(QWidget):
         self._layout_timer.timeout.connect(self._apply_responsive_layout)
         self._build()
         self._layout_timer.start(0)
+        if self._staged:
+            self.export_button.setEnabled(False)
 
     def _build(self) -> None:
         self.setObjectName("cloud_reports")
@@ -566,6 +590,27 @@ class CloudReportsWidget(QWidget):
         self.error_label.setWordWrap(True)
         self.error_label.hide()
         root.addWidget(self.error_label)
+        self.loading_panel = QWidget()
+        loading_layout = QHBoxLayout(self.loading_panel)
+        loading_layout.setContentsMargins(0, 0, 0, 0)
+        self.loading_indicator = QProgressBar()
+        self.loading_indicator.setRange(0, 0)
+        self.loading_indicator.setTextVisible(False)
+        self.loading_indicator.setFixedSize(90, 8)
+        self.loading_indicator.setAccessibleName("กำลังโหลดรายงาน")
+        self.loading_label = QLabel("กำลังโหลดรายงาน…")
+        self.loading_label.setWordWrap(True)
+        self.retry_button = QPushButton("ลองอีกครั้ง")
+        self.retry_button.clicked.connect(self.refresh_requested.emit)
+        loading_layout.addWidget(self.loading_indicator)
+        loading_layout.addWidget(self.loading_label, 1)
+        loading_layout.addWidget(self.retry_button)
+        self.loading_panel.hide()
+        root.addWidget(self.loading_panel)
+        self._slow_loading_timer = QTimer(self)
+        self._slow_loading_timer.setSingleShot(True)
+        self._slow_loading_timer.setInterval(5000)
+        self._slow_loading_timer.timeout.connect(self._show_slow_loading)
 
         self.tabs = QTabWidget()
         self.tabs.setAttribute(Qt.WidgetAttribute.WA_LayoutUsesWidgetRect, True)
@@ -577,20 +622,121 @@ class CloudReportsWidget(QWidget):
         self.tabs.tabBar().setUsesScrollButtons(True)
         self.period_edit_pairs: list[tuple[QDateEdit, QDateEdit]] = []
         self.overview_page = self._build_overview()
-        self.users_page = self._build_users()
-        self.printers_page = self._build_printers()
-        self.usage_page = self._build_usage()
-        self.legacy_raw_page = self._build_legacy_raw()
-        self.legacy_history_page = self._build_legacy_history()
         self.tab_scrolls: list[QScrollArea] = []
-        for page, title in (
-            (self.overview_page, "Overview"), (self.users_page, "Users"),
-            (self.printers_page, "Printers"), (self.usage_page, "Usage"),
-            (self.legacy_raw_page, "Legacy"),
-        ):
-            self.tabs.addTab(self._scrolling_tab(page), title)
+        self._built_tabs.add(0)
+        if self._staged:
+            for index, title in enumerate(("Overview", "Users", "Printers", "Usage", "Legacy")):
+                host = QWidget()
+                layout = QVBoxLayout(host)
+                layout.setContentsMargins(0, 0, 0, 0)
+                self._tab_hosts[index] = host
+                if index == 0:
+                    layout.addWidget(self._scrolling_tab(self.overview_page))
+                else:
+                    placeholder = QLabel("กำลังเตรียมรายงาน…")
+                    placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                    layout.addWidget(placeholder)
+                    self._tab_placeholders[index] = placeholder
+                self.tabs.addTab(host, title)
+        else:
+            self.users_page = self._build_users()
+            self.printers_page = self._build_printers()
+            self.usage_page = self._build_usage()
+            self.legacy_raw_page = self._build_legacy_raw()
+            self.legacy_history_page = self._build_legacy_history()
+            for page, title in (
+                (self.overview_page, "Overview"), (self.users_page, "Users"),
+                (self.printers_page, "Printers"), (self.usage_page, "Usage"),
+                (self.legacy_raw_page, "Legacy"),
+            ):
+                self.tabs.addTab(self._scrolling_tab(page), title)
+            self._built_tabs.update(range(5))
         self.tabs.currentChanged.connect(self._render_selected_tab)
         root.addWidget(self.tabs, 1)
+
+    @property
+    def has_data(self) -> bool:
+        return self._has_data and (self._data_tab is None or self.tabs.currentIndex() in self._loaded_tabs)
+
+    def _can_render_tab(self, index: int) -> bool:
+        return (index in self._built_tabs and self._has_data
+                and (self._data_tab is None or self._data_tab == index))
+
+    @property
+    def built_tabs(self) -> frozenset[int]:
+        return frozenset(self._built_tabs)
+
+    def ensure_tab(self, index: int) -> QWidget:
+        """Construct one public tab once without changing the selected index."""
+        if index not in range(5):
+            raise ValueError("Report tab index must be between 0 and 4")
+        if index not in self._built_tabs:
+            attributes = ("overview_page", "users_page", "printers_page", "usage_page", "legacy_raw_page")
+            builders = (self._build_overview, self._build_users, self._build_printers,
+                        self._build_usage, self._build_legacy_raw)
+            page = builders[index]()
+            setattr(self, attributes[index], page)
+            if index == 4:
+                self.legacy_history_page = self._build_legacy_history()
+            placeholder = self._tab_placeholders.pop(index)
+            host = self._tab_hosts[index]
+            host.layout().removeWidget(placeholder)
+            placeholder.deleteLater()
+            host.layout().addWidget(self._scrolling_tab(page))
+            self._built_tabs.add(index)
+            if self._period is not None:
+                self.set_periods((), self._period)
+            if index == 3 and self._can_render_tab(3):
+                self._sync_usage_device_filters()
+            # New cards must inherit density even when window dimensions did not change.
+            self._compact_density = None
+            self._layout_timer.start(0)
+        return self.tabs.widget(index)
+
+    def prewarm_tab(self, index: int) -> QWidget:
+        return self.ensure_tab(index)
+
+    def set_loading(self, loading: bool) -> None:
+        was_loading = self._loading
+        self._loading = bool(loading)
+        if loading:
+            self._cancel_render_tail()
+            self.error_label.hide()
+            if not was_loading:
+                self._slow_loading_timer.start()
+                self.loading_label.setText("กำลังอัปเดตรายงาน…" if self.has_data else "กำลังโหลดรายงาน…")
+        else:
+            self._slow_loading_timer.stop()
+        self._update_loading_visibility()
+
+    def set_tab_loading(self, index: int, loading: bool) -> None:
+        if index not in range(5):
+            raise ValueError("Report tab index must be between 0 and 4")
+        if loading:
+            if index == self.tabs.currentIndex():
+                self._cancel_render_tail()
+            self._tab_loading.add(index)
+        else:
+            self._tab_loading.discard(index)
+        self._update_loading_visibility()
+
+    def _update_loading_visibility(self) -> None:
+        tail_busy = self._pending_render_tail is not None and self._pending_render_tail[2] == self.tabs.currentIndex()
+        busy = self._loading or self.tabs.currentIndex() in self._tab_loading or tail_busy
+        self.loading_panel.setVisible(busy or self.error_label.isVisible())
+        self.loading_indicator.setVisible(busy)
+        if busy and not self._slow_loading_timer.isActive() and not self._loading:
+            self.loading_label.setText("กำลังโหลดรายงานแท็บนี้…")
+            self._slow_loading_timer.start()
+        if not busy:
+            self._slow_loading_timer.stop()
+        self.retry_button.setVisible(not busy or not self._slow_loading_timer.isActive())
+        self.export_button.setEnabled(self.has_data or not self._staged)
+
+    def _show_slow_loading(self) -> None:
+        if self._loading or self.tabs.currentIndex() in self._tab_loading:
+            self.loading_label.setText("ใช้เวลานานกว่าปกติ · กำลังโหลดข้อมูลต่อ สามารถลองอีกครั้งได้")
+            self.retry_button.show()
 
     def _scrolling_tab(self, page: QWidget) -> QWidget:
         wrapper = QWidget()
@@ -1339,11 +1485,23 @@ class CloudReportsWidget(QWidget):
         self.period_changed.emit(selected)
 
     def show_error(self, message: str) -> None:
+        self._cancel_render_tail()
+        self._tab_loading.clear()
+        self.set_loading(False)
         self.error_label.setText(message)
         self.error_label.show()
+        self.loading_label.setText("โหลดรายงานไม่สำเร็จ · ลองอีกครั้ง")
+        self.loading_panel.show()
+        self.loading_indicator.hide()
+        self.retry_button.show()
+        if self._staged:
+            if self.has_data:
+                self.loading_label.setText("โหลดข้อมูลใหม่ไม่สำเร็จ · กำลังแสดงข้อมูลเดิม · ลองอีกครั้ง")
+            return
         for card in (*self.overview_kpis.values(), *self.user_metric_cards.values(), *self.printer_metric_cards.values()):
             card.set_metric("—", "")
-        self.printer_activity_summary.setText("เครื่องที่มีการใช้งาน — เครื่อง · Scan — หน้า")
+        if hasattr(self, "printer_activity_summary"):
+            self.printer_activity_summary.setText("เครื่องที่มีการใช้งาน — เครื่อง · Scan — หน้า")
 
     def set_data(
         self,
@@ -1359,8 +1517,17 @@ class CloudReportsWidget(QWidget):
         period: tuple[str, str] | None,
         last_sync_at: str | None,
         usage_meter_baselines: Iterable | None = None,
+        tab_index: int | None = None,
     ) -> None:
+        if tab_index is not None and tab_index not in range(5):
+            raise ValueError("Report tab index must be between 0 and 4")
+        self._data_tab = tab_index
+        loaded_index = self.tabs.currentIndex() if tab_index is None else tab_index
+        self._loaded_tabs.add(loaded_index)
+        self._tab_loading.discard(loaded_index)
         self.error_label.hide()
+        self._has_data = True
+        self.set_loading(False)
         self._records = tuple(records)
         self._daily_records = tuple(daily_records)
         self._usage_daily_records = (
@@ -1379,11 +1546,27 @@ class CloudReportsWidget(QWidget):
         self.updated_label.setText(
             f"ข้อมูลล่าสุด {last_sync_at.replace('T', ' ')[:16]}" if last_sync_at else "ยังไม่มีเวลาซิงก์ล่าสุด"
         )
-        self._build_user_rows()
-        self._build_printer_rows()
+        self._data_revision += 1
+        if not self._staged:
+            self._build_user_rows()
+            self._build_printer_rows()
         self._render_selected_tab(self.tabs.currentIndex())
 
     def _render_selected_tab(self, index: int) -> None:
+        self._cancel_render_tail()
+        if not 0 <= index < 5:
+            return
+        self.ensure_tab(index)
+        self._update_loading_visibility()
+        if self._staged and not self._can_render_tab(index):
+            return
+        if self._staged:
+            if index in (0, 1) and self._row_revisions["users"] != self._data_revision:
+                self._build_user_rows()
+                self._row_revisions["users"] = self._data_revision
+            if index in (0, 2) and self._row_revisions["printers"] != self._data_revision:
+                self._build_printer_rows()
+                self._row_revisions["printers"] = self._data_revision
         renderers = (
             self._render_overview,
             self._render_users,
@@ -1395,7 +1578,53 @@ class CloudReportsWidget(QWidget):
             renderers[index]()
             self._layout_timer.start(0)
 
+    def _cancel_render_tail(self) -> None:
+        self._render_generation += 1
+        self._pending_render_tail = None
+        self._render_tail_timer.stop()
+
+    def _schedule_render_tail(self, index: int, tables, charts) -> None:
+        if not self._staged:
+            tables()
+            charts()
+            return
+        self._cancel_render_tail()
+        self._pending_render_tail = (
+            self._data_revision, self._render_generation, index, tables, charts,
+        )
+        self._update_loading_visibility()
+        self.loading_label.setText("กำลังเตรียมตารางรายงาน…")
+        self._render_tail_timer.start(0)
+
+    def _run_render_tail(self) -> None:
+        pending = self._pending_render_tail
+        self._pending_render_tail = None
+        if pending is None:
+            return
+        revision, generation, index, tables, charts = pending
+        if (revision != self._data_revision or generation != self._render_generation
+                or index != self.tabs.currentIndex() or not self._can_render_tab(index)):
+            return
+        if tables is not None:
+            tables()
+            if revision != self._data_revision or generation != self._render_generation:
+                return
+            # Yield once more so completed tables can paint before chart construction.
+            self._pending_render_tail = (revision, generation, index, None, charts)
+            self.loading_label.setText("กำลังวาดกราฟรายงาน…")
+            self._render_tail_timer.start(0)
+        else:
+            charts()
+            self._update_loading_visibility()
+            self._layout_timer.start(0)
+
+    def closeEvent(self, event) -> None:  # noqa: N802 - Qt API
+        self._cancel_render_tail()
+        super().closeEvent(event)
+
     def _sync_usage_device_filters(self) -> None:
+        if not hasattr(self, "usage_device_filter_layout") or (self._staged and not self._can_render_tab(3)):
+            return
         devices_by_slot = {int(device.slot): device for device in self._devices}
         records_by_slot = {
             int(getattr(record, "device_slot", 0)): record
@@ -1527,6 +1756,8 @@ class CloudReportsWidget(QWidget):
                 table.setItem(row_no, column, item)
 
     def _render_legacy_raw(self) -> None:
+        if self._staged and not self._can_render_tab(4):
+            return
         records = tuple(self._raw_counter_records)
         devices_by_slot = {int(device.slot): device for device in self._devices}
         slots = tuple(
@@ -1671,6 +1902,8 @@ class CloudReportsWidget(QWidget):
         )
 
     def _render_legacy_history(self) -> None:
+        if self._staged and not self._can_render_tab(4):
+            return
         rows = tuple(
             sorted(
                 self._legacy_history,
@@ -1901,8 +2134,9 @@ class CloudReportsWidget(QWidget):
             self._selected_printer = None
 
     def _render_overview(self) -> None:
+        if self._staged and not self._can_render_tab(0):
+            return
         total_pages = sum(row["total"] for row in self._printer_rows)
-        total_scan = sum(row["scan"] for row in self._printer_rows)
         records = self._records
         print_available = any(bool(getattr(record, "print_available", False)) for record in records)
         copy_available = any(bool(getattr(record, "copy_available", False)) for record in records)
@@ -1946,6 +2180,9 @@ class CloudReportsWidget(QWidget):
             "THB",
             available=cost_available,
         )
+        self._schedule_render_tail(0, self._render_overview_tables, self._render_overview_charts)
+
+    def _render_overview_tables(self) -> None:
         self._fill_table(
             self.overview_users,
             [
@@ -1968,6 +2205,9 @@ class CloudReportsWidget(QWidget):
             ],
             empty="ยังไม่มีข้อมูลเครื่องพิมพ์ในช่วงนี้",
         )
+
+    def _render_overview_charts(self) -> None:
+        total_scan = sum(row["scan"] for row in self._printer_rows)
         self.overview_mix.setChart(
             self._bar_chart(
                 ("Print", "Copy", "Scan"),
@@ -1988,6 +2228,8 @@ class CloudReportsWidget(QWidget):
         apply_language(self)
 
     def _render_users(self) -> None:
+        if self._staged and not self._can_render_tab(1):
+            return
         total = sum(row["usage"] for row in self._user_rows)
         slots = [slot for row in self._user_rows for slot in row["by_slot"].values()]
         for key, operation, color in (
@@ -2007,26 +2249,9 @@ class CloudReportsWidget(QWidget):
                 card.set_metric("—", "ข้อมูลแยกประเภทยังไม่ครบ")
         self.user_metric_cards["usage"].set_metric(_number(total), "ช่วงรายงานที่เลือก")
         self.user_metric_cards["count"].set_metric(_number(len(self._user_rows)), "คน")
-        self.users_top_chart.setChart(
-            self._horizontal_like_chart(
-                [row["name"] for row in self._user_rows[:8]],
-                [row["usage"] for row in self._user_rows[:8]],
-                ORANGE,
-            )
-        )
-        devices_by_identity = {row["key"]: row["name"] for row in self._printer_rows}
-        selected = next((row for row in self._user_rows if row["key"] == self._selected_user), None)
-        source = selected["printers"] if selected else defaultdict(float)
-        if not selected:
-            for row in self._user_rows:
-                for identity, usage in row["printers"].items():
-                    source[identity] += usage
-        labels = [devices_by_identity.get(key, key.replace("serial:", "")) for key in source]
-        self.users_printer_chart.setChart(self._horizontal_like_chart(labels, list(source.values()), BLUE))
-        self.user_filter_badge.setText(
-            f"กำลังกรอง: {selected['name']}" if selected else "เลือกผู้ใช้จากตารางเพื่อกรองกราฟ"
-        )
-        self.user_recovery_button.setVisible(not self._user_rows)
+        self._schedule_render_tail(1, self._render_users_table, self._render_users_charts)
+
+    def _render_users_table(self) -> None:
         slots = tuple(
             sorted(
                 {int(device.slot) for device in self._devices}
@@ -2068,6 +2293,32 @@ class CloudReportsWidget(QWidget):
         for index, row in enumerate(self._user_rows):
             self.users_table.item(index, 0).setData(Qt.ItemDataRole.UserRole, row["key"])
         del users_signal_blocker
+
+    def _render_users_charts(self) -> None:
+        self.users_top_chart.setChart(
+            self._horizontal_like_chart(
+                [row["name"] for row in self._user_rows[:8]],
+                [row["usage"] for row in self._user_rows[:8]],
+                ORANGE,
+            )
+        )
+        # Users can load before Printers in staged mode; resolve labels from this snapshot.
+        devices_by_slot = {int(device.slot): device for device in self._devices}
+        devices_by_identity = {}
+        for record in self._records:
+            devices_by_identity.setdefault(_record_identity(record), _record_name(record, devices_by_slot))
+        selected = next((row for row in self._user_rows if row["key"] == self._selected_user), None)
+        source = selected["printers"] if selected else defaultdict(float)
+        if not selected:
+            for row in self._user_rows:
+                for identity, usage in row["printers"].items():
+                    source[identity] += usage
+        labels = [devices_by_identity.get(key, key.replace("serial:", "")) for key in source]
+        self.users_printer_chart.setChart(self._horizontal_like_chart(labels, list(source.values()), BLUE))
+        self.user_filter_badge.setText(
+            f"กำลังกรอง: {selected['name']}" if selected else "เลือกผู้ใช้จากตารางเพื่อกรองกราฟ"
+        )
+        self.user_recovery_button.setVisible(not self._user_rows)
         apply_language(self)
 
     def _configure_users_matrix(
@@ -2119,6 +2370,8 @@ class CloudReportsWidget(QWidget):
         )
 
     def _render_printers(self) -> None:
+        if self._staged and not self._can_render_tab(2):
+            return
         rows = self._printer_rows
         total_cost = sum(row["cost"] for row in rows)
         records = self._records
@@ -2146,21 +2399,11 @@ class CloudReportsWidget(QWidget):
         self.printer_activity_summary.setText(
             f"เครื่องที่มีการใช้งาน {_number(count)} เครื่อง · Scan {_number(scan)} หน้า"
         )
+        self._schedule_render_tail(2, self._render_printers_tables, self._render_printers_charts)
+
+    def _render_printers_tables(self) -> None:
+        rows = self._printer_rows
         selected = next((row for row in rows if row["key"] == self._selected_printer), None)
-        self.printer_mix.setChart(
-            self._bar_chart(
-                ("Print", "Copy", "Scan"),
-                tuple(
-                    (
-                        _chart_printer_name(row["name"]),
-                        (row["print"], row["copy"], row["scan"]),
-                        DEVICE_COLORS[index % len(DEVICE_COLORS)],
-                    )
-                    for index, row in enumerate(rows)
-                ),
-            )
-        )
-        self.printer_trend.setChart(self._printer_timeline_chart(rows))
         table_rows = []
         for row in rows:
             device = row["device"]
@@ -2205,6 +2448,23 @@ class CloudReportsWidget(QWidget):
             self._fill_table(self.printer_detail, detail_rows)
         else:
             self._fill_table(self.printer_detail, [], empty="เลือกเครื่องเพื่อดู Meter detail")
+
+    def _render_printers_charts(self) -> None:
+        rows = self._printer_rows
+        self.printer_mix.setChart(
+            self._bar_chart(
+                ("Print", "Copy", "Scan"),
+                tuple(
+                    (
+                        _chart_printer_name(row["name"]),
+                        (row["print"], row["copy"], row["scan"]),
+                        DEVICE_COLORS[index % len(DEVICE_COLORS)],
+                    )
+                    for index, row in enumerate(rows)
+                ),
+            )
+        )
+        self.printer_trend.setChart(self._printer_timeline_chart(rows))
         apply_language(self)
 
     @staticmethod
@@ -2226,7 +2486,7 @@ class CloudReportsWidget(QWidget):
     def include_waste_adjustment(self) -> bool:
         """Return the report-wide cost view selected by the user."""
 
-        return self.usage_waste_checkbox.isChecked()
+        return self.usage_waste_checkbox.isChecked() if hasattr(self, "usage_waste_checkbox") else True
 
     def _cost_field(self) -> str:
         return "net_cost" if self.include_waste_adjustment() else "gross_cost"
@@ -2313,6 +2573,8 @@ class CloudReportsWidget(QWidget):
             item.setToolTip(tooltip)
 
     def _render_usage(self) -> None:
+        if self._staged and not self._can_render_tab(3):
+            return
         granularity = self.usage_granularity
         period_label = {"D": "วัน", "M": "เดือน", "Y": "ปี"}[granularity]
         period_description = {"D": "รายวัน", "M": "รายเดือน", "Y": "รายปี"}[granularity]
@@ -2607,7 +2869,10 @@ class CloudReportsWidget(QWidget):
             else "ค่าใช้จ่ายก่อนส่วนลด"
         )
         self.overview_kpis["total_cost"].lbl_title.setText(caption)
-        for card in (self.overview_kpis["total_cost"], self.printer_metric_cards["cost"]):
+        cost_cards = [self.overview_kpis["total_cost"]]
+        if "cost" in self.printer_metric_cards:
+            cost_cards.append(self.printer_metric_cards["cost"])
+        for card in cost_cards:
             card._full_title = caption
             card.refresh_elision()
         self._build_printer_rows()

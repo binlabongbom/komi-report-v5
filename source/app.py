@@ -145,6 +145,7 @@ from PyQt6.QtWidgets import (
     QMenu,
     QMessageBox,
     QPushButton,
+    QProgressBar,
     QScrollArea,
     QSizePolicy,
     QSpinBox,
@@ -293,6 +294,17 @@ class SplashScreen(QWidget):
         self._msg_lbl.setStyleSheet("color: rgba(255,255,255,0.70);")
         cl.addWidget(self._msg_lbl)
 
+        self._activity = QProgressBar()
+        self._activity.setRange(0, 0)
+        self._activity.setTextVisible(False)
+        self._activity.setFixedHeight(5)
+        self._activity.setAccessibleName("กำลังเตรียมโปรแกรม")
+        self._activity.setStyleSheet(
+            "QProgressBar { background: #334155; border: none; border-radius: 2px; }"
+            "QProgressBar::chunk { background: #38BDF8; border-radius: 2px; }"
+        )
+        cl.addWidget(self._activity)
+
         root.addWidget(card)
 
     def set_message(self, text: str):
@@ -439,6 +451,8 @@ class MainWindow(QMainWindow):
         self.registration.status_changed.connect(self._registration_status_changed)
         self._install_network_recovery_monitor()
         apply_language(self)
+        if splash is not None:
+            self._prepare_reports_overview(splash)
 
     def _fit_to_available_screen(self, *, initial: bool = False) -> None:
         """Keep the decorated window inside the current display's work area."""
@@ -633,9 +647,9 @@ class MainWindow(QMainWindow):
         # ใช้โครง Overview เดิมจาก V4.6 เป็นหน้ารายงานหลักของ V5
         self.pg_overview = PageOverview(lambda: self._data)
         self.pg_import   = PageImportV5(PageImport())
-        # These hidden pages dominate window construction. Build them only
-        # when the user first navigates to them.
-        self.pg_history  = _DeferredPage(PageHistoryV5)
+        # Reports prepares Overview during Splash, then stages the other tabs.
+        # Settings and Manual remain first-navigation only.
+        self.pg_history  = _DeferredPage(lambda: PageHistoryV5(staged=True))
         self.pg_settings = _DeferredPage(
             lambda: PageSettingsV5(
                 PageSettings(),
@@ -729,6 +743,42 @@ class MainWindow(QMainWindow):
         if self._background_started:
             self._apply_registration_collection_gate()
         return page
+
+    def _prepare_reports_overview(self, splash=None) -> None:
+        """Prepare the report shell and start its asynchronous Overview read."""
+        if splash is not None:
+            if getattr(self, "_startup_refresh_pending", False):
+                splash.set_message("กำลังโหลดข้อมูลภาพรวม...")
+                self._refresh_all()
+                self._startup_refresh_pending = False
+            splash.set_message("กำลังเตรียม Reports Overview...")
+        page = self._load_deferred_page(self._reports_index)
+        prepare = getattr(page, "prepare_overview", None)
+        if callable(prepare):
+            prepare()
+
+    def _schedule_reports_prewarm(self) -> None:
+        """Yield to the shown window before preparing each remaining tab."""
+        if getattr(self, "_reports_prewarm_scheduled", False):
+            return
+        self._reports_prewarm_scheduled = True
+        self._reports_prewarm_timers = []
+        for delay, index in ((750, 1), (1500, 2)):
+            timer = QTimer(self)
+            timer.setSingleShot(True)
+            timer.timeout.connect(lambda tab=index: self._prewarm_reports_tab(tab))
+            self._reports_prewarm_timers.append(timer)
+            timer.start(delay)
+
+    def _prewarm_reports_tab(self, index: int) -> None:
+        if getattr(self, "_quitting", False):
+            return
+        page = getattr(self, "pg_history", None)
+        if isinstance(page, _DeferredPage):
+            page = self._load_deferred_page(self._reports_index)
+        prewarm = getattr(page, "prewarm_tab", None)
+        if callable(prewarm):
+            prewarm(index)
 
     def _build_tray(self):
         self.tray = QSystemTrayIcon(self)
@@ -919,6 +969,9 @@ class MainWindow(QMainWindow):
         self.showMaximized()
         self.raise_()
         self.activateWindow()
+        schedule = getattr(self, "_schedule_reports_prewarm", None)
+        if callable(schedule):
+            schedule()
 
     def _show_from_tray(self):
         self._show_main_window()
@@ -995,6 +1048,9 @@ class MainWindow(QMainWindow):
                 event.ignore()
                 return
             self._quitting = True
+            shutdown_reports = getattr(getattr(self, "pg_history", None), "shutdown_report_loading", None)
+            if callable(shutdown_reports):
+                shutdown_reports()
             hide_tray = getattr(self.tray, "hide", None)
             if callable(hide_tray):
                 hide_tray()
@@ -1041,11 +1097,19 @@ class MainWindow(QMainWindow):
             return
         if self._ui_ready:
             self._refresh_visible_page()
+        if idx == self._reports_index:
+            opened = getattr(self.pg_history, "on_reports_opened", None)
+            if callable(opened):
+                opened()
 
     def _finish_deferred_navigation(self, index: int) -> None:
         self._load_deferred_page(index)
         if self.stack.currentIndex() == index and self._ui_ready:
             self._refresh_visible_page()
+            if index == self._reports_index:
+                opened = getattr(self.pg_history, "on_reports_opened", None)
+                if callable(opened):
+                    opened()
 
     def _schedule_refresh_all(self) -> None:
         """Debounce bursts of polling signals before querying and redrawing."""
@@ -1057,7 +1121,10 @@ class MainWindow(QMainWindow):
         if index not in self._dirty_pages:
             return
         page = self._page_widgets[index]
-        refresh_visible = getattr(page, "refresh_visible", None)
+        refresh_visible = (
+            getattr(page, "refresh_visible_cached", None)
+            or getattr(page, "refresh_visible", None)
+        )
         if callable(refresh_visible):
             apply_language(page)
             self._dirty_pages.discard(index)
@@ -1090,6 +1157,9 @@ class MainWindow(QMainWindow):
         # painting. Mark data-driven pages stale, then update only the page the
         # user can currently see. Navigation refreshes the others on demand.
         self._dirty_pages.update(range(len(self._page_widgets)))
+        invalidate = getattr(getattr(self, "pg_history", None), "invalidate_data", None)
+        if callable(invalidate):
+            invalidate()
         self._refresh_visible_page()
         # อัปเดตข้อความด้านล่าง sidebar ให้แสดงวันที่ล่าสุดของข้อมูลในฐานข้อมูล
         _latest = get_latest_read_date()

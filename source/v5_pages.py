@@ -8,7 +8,7 @@ import socket
 import traceback
 import webbrowser
 from collections.abc import Callable
-from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor
+from concurrent.futures import FIRST_COMPLETED, CancelledError, ThreadPoolExecutor
 from concurrent.futures import wait as wait_futures
 from dataclasses import dataclass, replace
 from datetime import date, datetime, time, timedelta
@@ -166,6 +166,7 @@ from services.registration_envelope import (
     runtime_platform,
 )
 from services.report_scope import report_slots
+from services.report_snapshot import load_report_snapshot
 from services.runtime_snapshots import RuntimeCounterRow, runtime_snapshots
 from services.secondary_setup import (
     SecondaryPeerCandidate,
@@ -6621,10 +6622,20 @@ class PageHistoryV5(PageHistory):
         cache: DailyCacheStore | None = None,
         subject_cache: SubjectDailyCacheStore | None = None,
         parent=None,
+        *,
+        staged: bool = False,
     ) -> None:
+        self._staged = staged
         self.repository = repository or DeviceConfigRepository()
         self.cache = cache or DailyCacheStore()
         self.subject_cache = subject_cache or SubjectDailyCacheStore()
+        if staged:
+            QWidget.__init__(self, parent)
+            layout = QVBoxLayout(self)
+            layout.setContentsMargins(0, 0, 0, 0)
+            self._build_report_center()
+            self._init_background_reports()
+            return
         super().__init__(parent)
         if hasattr(self, "chk_show_values"):
             self.chk_show_values.blockSignals(True)
@@ -6652,29 +6663,185 @@ class PageHistoryV5(PageHistory):
         and Billing Audit still depend on them. The normal user path has one
         period selector and three understandable destinations only.
         """
-        title_item = self.layout().itemAt(0)
-        if title_item is not None and title_item.widget() is not None:
-            title_item.widget().setVisible(False)
-        self.machine_selector_container.setVisible(False)
-        self.report_profile_combo.parentWidget().setVisible(False)
-        self.report_advanced_panel.setVisible(False)
-        self.tabs.setVisible(False)
-        self.report_center = CloudReportsWidget()
+        if not self._staged:
+            title_item = self.layout().itemAt(0)
+            if title_item is not None and title_item.widget() is not None:
+                title_item.widget().setVisible(False)
+            self.machine_selector_container.setVisible(False)
+            self.report_profile_combo.parentWidget().setVisible(False)
+            self.report_advanced_panel.setVisible(False)
+            self.tabs.setVisible(False)
+        self.report_center = CloudReportsWidget(staged=self._staged)
         self.report_center.refresh_requested.connect(self.refresh_visible)
         self.report_center.export_requested.connect(self._export_report_center_excel)
-        self.report_center.period_changed.connect(self._refresh_report_center)
+        self.report_center.period_changed.connect(self._staged_period_changed if self._staged else self._refresh_report_center)
         self.report_center.reading_status_requested.connect(self.reading_status_requested)
         self._report_refresh_busy = False
         self._report_refresh_pending = False
         self._report_refresh_timer = QTimer(self)
         self._report_refresh_timer.setSingleShot(True)
         self._report_refresh_timer.setInterval(120)
-        self._report_refresh_timer.timeout.connect(self.refresh_visible)
+        self._report_refresh_timer.timeout.connect(self.refresh_visible_cached if self._staged else self.refresh_visible)
         self.report_center.tabs.currentChanged.connect(self._schedule_report_refresh)
         self.report_center_tabs = self.report_center.tabs
         # Cloud Reports owns scrolling within each tab so its header, tab bar
         # and period controls remain visible and hidden pages cannot expand it.
         self.layout().addWidget(self.report_center, 1)
+
+    def _init_background_reports(self) -> None:
+        self._snapshot_pool = ThreadPoolExecutor(max_workers=2, thread_name_prefix="komi-report")
+        self._snapshot_jobs = {}
+        self._snapshot_cache = {}
+        self._snapshot_display_periods = {}
+        self._snapshot_display_db = {}
+        self._snapshot_generation = 0
+        self._snapshot_db = str(get_db_path())
+        self._snapshot_closed = False
+        self._usage_warm_scheduled = False
+        self._snapshot_poll = QTimer(self)
+        self._snapshot_poll.setInterval(25)
+        self._snapshot_poll.timeout.connect(self._collect_report_snapshots)
+        self._snapshot_poll.start()
+        app = QApplication.instance()
+        if app is not None:
+            app.aboutToQuit.connect(self.shutdown_report_loading)
+
+    def shutdown_report_loading(self) -> None:
+        if not self._staged or self._snapshot_closed:
+            return
+        self._snapshot_closed = True
+        self._snapshot_poll.stop()
+        for future, cancelled in self._snapshot_jobs.values():
+            cancelled.set()
+            future.cancel()
+        self._snapshot_pool.shutdown(wait=False, cancel_futures=True)
+
+    def invalidate_data(self) -> None:
+        if not self._staged:
+            return
+        self._snapshot_generation += 1
+        self._snapshot_cache.clear()
+        for future, cancelled in self._snapshot_jobs.values():
+            cancelled.set()
+            future.cancel()
+        path = str(get_db_path())
+        if path != self._snapshot_db:
+            self.cache = DailyCacheStore()
+            self.subject_cache = SubjectDailyCacheStore()
+        self._snapshot_db = path
+
+    def prepare_overview(self) -> None:
+        if self._staged:
+            self._request_snapshot(0, background=True)
+
+    def prewarm_tab(self, index: int) -> None:
+        if not self._staged or self._snapshot_closed:
+            return
+        # Do not let speculative construction compete with a selected tab.
+        if self._snapshot_jobs and any(key[1] == self.report_center.tabs.currentIndex() for key in self._snapshot_jobs):
+            QTimer.singleShot(350, lambda: self.prewarm_tab(index) if not self._snapshot_closed else None)
+            return
+        self.report_center.prewarm_tab(index)
+        self._request_snapshot(index, background=True)
+
+    def on_reports_opened(self) -> None:
+        if not self._staged:
+            return
+        self.refresh_visible_cached()
+        if not self._usage_warm_scheduled:
+            self._usage_warm_scheduled = True
+            QTimer.singleShot(500, lambda: self.prewarm_tab(3) if not self._snapshot_closed else None)
+
+    def _staged_period_changed(self, _selection) -> None:
+        self.invalidate_data()
+        self.refresh_visible_cached()
+
+    def refresh_visible_cached(self) -> None:
+        if not self._staged:
+            self.refresh_visible()
+            return
+        self._request_snapshot(self.report_center.tabs.currentIndex())
+
+    def _request_snapshot(self, index: int, *, background: bool = False) -> None:
+        if self._snapshot_closed:
+            return
+        if str(get_db_path()) != self._snapshot_db:
+            self.invalidate_data()
+        period = self.report_center.current_period()
+        cache_key = (index, period)
+        cached = self._snapshot_cache.get(cache_key)
+        if cached is not None:
+            if not background or index == self.report_center.tabs.currentIndex():
+                self._apply_report_snapshot(index, cached)
+            return
+        key = (self._snapshot_generation, index, period)
+        if not background:
+            # Cancel speculative jobs at their next read boundary, prioritizing clicks.
+            for other, (future, cancelled) in self._snapshot_jobs.items():
+                if other != key:
+                    cancelled.set()
+                    future.cancel()
+        if index == self.report_center.tabs.currentIndex():
+            self.report_center.set_loading(True)
+            displayed = self._snapshot_display_periods.get(index)
+            if displayed is not None and self._snapshot_display_db.get(index) != self._snapshot_db:
+                self.report_center.error_label.setText("กำลังโหลดฐานข้อมูลใหม่ · ตัวเลขเดิมยังเป็นข้อมูลจากฐานก่อนหน้า")
+                self.report_center.error_label.show()
+            elif displayed is not None and displayed != period:
+                self.report_center.error_label.setText(
+                    f"กำลังโหลดช่วงใหม่ · ตัวเลขเดิมยังเป็นช่วง {displayed[0]} ถึง {displayed[1]}"
+                )
+                self.report_center.error_label.show()
+        existing = self._snapshot_jobs.get(key)
+        if existing is not None and not existing[1].is_set():
+            return
+        # A cancelled job may still finish; keep its identity separate from replacements.
+        if existing is not None:
+            self._snapshot_jobs.pop(key)
+        cancelled = Event()
+        future = self._snapshot_pool.submit(
+            load_report_snapshot, index, period, cache=self.cache, subject_cache=self.subject_cache,
+            repository=self.repository, cancelled=cancelled,
+        )
+        self._snapshot_jobs[key] = (future, cancelled)
+
+    def _collect_report_snapshots(self) -> None:
+        if self._snapshot_closed:
+            return
+        if str(get_db_path()) != self._snapshot_db:
+            self.invalidate_data()
+            self.refresh_visible_cached()
+            return
+        for key, (future, cancelled) in tuple(self._snapshot_jobs.items()):
+            if not future.done():
+                continue
+            self._snapshot_jobs.pop(key, None)
+            if cancelled.is_set() or key[0] != self._snapshot_generation:
+                continue
+            index, requested_period = key[1:]
+            selected = index == self.report_center.tabs.currentIndex()
+            try:
+                snapshot = future.result()
+            except CancelledError:
+                continue
+            except Exception as error:
+                if selected:
+                    self.report_center.set_loading(False)
+                    self.report_center.show_error(f"โหลดรายงานไม่สำเร็จ · {type(error).__name__}: {error} · ลองใหม่ได้")
+                continue
+            self._snapshot_cache[(index, requested_period)] = snapshot
+            self._snapshot_cache[(index, snapshot.data["period"])] = snapshot
+            if selected:
+                self._apply_report_snapshot(index, snapshot)
+
+    def _apply_report_snapshot(self, index: int, snapshot) -> None:
+        self._report_records = snapshot.data["monthly_records"]
+        self._snapshot_display_periods[index] = snapshot.data["period"]
+        self._snapshot_display_db[index] = self._snapshot_db
+        self.report_center.set_periods(snapshot.periods, snapshot.data["period"])
+        self.report_center.set_data(**snapshot.data, tab_index=index)
+        self.report_center.set_loading(False)
+        apply_language(self.report_center)
 
     def _schedule_report_refresh(self, _index: int | None = None) -> None:
         # Coalesce rapid Legacy -> Main changes before touching SQLite/report aggregation.
@@ -6800,6 +6967,10 @@ class PageHistoryV5(PageHistory):
         apply_language(self.report_center)
 
     def refresh_visible(self) -> None:
+        if self._staged:
+            self.invalidate_data()
+            self.refresh_visible_cached()
+            return
         """Load the visible report once; coalesce tab changes while a refresh is active."""
         if self._report_refresh_busy:
             self._report_refresh_pending = True
@@ -8833,6 +9004,9 @@ class PageHistoryV5(PageHistory):
             self.report_overview_warning.setVisible(False)
 
     def refresh(self) -> None:
+        if self._staged:
+            self.refresh_visible()
+            return
         try:
             self.reports_error.setVisible(False)
             super().refresh()
