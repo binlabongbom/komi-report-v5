@@ -28,7 +28,8 @@ def test_startup_defers_plotting_but_reports_can_load_it(tmp_path):
                KOMI_APP_HOME=str(tmp_path), KOMI_RUNTIME_CONFIG=str(tmp_path / 'runtime.toml'),
                KOMI_DB_PATH=str(tmp_path / 'qa.db'), KOMI_LOG_DIR=str(tmp_path / 'logs'))
     result = subprocess.run([sys.executable, '-c', '''
-import sys
+import os, sys
+sys.path.insert(0, os.getcwd())
 import app
 assert 'pyqtgraph' not in sys.modules
 assert 'numpy' not in sys.modules
