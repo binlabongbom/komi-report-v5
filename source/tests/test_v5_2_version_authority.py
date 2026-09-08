@@ -116,6 +116,9 @@ def test_windows_builder_metadata_import_does_not_require_runtime_crypto():
     blocker = """
 import sys
 
+# Embedded Windows Python ignores PYTHONPATH; supply the source explicitly.
+sys.path.insert(0, sys.argv[1])
+
 class BlockRuntimeCrypto:
     def find_spec(self, fullname, path=None, target=None):
         if fullname == "cryptography" or fullname.startswith("cryptography."):
@@ -128,7 +131,7 @@ import tools.build_windows_rc
     environment = os.environ.copy()
     environment["PYTHONPATH"] = str(source_root)
     result = subprocess.run(
-        [sys.executable, "-c", blocker],
+        [sys.executable, "-I", "-c", blocker, str(source_root.resolve())],
         cwd=source_root,
         env=environment,
         capture_output=True,
