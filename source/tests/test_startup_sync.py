@@ -18,6 +18,11 @@ from services.background_polling import BackgroundPollingCoordinator
 from services.device_config import DeviceConfig, DeviceConfigRepository
 
 
+# Keep QApplication alive through process shutdown; native Windows Qt can
+# crash when Python destroys it between function-scoped fixture instances.
+_qt_app_keepalive = None
+
+
 class _Registration(QObject):
     status_changed = pyqtSignal(str)
 
@@ -87,7 +92,9 @@ def _settle():
 
 @pytest.fixture
 def startup_window(monkeypatch):
+    global _qt_app_keepalive
     qt_app = QApplication.instance() or QApplication([])
+    _qt_app_keepalive = qt_app
     repository = DeviceConfigRepository()
     repository.replace_all([
         DeviceConfig(0, "Synthetic A", "192.0.2.10"),
