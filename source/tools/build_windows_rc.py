@@ -309,6 +309,26 @@ def remove_forbidden_dependency_assets(root: Path) -> int:
     return removed
 
 
+def remove_dependency_test_suites(site_packages: Path) -> dict[str, int]:
+    """Exclude wheel test suites, retaining runtime testing helpers and Qt plugins."""
+    removed_files = 0
+    removed_bytes = 0
+    for package_name in ("numpy", "pyqtgraph"):
+        package = site_packages / package_name
+        if not package.is_dir() or package.is_symlink():
+            continue
+        # Only these two reviewed packages; never remove numpy/testing or generic
+        # paths that happen to contain the word test.
+        for directory in sorted(package.rglob("tests"), key=lambda path: len(path.parts)):
+            if not directory.is_dir() or directory.is_symlink():
+                continue
+            files = [path for path in directory.rglob("*") if path.is_file()]
+            removed_files += len(files)
+            removed_bytes += sum(path.stat().st_size for path in files)
+            shutil.rmtree(directory)
+    return {"files": removed_files, "bytes": removed_bytes}
+
+
 def remove_node_build_tooling(node_root: Path) -> int:
     """Keep only the Node runtime after the Web standalone seed is built."""
 
@@ -441,6 +461,7 @@ def build_payload(
         download_wheelhouse(wheelhouse)
         wheel_count = sum(1 for path in wheelhouse.glob("*.whl"))
         install_windows_dependencies(wheelhouse, runtime_root / "Lib" / "site-packages")
+    removed_dependency_tests = remove_dependency_test_suites(runtime_root / "Lib" / "site-packages")
     removed_forbidden_assets = remove_forbidden_dependency_assets(
         runtime_root / "Lib" / "site-packages"
     )
@@ -471,6 +492,8 @@ def build_payload(
         "python_runtime_sha256": python_runtime_sha256,
         "node_runtime_sha256": node_runtime_sha256,
         "removed_forbidden_dependency_assets": str(removed_forbidden_assets),
+        "removed_dependency_test_files": str(removed_dependency_tests["files"]),
+        "removed_dependency_test_bytes": str(removed_dependency_tests["bytes"]),
         "removed_node_build_tool_files": str(removed_node_build_tool_files),
         "wheel_count": str(wheel_count),
         "registration_bootstrap": "not-applicable-schema3",

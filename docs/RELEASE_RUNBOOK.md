@@ -6,7 +6,7 @@
 2. Run focused Ruff checks for every changed module; the repository-wide legacy baseline is tracked separately and must not grow.
 3. Run `npm run lint` in the configured Web runtime.
 4. Confirm the package source contains no local DB, log, cache, `.env.local`, `__pycache__` or `.DS_Store`.
-5. Confirm Git is clean/committed, version authorities equal `5.2.8`, Registration has no policy artefact and Phase 3 Update runtime paths are absent.
+5. Confirm Git is clean/committed, version authorities equal `5.2.9`, Registration has no policy artefact and Phase 3 Update runtime paths are absent.
 
 ## Per operating system
 

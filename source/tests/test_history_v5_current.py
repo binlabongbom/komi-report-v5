@@ -1144,8 +1144,8 @@ def test_report_center_replaces_legacy_reports_with_cloud_overview_users_and_pri
         # This fixture has only aggregate paper totals.  Print/Copy must stay
         # explicitly unavailable instead of being guessed from Color/B&W.
         cloud.tabs.setCurrentIndex(2)
-        assert cloud.printer_kpis["print"].text() == "—"
-        assert cloud.printer_kpis["copy"].text() == "—"
+        assert cloud.printer_metric_cards["color_print"]._full_value == "—"
+        assert cloud.printer_metric_cards["color_copy"]._full_value == "—"
         assert cloud.printers_table.item(0, 0).text() == "Printer 1"
         assert cloud.printer_detail.item(0, 1).text() == "Printer 1"
         cloud.tabs.setCurrentIndex(3)

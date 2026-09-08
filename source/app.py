@@ -326,7 +326,6 @@ class NavButton(QPushButton):
         self.style().polish(self)
 
 
-
 # ══════════════════════════════════════════════════════════
 # MAIN WINDOW — หน้าต่างหลักของโปรแกรม
 # ══════════════════════════════════════════════════════════
@@ -1786,41 +1785,6 @@ class SetupWizard(QDialog):
             set_cfg("billing_day", str(self._spin_day.value()))
 
         self.accept()
-
-
-def _check_parser_setup(parent_win, splash=None):
-    """
-    [V4.5] ตรวจสอบและบังคับให้ผ่าน setup wizard ก่อนใช้งานได้
-    - DB ถูกสร้างใหม่ในรอบนี้ (fresh install)  OR
-    - ยังไม่มี Parser Profile ที่ตั้งค่าแล้ว
-    คืน True ถ้าพร้อมใช้งาน, False ถ้าผู้ใช้ปิด wizard โดยไม่ตั้งค่า
-    """
-    from tools.check_parser import load_profiles
-    profiles = load_profiles()
-    has_parser = any(p.get("column_map") for p in profiles)
-    fresh_db = getattr(parent_win, "_is_fresh_db", False)
-
-    if fresh_db or not has_parser:
-        # ปิด splash ก่อนเปิด wizard — splash ตั้ง WindowStaysOnTopHint ไว้ จะบัง wizard ถ้ายังเปิดอยู่
-        if splash is not None:
-            splash.close()
-        dlg = SetupWizard(parent_win)
-        dlg.show()
-        dlg.raise_()
-        dlg.activateWindow()
-        result = dlg.exec()
-        # หลัง wizard ปิด ตรวจอีกครั้งว่ามี parser หรือยัง
-        profiles = load_profiles()
-        has_parser = any(p.get("column_map") for p in profiles)
-        if not has_parser:
-            QMessageBox.warning(
-                parent_win,
-                "ยังไม่ได้ตั้งค่า Parser",
-                "โปรแกรมจะใช้งาน import ไฟล์ไม่ได้จนกว่าจะมีการตั้งค่า Parser\n"
-                "ท่านสามารถตั้งค่าได้ที่หน้า Settings ภายหลัง"
-            )
-            return False
-    return True
 
 
 _active_v5_setup_dialog: SetupWizardV5 | None = None

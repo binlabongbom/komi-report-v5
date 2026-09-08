@@ -735,3 +735,68 @@ def test_cloud_reports_use_transparent_label_surfaces_and_consistent_table_align
 
     widget.close()
     app.processEvents()
+
+
+@pytest.mark.parametrize("mode", ["classified", "total_only", "missing", "partial_users"])
+def test_users_cards_separate_color_without_inventing_missing_counters(mode):
+    app = QApplication.instance() or QApplication([])
+    day = date(2026, 9, 8)
+    widget = CloudReportsWidget()
+    subjects = (replace(_subject(day), period_usage=3),)
+    if mode == "partial_users":
+        subjects += (replace(_subject(day), subject_id="u-2", subject_name="bob", period_usage=1),)
+    counters = []
+    if mode in ("classified", "partial_users"):
+        for operation in ("print", "copy"):
+            for family in ("full_color", "bw"):
+                field = f"counter.{operation}.{family}_total"
+                counters.append(_raw(day, slot=0, field=field, label=field,
+                                     delta=3 if operation == "print" and family == "full_color" else 0,
+                                     subject=True))
+    elif mode == "total_only":
+        counters.append(_raw(day, slot=0, field="counter.print.total", label="Print total",
+                             delta=3, subject=True))
+    widget.set_data(records=(), daily_records=(), subjects=subjects, devices=(),
+                    raw_counter_records=counters, period=("2026-09-01", "2026-09-30"),
+                    last_sync_at=None)
+    widget.tabs.setCurrentIndex(1)
+    app.processEvents()
+    expected = ("3", "0", "0", "0") if mode == "classified" else ("—",) * 4
+    for key, value in zip(("color_print", "bw_print", "color_copy", "bw_copy"), expected):
+        card = widget.user_metric_cards[key]
+        assert card._full_value == value
+        assert card.layout().getItemPosition(card.layout().indexOf(card.lbl_val))[2] == 2
+    assert widget.user_metric_cards["usage"]._full_value == ("4" if mode == "partial_users" else "3")
+    assert widget.user_metric_cards["count"]._full_value == ("2" if mode == "partial_users" else "1")
+    widget.show_error("test error")
+    assert all(card._full_value == "—" for card in widget.user_metric_cards.values())
+    widget.close()
+
+
+def test_printer_cards_match_overview_and_preserve_scan_summary():
+    app = QApplication.instance() or QApplication([])
+    widget = CloudReportsWidget()
+    day = date(2026, 8, 6)
+    period = (day.isoformat(), day.isoformat())
+    widget.set_periods((period,), period)
+    widget.set_data(records=(_usage(day),), daily_records=(), subjects=(), devices=(),
+                    period=period, last_sync_at=None)
+    widget.tabs.setCurrentIndex(2)
+    widget.resize(1440, 800)
+    widget.show()
+    app.processEvents()
+    for key in ("color_print", "bw_print", "color_copy", "bw_copy"):
+        assert widget.printer_metric_cards[key]._full_value == widget.overview_kpis[key]._full_value
+        assert widget.printer_metric_cards[key]._full_detail == widget.overview_kpis[key]._full_detail
+    assert "เครื่องที่มีการใช้งาน 1 เครื่อง" in widget.printer_activity_summary.text()
+    assert "Scan" in widget.printer_activity_summary.text()
+    for width in (1440, 1024):
+        widget.resize(width, 760)
+        app.processEvents()
+        cards = list(widget.printer_metric_cards.values())
+        assert len({card.y() for card in cards}) == 1
+        assert len({card.height() for card in cards}) == 1
+    widget.show_error("unavailable")
+    assert all(card._full_value == "—" for card in widget.printer_metric_cards.values())
+    assert "Scan —" in widget.printer_activity_summary.text()
+    widget.close()

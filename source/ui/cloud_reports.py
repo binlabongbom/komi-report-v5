@@ -457,14 +457,11 @@ class CloudReportsWidget(QWidget):
         self.setStyleSheet(
             f"QWidget#cloud_reports{{background:#F3F6F8;color:#243244;}}"
             "QWidget#cloud_reports QLabel{background:transparent;border:none;}"
-            f"QFrame#cloud_report_toolbar,QFrame#cloud_report_panel,QFrame#cloud_kpi{{"
+            f"QFrame#cloud_report_toolbar,QFrame#cloud_report_panel{{"
             f"background:{PANEL};border:1px solid {LINE};border-radius:7px;}}"
             "QLabel#cloud_title{font-size:25px;font-weight:800;color:#25364A;}"
             f"QLabel#cloud_subtitle,QLabel#cloud_panel_subtitle{{color:{MUTED};font-size:12px;}}"
             "QLabel#cloud_panel_title{font-size:15px;font-weight:750;color:#25364A;}"
-            f"QLabel#cloud_kpi_caption{{color:{MUTED};font-size:12px;}}"
-            "QLabel#cloud_kpi_value{font-size:24px;font-weight:800;}"
-            f"QLabel#cloud_kpi_note{{color:{MUTED};font-size:10px;}}"
             f"QFrame#cloud_overview_kpi_panel{{background:{PANEL};border:1px solid {LINE};border-radius:12px;}}"
             "QFrame#cloud_overview_metric_card{background:#FFFFFF;border:1px solid #D7E0EA;border-radius:9px;}"
             "QWidget#cloud_overview_metric_content{background:transparent;border:none;}"
@@ -671,7 +668,7 @@ class CloudReportsWidget(QWidget):
         )
         self.setStyleSheet(self._base_qss + density_qss)
         self._header_subtitle.setVisible(not compact)
-        for card in self.overview_kpis.values():
+        for card in (*self.overview_kpis.values(), *self.user_metric_cards.values(), *self.printer_metric_cards.values()):
             card.set_compact(compact)
 
     def _apply_responsive_layout(self) -> None:
@@ -751,8 +748,6 @@ class CloudReportsWidget(QWidget):
                 for card in widgets:
                     card.refresh_elision()
                 continue
-            if widgets and widgets[0].objectName() == "cloud_kpi":
-                minimum = max(minimum, max(card.minimumSizeHint().width() for card in widgets))
             columns = max(1, min(maximum, (available + 12) // (minimum + 12)))
             self._place_grid(grid, widgets, columns)
 
@@ -822,16 +817,29 @@ class CloudReportsWidget(QWidget):
         layout.setContentsMargins(0, 4, 0, 0)
         layout.setSpacing(12)
         self._add_period_toolbar(layout)
-        self.user_kpis, kpis = self._kpi_row(
-            (
-                ("count", "ผู้ใช้ที่มีข้อมูล", "คน", NAVY),
-                ("print", "Print", "หน้า", BLUE),
-                ("copy", "Copy", "หน้า", ORANGE),
-                ("usage", "ยอดใช้งานรวม", "หน้า", SLATE),
-                ("highest", "ผู้ใช้สูงสุด", "หน้า", GREEN),
+        self.user_kpi_panel = QFrame()
+        self.user_kpi_panel.setObjectName("cloud_overview_kpi_panel")
+        kpis = QGridLayout(self.user_kpi_panel)
+        kpis.setContentsMargins(12, 12, 12, 12)
+        kpis.setSpacing(8)
+        self.user_metric_cards = {
+            key: _CloudOverviewMetricCard(title, accent=accent)
+            for key, title, accent in (
+                ("color_print", "พิมพ์สี", BLUE),
+                ("bw_print", "พิมพ์ขาวดำ", "#18202C"),
+                ("color_copy", "สำเนาสี", "#F25C05"),
+                ("bw_copy", "สำเนาขาวดำ", "#56677A"),
+                ("usage", "ยอดใช้งานรวม", BLUE),
+                ("count", "ผู้ใช้ที่มีข้อมูล", NAVY),
             )
-        )
-        layout.addLayout(kpis)
+        }
+        self.user_kpis = {key: card.lbl_val for key, card in self.user_metric_cards.items()}
+        cards = tuple(self.user_metric_cards.values())
+        for column, card in enumerate(cards):
+            kpis.addWidget(card, 0, column)
+            kpis.setColumnStretch(column, 1)
+        self._responsive_grids.append((kpis, cards, 100, 6))
+        layout.addWidget(self.user_kpi_panel)
         filter_row = QHBoxLayout()
         self.user_filter_badge = QLabel("เลือกผู้ใช้จากตารางเพื่อกรองกราฟ")
         self.user_filter_badge.setObjectName("cloud_filter_badge")
@@ -887,16 +895,33 @@ class CloudReportsWidget(QWidget):
         layout.setContentsMargins(0, 4, 0, 0)
         layout.setSpacing(12)
         self._add_period_toolbar(layout)
-        self.printer_kpis, kpis = self._kpi_row(
-            (
-                ("count", "เครื่องที่มีการใช้งาน", "เครื่อง", NAVY),
-                ("print", "Print", "หน้า", BLUE),
-                ("copy", "Copy", "หน้า", ORANGE),
-                ("scan", "Scan", "หน้า", SLATE),
-                ("cost", "ค่าใช้จ่ายสุทธิ", "บาท", GREEN),
+        self.printer_kpi_panel = QFrame()
+        self.printer_kpi_panel.setObjectName("cloud_overview_kpi_panel")
+        kpis = QGridLayout(self.printer_kpi_panel)
+        kpis.setContentsMargins(12, 12, 12, 12)
+        kpis.setSpacing(8)
+        self.printer_metric_cards = {
+            key: _CloudOverviewMetricCard(title, accent=accent)
+            for key, title, accent in (
+                ("color_print", "พิมพ์สี", BLUE),
+                ("bw_print", "พิมพ์ขาวดำ", "#18202C"),
+                ("color_copy", "สำเนาสี", "#F25C05"),
+                ("bw_copy", "สำเนาขาวดำ", "#56677A"),
+                ("usage", "ยอดใช้งานรวม", BLUE),
+                ("cost", "ค่าใช้จ่ายสุทธิ", "#00A651"),
             )
-        )
-        layout.addLayout(kpis)
+        }
+        cards = tuple(self.printer_metric_cards.values())
+        self.printer_kpis = {key: card.lbl_val for key, card in self.printer_metric_cards.items()}
+        for column, card in enumerate(cards):
+            kpis.addWidget(card, 0, column)
+            kpis.setColumnStretch(column, 1)
+        self._responsive_grids.append((kpis, cards, 100, 6))
+        layout.addWidget(self.printer_kpi_panel)
+        self.printer_activity_summary = QLabel()
+        self.printer_activity_summary.setObjectName("cloud_subtitle")
+        self.printer_activity_summary.setWordWrap(True)
+        layout.addWidget(self.printer_activity_summary)
         self.printer_compare_note = QLabel(
             "กราฟเปรียบเทียบเครื่องพิมพ์ทุกเครื่องพร้อมกัน · คลิกแถวด้านล่างเพื่อดู Meter detail"
         )
@@ -1250,33 +1275,6 @@ class CloudReportsWidget(QWidget):
         view.setStyleSheet("background:white;border:0;")
         return view
 
-    def _kpi_row(self, specs: tuple[tuple[str, str, str, str], ...]):
-        values: dict[str, QLabel] = {}
-        row = QGridLayout()
-        row.setSpacing(10)
-        for column, (key, caption, unit, color) in enumerate(specs):
-            card = QFrame()
-            card.setObjectName("cloud_kpi")
-            card_layout = QVBoxLayout(card)
-            card_layout.setContentsMargins(14, 11, 14, 11)
-            card_layout.setSpacing(2)
-            label = QLabel(caption)
-            label.setObjectName("cloud_kpi_caption")
-            value = QLabel("—")
-            value.setObjectName("cloud_kpi_value")
-            value.setStyleSheet(f"color:{color};background:transparent;border:0;")
-            note = QLabel(unit)
-            note.setObjectName("cloud_kpi_note")
-            card_layout.addWidget(label)
-            card_layout.addWidget(value)
-            card_layout.addWidget(note)
-            row.addWidget(card, 0, column)
-            row.setColumnStretch(column, 1)
-            value._cloud_caption = label
-            values[key] = value
-        cards = tuple(row.itemAtPosition(0, column).widget() for column in range(len(specs)))
-        self._responsive_grids.append((row, cards, 160, len(cards)))
-        return values, row
 
     def set_periods(
         self,
@@ -1343,11 +1341,9 @@ class CloudReportsWidget(QWidget):
     def show_error(self, message: str) -> None:
         self.error_label.setText(message)
         self.error_label.show()
-        for card in self.overview_kpis.values():
+        for card in (*self.overview_kpis.values(), *self.user_metric_cards.values(), *self.printer_metric_cards.values()):
             card.set_metric("—", "")
-        for group in (self.user_kpis, self.printer_kpis):
-            for value in group.values():
-                value.setText("—")
+        self.printer_activity_summary.setText("เครื่องที่มีการใช้งาน — เครื่อง · Scan — หน้า")
 
     def set_data(
         self,
@@ -1823,6 +1819,7 @@ class CloudReportsWidget(QWidget):
                 continue
             breakdown = breakdown_from_raw_records(raw_records)
             slot_row = row["by_slot"][slot]
+            slot_row.setdefault("available_fields", set()).update(breakdown.available_fields)
             for field in (
                 "print_a3_color",
                 "print_a3_bw",
@@ -1992,22 +1989,24 @@ class CloudReportsWidget(QWidget):
 
     def _render_users(self) -> None:
         total = sum(row["usage"] for row in self._user_rows)
-        highest = self._user_rows[0]["usage"] if self._user_rows else 0
-        print_available = any(row["print_available"] for row in self._user_rows)
-        copy_available = any(row["copy_available"] for row in self._user_rows)
-        self.user_kpis["count"].setText(_number(len(self._user_rows)))
-        self.user_kpis["print"].setText(
-            _number(sum(row["print"] for row in self._user_rows))
-            if print_available
-            else "—"
-        )
-        self.user_kpis["copy"].setText(
-            _number(sum(row["copy"] for row in self._user_rows))
-            if copy_available
-            else "—"
-        )
-        self.user_kpis["usage"].setText(_number(total))
-        self.user_kpis["highest"].setText(_number(highest))
+        slots = [slot for row in self._user_rows for slot in row["by_slot"].values()]
+        for key, operation, color in (
+            ("color_print", "print", "color"), ("bw_print", "print", "bw"),
+            ("color_copy", "copy", "color"), ("bw_copy", "copy", "bw"),
+        ):
+            fields = (f"{operation}_a3_{color}", f"{operation}_a4_{color}")
+            # A partial user/device breakdown must not masquerade as a complete total.
+            available = bool(slots) and all(
+                set(fields).issubset(slot.get("available_fields", set())) for slot in slots
+            )
+            a3, a4 = (sum(slot.get(field, 0.0) for slot in slots) for field in fields)
+            card = self.user_metric_cards[key]
+            card.set_metric(_number(a3 + a4), f"A3 {_number(a3)}  |  A4 {_number(a4)}",
+                            available=available)
+            if not available:
+                card.set_metric("—", "ข้อมูลแยกประเภทยังไม่ครบ")
+        self.user_metric_cards["usage"].set_metric(_number(total), "ช่วงรายงานที่เลือก")
+        self.user_metric_cards["count"].set_metric(_number(len(self._user_rows)), "คน")
         self.users_top_chart.setChart(
             self._horizontal_like_chart(
                 [row["name"] for row in self._user_rows[:8]],
@@ -2122,19 +2121,31 @@ class CloudReportsWidget(QWidget):
     def _render_printers(self) -> None:
         rows = self._printer_rows
         total_cost = sum(row["cost"] for row in rows)
-        self.printer_kpis["count"].setText(_number(len([row for row in rows if row["total"] > 0])))
-        self.printer_kpis["print"].setText(
-            _number(sum(row["print"] for row in rows))
-            if any(row["print_available"] for row in rows)
-            else "—"
+        records = self._records
+        for key, operation, color in (
+            ("color_print", "print", "color"), ("bw_print", "print", "bw"),
+            ("color_copy", "copy", "color"), ("bw_copy", "copy", "bw"),
+        ):
+            available = bool(records) and all(_operation_available(record, operation) for record in records)
+            total = sum(_combined(record, f"{operation}_{color}") for record in records)
+            a3 = sum(_combined(record, f"{operation}_a3_{color}") for record in records)
+            a4 = sum(_combined(record, f"{operation}_a4_{color}") for record in records)
+            self.printer_metric_cards[key].set_metric(
+                _number(total), f"A3 {_number(a3)}  |  A4 {_number(a4)}", available=available,
+            )
+        self.printer_metric_cards["usage"].set_metric(
+            _number(sum(row["total"] for row in rows)), "ช่วงรายงานที่เลือก"
         )
-        self.printer_kpis["copy"].setText(
-            _number(sum(row["copy"] for row in rows))
-            if any(row["copy_available"] for row in rows)
-            else "—"
+        cost_available = all(
+            bool(getattr(record, "provisional_cost_available", True))
+            for record in records if int(getattr(record, "provisional_days", 0) or 0)
         )
-        self.printer_kpis["scan"].setText(_number(sum(row["scan"] for row in rows)))
-        self.printer_kpis["cost"].setText(_money(total_cost))
+        self.printer_metric_cards["cost"].set_metric(f"฿{_money(total_cost)}", "THB", available=cost_available)
+        count = sum(row["total"] > 0 or row["scan"] > 0 for row in rows)
+        scan = sum(row["scan"] for row in rows)
+        self.printer_activity_summary.setText(
+            f"เครื่องที่มีการใช้งาน {_number(count)} เครื่อง · Scan {_number(scan)} หน้า"
+        )
         selected = next((row for row in rows if row["key"] == self._selected_printer), None)
         self.printer_mix.setChart(
             self._bar_chart(
@@ -2596,9 +2607,9 @@ class CloudReportsWidget(QWidget):
             else "ค่าใช้จ่ายก่อนส่วนลด"
         )
         self.overview_kpis["total_cost"].lbl_title.setText(caption)
-        printer_caption = getattr(self.printer_kpis["cost"], "_cloud_caption", None)
-        if printer_caption is not None:
-            printer_caption.setText(caption)
+        for card in (self.overview_kpis["total_cost"], self.printer_metric_cards["cost"]):
+            card._full_title = caption
+            card.refresh_elision()
         self._build_printer_rows()
         self._render_overview()
         self._render_printers()
