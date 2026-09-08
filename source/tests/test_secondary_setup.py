@@ -265,7 +265,7 @@ def test_secondary_rejects_unsafe_tls_mode():
 def test_snapshot_uses_selected_candidate_port_even_with_default_client(monkeypatch):
     candidate = secondary_setup.SecondaryPeerCandidate(
         base_url="https://192.0.2.20:3443", company_name="Test", printer_count=1,
-        version="5.2.9", certificate_sha256="b" * 64,
+        version="5.2.10", certificate_sha256="b" * 64,
     )
     client = secondary_setup.SecondaryPeerClient()
     calls = []
