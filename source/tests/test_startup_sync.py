@@ -9,7 +9,7 @@ from datetime import timedelta
 from types import SimpleNamespace
 
 import pytest
-from PyQt6.QtCore import QObject, pyqtSignal
+from PyQt6.QtCore import QCoreApplication, QEvent, QObject, pyqtSignal
 from PyQt6.QtTest import QTest
 from PyQt6.QtWidgets import QApplication, QLabel, QPushButton, QStackedWidget, QWidget
 
@@ -137,6 +137,14 @@ def startup_window(monkeypatch):
     window.close()
     qt_app.processEvents()
     _settle()
+    # Flush QObject destruction before monkeypatch restores the shell methods.
+    # Closing a window only hides it; delayed native destruction between tests
+    # can leave its child timers and signal callbacks alive on Windows.
+    window._startup_poll_timer.stop()
+    window._refresh_timer.stop()
+    window.deleteLater()
+    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    qt_app.processEvents()
 
 
 def test_startup_waits_for_configured_services_and_fresh_status_then_dispatches_once(startup_window, caplog):
