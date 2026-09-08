@@ -14,6 +14,7 @@ from pathlib import Path
 
 from services.web_access import read_web_runtime_values
 from services.web_service import WebServiceManager
+from services.web_port import read_web_port
 
 
 def _wait_for_port(host: str, port: int, process: subprocess.Popen[bytes], timeout: float = 30.0) -> None:
@@ -97,18 +98,19 @@ def run(
 ) -> int:
     source_root = source_root.resolve()
     web_runtime = web_runtime.expanduser().resolve()
+    port = read_web_port(web_runtime / ".env.local")
     api_ready = _port_open("127.0.0.1", 8766)
-    web_port_open = _port_open("127.0.0.1", 3000)
-    web_ready = _https_open("127.0.0.1", 3000) if web_port_open else False
+    web_port_open = _port_open("127.0.0.1", port)
+    web_ready = _https_open("127.0.0.1", port) if web_port_open else False
     if api_ready and web_ready:
-        local_url = "https://127.0.0.1:3000"
+        local_url = f"https://127.0.0.1:{port}"
         print(f"KOMI Report Web ทำงานอยู่แล้ว: {local_url}", flush=True)
         if open_browser:
             webbrowser.open(local_url)
         return 0
     if api_ready or web_port_open:
         raise RuntimeError(
-            "พบ Web service เพียงบางส่วน กรุณาปิด process ที่ใช้ port 3000/8766 แล้วเปิดใหม่"
+            f"พบ Web service เพียงบางส่วน กรุณาปิด process ที่ใช้ port {port}/8766 แล้วเปิดใหม่"
         )
     if not (web_runtime / ".next" / "BUILD_ID").is_file():
         raise FileNotFoundError(f"ไม่พบ Web build ใน runtime: {web_runtime}")
@@ -144,8 +146,10 @@ def run(
         )
         _wait_for_port("127.0.0.1", 8766, api)
 
+        runtime_values = read_web_runtime_values(web_runtime / ".env.local")
+        environment.update(runtime_values)
+        environment["KOMI_WEB_PORT"] = str(port)
         if standalone:
-            runtime_values = read_web_runtime_values(web_runtime / ".env.local")
             certificate = Path(runtime_values.get("KOMI_TLS_CERT_FILE", ""))
             private_key = Path(runtime_values.get("KOMI_TLS_KEY_FILE", ""))
             if not certificate.is_file() or not private_key.is_file():
@@ -158,6 +162,7 @@ def run(
             proxy = WebServiceManager._https_proxy_server(
                 certificate=certificate,
                 private_key=private_key,
+                port=port,
             )
             import threading
 
@@ -167,14 +172,14 @@ def run(
                 daemon=True,
             )
             proxy_thread.start()
-            _wait_for_https("127.0.0.1", 3000, web)
+            _wait_for_https("127.0.0.1", port, web)
         else:
             web = subprocess.Popen([str(npm), "run", "start"], cwd=web_runtime, env=environment)
-            _wait_for_https("127.0.0.1", 3000, web)
+            _wait_for_https("127.0.0.1", port, web)
 
-        local_url = "https://127.0.0.1:3000"
+        local_url = f"https://127.0.0.1:{port}"
         print(f"KOMI Report Web พร้อม: {local_url}", flush=True)
-        print(f"ผู้ใช้ใน LAN เปิดแบบเข้ารหัสได้ที่: https://{_lan_ip()}:3000", flush=True)
+        print(f"ผู้ใช้ใน LAN เปิดแบบเข้ารหัสได้ที่: https://{_lan_ip()}:{port}", flush=True)
         print("ปิดหน้าต่างนี้เพื่อหยุด Web Server", flush=True)
         if open_browser:
             webbrowser.open(local_url)

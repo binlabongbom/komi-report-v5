@@ -143,6 +143,7 @@ def test_embedded_windows_install_uses_bundled_runtime_without_npm(tmp_path, mon
     monkeypatch.setattr(web_service, "_port_open", lambda _port: False)
     monkeypatch.setattr(web_service.threading, "Thread", _Thread)
     monkeypatch.delattr(web_service.sys, "frozen", raising=False)
+    monkeypatch.setattr(web_service.sys, "platform", "win32")
     manager = web_service.WebServiceManager(project)
 
     status = manager.start()
@@ -222,3 +223,81 @@ def test_https_proxy_requires_tls12_and_forwards_remote_identity(tmp_path, monke
         assert isinstance(server.socket, object)
     finally:
         server.server_close()
+
+
+def test_packaged_restart_reloads_access_and_port_after_worker_releases_lock(tmp_path, monkeypatch):
+    import threading
+    from services.web_access import read_web_runtime_values, update_web_runtime_values
+
+    project = tmp_path / "installed"
+    seed = project / "web-runtime-seed"
+    (seed / ".next").mkdir(parents=True)
+    (seed / ".next" / "BUILD_ID").write_text("build\n", encoding="utf-8")
+    node = project / "node-runtime" / ("node.exe" if sys.platform.startswith("win") else "node")
+    node.parent.mkdir()
+    node.write_bytes(b"node")
+    monkeypatch.setattr(web_service, "app_data_home", lambda: tmp_path / "data")
+    monkeypatch.setattr(web_service, "_port_open", lambda _port: False)
+    manager = web_service.WebServiceManager(project)
+    env = manager.runtime_root / ".env.local"
+    observed = []
+    started = threading.Event()
+    finished = threading.Event()
+
+    def worker(*_args):
+        observed.append((read_web_runtime_values(env)["KOMI_WEB_REPORT_PASSWORDLESS"], manager._active_port))
+        started.set()
+        manager._packaged_stop.wait(5)
+        # Regression: restart/stop must not hold this lock while joining us.
+        with manager._lock:
+            finished.set()
+
+    monkeypatch.setattr(manager, "_run_packaged_service", worker)
+    update_web_runtime_values(env, {"KOMI_WEB_REPORT_PASSWORDLESS": "0", "KOMI_WEB_PORT": "3000"})
+    manager.start()
+    assert started.wait(2)
+    old_worker = manager._packaged_thread
+    update_web_runtime_values(env, {"KOMI_WEB_REPORT_PASSWORDLESS": "1", "KOMI_WEB_PORT": "3443"})
+    assert manager.status().local_url.endswith(":3000")
+    started.clear()
+    try:
+        manager.restart()
+        assert finished.is_set()
+        assert not old_worker.is_alive()
+        assert started.wait(2)
+        assert observed == [("0", 3000), ("1", 3443)]
+        assert manager.status().local_url.endswith(":3443")
+    finally:
+        manager.stop()
+
+
+def test_stop_retains_owned_thread_until_shutdown_finishes(tmp_path, monkeypatch):
+    class StillStopping:
+        def is_alive(self):
+            return True
+
+        def join(self, timeout):
+            pass
+
+    monkeypatch.setattr(web_service, "app_data_home", lambda: tmp_path)
+    monkeypatch.setattr(web_service, "_port_open", lambda _port: False)
+    manager = web_service.WebServiceManager(tmp_path / "project")
+    worker = StillStopping()
+    manager._packaged_thread = worker
+    manager._active_port = 3443
+    status = manager.restart()
+    assert manager._packaged_thread is worker
+    assert manager._packaged_stop.is_set()
+    assert manager._active_port == 3443
+    assert "ยังหยุดไม่สำเร็จ" in status.detail
+
+
+def test_packaged_startup_wait_observes_stop_request(tmp_path, monkeypatch):
+    import pytest
+
+    monkeypatch.setattr(web_service, "app_data_home", lambda: tmp_path)
+    monkeypatch.setattr(web_service, "_port_open", lambda _port: False)
+    manager = web_service.WebServiceManager(tmp_path / "project")
+    manager._packaged_stop.set()
+    with pytest.raises(InterruptedError):
+        manager._wait_for_port(3001, timeout=30)

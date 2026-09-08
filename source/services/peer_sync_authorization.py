@@ -1,10 +1,11 @@
-"""Short-lived, user-approved capability for Primary-to-Secondary setup sync.
+"""User-approved Primary-to-Secondary setup sync with short-lived claim tokens.
 
 The Secondary never asks for a password.  Instead, a user on the Primary opens
 an approval window for five minutes.  The first LAN requester may claim that
 window with a 256-bit random token.  Only a hash is stored, the claim is bound
 to the request IP and current Primary installation, and the token is consumed
-before the setup snapshot is returned.
+before the setup snapshot is returned. Persistent approval is an explicit option;
+its independently claimed tokens still expire and can only be consumed once.
 """
 
 from __future__ import annotations
@@ -36,6 +37,7 @@ class PairingWindowStatus:
     open: bool
     seconds_remaining: int
     claimed: bool
+    always_open: bool = False
 
 
 def state_path() -> Path:
@@ -130,6 +132,7 @@ def open_pairing_window(
     *,
     now: float | None = None,
     ttl_seconds: int = PAIRING_WINDOW_SECONDS,
+    always_open: bool = False,
 ) -> PairingWindowStatus:
     """Replace any previous claim with one explicit Primary approval window."""
 
@@ -144,6 +147,8 @@ def open_pairing_window(
             path,
             {
                 "schema": 1,
+                "always_open": bool(always_open),
+                "claims": {},
                 "window_expires_at": current + ttl,
                 "installation_id": identity,
                 "requester_ip": "",
@@ -152,7 +157,7 @@ def open_pairing_window(
                 "used": False,
             },
         )
-    return PairingWindowStatus(open=True, seconds_remaining=ttl, claimed=False)
+    return PairingWindowStatus(open=True, seconds_remaining=0 if always_open else ttl, claimed=False, always_open=always_open)
 
 
 def close_pairing_window() -> None:
@@ -164,6 +169,12 @@ def close_pairing_window() -> None:
 def pairing_window_status(*, now: float | None = None) -> PairingWindowStatus:
     current = float(time.time() if now is None else now)
     payload = _read_state(state_path())
+    if payload.get("always_open") is True and payload.get("installation_id"):
+        claims = payload.get("claims", {})
+        return PairingWindowStatus(
+            open=True, seconds_remaining=0, always_open=True,
+            claimed=any(float(claim.get("expires_at", 0)) > current for claim in claims.values()),
+        )
     expiry = float(payload.get("window_expires_at") or 0)
     used = bool(payload.get("used"))
     remaining = max(0, int(expiry - current + 0.999))
@@ -190,6 +201,22 @@ def claim_pairing_window(
     path = state_path()
     with _state_lock(path):
         payload = _read_state(path)
+        if payload.get("always_open") is True and payload.get("installation_id"):
+            claims = {
+                digest: claim for digest, claim in payload.get("claims", {}).items()
+                if float(claim.get("expires_at", 0)) > current
+            }
+            digest = _token_digest(value)
+            existing = claims.get(digest)
+            if existing is not None and existing.get("requester_ip") != remote:
+                raise PeerSyncAuthorizationError("สิทธิ์ Sync ถูกเครื่องอื่นรับไปแล้ว")
+            if existing is None:
+                if len(claims) >= 128:
+                    raise PeerSyncAuthorizationError("มีคำขอ Sync จำนวนมาก กรุณาลองอีกครั้ง")
+                claims[digest] = {"requester_ip": remote, "expires_at": current + PAIRING_WINDOW_SECONDS}
+            payload["claims"] = claims
+            _write_state(path, payload)
+            return max(1, int(float(claims[digest]["expires_at"]) - current))
         expiry = float(payload.get("window_expires_at") or 0)
         if expiry <= current or bool(payload.get("used")):
             raise PeerSyncAuthorizationError(
@@ -229,6 +256,20 @@ def consume_pairing_token(
     path = state_path()
     with _state_lock(path):
         payload = _read_state(path)
+        if payload.get("always_open") is True:
+            digest = _token_digest(value)
+            claims = payload.get("claims", {})
+            claim = claims.get(digest, {})
+            if not (
+                float(claim.get("expires_at", 0)) > current
+                and claim.get("requester_ip") == remote
+                and payload.get("installation_id") == identity
+            ):
+                raise PeerSyncAuthorizationError("สิทธิ์ Secondary Sync หมดอายุหรือไม่ถูกต้อง")
+            del claims[digest]
+            payload["claims"] = claims
+            _write_state(path, payload)
+            return
         valid = (
             not bool(payload.get("used"))
             and float(payload.get("window_expires_at") or 0) > current

@@ -146,6 +146,7 @@ from services.monthly_history import (
 from services.peer_sync_authorization import (
     PeerSyncAuthorizationError,
     open_pairing_window,
+    close_pairing_window,
     pairing_window_status,
 )
 from services.pipeline_log import PipelineEvent, pipeline_log
@@ -199,8 +200,10 @@ from services.web_access import (
     set_web_report_passwordless,
     validate_web_access_code,
     web_access_status,
+    update_web_runtime_values,
 )
 from services.web_service import WebServiceStatus, web_service_manager
+from services.web_port import read_web_port, validate_web_port
 from ui.cloud_reports import CloudReportsWidget
 from ui.common_dialogs import AllCountersDialog, PinnedCountersDialog
 from ui_consistency import install_button_system
@@ -652,15 +655,16 @@ class SecondaryPeerDiscoveryWorker(QObject):
 
     finished = pyqtSignal(object, str)
 
-    def __init__(self, hosts: list[str] | None = None) -> None:
+    def __init__(self, hosts: list[str] | None = None, *, port: int = 3000) -> None:
         super().__init__()
         self.hosts = hosts
+        self.port = port
 
     @pyqtSlot()
     def run(self) -> None:
         try:
             hosts = list(self.hosts) if self.hosts is not None else local_ipv4_hosts()
-            candidates = SecondaryPeerClient().discover(hosts)
+            candidates = SecondaryPeerClient(port=self.port).discover(hosts)
             self.finished.emit(candidates, "")
         except Exception as exc:
             self.finished.emit([], str(exc))
@@ -1471,6 +1475,14 @@ class SetupWizardV5(QDialog):
             self._secondary_manual_join_clicked
         )
         manual_primary_row.addWidget(self.secondary_manual_ip)
+        manual_primary_row.addWidget(QLabel("Port"))
+        self.secondary_primary_port = QSpinBox()
+        self.secondary_primary_port.setRange(1024, 65535)
+        self.secondary_primary_port.setValue(3000)
+        self.secondary_primary_port.setMaximumWidth(100)
+        self.secondary_primary_port.setAccessibleName("Port ของเครื่อง Primary")
+        self.secondary_primary_port.valueChanged.connect(self._secondary_port_changed)
+        manual_primary_row.addWidget(self.secondary_primary_port)
         self.secondary_manual_button = btn(tr("เชื่อมต่อ", "Connect"), "outline")
         self.secondary_manual_button.setAccessibleName(
             tr("ค้นหาเครื่องหลักตาม Primary IP", "Find Primary at this IP")
@@ -1765,6 +1777,7 @@ class SetupWizardV5(QDialog):
         self.secondary_join_button.setText(tr("กำลังค้นหา…", "Searching…"))
         self.secondary_manual_button.setEnabled(False)
         self.secondary_manual_ip.setEnabled(False)
+        self.secondary_primary_port.setEnabled(False)
         self.secondary_join_status.setText(
             tr(
                 "กำลังค้นหา KOMI Report เครื่องหลักในเครือข่าย LAN…",
@@ -1773,7 +1786,8 @@ class SetupWizardV5(QDialog):
         )
         thread = QThread(self)
         worker = SecondaryPeerDiscoveryWorker(
-            hosts if hosts is not None else self.secondary_peer_hosts
+            hosts if hosts is not None else self.secondary_peer_hosts,
+            port=self.secondary_primary_port.value(),
         )
         worker.moveToThread(thread)
         thread.started.connect(worker.run)
@@ -1784,6 +1798,10 @@ class SetupWizardV5(QDialog):
         self._secondary_discovery_thread = thread
         self._secondary_discovery_worker = worker
         thread.start()
+
+    def _secondary_port_changed(self, _value: int) -> None:
+        self.secondary_candidates = []
+        self.secondary_join_button.setText(tr("ค้นหาเครื่องหลัก", "Find Primary"))
 
     def _secondary_join_clicked(self) -> None:
         if self.secondary_candidates:
@@ -1809,6 +1827,7 @@ class SetupWizardV5(QDialog):
         self.secondary_join_button.setEnabled(True)
         self.secondary_manual_button.setEnabled(True)
         self.secondary_manual_ip.setEnabled(True)
+        self.secondary_primary_port.setEnabled(True)
         self.secondary_join_button.setText(tr("ค้นหาเครื่องหลัก", "Find Primary"))
         self.secondary_candidates = [
             item for item in (candidates if isinstance(candidates, list) else [])
@@ -10397,6 +10416,17 @@ class PageFleetSettings(QWidget):
         self.web_service_enabled = QCheckBox("อนุญาตให้เครื่องอื่นใน LAN เปิดดูรายงาน")
         self.web_service_enabled.setAccessibleName("เปิดรายงานผ่าน Web สำหรับเครื่องอื่นใน LAN")
         program_body.addWidget(self.web_service_enabled)
+        web_port_row = QHBoxLayout()
+        web_port_row.addWidget(QLabel("Port สำหรับ Web Report"))
+        self.web_port = QSpinBox()
+        self.web_port.setRange(1024, 65535)
+        self.web_port.setValue(3000)
+        self.web_port.setMaximumWidth(120)
+        self.web_port.setAccessibleName("Port สำหรับ Web Report ใน LAN")
+        self.web_port.setToolTip("ใช้ Port เดียวกันเมื่อเปิดเว็บหรือเชื่อมต่อ Secondary · ค่าเริ่มต้น 3000")
+        web_port_row.addWidget(self.web_port)
+        web_port_row.addStretch()
+        program_body.addLayout(web_port_row)
         self.web_report_passwordless = QCheckBox(
             "อนุญาตให้เปิด Web Report แบบอ่านอย่างเดียวโดยไม่ต้องใช้รหัส"
         )
@@ -10459,9 +10489,15 @@ class PageFleetSettings(QWidget):
         peer_sync_copy.addWidget(peer_sync_title)
         peer_sync_copy.addWidget(self.peer_sync_status)
         peer_sync_layout.addLayout(peer_sync_copy, 1)
-        self.peer_sync_authorize_button = btn("อนุญาต Secondary Sync 5 นาที", "outline")
+        self.peer_sync_mode = QComboBox()
+        self.peer_sync_mode.addItem("ปิด", "off")
+        self.peer_sync_mode.addItem("เปิด 5 นาที", "temporary")
+        self.peer_sync_mode.addItem("เปิดตลอด", "always")
+        self.peer_sync_mode.setAccessibleName("ระยะเวลาอนุญาต Secondary Sync")
+        peer_sync_layout.addWidget(self.peer_sync_mode)
+        self.peer_sync_authorize_button = btn("ใช้การตั้งค่า Sync", "outline")
         self.peer_sync_authorize_button.setAccessibleName(
-            "เปิดสิทธิ์ชั่วคราวให้เครื่อง Secondary ดึงการตั้งค่า"
+            "ใช้การตั้งค่าสิทธิ์ให้เครื่อง Secondary ดึงการตั้งค่า"
         )
         self.peer_sync_authorize_button.clicked.connect(self._authorize_peer_sync)
         peer_sync_layout.addWidget(self.peer_sync_authorize_button)
@@ -10625,6 +10661,7 @@ class PageFleetSettings(QWidget):
             control.valueChanged.connect(lambda _value, section="billing": self._mark_dirty(section))
         self.autostart.toggled.connect(lambda _checked: self._mark_dirty("autostart"))
         self.web_service_enabled.toggled.connect(lambda _checked: self._mark_dirty("web"))
+        self.web_port.valueChanged.connect(lambda _value: self._mark_dirty("web"))
         self.web_report_passwordless.toggled.connect(
             self.web_report_passwordless_warning.setVisible
         )
@@ -10891,6 +10928,7 @@ class PageFleetSettings(QWidget):
             self.waste,
             self.autostart,
             self.web_service_enabled,
+            self.web_port,
             self.web_report_passwordless,
         )
         for control in controls:
@@ -10909,6 +10947,9 @@ class PageFleetSettings(QWidget):
         )
         self._refresh_autostart_status(registration)
         self.web_service_enabled.setChecked(get_cfg("web_service_enabled", "1") != "0")
+        self.web_port.setValue(read_web_port(self.web_service.runtime_root / ".env.local"))
+        sync_status = pairing_window_status()
+        self.peer_sync_mode.setCurrentIndex(2 if sync_status.always_open else 1 if sync_status.open else 0)
         web_access = web_access_status(self.web_service.runtime_root / ".env.local")
         self.web_report_passwordless.setChecked(web_access.report_passwordless)
         for control in controls:
@@ -10942,7 +10983,11 @@ class PageFleetSettings(QWidget):
 
     def _authorize_peer_sync(self) -> None:
         try:
-            status = open_pairing_window(get_cfg("installation_id", ""))
+            mode = self.peer_sync_mode.currentData()
+            if mode == "off":
+                close_pairing_window()
+            else:
+                open_pairing_window(get_cfg("installation_id", ""), always_open=mode == "always")
         except PeerSyncAuthorizationError as error:
             QMessageBox.warning(
                 self,
@@ -10951,20 +10996,19 @@ class PageFleetSettings(QWidget):
             )
             self._refresh_peer_sync_status()
             return
-        self.peer_sync_status.setText(
-            tr(
-                f"เปิดสิทธิ์แล้ว {status.seconds_remaining // 60} นาที "
-                "· เครื่องแรกที่ขอ Sync จะใช้สิทธิ์ได้ครั้งเดียว",
-                f"Authorized for {status.seconds_remaining // 60} minutes "
-                "· the first Secondary may use it once",
-            )
-        )
-        self.peer_sync_status.setStyleSheet("color:#16875D;font-weight:700;")
+        self._refresh_peer_sync_status()
 
     def _refresh_peer_sync_status(self) -> None:
         if not hasattr(self, "peer_sync_status"):
             return
         status = pairing_window_status()
+        if status.always_open:
+            self.peer_sync_status.setText(tr(
+                "เปิดตลอด · จำค่าหลังเปิดโปรแกรมใหม่ · กดปิดเพื่อยกเลิกสิทธิ์",
+                "Always open · remembered after restart · switch off to revoke access",
+            ))
+            self.peer_sync_status.setStyleSheet("color:#16875D;font-weight:700;")
+            return
         if status.open:
             claimed = tr(" · มีเครื่องรับสิทธิ์แล้ว", " · claimed") if status.claimed else ""
             self.peer_sync_status.setText(
@@ -11755,9 +11799,22 @@ class PageFleetSettings(QWidget):
         web_enabled = self.web_service_enabled.isChecked()
         env_path = self.web_service.runtime_root / ".env.local"
         previous_access = web_access_status(env_path)
+        previous_port = read_web_port(env_path)
+        current = self.web_service.status()
+        try:
+            port = validate_web_port(self.web_port.value())
+            if port != previous_port:
+                if current.state == "external":
+                    raise ValueError("Web service เปิดจากโปรแกรมอื่น กรุณาปิดที่โปรแกรมนั้นก่อนเปลี่ยน Port")
+                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+                    probe.bind(("0.0.0.0", port))
+        except (ValueError, OSError) as error:
+            QMessageBox.warning(self, "เปลี่ยน Port ไม่ได้", f"Port ที่เลือกไม่พร้อมใช้งาน: {error}")
+            return
         passwordless = self.web_report_passwordless.isChecked()
         try:
             set_web_report_passwordless(env_path, passwordless)
+            update_web_runtime_values(env_path, {"KOMI_WEB_PORT": str(port)})
         except OSError as error:
             QMessageBox.warning(
                 self,
@@ -11766,8 +11823,7 @@ class PageFleetSettings(QWidget):
             )
             return
         set_cfg("web_service_enabled", "1" if web_enabled else "0")
-        access_changed = previous_access.report_passwordless != passwordless
-        current = self.web_service.status()
+        access_changed = previous_access.report_passwordless != passwordless or port != previous_port
         if web_enabled and access_changed and current.state in {
             "running",
             "starting",

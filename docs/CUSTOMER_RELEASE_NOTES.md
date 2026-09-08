@@ -71,3 +71,12 @@ schema version และ critical counts ตาม `RELEASE_SUPPORT_AND_RECOVERY
 ## Deferred
 
 Linux production, การซื้อ/สร้าง signing certificate และ Production Phase 3 Update อยู่นอก Release นี้.
+
+
+### V5.2.9 — LAN follow-up
+
+- การเปิด/ปิดรายงานโดยไม่ใช้รหัสมีผลกับ Web service ของตัวติดตั้งทันทีหลังบันทึก; หน้า Login เดิมกลับไปหน้ารายงานเมื่อเปิดโหมดนี้
+- ผู้ดูแลยังเข้าสู่ระบบผ่านปุ่ม “เข้าสู่ระบบผู้ดูแล” ได้
+- ตั้ง Port สำหรับ HTTPS Web Report ได้ (1024–65535 ยกเว้น3001/8766); ใช้ IP:Port เดียวกันที่เครื่องอื่น
+- Secondary เลือก Port ของ Primary ได้ทั้งค้นหาอัตโนมัติและระบุ IP
+- อนุญาต Secondary Sync ได้แบบปิด, เปิด5นาที หรือเปิดตลอดและจำค่าหลังเปิดโปรแกรมใหม่; การเปิดตลอดมีผลขณะที่โปรแกรมและ Web service ทำงาน

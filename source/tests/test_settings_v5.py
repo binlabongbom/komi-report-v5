@@ -106,10 +106,11 @@ class _WebServiceDouble:
         self.runtime_root = root / "web-runtime"
 
     def _status(self, state: str = "stopped") -> WebServiceStatus:
+        port = v5_pages.read_web_port(self.runtime_root / ".env.local")
         return WebServiceStatus(
             state=state,
-            local_url="http://127.0.0.1:3000",
-            lan_url="http://192.0.2.1:3000",
+            local_url=f"http://127.0.0.1:{port}",
+            lan_url=f"http://192.0.2.1:{port}",
             detail="test web service",
             log_path=self.log_path,
         )
@@ -886,3 +887,75 @@ def test_settings_opens_setup_without_a_nested_dialog_event_loop():
 
     assert "dialog.open()" in source
     assert ".exec(" not in source
+
+
+def test_web_custom_port_is_saved_restarted_and_restored(tmp_path, monkeypatch, fake_web_service):
+    import socket
+
+    app = QApplication.instance() or QApplication([])
+    original = _database(tmp_path)
+    try:
+        with socket.socket() as probe:
+            probe.bind(("127.0.0.1", 0))
+            port = probe.getsockname()[1]
+        fake_web_service.started = 1
+        page = PageFleetSettings()
+        page.web_port.setValue(port)
+        assert page.web_save_button.isEnabled()
+        page._save_web()
+        assert fake_web_service.restarted == 1
+        assert v5_pages.read_web_port(fake_web_service.runtime_root / ".env.local") == port
+        assert f":{port}" in page.web_service_url.text()
+        page.refresh_from_config(force=True)
+        assert page.web_port.value() == port
+        page.close()
+        app.processEvents()
+    finally:
+        database.set_db_path(original)
+
+
+def test_web_occupied_port_is_rejected_before_any_settings_change(tmp_path, monkeypatch, fake_web_service):
+    import socket
+
+    app = QApplication.instance() or QApplication([])
+    original = _database(tmp_path)
+    warnings = []
+    monkeypatch.setattr(v5_pages.QMessageBox, "warning", lambda *args: warnings.append(args[-1]))
+    try:
+        page = PageFleetSettings()
+        with socket.socket() as occupied:
+            occupied.bind(("0.0.0.0", 0))
+            occupied.listen()
+            page.web_port.setValue(occupied.getsockname()[1])
+            page.web_report_passwordless.setChecked(True)
+            page._save_web()
+        assert warnings
+        assert v5_pages.read_web_port(fake_web_service.runtime_root / ".env.local") == 3000
+        assert not v5_pages.web_access_status(fake_web_service.runtime_root / ".env.local").report_passwordless
+        assert fake_web_service.restarted == 0
+        page.close()
+        app.processEvents()
+    finally:
+        database.set_db_path(original)
+
+
+def test_secondary_always_open_selector_restores_and_can_revoke(tmp_path, monkeypatch):
+    app = QApplication.instance() or QApplication([])
+    original = _database(tmp_path)
+    monkeypatch.setenv("KOMI_PEER_SYNC_STATE_FILE", str(tmp_path / "peer.json"))
+    try:
+        database.set_cfg("installation_id", "test-primary")
+        page = PageFleetSettings()
+        page.peer_sync_mode.setCurrentIndex(2)
+        page.peer_sync_authorize_button.click()
+        assert v5_pages.pairing_window_status().always_open
+        assert "เปิดตลอด" in page.peer_sync_status.text()
+        page.refresh_from_config(force=True)
+        assert page.peer_sync_mode.currentData() == "always"
+        page.peer_sync_mode.setCurrentIndex(0)
+        page.peer_sync_authorize_button.click()
+        assert not v5_pages.pairing_window_status().open
+        page.close()
+        app.processEvents()
+    finally:
+        database.set_db_path(original)

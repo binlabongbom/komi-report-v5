@@ -93,3 +93,26 @@ test("peer setup routes remain capability-gated outside Web login", () => {
   assert.equal(proxySource.includes('path === "/api/v1/peer/setup-snapshot"'), true);
   assert.equal(proxySource.includes("X-KOMI-Peer-Sync-Token"), false);
 });
+
+test("passwordless proxy redirects stale login to reports while retaining explicit admin login", async () => {
+  const { NextRequest } = await import("next/server");
+  const { default: proxy } = await import("../proxy");
+  process.env.KOMI_WEB_REPORT_PASSWORDLESS = "1";
+  try {
+    const redirected = await proxy(new NextRequest("https://komi.local/login"));
+    assert.equal(redirected.headers.get("location"), "https://komi.local/");
+    const admin = await proxy(new NextRequest("https://komi.local/login?admin=1"));
+    assert.equal(admin.headers.get("location"), null);
+    const reports = await proxy(new NextRequest("https://komi.local/"));
+    assert.equal(reports.headers.get("location"), null);
+    const protectedApi = await proxy(new NextRequest("https://komi.local/api/settings"));
+    assert.equal(protectedApi.status, 401);
+    const write = await proxy(new NextRequest("https://komi.local/api/devices", { method: "POST" }));
+    assert.equal(write.status, 401);
+    process.env.KOMI_WEB_REPORT_PASSWORDLESS = "0";
+    const locked = await proxy(new NextRequest("https://komi.local/"));
+    assert.equal(locked.headers.get("location"), "https://komi.local/login");
+  } finally {
+    delete process.env.KOMI_WEB_REPORT_PASSWORDLESS;
+  }
+});
