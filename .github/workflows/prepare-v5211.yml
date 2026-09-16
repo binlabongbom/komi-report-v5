@@ -3,7 +3,7 @@ on:
   push:
     branches: [fix/v5.2.11-registration-errors]
     paths:
-      - tools/prepare_v5211.py
+      - tools/*v5211.py
       - source/**
       - .github/workflows/prepare-v5211.yml
 permissions:
@@ -34,11 +34,16 @@ jobs:
       - name: Apply guarded source changes and version gate
         run: |
           $ErrorActionPreference = 'Stop'
+          git config core.autocrlf false
+          git checkout-index -a -f
+          if ($LASTEXITCODE -ne 0) { throw 'Byte-exact checkout failed' }
           "KOMI_PEER_SYNC_STATE_FILE=$env:RUNNER_TEMP/komi-v5211-peer-state.json" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
           if (-not (Test-Path 'source/services/build_edition.py')) {
             python tools/prepare_v5211.py
-            if ($LASTEXITCODE -ne 0) { throw 'Source preparation failed; no unvalidated patch will be committed' }
+            if ($LASTEXITCODE -ne 0) { throw 'Source preparation failed' }
           }
+          python tools/finalize_v5211.py
+          if ($LASTEXITCODE -ne 0) { throw 'Follow-up preparation failed' }
           python source/tools/version_gate.py
           if ($LASTEXITCODE -ne 0) { throw 'Version alignment failed' }
           python -m compileall -q source
@@ -48,7 +53,7 @@ jobs:
           git add source docs packaging/windows/KOMI_Report_V5.iss web/package.json web/package-lock.json
           git diff --cached --quiet
           if ($LASTEXITCODE -ne 0) {
-            git commit -m 'fix: apply v5.2.11 registration, peer defaults and offline edition'
+            git commit -m 'fix: finalize v5.2.11 async retry and edition-switch activation'
             if ($LASTEXITCODE -ne 0) { throw 'Candidate commit failed' }
             git push origin HEAD:fix/v5.2.11-registration-errors
             if ($LASTEXITCODE -ne 0) { throw 'Branch changed concurrently; refusing to overwrite' }
@@ -58,7 +63,7 @@ jobs:
         run: |
           python -m pip install --disable-pip-version-check --require-hashes --only-binary=:all: -r source/requirements-windows-x64.lock.txt
           if ($LASTEXITCODE -ne 0) { throw 'Locked dependency installation failed' }
-          python -m pip install --disable-pip-version-check pytest httpx2==2.12.0
+          python -m pip install --disable-pip-version-check pytest==9.1.1 httpx2==2.12.0
           if ($LASTEXITCODE -ne 0) { throw 'Test dependency installation failed' }
       - name: Run candidate and regression tests in isolated processes
         run: |
@@ -94,10 +99,12 @@ jobs:
           paths = sorted(allowed.intersection(changed))
           patch = subprocess.check_output(['git','diff','--binary','--full-index',base,'HEAD','--',*paths])
           compressed = gzip.compress(patch, mtime=0)
+          identity_gz = gzip.compress(identity_bytes, mtime=0)
           (out/'source-delta.patch.gz.b64').write_text(base64.b64encode(compressed).decode('ascii'), encoding='ascii')
+          (out/'source-identity.json.gz.b64').write_text(base64.b64encode(identity_gz).decode('ascii'), encoding='ascii')
           (out/'SOURCE_ARCHIVE_IDENTITY.json').write_bytes(identity_bytes)
           (out/'SOURCE_COMMIT.txt').write_text(identity['git_commit']+'\n', encoding='ascii')
-          (out/'SOURCE_VALIDATION.json').write_text(json.dumps({'version':'5.2.11','source_commit':identity['git_commit'],'tests_passed':True,'base_commit':base,'base_asset_id':549774280,'base_archive_sha256':'ca07302283dbdc260b33858902a798ab0805f7d59338cad969b0ebb336358805','delta_sha256':hashlib.sha256(patch).hexdigest(),'delta_gzip_sha256':hashlib.sha256(compressed).hexdigest(),'source_archive_sha256':hashlib.sha256(archive.read_bytes()).hexdigest(),'production_go':False}, indent=2), encoding='utf-8')
+          (out/'SOURCE_VALIDATION.json').write_text(json.dumps({'version':'5.2.11','source_commit':identity['git_commit'],'tests_passed':True,'base_commit':base,'base_asset_id':549774280,'base_archive_sha256':'ca07302283dbdc260b33858902a798ab0805f7d59338cad969b0ebb336358805','delta_sha256':hashlib.sha256(patch).hexdigest(),'delta_gzip_sha256':hashlib.sha256(compressed).hexdigest(),'identity_gzip_sha256':hashlib.sha256(identity_gz).hexdigest(),'source_archive_sha256':hashlib.sha256(archive.read_bytes()).hexdigest(),'production_go':False}, indent=2), encoding='utf-8')
           print('SOURCE_VALIDATED', identity['git_commit'], 'delta_bytes', len(compressed))
           '@ | python -
           if ($LASTEXITCODE -ne 0) { throw 'Build Center delta export failed' }
