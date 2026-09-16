@@ -20,7 +20,6 @@ jobs:
       PYTHONDONTWRITEBYTECODE: '1'
       PYTHONUTF8: '1'
       QT_QPA_PLATFORM: offscreen
-      KOMI_PEER_SYNC_STATE_FILE: ${{ runner.temp }}/komi-v5211-peer-state.json
     defaults:
       run:
         shell: pwsh
@@ -35,6 +34,7 @@ jobs:
       - name: Apply guarded source changes and version gate
         run: |
           $ErrorActionPreference = 'Stop'
+          "KOMI_PEER_SYNC_STATE_FILE=$env:RUNNER_TEMP/komi-v5211-peer-state.json" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
           if (-not (Test-Path 'source/services/build_edition.py')) {
             python tools/prepare_v5211.py
             if ($LASTEXITCODE -ne 0) { throw 'Source preparation failed; no unvalidated patch will be committed' }
