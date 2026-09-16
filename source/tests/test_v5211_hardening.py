@@ -33,7 +33,7 @@ from services.v5_2_runtime_state import V52RuntimeStateRepository
     (ssl.SSLCertVerificationError(1, "private certificate"), "tls_certificate_error"),
     (URLError(ssl.SSLCertVerificationError(1, "private certificate")), "tls_certificate_error"),
     (ssl.SSLError(1, "private TLS data"), "tls_error"),
-    (URLError("https://user:password@private-host"), "offline"),
+    (URLError("untyped transport error containing synthetic private data"), "offline"),
 ])
 def test_typed_network_classification_without_leaking_errors(error, code):
     assert classify_network_error(error) == code
