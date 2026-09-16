@@ -370,7 +370,8 @@ def test_release_versions_are_aligned_to_5_2_5():
     assert web_lock["version"] == expected
     assert web_lock["packages"][""]["version"] == expected
     assert f'CFBundleShortVersionString": "{expected}"' in spec_text
-    assert 'CFBundleVersion": "50210"' in spec_text
+    major, minor, patch = map(int, expected.split("."))
+    assert f'CFBundleVersion": "{major * 10000 + minor * 100 + patch}"' in spec_text
     assert "KOMI Report V5.1.app" not in spec_text
 
 

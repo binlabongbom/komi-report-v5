@@ -492,6 +492,11 @@ class V52RuntimeCoordinator(QObject):
         super().__init__(parent)
         self.clock = clock or (lambda: datetime.now(UTC))
         self.state_repository = state_repository or V52RuntimeStateRepository()
+        if is_offline_edition():
+            with registration_state_lock:
+                previous = self.state_repository.internal()
+                if previous is not None and previous["mode"] != "offline":
+                    self.state_repository.set_mode("offline", now=self.clock())
         self.outbox = outbox or V52OutboxRepository()
         self.vault = vault or _LazyPlatformVault()
         self.device_repository = device_repository or DeviceConfigRepository()
@@ -614,6 +619,10 @@ class V52RuntimeCoordinator(QObject):
     def usage_eligibility(self) -> tuple[bool, str]:
         """Fail closed unless Registration or Offline License is usable now."""
 
+        if is_offline_edition():
+            state = self.state_repository.internal()
+            if state is None or state["mode"] != "offline":
+                return False, "offline_license_required"
         eligible, reason = self.state_repository.usage_eligibility(now=self.clock())
         if not eligible:
             return eligible, reason

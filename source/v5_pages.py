@@ -4127,7 +4127,10 @@ class SetupWizardV5(QDialog):
             self._show_registration_failure("client_not_configured")
             return
         try:
-            runtime.set_mode("online")
+            # Do not acquire the send lock or reset lifecycle while an Online
+            # request is already running; observe its eventual result instead.
+            if runtime.snapshot().get("mode") != "online":
+                runtime.set_mode("online")
             runtime.configuration_changed()
         except Exception:
             self._show_registration_failure("contract_invalid")
