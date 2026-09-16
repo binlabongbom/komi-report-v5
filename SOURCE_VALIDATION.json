@@ -1,0 +1,13 @@
+{
+  "version": "5.2.11",
+  "source_commit": "dd39b66661f5253f3933457af1891ccb37bde3e7",
+  "tests_passed": true,
+  "base_commit": "d08fc0b1841323c2aedc3a86acb145a66fe3f64c",
+  "base_asset_id": 549774280,
+  "base_archive_sha256": "ca07302283dbdc260b33858902a798ab0805f7d59338cad969b0ebb336358805",
+  "delta_sha256": "05f02faa5eb842034925754d991ba3d0f03b592e0a6c71d7a55e9d6852d5b9ef",
+  "delta_gzip_sha256": "188f9e805631cfb5fd03df152cef3dc7d6262b63e795e5508c6d64657b0f1d63",
+  "identity_gzip_sha256": "fed2d65565da53f262db88c04580124fa0ecdd776bed7b5eead983bdd17b57bc",
+  "source_archive_sha256": "1d4b5b8a5bab5d3643a808ec97ffabd8acb19de5a230adfcbe5efaeab23b5ef7",
+  "production_go": false
+}
