@@ -10,7 +10,7 @@ permissions:
   contents: write
 concurrency:
   group: komi-v5211-prepare
-  cancel-in-progress: false
+  cancel-in-progress: true
 jobs:
   validate:
     runs-on: windows-latest
@@ -78,42 +78,12 @@ jobs:
           if ($failed.Count -gt 0) { throw ('Regression failure: ' + ($failed -join ', ')) }
       - name: Export exact source and compact Build Center delta
         run: |
-          $ErrorActionPreference = 'Stop'
-          python source/tools/build_local_release.py
-          if ($LASTEXITCODE -ne 0) { throw 'Reproducible source export failed' }
-          $out = Join-Path $env:RUNNER_TEMP 'v5211-evidence'
-          $env:KOMI_EVIDENCE = $out
-          @'
-          import base64, gzip, hashlib, json, os, subprocess, zipfile
-          from pathlib import Path
-          root = Path.cwd()
-          out = Path(os.environ['KOMI_EVIDENCE'])
-          archive = root / 'release' / 'KOMI_Report_V5_2_11_Source.zip'
-          with zipfile.ZipFile(archive) as z:
-              identity_bytes = z.read('SOURCE_ARCHIVE_IDENTITY.json')
-              identity = json.loads(identity_bytes)
-          assert identity['git_commit'] == os.environ['SOURCE_COMMIT']
-          allowed = {row['path'] for row in identity['files']}
-          base = 'd08fc0b1841323c2aedc3a86acb145a66fe3f64c'
-          changed = subprocess.check_output(['git','diff','--name-only',base,'HEAD'], text=True).splitlines()
-          paths = sorted(allowed.intersection(changed))
-          patch = subprocess.check_output(['git','diff','--binary','--full-index',base,'HEAD','--',*paths])
-          compressed = gzip.compress(patch, mtime=0)
-          identity_gz = gzip.compress(identity_bytes, mtime=0)
-          (out/'source-delta.patch.gz.b64').write_text(base64.b64encode(compressed).decode('ascii'), encoding='ascii')
-          (out/'source-identity.json.gz.b64').write_text(base64.b64encode(identity_gz).decode('ascii'), encoding='ascii')
-          (out/'SOURCE_ARCHIVE_IDENTITY.json').write_bytes(identity_bytes)
-          (out/'SOURCE_COMMIT.txt').write_text(identity['git_commit']+'\n', encoding='ascii')
-          (out/'SOURCE_VALIDATION.json').write_text(json.dumps({'version':'5.2.11','source_commit':identity['git_commit'],'tests_passed':True,'base_commit':base,'base_asset_id':549774280,'base_archive_sha256':'ca07302283dbdc260b33858902a798ab0805f7d59338cad969b0ebb336358805','delta_sha256':hashlib.sha256(patch).hexdigest(),'delta_gzip_sha256':hashlib.sha256(compressed).hexdigest(),'identity_gzip_sha256':hashlib.sha256(identity_gz).hexdigest(),'source_archive_sha256':hashlib.sha256(archive.read_bytes()).hexdigest(),'production_go':False}, indent=2), encoding='utf-8')
-          print('SOURCE_VALIDATED', identity['git_commit'], 'delta_bytes', len(compressed))
-          '@ | python -
-          if ($LASTEXITCODE -ne 0) { throw 'Build Center delta export failed' }
+          python tools/export_v5211.py
+          if ($LASTEXITCODE -ne 0) { throw 'Verified source export failed' }
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: KOMI-v5.2.11-source-validation
           retention-days: 14
           if-no-files-found: warn
-          path: |
-            ${{ runner.temp }}/v5211-evidence/*
-            release/KOMI_Report_V5_2_11_Source.zip
+          path: ${{ runner.temp }}/v5211-evidence/*
