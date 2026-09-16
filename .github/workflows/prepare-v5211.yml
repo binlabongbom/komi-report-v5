@@ -53,7 +53,7 @@ jobs:
           git add source docs packaging/windows/KOMI_Report_V5.iss web/package.json web/package-lock.json
           git diff --cached --quiet
           if ($LASTEXITCODE -ne 0) {
-            git commit -m 'fix: finalize v5.2.11 async retry and edition-switch activation'
+            git commit -m 'test: align setup expectations with v5.2.11 version authority'
             if ($LASTEXITCODE -ne 0) { throw 'Candidate commit failed' }
             git push origin HEAD:fix/v5.2.11-registration-errors
             if ($LASTEXITCODE -ne 0) { throw 'Branch changed concurrently; refusing to overwrite' }
@@ -71,15 +71,52 @@ jobs:
           $out = Join-Path $env:RUNNER_TEMP 'v5211-evidence'
           New-Item -ItemType Directory -Force $out | Out-Null
           $failed = @()
-          foreach ($name in @('test_v5211_hardening','test_peer_sync_authorization','test_secondary_setup','test_v5_2_version_authority','test_offline_license_keys','test_web_service','test_web_api','test_release_builder')) {
+          foreach ($name in @('test_v5211_hardening','test_peer_sync_authorization','test_secondary_setup','test_v5_2_version_authority','test_offline_license_keys','test_web_service','test_web_api','test_release_builder','test_v5_2_runtime','test_v5_2_outbox','test_v5_2_contract','test_v5_2_legacy_transport_gate','test_v5_2_local_contract_e2e','test_offline_license_v52','test_report_snapshot','test_startup_sync','test_app_setup','test_setup_wizard_v5')) {
             python -m pytest -q ("source/tests/$name.py") ("--junitxml=$out/$name.xml")
             if ($LASTEXITCODE -ne 0) { $failed += $name }
           }
           if ($failed.Count -gt 0) { throw ('Regression failure: ' + ($failed -join ', ')) }
-      - name: Export exact source and compact Build Center delta
+      - name: Export and stage exact verified source
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           python tools/export_v5211.py
           if ($LASTEXITCODE -ne 0) { throw 'Verified source export failed' }
+          @'
+          import base64, hashlib, json, os, urllib.request, urllib.error
+          from pathlib import Path
+          root = Path(os.environ['RUNNER_TEMP']) / 'v5211-evidence'
+          path = root / 'SOURCE_VALIDATION.json'
+          metadata = json.loads(path.read_text())
+          archive = (root/'KOMI_Report_V5_2_11_Source.zip').read_bytes()
+          assert metadata['tests_passed'] is True and metadata['source_commit'] == os.environ['SOURCE_COMMIT']
+          assert hashlib.sha256(archive).hexdigest() == metadata['source_archive_sha256']
+          api = 'https://api.github.com/repos/binlabongbom/komi-report-v5'
+          def request(endpoint, data=None):
+              raw = None if data is None else json.dumps(data).encode()
+              req = urllib.request.Request(api+endpoint, data=raw, headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Content-Type':'application/json','Accept':'application/vnd.github+json','User-Agent':'KOMI-source-handoff'})
+              with urllib.request.urlopen(req, timeout=120) as response:
+                  return json.load(response)
+          blob = request('/git/blobs', {'encoding':'base64','content':base64.b64encode(archive).decode('ascii')})
+          branch = 'transfer/v5.2.11-source-' + metadata['source_commit'][:12]
+          try:
+              existing = request('/git/ref/heads/' + branch)
+          except urllib.error.HTTPError as exc:
+              if exc.code != 404: raise
+              existing = None
+          if existing is not None:
+              old_commit = request('/git/commits/' + existing['object']['sha'])
+              old_tree = request('/git/trees/' + old_commit['tree']['sha'])
+              assert any(row['path'] == 'KOMI_Report_V5_2_11_Source.zip' and row['sha'] == blob['sha'] for row in old_tree['tree'])
+          else:
+              tree = request('/git/trees', {'tree':[{'path':'KOMI_Report_V5_2_11_Source.zip','mode':'100644','type':'blob','sha':blob['sha']},{'path':'SOURCE_VALIDATION.json','mode':'100644','type':'blob','content':json.dumps(metadata,indent=2)+'\n'}]})
+              staged = request('/git/commits', {'message':'build: private validated source '+metadata['source_commit'],'tree':tree['sha'],'parents':[]})
+              request('/git/refs', {'ref':'refs/heads/'+branch,'sha':staged['sha']})
+          metadata['handoff_ref'] = branch
+          path.write_text(json.dumps(metadata, indent=2)+'\n', encoding='utf-8')
+          print('PRIVATE_SOURCE_STAGED', branch, metadata['source_archive_sha256'])
+          '@ | python -
+          if ($LASTEXITCODE -ne 0) { throw 'Private source staging failed' }
       - uses: actions/upload-artifact@v4
         if: always()
         with:
