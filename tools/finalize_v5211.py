@@ -24,6 +24,15 @@ def main() -> None:
          '''    assert 'CFBundleVersion": "50210"' in spec_text''',
          '''    major, minor, patch = map(int, expected.split("."))
     assert f'CFBundleVersion": "{major * 10000 + minor * 100 + patch}"' in spec_text''')
+    edit('source/tests/test_setup_wizard_v5.py',
+         'import database\nimport v5_pages',
+         'import database\nfrom komi_version import APP_VERSION\nimport v5_pages')
+    edit('source/tests/test_setup_wizard_v5.py',
+         'assert wizard.version_input.text() == "5.2.10"',
+         'assert wizard.version_input.text() == APP_VERSION')
+    edit('source/tests/test_setup_wizard_v5.py',
+         'assert "Version 5.2.10" in registration_review',
+         'assert f"Version {APP_VERSION}" in registration_review')
     edit('source/v5_pages.py',
          '''        try:
             runtime.set_mode("online")
