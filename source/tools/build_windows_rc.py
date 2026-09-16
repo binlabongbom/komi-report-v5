@@ -527,8 +527,13 @@ def compile_installer(
     source_commit: str,
     iscc: Path,
     customer_release: bool = False,
+    edition: str = "normal",
 ) -> Path:
+    if edition not in {"normal", "offline"}:
+        raise ReleaseContractError("Invalid installer edition")
     installer_name = CUSTOMER_INSTALLER_NAME if customer_release else INSTALLER_NAME
+    if edition == "offline":
+        installer_name = installer_name.replace("_Windows_x64_", "_Windows_x64_Offline_")
     output_base = installer_name.removesuffix(".exe")
     description = (
         f"KOMI Report V{VERSION} Customer Release Package"
@@ -601,6 +606,7 @@ def source_state_is_clean(source_state: str) -> bool:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=f"Build KOMI Report V{VERSION} Windows x64 RC")
+    parser.add_argument("--edition", choices=("normal", "offline"), default="normal")
     parser.add_argument("--output", type=Path, default=RELEASE_ROOT)
     parser.add_argument("--iscc", type=Path)
     parser.add_argument("--virtualized", action="store_true")
@@ -646,12 +652,18 @@ def main() -> int:
         customer_release=args.customer_release,
         build_evidence=environment,
     )
+    edition_path = payload_root / "source" / "services" / "build_edition.py"
+    edition_text = edition_path.read_text(encoding="utf-8")
+    if edition_text.count('BUILD_EDITION = "normal"') != 1:
+        raise ReleaseContractError("Unexpected staged build-edition authority")
+    edition_path.write_text(edition_text.replace('BUILD_EDITION = "normal"', f'BUILD_EDITION = "{args.edition}"'), encoding="utf-8")
     installer = compile_installer(
         payload_root=payload_root,
         output_root=output_root,
         source_commit=commit,
         iscc=find_iscc(args.iscc),
         customer_release=args.customer_release,
+        edition=args.edition,
     )
     signing = authenticode_status(installer)
     manifest_name = "WINDOWS_MANIFEST.json" if args.customer_release else "RC_MANIFEST.json"
@@ -675,6 +687,9 @@ def main() -> int:
         manifest_name=manifest_name,
         registration_runtime="schema3-ed25519-public-client-no-shared-bootstrap",
     )
+    manifest["edition"] = args.edition
+    manifest["external_host_traffic"] = "disabled" if args.edition == "offline" else "registration-status-meter"
+    manifest["offline_activation"] = "host-signed-license-required"
     manifest["release_profile"] = "customer-production-behavior" if args.customer_release else "rc"
     manifest.update(runtime_evidence)
     manifest["joint_staging_e2e"] = joint_e2e

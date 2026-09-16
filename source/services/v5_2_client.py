@@ -7,6 +7,10 @@ shared bootstrap or master credential exists in this client.
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime
+from email.utils import parsedate_to_datetime
+from services.build_edition import is_offline_edition
+from services.registration_errors import RegistrationNetworkError, classify_network_error
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Literal, Protocol
@@ -61,7 +65,7 @@ class V52Transport(Protocol):
     ) -> V52TransportResponse: ...
 
 
-class V52NetworkError(RuntimeError):
+class V52NetworkError(RegistrationNetworkError):
     pass
 
 
@@ -86,7 +90,7 @@ class UrllibV52Transport:
             with self._opener.open(request, timeout=timeout) as response:  # noqa: S310
                 response_body = response.read(MAX_RESPONSE_BYTES + 1)
                 if len(response_body) > MAX_RESPONSE_BYTES:
-                    raise V52NetworkError("V5.2 response exceeds size limit")
+                    raise V52NetworkError("response_too_large")
                 return V52TransportResponse(
                     status=int(response.status),
                     headers=dict(response.headers.items()),
@@ -100,7 +104,7 @@ class UrllibV52Transport:
                 body=response_body if len(response_body) <= MAX_RESPONSE_BYTES else b"",
             )
         except (OSError, TimeoutError, URLError) as err:
-            raise V52NetworkError("V5.2 network request failed") from err
+            raise V52NetworkError(classify_network_error(err)) from None
 
 
 @dataclass(frozen=True)
@@ -133,6 +137,8 @@ class V52ContractClient:
         *,
         installation_token: str | None = None,
     ) -> V52ClientResult:
+        if is_offline_edition():
+            return self._failure("offline_edition", retryable=False)
         if request_fingerprint(operation.payload) != operation.request_fingerprint:
             return self._failure("request_fingerprint_mismatch", retryable=False)
         headers = {
@@ -156,8 +162,9 @@ class V52ContractClient:
                 ).encode("utf-8"),
                 timeout=self.config.timeout_seconds,
             )
-        except V52NetworkError:
-            return self._failure("offline", retryable=True)
+        except V52NetworkError as err:
+            return self._failure(err.code, retryable=err.retryable,
+                                 retry_after_seconds=300 if err.code.startswith("tls_") else None)
         payload = self._json(response.body)
         if not 200 <= response.status < 300:
             return self._error_response(response, payload)
@@ -247,6 +254,9 @@ class V52ContractClient:
         error = payload.get("error")
         error_payload = error if isinstance(error, Mapping) else {}
         code = str(error_payload.get("code") or "http_error").strip().lower()
+        if code == "http_error":
+            code = ({407: "proxy_auth_required", 429: "rate_limited"}.get(response.status)
+                    or ("host_redirect" if 300 <= response.status < 400 else "host_unavailable" if response.status >= 500 else "http_error"))
         declared = error_payload.get("retryable")
         retryable = (
             declared
@@ -270,7 +280,13 @@ class V52ContractClient:
                 try:
                     return max(0, int(str(value).strip()))
                 except ValueError:
-                    return None
+                    try:
+                        deadline = parsedate_to_datetime(str(value))
+                        if deadline.tzinfo is None:
+                            deadline = deadline.replace(tzinfo=UTC)
+                        return max(0, int((deadline - datetime.now(UTC)).total_seconds()))
+                    except (ValueError, TypeError, OverflowError):
+                        return None
         return None
 
     @staticmethod

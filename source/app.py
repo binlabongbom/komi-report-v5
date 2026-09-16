@@ -189,6 +189,8 @@ from services.offline_license_keys import (
     OfflineLicensePublicKeyConfigurationError,
     load_offline_license_public_keys,
 )
+from services.build_edition import is_offline_edition
+from services.peer_sync_authorization import ensure_pairing_default, PeerSyncAuthorizationError
 from services.v5_2_client import V52ContractClient, V52RuntimeConfig
 from services.v5_2_runtime import V52RuntimeCoordinator
 from services.web_service import web_service_manager
@@ -410,7 +412,7 @@ class MainWindow(QMainWindow):
                     base_url="https://www.dmskm.com",
                     environment="production",
                 )
-            ),
+            ) if not is_offline_edition() else None,
             parent=self,
         )
         try:
@@ -831,6 +833,11 @@ class MainWindow(QMainWindow):
         self.registration.configuration_changed()
         self.polling.start()
         if get_cfg("web_service_enabled", "1") != "0":
+            try:
+                ensure_pairing_default(get_cfg("installation_id", ""),
+                                       primary=get_cfg("desktop_role", "primary") != "secondary")
+            except PeerSyncAuthorizationError:
+                log.warning("Peer Sync authorization requires local administrator review")
             status = self.web_service.start()
             log.info("web service start requested: %s (%s)", status.state, status.detail)
 

@@ -146,7 +146,8 @@ def open_pairing_window(
         _write_state(
             path,
             {
-                "schema": 1,
+                "schema": 2,
+                "disabled": False,
                 "always_open": bool(always_open),
                 "claims": {},
                 "window_expires_at": current + ttl,
@@ -163,7 +164,10 @@ def open_pairing_window(
 def close_pairing_window() -> None:
     path = state_path()
     with _state_lock(path):
-        path.unlink(missing_ok=True)
+        previous = _read_state(path)
+        _write_state(path, {"schema": 2, "disabled": True, "always_open": False,
+                            "installation_id": previous.get("installation_id", ""),
+                            "claims": {}, "used": True, "window_expires_at": 0.0})
 
 
 def pairing_window_status(*, now: float | None = None) -> PairingWindowStatus:
@@ -288,3 +292,37 @@ def consume_pairing_token(
         payload["token_sha256"] = ""
         payload["token_expires_at"] = 0.0
         _write_state(path, payload)
+
+def ensure_pairing_default(installation_id: str, *, primary: bool = True, now: float | None = None) -> bool:
+    """Migrate a Primary to persistent approval once; preserve explicit choices.
+
+    Legacy 'off' was represented by no file, so it cannot be distinguished from
+    a never-configured default. Schema 2 persists an explicit disabled state.
+    Never replace live claims on an ordinary restart.
+    """
+    if not primary:
+        return False
+    identity = str(installation_id or "").strip()
+    if not identity:
+        return False
+    path = state_path()
+    current = float(time.time() if now is None else now)
+    with _state_lock(path):
+        payload = _read_state(path)
+        if path.exists() and not payload:
+            raise PeerSyncAuthorizationError("สถานะ Peer Sync เสียหาย กรุณาตั้งค่าใหม่โดยผู้ดูแล")
+        if payload.get("schema") == 2 and payload.get("installation_id") == identity:
+            return False
+        if payload.get("schema") == 2:
+            disabled = bool(payload.get("disabled"))
+            always = bool(payload.get("always_open")) and not disabled
+        else:
+            disabled, always = False, True
+        _write_state(path, {
+            "schema": 2, "disabled": disabled, "always_open": always,
+            "claims": {}, "window_expires_at": 0.0,
+            "installation_id": identity, "requester_ip": "", "token_sha256": "",
+            "token_expires_at": 0.0, "used": False,
+            "default_migrated_at": current,
+        })
+    return True

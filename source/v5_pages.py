@@ -194,6 +194,8 @@ from services.usage import (
     default_usage_groups,
     latest_counters,
 )
+from services.build_edition import is_offline_edition
+from services.registration_errors import error_message, safe_support_code
 from services.v5_2_runtime_state import V52RuntimeStateRepository
 from services.web_access import (
     MIN_ACCESS_CODE_LENGTH,
@@ -212,7 +214,7 @@ from widgets import FrozenLeftTable, VisibleCheckBox, btn, fnt
 
 # Temporarily hide every customer entry point for Offline Activation while
 # retaining the implementation for a later release.
-OFFLINE_ACTIVATION_ENABLED = False
+OFFLINE_ACTIVATION_ENABLED = is_offline_edition()
 
 
 def CloudReportsExportData(*args, **kwargs):
@@ -3946,7 +3948,7 @@ class SetupWizardV5(QDialog):
             registration_mode = (
                 str(existing_registration_state["mode"])
                 if existing_registration_state is not None
-                else "online"
+                else ("offline" if is_offline_edition() else "online")
             )
             if registration_mode not in {"online", "offline"}:
                 raise ValueError("สถานะ Registration เดิมไม่ถูกต้อง")
@@ -4054,7 +4056,10 @@ class SetupWizardV5(QDialog):
                 dialog.open()
             self._show_registration_failure("contract_invalid")
             return
-        self._start_online_registration()
+        if is_offline_edition():
+            self._open_offline_registration()
+        else:
+            self._start_online_registration()
 
     def _registration_dialog_ui(self) -> QDialog:
         if self._registration_dialog is not None:
@@ -4098,6 +4103,9 @@ class SetupWizardV5(QDialog):
         return dialog
 
     def _start_online_registration(self) -> None:
+        if is_offline_edition():
+            self._open_offline_registration()
+            return
         if self._registration_in_progress:
             return
         self._registration_in_progress = True
@@ -4135,11 +4143,18 @@ class SetupWizardV5(QDialog):
         self._poll_registration_result()
 
     def _poll_registration_result(self) -> None:
+        if not self._registration_in_progress:
+            return
         runtime = self.registration_runtime
         if runtime is None:
             self._show_registration_failure("client_not_configured")
             return
         snapshot = runtime.snapshot()
+        # Wait for the active attempt, not stale status left by a previous one.
+        if snapshot.get("request_in_progress"):
+            if self._registration_deadline and datetime.now().astimezone() >= self._registration_deadline:
+                self.registration_result_copy.setText(tr(*error_message("registration_pending")))
+            return
         status = str(snapshot.get("status") or "")
         if status == "registered":
             self._registration_succeeded()
@@ -4148,7 +4163,9 @@ class SetupWizardV5(QDialog):
             self._show_registration_failure(str(snapshot.get("support_code") or status))
             return
         if self._registration_deadline and datetime.now().astimezone() >= self._registration_deadline:
-            self._show_registration_failure(str(snapshot.get("support_code") or "offline"))
+            # The UI deadline is not a network diagnosis. Keep observing so a
+            # late success updates this same dialog; Cancel remains available.
+            self.registration_result_copy.setText(tr(*error_message("registration_pending")))
 
     def _registration_succeeded(self) -> None:
         if self._registration_poll_timer is not None:
@@ -4178,22 +4195,11 @@ class SetupWizardV5(QDialog):
         self._registration_in_progress = False
         self.next_button.setEnabled(True)
         self.registration_progress.setVisible(False)
-        messages = {
-            "offline": tr("ไม่สามารถเชื่อมต่ออินเทอร์เน็ตหรือ Host ได้", "Internet or Host connection is unavailable."),
-            "client_not_configured": tr("ยังไม่ได้ตั้งค่าการเชื่อมต่อ Host", "The Host connection is not configured."),
-            "validation_error": tr("Host ไม่รับข้อมูลการลงทะเบียนชุดนี้", "The Host rejected this registration data."),
-            "contract_invalid": tr("รูปแบบข้อมูลตอบกลับจาก Host ไม่ถูกต้อง", "The Host response contract is invalid."),
-            "vault_unavailable": tr("ไม่สามารถเก็บข้อมูลลงทะเบียนอย่างปลอดภัยได้", "Secure registration storage is unavailable."),
-        }
-        message = messages.get(code, tr("ลงทะเบียนออนไลน์ไม่สำเร็จ", "Online Registration failed."))
+        safe = safe_support_code(code)
         self.registration_result_copy.setStyleSheet(f"color:{C_RED};font-weight:700;")
         self.registration_result_copy.setText(
-            message
-            + "\n"
-            + tr(
-                "ตรวจสอบอินเทอร์เน็ตแล้วกดลองอีกครั้ง หรือกดยกเลิกเพื่อกลับไปตรวจสอบการตั้งค่า",
-                "Check the internet connection and retry, or cancel to review the setup.",
-            )
+            tr(*error_message(safe)) + "\nSupport Code: " + safe
+            + "\n" + tr("การตั้งค่าถูกเก็บไว้แล้ว กดยกเลิกเพื่อกลับไปตรวจสอบ", "Your setup is saved. Cancel to review it.")
         )
         self.registration_retry_button.setVisible(True)
         self.registration_offline_button.setVisible(OFFLINE_ACTIVATION_ENABLED)
@@ -4221,6 +4227,7 @@ class SetupWizardV5(QDialog):
         if not OFFLINE_ACTIVATION_ENABLED:
             return
         runtime = self._registration_service()
+        runtime.set_mode("offline")
         dialog = QDialog(self)
         dialog.setWindowTitle(tr("ลงทะเบียน Offline", "Offline Registration"))
         dialog.setMinimumWidth(560)

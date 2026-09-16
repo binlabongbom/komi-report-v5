@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import random
+from services.build_edition import is_offline_edition
+from services.registration_errors import SUPPORT_CODES
 from collections.abc import Callable, Mapping
 from concurrent.futures import Future, ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
@@ -300,6 +302,9 @@ class V52RuntimeProcessor:
                 return
         existing_token = self._token(state)
         request_token = None if operation.event_type == "register" else existing_token
+        if is_offline_edition():
+            self.outbox.cancel_unsent(now=self.clock())
+            return
         result = self.client.send(operation, installation_token=request_token)
         if result.success:
             if operation.event_type == "register":
@@ -458,6 +463,7 @@ class V52RuntimeProcessor:
             "revoked",
             "validation_error",
         }
+        allowed.update(SUPPORT_CODES)
         candidate = value.strip().lower()
         if candidate in allowed:
             return candidate
@@ -491,7 +497,7 @@ class V52RuntimeCoordinator(QObject):
         self.device_repository = device_repository or DeviceConfigRepository()
         self.adapter = adapter or DraftV1SigningAdapter()
         self.processor = V52RuntimeProcessor(
-            client=client,
+            client=None if is_offline_edition() else client,
             state_repository=self.state_repository,
             outbox=self.outbox,
             vault=self.vault,
@@ -508,6 +514,9 @@ class V52RuntimeCoordinator(QObject):
         self._work_finished.connect(self._after_work)
 
     def start(self) -> None:
+        state = self.state_repository.internal()
+        if is_offline_edition() and state is not None and state["mode"] != "offline":
+            self.set_mode("offline")
         self.processor.recover_after_restart()
         if self.snapshot().get("mode") != "online":
             self.timer.stop()
@@ -577,6 +586,8 @@ class V52RuntimeCoordinator(QObject):
         return changed
 
     def set_mode(self, mode: V52Mode) -> None:
+        if is_offline_edition() and mode != "offline":
+            raise ValueError("Offline edition requires Offline License activation")
         with registration_state_lock:
             self.state_repository.set_mode(mode, now=self.clock())
             if mode == "offline":
@@ -596,7 +607,9 @@ class V52RuntimeCoordinator(QObject):
         self.retry_now()
 
     def snapshot(self) -> dict[str, object]:
-        return self.state_repository.snapshot(now=self.clock())
+        snapshot = self.state_repository.snapshot(now=self.clock())
+        snapshot["request_in_progress"] = bool(self._future is not None and not self._future.done())
+        return snapshot
 
     def usage_eligibility(self) -> tuple[bool, str]:
         """Fail closed unless Registration or Offline License is usable now."""
