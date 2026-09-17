@@ -153,6 +153,7 @@ _EN: dict[str, str] = {
     "รายงานผ่านเว็บและ Database": "Web reports & database",
     "เปิดรายงานจากเครื่องอื่นในเครือข่ายเดียวกัน และตรวจตำแหน่งที่เก็บข้อมูลของโปรแกรม": "Open reports from another computer on the same LAN and check where application data is stored.",
     "รายงานจากเครื่องอื่นใน LAN": "Reports on other LAN computers",
+    "การตั้งค่าเครือข่าย": "Network settings",
     "อนุญาตให้เครื่องอื่นในเครือข่ายเดียวกันเปิดดูรายงานผ่าน Web ส่วนเครื่องนี้ใช้แอป Desktop ตามปกติ": "Allow other computers on the same LAN to view Web reports. Continue using the Desktop app on this computer.",
     "อนุญาตให้เครื่องอื่นใน LAN เปิดดูรายงาน": "Allow other LAN computers to view reports",
     "เปิดรายงานผ่าน Web สำหรับเครื่องอื่นใน LAN": "Enable Web reports for other LAN computers",

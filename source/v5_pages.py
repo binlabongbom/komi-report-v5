@@ -10880,133 +10880,13 @@ class PageFleetSettings(QWidget):
             self.web_toggle,
         ) = self._expandable_task(
             "web",
-            "รายงานจากเครื่องอื่นใน LAN",
+            "การตั้งค่าเครือข่าย",
             "กำลังตรวจสอบสถานะ…",
             closed_action="จัดการ",
         )
         program_body = self.web_task_editor.layout()
-        web_service_card = QFrame()
-        web_service_card.setObjectName("web_service_settings")
-        web_service_card.setStyleSheet(
-            "QFrame#web_service_settings{background:#F8FAFC;border:1px solid #D6E0EA;"
-            "border-radius:8px;} QLabel{background:transparent;border:none;}"
-        )
-        web_service_layout = QVBoxLayout(web_service_card)
-        web_service_layout.setContentsMargins(12, 10, 12, 10)
-        web_service_layout.setSpacing(8)
-        web_service_row = QHBoxLayout()
-        self.web_service_enabled = QCheckBox("เปิด Web Report ให้เครื่องอื่นใน LAN")
-        self.web_service_enabled.setAccessibleName("เปิดรายงานผ่าน Web สำหรับเครื่องอื่นใน LAN")
-        web_service_row.addWidget(self.web_service_enabled, 1)
-        web_service_row.addWidget(QLabel("Port"))
-        self.web_port = QSpinBox()
-        self.web_port.setRange(1024, 65535)
-        self.web_port.setValue(3000)
-        self.web_port.setMaximumWidth(100)
-        self.web_port.setAccessibleName("Port สำหรับ Web Report ใน LAN")
-        self.web_port.setToolTip("ใช้ Port เดียวกันเมื่อเปิดเว็บหรือเชื่อมต่อ Secondary · ค่าเริ่มต้น 3000")
-        web_service_row.addWidget(self.web_port)
-        web_service_layout.addLayout(web_service_row)
-        self.web_service_status = QLabel()
-        self.web_service_status.setWordWrap(True)
-        web_service_layout.addWidget(self.web_service_status)
-        address_row = QHBoxLayout()
-        self.web_service_url = QLabel()
-        self.web_service_url.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-        self.web_service_url.setWordWrap(True)
-        self.web_service_url.setAccessibleName("ที่อยู่ Web Report สำหรับเครื่องอื่นใน LAN")
-        self.web_service_url.setStyleSheet(
-            "color:#123262;background:#FFFFFF;border:1px solid #C9D8E6;"
-            "border-radius:6px;padding:7px 9px;font-weight:700;"
-        )
-        address_row.addWidget(self.web_service_url, 1)
-        self.open_web_button = btn("เปิด Web", "outline")
-        self.open_web_button.clicked.connect(self._open_web)
-        address_row.addWidget(self.open_web_button)
-        self.copy_web_button = btn("คัดลอก", "outline")
-        self.copy_web_button.clicked.connect(self._copy_lan_url)
-        address_row.addWidget(self.copy_web_button)
-        web_service_layout.addLayout(address_row)
-        program_body.addWidget(web_service_card)
-
-        web_security = QFrame()
-        web_security.setObjectName("web_security")
-        web_security.setStyleSheet(
-            "QFrame#web_security{background:#FFFFFF;border:1px solid #D6E0EA;border-radius:8px;}"
-            "QLabel{background:transparent;border:none;}"
-        )
-        web_security_layout = QHBoxLayout(web_security)
-        web_security_layout.setContentsMargins(12, 10, 12, 10)
-        web_security_copy = QVBoxLayout()
-        self.web_report_require_password = QCheckBox(
-            tr("ล็อก Web Report ด้วยรหัสผ่าน", "Require a password for Web Report")
-        )
-        self.web_report_require_password.setAccessibleName(
-            tr("ล็อก Web Report ด้วยรหัสผ่าน", "Require a password for Web Report")
-        )
-        self.web_report_require_password.setToolTip(
-            tr("ค่าเริ่มต้นเปิดรายงานได้ทันที · เลือกตัวเลือกนี้เมื่อต้องการตั้งรหัสก่อนเข้าดู", "Reports open immediately by default. Enable this option to protect them with a password.")
-        )
-        web_security_copy.addWidget(self.web_report_require_password)
-        self.web_report_access_note = QLabel(
-            tr(
-                "ค่าเริ่มต้น: เครื่องใน LAN เปิดที่อยู่ด้านล่างเพื่อดูรายงานได้ทันทีโดยไม่ต้องใส่รหัส · ตั้งรหัสและเปิดการล็อกได้เมื่อต้องการ",
-                "By default, LAN computers can open the address below to view reports immediately. Set a password and enable the lock whenever needed.",
-            )
-        )
-        self.web_report_access_note.setWordWrap(True)
-        self.web_report_access_note.hide()
-        self.web_access_status = QLabel()
-        self.web_access_status.setWordWrap(True)
-        self.web_access_status.setAccessibleName("สถานะรหัสเข้า Web Report")
-        web_security_copy.addWidget(self.web_access_status)
-        web_security_layout.addLayout(web_security_copy, 1)
-        self.change_web_access_button = btn("ตั้งรหัส", "outline")
-        self.change_web_access_button.setAccessibleName("ตั้งหรือเปลี่ยนรหัสเข้า Web Report")
-        self.change_web_access_button.clicked.connect(self._change_web_access_code)
-        web_security_layout.addWidget(self.change_web_access_button)
-        program_body.addWidget(web_security)
-
-        peer_sync = QFrame()
-        peer_sync.setObjectName("peer_sync_authorization")
-        peer_sync.setStyleSheet(
-            "QFrame#peer_sync_authorization{background:#FFFFFF;border:1px solid #D6E0EA;"
-            "border-radius:8px;} QLabel{background:transparent;border:none;}"
-        )
-        peer_sync_layout = QHBoxLayout(peer_sync)
-        peer_sync_layout.setContentsMargins(11, 9, 11, 9)
-        peer_sync_copy = QVBoxLayout()
-        peer_sync_title = QLabel("อนุญาตเครื่อง Secondary ดึงการตั้งค่า")
-        peer_sync_title.setStyleSheet("color:#334155;font-weight:700;")
-        self.peer_sync_status = QLabel()
-        self.peer_sync_status.setWordWrap(True)
-        self.peer_sync_status.setAccessibleName("สถานะการอนุญาต Secondary Sync")
-        peer_sync_copy.addWidget(peer_sync_title)
-        peer_sync_copy.addWidget(self.peer_sync_status)
-        peer_sync_layout.addLayout(peer_sync_copy, 1)
-        self.peer_sync_mode = QComboBox()
-        self.peer_sync_mode.addItem("ปิด", "off")
-        self.peer_sync_mode.addItem("เปิด 5 นาที", "temporary")
-        self.peer_sync_mode.addItem("เปิดตลอด", "always")
-        self.peer_sync_mode.setAccessibleName("ระยะเวลาอนุญาต Secondary Sync")
-        peer_sync_layout.addWidget(self.peer_sync_mode)
-        self.peer_sync_authorize_button = btn("ใช้การตั้งค่า Sync", "outline")
-        self.peer_sync_authorize_button.setAccessibleName(
-            "ใช้การตั้งค่าสิทธิ์ให้เครื่อง Secondary ดึงการตั้งค่า"
-        )
-        self.peer_sync_authorize_button.clicked.connect(self._authorize_peer_sync)
-        peer_sync_layout.addWidget(self.peer_sync_authorize_button)
-        program_body.addWidget(peer_sync)
-        (
-            self.web_save_status,
-            web_save_actions,
-            self.web_save_button,
-        ) = self._editor_actions(
-            "บันทึกและตรวจสอบ LAN",
-            self._save_web,
-            lambda: self._cancel_section("web"),
-        )
-        program_body.addLayout(web_save_actions)
+        from ui.network_settings import build_network_settings
+        build_network_settings(self, program_body)
         # LAN/Web Report is an operational program setting.  It lives on the
         # Advanced Settings page instead of competing with everyday pricing
         # and schedule tasks on the main Settings page.
@@ -11479,8 +11359,8 @@ class PageFleetSettings(QWidget):
             return
         self.peer_sync_status.setText(
             tr(
-                "ปิดอยู่ · ต้องกดอนุญาตจากเครื่อง Primary ก่อน Sync ทุกครั้ง",
-                "Closed · Primary approval is required for every setup sync",
+                "ปิดอยู่ · เปิดสิทธิ์บนเครื่องนี้ก่อนให้คอมพิวเตอร์อื่นรับการตั้งค่า",
+                "Closed · Enable access here before another computer receives settings",
             )
         )
         self.peer_sync_status.setStyleSheet("color:#64748B;")
@@ -11927,9 +11807,9 @@ class PageFleetSettings(QWidget):
             )
         )
         ready = current.state in {"running", "external"}
-        self.open_web_button.setVisible(ready)
+        self.open_web_button.setVisible(True)
         self.open_web_button.setEnabled(ready)
-        self.copy_web_button.setVisible(ready and not lan_is_local_only)
+        self.copy_web_button.setVisible(True)
         self.copy_web_button.setEnabled(ready and not lan_is_local_only)
         desired_enabled = self.web_service_enabled.isChecked()
         pending = desired_enabled and current.state == "starting"
