@@ -90,6 +90,24 @@ disabled foundation, not a working customer Hotfix. UI preview is a prototype.
 
 ## Existing evidence (not release approval)
 
+### 2026-09-18 continuation — isolated Agent tray
+
+- Added `ui/agent_tray.py` and opt-in source `background_agent.py --tray`.
+  This mode uses QApplication for a tray only; default remains QCoreApplication.
+  No desktop, report pages or chart imports. Tray offers open and confirmed stop;
+  opening leaves agent running until the desktop acquires its lock and requests
+  takeover. Failed launches keep collection running and allow retry. Repeated
+  clicks are throttled. Child gets the same database path and no Windows console.
+- macOS 27 keeps the existing native status-menu workaround via a small
+  asynchronously opened dialog. macOS behavior is source-only, not device-tested.
+- Tray/lifecycle regression: 21 passed; added fresh-process import boundary test
+  and reran tray file: 6 passed. No real OS tray clicks, collection or Host calls.
+- Not wired into desktop close or autostart yet. `--tray` fails explicitly when
+  the OS tray is unavailable, instead of leaving an agent without visible stop
+  controls. Next wire and verify desktop-close handoff with launch-failure
+  recovery and in-flight worker drain; keep explicit full-stop separate. Then
+  resource measurements. No claimed RAM savings yet; no build or deployment.
+
 ### 2026-09-18 continuation — shutdown safety
 
 - System Tray stop now requires explicit confirmation (Cancel is the default),

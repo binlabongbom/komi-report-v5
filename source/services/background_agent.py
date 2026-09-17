@@ -1,8 +1,8 @@
 """Lightweight headless runtime used by OS Auto-start.
 
-This entry point deliberately uses QCoreApplication and never imports app.py,
-pages.py, v5_pages.py, QtWidgets, charts, or report views.  It owns scheduled
-printer collection only while the desktop GUI is closed.
+The default entry point uses QCoreApplication. Optional --tray mode loads only
+the small tray surface, never app.py, pages.py, charts, or report views. It owns
+scheduled printer collection only while the desktop GUI is closed.
 """
 
 from __future__ import annotations
@@ -175,7 +175,16 @@ def main() -> int:
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
-    application = QCoreApplication(sys.argv)
+    with_tray = "--tray" in sys.argv
+    if with_tray:
+        from PyQt6.QtWidgets import QApplication, QSystemTrayIcon
+        application = QApplication(sys.argv)
+        application.setQuitOnLastWindowClosed(False)
+        if not QSystemTrayIcon.isSystemTrayAvailable():
+            log.error("Agent tray requested but no system tray is available")
+            return 2
+    else:
+        application = QCoreApplication(sys.argv)
     application.setApplicationName("KOMI Report V5 Background Agent")
     init_db()
 
@@ -201,11 +210,18 @@ def main() -> int:
         return 1
 
     agent = BackgroundAgent(server)
+    tray = None
+    if with_tray:
+        from ui.agent_tray import AgentTray
+        tray = AgentTray(agent.stop, parent=agent)
+        tray.tray.show()
     application.aboutToQuit.connect(agent.stop)
     QTimer.singleShot(0, agent.start)
     try:
         return application.exec()
     finally:
+        if tray is not None:
+            tray.close()
         # Keep ownership until writes/Host requests have really finished.
         # This runs outside the UI event loop and must not release the lock early.
         agent.polling.stop(wait=True)
