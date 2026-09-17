@@ -96,7 +96,7 @@ disabled foundation, not a working customer Hotfix. UI preview is a prototype.
   request cannot commit, and late timer events cannot revive a cancelled request.
   Handoff/tray/lifecycle regressions: **23 passed**.
 - Added reproducible Windows experiment `tools/measure_idle_runtime.py`; raw
-  results: `docs/qa/v5_2_12_idle_footprint.json`. Six fresh subprocesses (3 per
+  results: `docs/V5_2_12_IDLE_FOOTPRINT.json`. Six fresh subprocesses (3 per
   mode), each with its own temporary database. Real MainWindow construction,
   offscreen show/refresh/close versus constructed BackgroundAgent + AgentTray.
   Workers not started, Web disabled, no printers configured. Python network and
