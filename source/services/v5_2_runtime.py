@@ -617,12 +617,19 @@ class V52RuntimeCoordinator(QObject):
         return snapshot
 
     def usage_eligibility(self) -> tuple[bool, str]:
-        """Fail closed unless Registration or Offline License is usable now."""
+        """Return whether local printer collection may run.
+
+        The air-gapped installer is its own immutable build edition.  It has no
+        Host client and therefore needs no online or file-based activation.  It
+        still requires completed local setup so an accidental empty database
+        cannot start a collector.
+        """
 
         if is_offline_edition():
             state = self.state_repository.internal()
             if state is None or state["mode"] != "offline":
-                return False, "offline_license_required"
+                return False, "not_configured"
+            return True, "offline_edition"
         eligible, reason = self.state_repository.usage_eligibility(now=self.clock())
         if not eligible:
             return eligible, reason

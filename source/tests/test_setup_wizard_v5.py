@@ -42,6 +42,7 @@ from services.device_config import DeviceConfig, DeviceConfigRepository
 from services.pricing import PricingRepository
 from services.registration_data_notice import REGISTRATION_NOTICE_VERSION
 from services.secondary_setup import SecondaryPeerCandidate
+from services.setup_connectivity import SetupConnectivityCheck, SetupConnectivityReport
 from services.sync_schedule import default_schedule_windows, dump_schedule_windows
 from services.v5_2_outbox import V52OutboxRepository
 from services.v5_2_runtime_state import V52RuntimeStateRepository
@@ -374,6 +375,111 @@ def test_secondary_manual_primary_ip_uses_one_validated_host(tmp_path):
         assert calls == [(["192.168.50.25"], "192.168.50.25")]
         assert "Primary IP" in wizard.secondary_join_status.text()
         wizard.close()
+        app.processEvents()
+    finally:
+        database.set_db_path(original_path)
+
+
+def test_secondary_setup_stays_compact_until_a_primary_is_found_or_requested(tmp_path):
+    original_path = _wizard_database(tmp_path)
+    app = QApplication.instance() or QApplication([])
+    try:
+        wizard = SetupWizardV5()
+
+        assert wizard.secondary_join_card.isHidden()
+        assert not wizard.secondary_existing_button.isHidden()
+
+        wizard.secondary_existing_button.click()
+        assert not wizard.secondary_join_card.isHidden()
+        assert not wizard.secondary_manual_row.isHidden()
+        assert "Primary IP" in wizard.secondary_join_status.text()
+
+        candidate = SecondaryPeerCandidate(
+            base_url="https://192.0.2.20:3000",
+            company_name="บริษัท เครื่องหลัก จำกัด",
+            printer_count=1,
+            version="5.2.11",
+            certificate_sha256="a" * 64,
+        )
+        child_count = len(wizard._wizard_child_dialogs)
+        wizard._secondary_discovery_finished([candidate], "")
+
+        assert not wizard.secondary_join_card.isHidden()
+        assert wizard.secondary_manual_row.isHidden()
+        assert wizard.secondary_existing_button.isHidden()
+        assert wizard.secondary_join_button.text() == "ดึงการตั้งค่า"
+        assert "พบเครื่องหลัก 1 เครื่อง" in wizard.secondary_join_status.text()
+        assert len(wizard._wizard_child_dialogs) == child_count
+
+        wizard.close()
+        app.processEvents()
+
+        no_primary = SetupWizardV5()
+        no_primary._secondary_discovery_finished([], "")
+        assert no_primary.secondary_join_card.isHidden()
+        assert not no_primary.secondary_existing_button.isHidden()
+        no_primary.close()
+        app.processEvents()
+    finally:
+        database.set_db_path(original_path)
+
+
+def test_setup_connectivity_passes_silently_and_failure_opens_copyable_details(tmp_path):
+    original_path = _wizard_database(tmp_path)
+    app = QApplication.instance() or QApplication([])
+    try:
+        passed = SetupConnectivityReport(
+            started_at="2026-09-17T10:00:00+07:00",
+            base_url="https://www.dmskm.com",
+            checks=(
+                SetupConnectivityCheck(
+                    name="Registration API",
+                    target="https://www.dmskm.com/api/v1/installations/register",
+                    ok=True,
+                    detail="HTTP 405 · endpoint reachable",
+                ),
+            ),
+        )
+        wizard = SetupWizardV5()
+        child_count = len(wizard._wizard_child_dialogs)
+        wizard._setup_connectivity_finished(passed, "")
+        assert wizard.stack.currentIndex() == 1
+        assert len(wizard._wizard_child_dialogs) == child_count
+        wizard.close()
+        app.processEvents()
+
+        failed = SetupConnectivityReport(
+            started_at="2026-09-17T10:00:00+07:00",
+            base_url="https://www.dmskm.com",
+            checks=(
+                SetupConnectivityCheck(
+                    name="Status API",
+                    target="https://www.dmskm.com/api/v1/installations/status",
+                    ok=False,
+                    detail="HTTP 503 · Host unavailable",
+                    support_code="host_unavailable",
+                ),
+            ),
+        )
+        blocked = SetupWizardV5()
+        blocked._setup_connectivity_finished(failed, "")
+        app.processEvents()
+
+        assert blocked.stack.currentIndex() == 0
+        dialog = blocked._wizard_child_dialogs[-1]
+        details = dialog.findChild(QPlainTextEdit, "setup_connectivity_details")
+        assert details is not None
+        assert "Support code: host_unavailable" in details.toPlainText()
+        assert "company name" in details.toPlainText()
+        copy_button = next(
+            button
+            for button in dialog.findChildren(QPushButton)
+            if button.text() == "คัดลอกรายละเอียด"
+        )
+        copy_button.click()
+        assert QApplication.clipboard().text() == details.toPlainText()
+        dialog.close()
+        blocked.close()
         app.processEvents()
     finally:
         database.set_db_path(original_path)

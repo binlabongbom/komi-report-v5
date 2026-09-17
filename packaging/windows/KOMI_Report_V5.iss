@@ -13,18 +13,21 @@
 #ifndef VersionInfoDescription
   #define VersionInfoDescription "KOMI Report V5.2.11 Release Candidate"
 #endif
+#ifndef EditionLabel
+  #define EditionLabel "Online Registration"
+#endif
 
 #define AppVersion "5.2.11"
 #define AppName "KOMI Report V5"
 #define AppPublisher "Wongsakorn Uphonram"
 #define AppLauncher "START_KOMI_REPORT.vbs"
-#define AppUserModelId "WongsakornUphonram.KOMIReport.V5"
+#define AppUserModelId "KonicaMinolta.KOMIReport.V5"
 
 [Setup]
 AppId={{9C32D937-21A5-4A3A-90AE-F0662E60F24A}
 AppName={#AppName}
 AppVersion={#AppVersion}
-AppVerName={#AppName} {#AppVersion}
+AppVerName={#AppName} {#AppVersion} — {#EditionLabel}
 AppPublisher={#AppPublisher}
 AppMutex=KOMIReportV5.SingleInstance
 DefaultDirName={localappdata}\Programs\KOMI Report V5
@@ -62,11 +65,14 @@ Source: "{#PayloadDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs
 
 [Icons]
 Name: "{autoprograms}\KOMI Report V5"; Filename: "{sys}\wscript.exe"; Parameters: """{app}\{#AppLauncher}"""; WorkingDir: "{app}"; IconFilename: "{app}\source\Logo.ico"; AppUserModelID: "{#AppUserModelId}"
+Name: "{autoprograms}\KOMI Report Web"; Filename: "{app}\runtime\pythonw.exe"; Parameters: """{app}\source\app.py"" --open-web"; WorkingDir: "{app}"; IconFilename: "{app}\source\Logo.ico"; AppUserModelID: "{#AppUserModelId}"
 Name: "{autodesktop}\KOMI Report V5"; Filename: "{sys}\wscript.exe"; Parameters: """{app}\{#AppLauncher}"""; WorkingDir: "{app}"; IconFilename: "{app}\source\Logo.ico"; AppUserModelID: "{#AppUserModelId}"; Tasks: desktopicon
+Name: "{autodesktop}\KOMI Report Web"; Filename: "{app}\runtime\pythonw.exe"; Parameters: """{app}\source\app.py"" --open-web"; WorkingDir: "{app}"; IconFilename: "{app}\source\Logo.ico"; AppUserModelID: "{#AppUserModelId}"; Tasks: desktopicon
 ; Upgrade migration: rewrite an existing customer shortcut even when the
 ; checked-once desktop task is not offered again. A fresh install that opted
 ; out still receives no Desktop shortcut.
 Name: "{autodesktop}\KOMI Report V5"; Filename: "{sys}\wscript.exe"; Parameters: """{app}\{#AppLauncher}"""; WorkingDir: "{app}"; IconFilename: "{app}\source\Logo.ico"; AppUserModelID: "{#AppUserModelId}"; Check: ExistingDesktopShortcut
+Name: "{autodesktop}\KOMI Report Web"; Filename: "{app}\runtime\pythonw.exe"; Parameters: """{app}\source\app.py"" --open-web"; WorkingDir: "{app}"; IconFilename: "{app}\source\Logo.ico"; AppUserModelID: "{#AppUserModelId}"; Check: ExistingWebShortcut
 
 [Tasks]
 Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription: "Shortcuts:"; Flags: checkedonce
@@ -78,6 +84,11 @@ Filename: "{sys}\wscript.exe"; Parameters: """{app}\{#AppLauncher}"""; WorkingDi
 function ExistingDesktopShortcut(): Boolean;
 begin
   Result := FileExists(ExpandConstant('{autodesktop}\KOMI Report V5.lnk'));
+end;
+
+function ExistingWebShortcut(): Boolean;
+begin
+  Result := FileExists(ExpandConstant('{autodesktop}\KOMI Report Web.lnk'));
 end;
 
 // User database, backups, logs, Web security material and OS-vault entries are

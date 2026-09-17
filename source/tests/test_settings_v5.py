@@ -203,7 +203,7 @@ def test_fleet_settings_groups_fields_and_live_schedule(tmp_path, monkeypatch, f
         assert "ใช้ค่าแนะนำของระบบ" in page.schedule.text()
         assert "รอการบันทึก" not in page.schedule.text()
         assert [controls[0].text() for controls in page._schedule_row_controls] == [
-            "Lazyload", "Active", "Standard", "Active", "Lazyload"
+            "นอกเวลางาน", "ช่วงเร่งด่วน", "เวลาทำงาน", "ช่วงเร่งด่วน", "นอกเวลางาน"
         ]
 
         page._set_active_editor("schedule")
@@ -232,7 +232,9 @@ def test_fleet_settings_groups_fields_and_live_schedule(tmp_path, monkeypatch, f
         assert all(apply is False for _enabled, apply in planned)
         stored_windows = load_schedule_windows(database.get_cfg("sync_schedule_windows"))
         assert stored_windows is not None
-        assert [item.label for item in stored_windows] == ["Lazyload", "Active", "Standard", "Active", "Lazyload"]
+        assert [item.label for item in stored_windows] == [
+            "นอกเวลางาน", "ช่วงเร่งด่วน", "เวลาทำงาน", "ช่วงเร่งด่วน", "นอกเวลางาน"
+        ]
         assert int(stored_windows[2].snmp_interval.total_seconds() // 60) == 20
         assert int(stored_windows[2].web_interval.total_seconds() // 60) == 75
         assert stored_windows[2].weekdays == frozenset(range(5))
@@ -411,8 +413,8 @@ def test_desktop_changes_web_access_and_restarts_owned_service(tmp_path, monkeyp
         assert fake_web_service.restarted == 1
         assert verify_web_access_code("Valid-LAN-Code-2026", stored[ACCESS_HASH_KEY])
         assert "Valid-LAN-Code-2026" not in (fake_web_service.runtime_root / ".env.local").read_text(encoding="utf-8")
-        assert "ตั้งรหัสแล้ว" in page.web_access_status.text()
-        assert page.change_web_access_button.text() == "เปลี่ยนรหัส Web"
+        assert "ไม่ใช้รหัส" in page.web_access_status.text()
+        assert page.change_web_access_button.text() == "เปลี่ยนรหัสเจ้าหน้าที่"
         page.close()
         app.processEvents()
     finally:
@@ -555,8 +557,7 @@ def test_settings_tools_do_not_request_password(tmp_path):
 
         page.setCurrentWidget(page.legacy)
         assert legacy.unlock_calls == 0
-        # Advanced settings now expands inline on the main Settings page;
-        # there is no password gate and no separate navigation page.
+        # Advanced settings uses the shared tab shell without a password gate.
         assert page.currentWidget() is page.fleet
         assert page.ensure_unlocked()
         assert legacy.unlock_calls == 0
@@ -748,7 +749,7 @@ def test_disabled_offline_license_ui_does_not_call_export_runtime(
         database.set_db_path(original)
 
 
-def test_settings_v5_routes_support_details_without_exposing_top_level_tabs(tmp_path):
+def test_settings_v5_routes_support_details_through_section_tabs(tmp_path):
     app = QApplication.instance() or QApplication([])
     original = _database(tmp_path)
     try:
@@ -758,6 +759,7 @@ def test_settings_v5_routes_support_details_without_exposing_top_level_tabs(tmp_
         assert page.fleet_content.schedule_editor.isHidden()
         assert page.fleet_content.support_details.isHidden()
         assert page.count() == 4
+        assert page.section_tabs.count() == 4
 
         assert page.fleet_content.support_toggle.isHidden()
         assert page.fleet_content.support_details.isHidden()
@@ -774,9 +776,8 @@ def test_settings_v5_routes_support_details_without_exposing_top_level_tabs(tmp_
         assert page.currentWidget() is page.fleet
         assert legacy.unlock_calls == 0
         assert not page.fleet_content.support_task_editor.isHidden()
-        assert page.fleet_content.autostart_program_card.parent() is (
-            page.fleet_content.support_task_editor
-        )
+        assert page.section_tabs.currentIndex() == 3
+        assert page.fleet_content.autostart_program_card.parent() is page.fleet_content
         assert page.fleet_content.web_program_card.parent() is (
             page.fleet_content.support_task_editor
         )
@@ -803,7 +804,7 @@ def test_advanced_settings_and_nested_lan_stay_inline_without_horizontal_scroll(
         content = page.fleet_content
         assert page.currentWidget() is page.fleet
         assert content.support_task_editor.isVisibleTo(page)
-        assert page.fleet.horizontalScrollBar().maximum() == 0
+        assert page.advanced_page.horizontalScrollBar().maximum() == 0
 
         # Exercise the real nested LAN toggle. The parent Advanced section
         # must remain visible, otherwise the LAN form is hidden by its parent.
@@ -812,13 +813,13 @@ def test_advanced_settings_and_nested_lan_stay_inline_without_horizontal_scroll(
         assert content._active_editor == "web"
         assert content.support_task_editor.isVisibleTo(page)
         assert content.web_task_editor.isVisibleTo(page)
-        assert page.fleet.horizontalScrollBar().maximum() == 0
+        assert page.advanced_page.horizontalScrollBar().maximum() == 0
 
-        assert content.web_report_passwordless_warning.isHidden()
-        content.web_report_passwordless.setChecked(True)
+        assert not content.web_report_require_password.isChecked()
+        content.web_report_require_password.setChecked(True)
         app.processEvents()
-        assert content.web_report_passwordless_warning.isVisibleTo(page)
-        assert "เครือข่าย LAN เดียวกัน" in content.web_report_passwordless_warning.text()
+        assert content.web_report_access_note.isHidden()
+        assert content.web_access_status.isVisibleTo(page)
         content._dirty_sections.discard("web")
 
         content.web_toggle.click()
@@ -914,6 +915,47 @@ def test_web_custom_port_is_saved_restarted_and_restored(tmp_path, monkeypatch, 
         database.set_db_path(original)
 
 
+def test_web_password_lock_sets_a_code_before_closing_reports(tmp_path, monkeypatch, fake_web_service):
+    app = QApplication.instance() or QApplication([])
+    original = _database(tmp_path)
+    monkeypatch.setattr(v5_pages.WebAccessCodeDialog, "exec", lambda self: QDialog.DialogCode.Accepted)
+    monkeypatch.setattr(v5_pages.WebAccessCodeDialog, "value", lambda self: "Chosen-LAN-Password-2026")
+    try:
+        fake_web_service.started = 1
+        page = PageFleetSettings()
+        assert not page.web_report_require_password.isChecked()
+        page.web_report_require_password.setChecked(True)
+        page._save_web()
+        env = fake_web_service.runtime_root / ".env.local"
+        status = v5_pages.web_access_status(env)
+        assert status.configured and not status.report_passwordless
+        assert fake_web_service.restarted == 1
+        assert verify_web_access_code("Chosen-LAN-Password-2026", _read_values(env)[ACCESS_HASH_KEY])
+        assert page.web_report_require_password.isChecked()
+        page.close()
+        app.processEvents()
+    finally:
+        database.set_db_path(original)
+
+
+def test_cancel_password_setup_keeps_reports_open(tmp_path, monkeypatch, fake_web_service):
+    app = QApplication.instance() or QApplication([])
+    original = _database(tmp_path)
+    monkeypatch.setattr(v5_pages.WebAccessCodeDialog, "exec", lambda self: QDialog.DialogCode.Rejected)
+    try:
+        page = PageFleetSettings()
+        page.web_report_require_password.setChecked(True)
+        page._save_web()
+        status = v5_pages.web_access_status(fake_web_service.runtime_root / ".env.local")
+        assert status.report_passwordless and not status.configured
+        assert fake_web_service.restarted == 0
+        assert "web" in page._dirty_sections
+        page.close()
+        app.processEvents()
+    finally:
+        database.set_db_path(original)
+
+
 def test_web_occupied_port_is_rejected_before_any_settings_change(tmp_path, monkeypatch, fake_web_service):
     import socket
 
@@ -927,11 +969,11 @@ def test_web_occupied_port_is_rejected_before_any_settings_change(tmp_path, monk
             occupied.bind(("0.0.0.0", 0))
             occupied.listen()
             page.web_port.setValue(occupied.getsockname()[1])
-            page.web_report_passwordless.setChecked(True)
+            page.web_report_require_password.setChecked(True)
             page._save_web()
         assert warnings
         assert v5_pages.read_web_port(fake_web_service.runtime_root / ".env.local") == 3000
-        assert not v5_pages.web_access_status(fake_web_service.runtime_root / ".env.local").report_passwordless
+        assert v5_pages.web_access_status(fake_web_service.runtime_root / ".env.local").report_passwordless
         assert fake_web_service.restarted == 0
         page.close()
         app.processEvents()

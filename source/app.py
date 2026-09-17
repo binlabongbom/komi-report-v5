@@ -128,13 +128,12 @@ def validate_parser_json(path: str) -> list:
 #   QStackedWidget — ซ้อนหลาย Widget ไว้แต่แสดงทีละอัน (ใช้สลับหน้า)
 #   QScrollArea    — ห่อ Widget ให้เลื่อน scroll ได้ถ้าเนื้อหายาวเกิน
 from PyQt6.QtCore import QSize, Qt, QTimer  # ค่าคงที่ของ Qt เช่น alignment, cursor shape
-from PyQt6.QtGui import QAction, QCloseEvent, QFont, QIcon, QPixmap  # QFont = ฟอนต์, QPixmap = รูปภาพ
+from PyQt6.QtGui import QAction, QCloseEvent, QFont, QPixmap  # QFont = ฟอนต์, QPixmap = รูปภาพ
 from PyQt6.QtNetwork import QNetworkInformation
 from PyQt6.QtWidgets import (
     QApplication,
     QComboBox,
     QDialog,
-    QDoubleSpinBox,
     QFileDialog,
     QFrame,
     QGridLayout,
@@ -148,7 +147,6 @@ from PyQt6.QtWidgets import (
     QProgressBar,
     QScrollArea,
     QSizePolicy,
-    QSpinBox,
     QStackedWidget,
     QStyle,
     QSystemTrayIcon,
@@ -156,6 +154,8 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from ui.numeric_inputs import NumericDoubleSpinBox as QDoubleSpinBox, NumericSpinBox as QSpinBox
+from ui.numeric_inputs import configure_numeric_locale
 from config import *  # สี, ฟอนต์, ขนาด, ค่าคงที่ทั้งหมด — ปรับแก้ที่ config.py
 from database import (  # ฟังก์ชันฐานข้อมูลที่ใช้ที่นี่
     compute_diff,
@@ -179,9 +179,12 @@ from pages import (
 from services.application_identity import (
     configure_qt_application_identity,
     configure_windows_process_identity,
+    configure_windows_window_identity,
+    load_application_icon,
 )
-from services.autostart import configure_autostart
+from services.autostart import configure_autostart, refresh_existing_autostart
 from services.background_polling import BackgroundPollingCoordinator
+from services.background_agent import stop_running_background_agent
 from services.desktop_shortcuts import create_desktop_shortcuts
 from services.device_config import DeviceConfigRepository
 from services.instance_guard import SingleInstanceGuard
@@ -377,7 +380,9 @@ class MainWindow(QMainWindow):
     def __init__(self, splash: "SplashScreen | None" = None):
         super().__init__()
         install_button_system(QApplication.instance())
+        self.setWindowIcon(load_application_icon())
         self.setWindowTitle(f"{APP_TITLE} V{APP_VER}")  # ชื่อโปรแกรมบน titlebar
+        configure_windows_window_identity(self)
         self._layout_screen = None
         self._screen_signal_connected = False
         self._compact_sidebar = None
@@ -494,6 +499,8 @@ class MainWindow(QMainWindow):
             if screen is not None:
                 screen.availableGeometryChanged.connect(self._screen_workarea_changed)
         self._fit_to_available_screen()
+        if hasattr(self, "sidebar"):
+            self._update_sidebar_layout()
 
     def _screen_workarea_changed(self, _geometry) -> None:
         self._fit_to_available_screen()
@@ -513,16 +520,21 @@ class MainWindow(QMainWindow):
 
     def _update_sidebar_layout(self) -> None:
         compact = self.width() <= 1280
-        if compact == self._compact_sidebar:
+        pixel_ratio = self.devicePixelRatioF()
+        if compact == self._compact_sidebar and pixel_ratio == getattr(self, "_logo_pixel_ratio", None):
             return
         self._compact_sidebar = compact
+        self._logo_pixel_ratio = pixel_ratio
         self.sidebar.setFixedWidth(200 if compact else SIDEBAR_WIDTH)
         icon_width = 44 if compact else LOGO_SCALED_WIDTH
         if not self._sidebar_logo_pixmap.isNull():
-            self._sidebar_logo_image.setPixmap(self._sidebar_logo_pixmap.scaled(
-                icon_width, icon_width, Qt.AspectRatioMode.KeepAspectRatio,
+            pixels = round(icon_width * pixel_ratio)
+            logo = self._sidebar_logo_pixmap.scaled(
+                pixels, pixels, Qt.AspectRatioMode.KeepAspectRatio,
                 Qt.TransformationMode.SmoothTransformation,
-            ))
+            )
+            logo.setDevicePixelRatio(pixel_ratio)
+            self._sidebar_logo_image.setPixmap(logo)
         self._sidebar_logo_image.setFixedSize(icon_width, icon_width)
         self._sidebar_logo_layout.setSpacing(6 if compact else 10)
         self._sidebar_logo_title.setStyleSheet(
@@ -784,8 +796,7 @@ class MainWindow(QMainWindow):
 
     def _build_tray(self):
         self.tray = QSystemTrayIcon(self)
-        icon_path = os.path.join(os.path.dirname(__file__), LOGO_FILENAME)
-        self.tray.setIcon(QIcon(icon_path))
+        self.tray.setIcon(self.windowIcon())
         if _disable_tray_context_menu_for_current_macos():
             # macOS 27 can abort inside AppKit while presenting a Qt status
             # menu (NSStatusItem -> NSCalendarDate).  Do not create a QMenu
@@ -819,6 +830,19 @@ class MainWindow(QMainWindow):
             open_reasons.add(QSystemTrayIcon.ActivationReason.Trigger)
         if reason in open_reasons:
             self._show_from_tray()
+
+    def _open_web_report(self) -> None:
+        from ui.web_report_launcher import WebReportLauncher
+
+        if not hasattr(self, "_web_report_launcher"):
+            self._web_report_launcher = WebReportLauncher(self.web_service, self)
+            self._web_report_launcher.failed.connect(self._web_report_open_failed)
+        set_cfg("web_service_enabled", "1")
+        self._web_report_launcher.open()
+
+    def _web_report_open_failed(self, detail: str) -> None:
+        self._show_from_tray()
+        QMessageBox.warning(self, "เปิด KOMI Report Web ไม่สำเร็จ", detail)
 
     def start_background_services(self):
         if self._background_started:
@@ -2004,11 +2028,20 @@ if __name__ == "__main__":
     configure_windows_process_identity()
 
     # QApplication ต้องสร้างก่อนสิ่งอื่นใดทั้งหมด
+    configure_numeric_locale()
     app = QApplication(sys.argv)
     configure_qt_application_identity(app, version=APP_VER)
+    app.setWindowIcon(load_application_icon())
     install_button_system(app)
+    # Auto-start uses a QCoreApplication-only agent.  Stop it before the full
+    # desktop takes ownership of polling and Web services.
+    stop_running_background_agent(Path(get_db_path()))
+    try:
+        refresh_existing_autostart()
+    except OSError:
+        log.exception("cannot refresh existing background-agent registration")
     instance_guard = SingleInstanceGuard(Path(get_db_path()).with_suffix(".instance.lock"))
-    if not instance_guard.acquire():
+    if not instance_guard.acquire(command="open-web" if "--open-web" in sys.argv else "activate"):
         log.warning("another KOMI Report V5 instance is already running")
         sys.exit(0)
     _install_excepthook()
@@ -2029,6 +2062,7 @@ if __name__ == "__main__":
 
     win = MainWindow(splash=splash)
     instance_guard.activation_requested.connect(win._show_from_tray)
+    instance_guard.web_open_requested.connect(win._open_web_report)
 
     # Packaging smoke test: construct the complete startup shell against an
     # isolated KOMI_DB_PATH, then exit before setup dialogs or network services.
@@ -2045,7 +2079,7 @@ if __name__ == "__main__":
         # synchronous local refresh and service orchestration compete for the
         # UI thread. Background launches remain hidden as before.
         splash.close()
-        if "--background" in sys.argv:
+        if "--background" in sys.argv or "--open-web" in sys.argv:
             win.hide()
         else:
             win._show_main_window()
@@ -2055,6 +2089,8 @@ if __name__ == "__main__":
                 win._startup_refresh_pending = False
                 win._refresh_all()
             win.start_background_services()
+            if "--open-web" in sys.argv:
+                win._open_web_report()
 
         QTimer.singleShot(0, finish_startup)
 

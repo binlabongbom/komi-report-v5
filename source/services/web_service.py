@@ -13,6 +13,7 @@ import sys
 import threading
 import time
 import traceback
+import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
@@ -122,6 +123,7 @@ class WebServiceManager:
         self._packaged_stop = threading.Event()
         self._last_start_failed = False
         self._active_port: int | None = None
+        self._stop_file: Path | None = None
         self._lock = threading.RLock()
 
     def start(self) -> WebServiceStatus:
@@ -164,8 +166,12 @@ class WebServiceManager:
                 return self.status(detail="ไม่พบ Web source กลาง กรุณารอ OneDrive sync ให้ครบ")
             self.log_path.parent.mkdir(parents=True, exist_ok=True)
             log_handle = self.log_path.open("ab")
+            python = Path(sys.executable)
+            if sys.platform.startswith("win") and python.name.lower() == "pythonw.exe":
+                python = python.with_name("python.exe")
+            self._stop_file = self.log_path.parent / f"web-worker-{uuid.uuid4().hex}.stop"
             command = [
-                sys.executable,
+                str(python),
                 str(worker),
                 "--project-root",
                 str(self.project_root),
@@ -173,6 +179,8 @@ class WebServiceManager:
                 str(self.runtime_root),
                 "--parent-pid",
                 str(os.getpid()),
+                "--stop-file",
+                str(self._stop_file),
             ]
             creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0) if sys.platform.startswith("win") else 0
             try:
@@ -200,12 +208,16 @@ class WebServiceManager:
                 self._packaged_stop.set()
         # A worker may acquire _lock while finishing: never join under it.
         if process is not None and process.poll() is None:
-            process.terminate()
+            if self._stop_file is not None:
+                self._stop_file.touch()
+            else:
+                process.terminate()
             try:
-                process.wait(timeout=10)
+                process.wait(timeout=30)
             except subprocess.TimeoutExpired:
-                process.kill()
-                process.wait(timeout=3)
+                # A first build may still be finishing. Keep ownership so a
+                # restart cannot race a second worker against the same ports.
+                return self.status(detail="กำลังหยุด Web service กรุณารอสักครู่แล้วลองใหม่")
         if packaged_thread is not None and packaged_thread.is_alive():
             packaged_thread.join(timeout=30)
         with self._lock:
@@ -214,6 +226,9 @@ class WebServiceManager:
             self._process = None
             self._packaged_thread = None
             self._active_port = None
+            if self._stop_file is not None:
+                self._stop_file.unlink(missing_ok=True)
+                self._stop_file = None
             self._last_start_failed = False
             return self.status()
 
@@ -228,6 +243,8 @@ class WebServiceManager:
                 )
         stopped = self.stop()
         with self._lock:
+            if self._process is not None and self._process.poll() is None:
+                return stopped
             if self._packaged_thread is not None and self._packaged_thread.is_alive():
                 return stopped
         return self.start()

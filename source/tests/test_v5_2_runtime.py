@@ -573,6 +573,29 @@ def test_offline_mode_stops_scheduler_and_meter_signal_never_queues_telemetry():
     coordinator.stop()
 
 
+def test_air_gapped_build_enables_local_collection_without_license(monkeypatch):
+    import services.build_edition as build_edition
+
+    _application = QCoreApplication.instance() or QCoreApplication([])
+    monkeypatch.setattr(build_edition, "BUILD_EDITION", "offline")
+    state = _configured("offline")
+    coordinator = V52RuntimeCoordinator(
+        None,
+        state_repository=state,
+        outbox=V52OutboxRepository(),
+        vault=SessionRegistrationSecretStore(),
+        device_repository=FakeDevices(),
+        clock=lambda: NOW,
+        random_unit=lambda: 0.5,
+    )
+
+    assert coordinator.usage_eligibility() == (True, "offline_edition")
+    coordinator.start()
+    assert coordinator.timer.isActive() is False
+    assert coordinator.processor.client is None
+    coordinator.stop()
+
+
 def test_verified_offline_import_exposes_only_expiry_and_bound_devices(tmp_path):
     state = _configured("offline")
     vault = SessionRegistrationSecretStore()

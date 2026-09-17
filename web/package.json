@@ -7,17 +7,18 @@
     "build": "next build --webpack",
     "start": "node server.mjs",
     "lint": "tsc --noEmit",
-    "test:security": "tsx --test tests/security.test.ts"
+    "test:security": "tsx --test tests/security.test.ts",
+    "test:numeric": "tsx --test tests/numeric-format.test.ts"
   },
   "dependencies": {
-    "next": "^16.3.2",
+    "next": "^16.3.5",
     "react": "^19.2.8",
     "react-dom": "^19.2.8"
   },
   "overrides": {
     "nanoid": "3.3.18",
     "postcss": "8.5.26",
-    "sharp": "0.35.3"
+    "sharp": "0.35.4"
   },
   "devDependencies": {
     "@types/node": "24.13.3",

@@ -214,7 +214,9 @@ def test_installer_is_per_user_stable_and_preserves_user_data():
     assert 'Filename: "{sys}\\wscript.exe"' in script
     assert 'Parameters: """{app}\\{#AppLauncher}"""' in script
     assert '#define AppUserModelId "KonicaMinolta.KOMIReport.V5"' in script
-    assert script.count('AppUserModelID: "{#AppUserModelId}"') == 3
+    assert script.count('AppUserModelID: "{#AppUserModelId}"') == 6
+    assert 'Filename: "{app}\\runtime\\pythonw.exe"; Parameters: """{app}\\source\\app.py"" --open-web"' in script
+    assert "Check: ExistingWebShortcut" in script
     assert "Check: ExistingDesktopShortcut" in script
     assert "function ExistingDesktopShortcut(): Boolean;" in script
     assert "[UninstallDelete]" not in script

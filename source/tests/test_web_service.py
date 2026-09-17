@@ -54,6 +54,7 @@ class _Process:
         self.returncode = 0
 
     def wait(self, timeout=None):
+        self.returncode = 0
         return self.returncode
 
 
@@ -83,7 +84,7 @@ def test_manager_starts_worker_from_shared_project_and_stops_with_desktop(tmp_pa
     assert calls[0][1]["cwd"] == project / "source"
 
     stopped = manager.stop()
-    assert process.terminated == 1
+    assert process.terminated == 0
     assert stopped.state == "stopped"
 
 

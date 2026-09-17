@@ -62,7 +62,7 @@ RELEASE_ROOT = PROJECT_ROOT / "release" / "windows-x64-rc"
 PAYLOAD_NAME = f"KOMI Report V{VERSION}"
 VERSION_TAG = VERSION.replace(".", "_")
 INSTALLER_NAME = f"KOMI_Report_V{VERSION_TAG}_Windows_x64_RC.exe"
-CUSTOMER_INSTALLER_NAME = f"KOMI_Report_V{VERSION_TAG}_Windows_x64_Installer.exe"
+CUSTOMER_INSTALLER_NAME = f"KOMI_Report_V{VERSION_TAG}_Windows_x64_Online_Installer.exe"
 INNO_SCRIPT = PROJECT_ROOT / "packaging" / "windows" / "KOMI_Report_V5.iss"
 NODE_VERSION = "24.18.0"
 NODE_ARCHIVE = f"node-v{NODE_VERSION}-win-x64.zip"
@@ -209,6 +209,22 @@ though the application payload uses production behavior.
 User data is stored outside the installation directory. Uninstall removes
 program files only. Follow docs/CUSTOMER_RELEASE_NOTES.md and
 docs/RELEASE_SUPPORT_AND_RECOVERY.md before install, recovery or rollback.
+"""
+
+OFFLINE_CUSTOMER_README = f"""KOMI Report V{VERSION} â€” Windows Offline Installation
+
+Target runtime: Windows 10/11 x64
+Build evidence: {{build_evidence}}
+Runtime: bundled CPython 3.14.7 x64 and Node.js {{node_version}} LTS x64
+
+This air-gapped package can be installed and configured without Internet
+access. It never contacts the KOMI Host and does not require an Online
+Registration or an Offline License file. Local SNMP/Web Connection collection,
+SQLite reports, automatic schedules and LAN Web Report remain available.
+
+The edition is fixed at build time and cannot be changed by an environment
+variable or customer setting. User data is stored outside the installation
+directory. Uninstall removes program files only.
 """
 
 
@@ -390,7 +406,10 @@ def build_payload(
     *,
     customer_release: bool = False,
     build_evidence: str = "not-yet-classified",
+    edition: str = "normal",
 ) -> tuple[Path, dict[str, str]]:
+    if edition not in {"normal", "offline"}:
+        raise ReleaseContractError("Invalid payload edition")
     payload_root = output_root / "payload" / PAYLOAD_NAME
     if payload_root.exists():
         shutil.rmtree(payload_root)
@@ -474,7 +493,11 @@ def build_payload(
     (payload_root / "START_KOMI_REPORT.cmd").write_text(START_CMD, encoding="utf-8", newline="\r\n")
     write_hidden_launcher(payload_root / "START_KOMI_REPORT.vbs")
     (payload_root / "START_DEBUG.cmd").write_text(START_DEBUG_CMD, encoding="utf-8", newline="\r\n")
-    readme = CUSTOMER_README if customer_release else README
+    readme = (
+        OFFLINE_CUSTOMER_README
+        if customer_release and edition == "offline"
+        else (CUSTOMER_README if customer_release else README)
+    )
     (payload_root / "README-WINDOWS.txt").write_text(
         readme.format(node_version=NODE_VERSION, build_evidence=build_evidence),
         encoding="utf-8-sig",
@@ -533,10 +556,15 @@ def compile_installer(
         raise ReleaseContractError("Invalid installer edition")
     installer_name = CUSTOMER_INSTALLER_NAME if customer_release else INSTALLER_NAME
     if edition == "offline":
-        installer_name = installer_name.replace("_Windows_x64_", "_Windows_x64_Offline_")
+        installer_name = (
+            installer_name.replace("_Online_", "_Offline_")
+            if customer_release
+            else installer_name.replace("_Windows_x64_", "_Windows_x64_Offline_")
+        )
     output_base = installer_name.removesuffix(".exe")
     description = (
-        f"KOMI Report V{VERSION} Customer Release Package"
+        f"KOMI Report V{VERSION} "
+        + ("Offline Installation" if edition == "offline" else "Online Registration Installer")
         if customer_release
         else f"KOMI Report V{VERSION} Release Candidate"
     )
@@ -548,6 +576,7 @@ def compile_installer(
             f"/DSourceCommit={source_commit}",
             f"/DOutputBaseFilename={output_base}",
             f"/DVersionInfoDescription={description}",
+            f"/DEditionLabel={'Offline Installation' if edition == 'offline' else 'Online Registration'}",
             str(INNO_SCRIPT),
         ],
         cwd=PROJECT_ROOT,
@@ -651,6 +680,7 @@ def main() -> int:
         output_root,
         customer_release=args.customer_release,
         build_evidence=environment,
+        edition=args.edition,
     )
     edition_path = payload_root / "source" / "services" / "build_edition.py"
     edition_text = edition_path.read_text(encoding="utf-8")
@@ -689,7 +719,11 @@ def main() -> int:
     )
     manifest["edition"] = args.edition
     manifest["external_host_traffic"] = "disabled" if args.edition == "offline" else "registration-status-meter"
-    manifest["offline_activation"] = "host-signed-license-required"
+    manifest["offline_activation"] = (
+        "not-required-air-gapped-edition"
+        if args.edition == "offline"
+        else "not-applicable-online-edition"
+    )
     manifest["release_profile"] = "customer-production-behavior" if args.customer_release else "rc"
     manifest.update(runtime_evidence)
     manifest["joint_staging_e2e"] = joint_e2e
@@ -700,8 +734,6 @@ def main() -> int:
         blockers.append("Windows build evidence is not native Windows x64")
     if args.customer_release and joint_e2e["verified"] is not True:
         blockers.append("Joint Desktop-Staging E2E evidence is missing or did not pass")
-    if runtime_evidence["offline_license_public_keys"] != "bundled-public-only":
-        blockers.append("Host Offline License public verification key is not bundled")
     manifest["release_decision"] = "HOLD"
     manifest["production_go"] = False
     manifest["blockers"] = blockers

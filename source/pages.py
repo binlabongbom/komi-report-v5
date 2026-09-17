@@ -18,12 +18,15 @@ from i18n import ENGLISH, apply_language, get_language, tr
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame, QTableWidget, QTableWidgetItem, QHeaderView,
     QFileDialog, QMessageBox, QLineEdit, QPushButton, QScrollArea,
-    QComboBox, QGridLayout, QDoubleSpinBox, QCheckBox,
-    QSpinBox, QDialog, QDialogButtonBox, QTabWidget, QLayout, QSizePolicy,
+    QComboBox, QGridLayout, QCheckBox,
+    QDialog, QDialogButtonBox, QLayout, QSizePolicy,
     QBoxLayout
 )
 from PyQt6.QtCore  import Qt, pyqtSignal, pyqtSlot, QRect, QRectF, QPoint, QSize, QMargins, QUrl, QThread
 from PyQt6.QtGui   import QColor, QBrush, QPainter, QPainterPath, QPen, QDesktopServices, QFont, QPixmap
+
+from ui.numeric_inputs import NumericDoubleSpinBox as QDoubleSpinBox, NumericSpinBox as QSpinBox
+from ui.page_tabs import PageTabs as QTabWidget
 
 log = logging.getLogger(__name__)
 
@@ -5314,52 +5317,71 @@ class PageSettings(QWidget):
         l_runtime.addLayout(log_actions)
         lay.addWidget(c_runtime)
 
-        # ── 8. Reset data / first-run setup
-        c4 = mk_card(); c4.setMaximumWidth(700)
-        l4 = QVBoxLayout(c4); l4.setContentsMargins(20,16,20,16); l4.setSpacing(10)
-        l4.addWidget(sub_title("⚠️  ล้างข้อมูล หรือเริ่มตั้งค่าใหม่"))
-        warn = QLabel("เลือกให้ตรงกับสิ่งที่ต้องการ: ล้างเฉพาะประวัติ หรือกลับสู่หน้าตั้งค่าเครื่องพิมพ์ครั้งแรก")
-        warn.setFont(fnt(F_MD)); warn.setStyleSheet(f"color:{C_RED};")
+        # ── 8. Data and reset actions.  Keep all destructive choices in one
+        # clearly-scannable system instead of two similar warning cards.
+        c4 = mk_card()
+        l4 = QVBoxLayout(c4); l4.setContentsMargins(20,16,20,16); l4.setSpacing(8)
+        l4.addWidget(sub_title("⚠️  จัดการข้อมูลและคืนค่าโปรแกรม"))
+        warn = QLabel("ระบบสำรอง Database ก่อนเปลี่ยนหรือลบข้อมูลทุกครั้ง กรุณาเลือกตามผลกระทบที่ต้องการ")
+        warn.setFont(fnt(F_MD)); warn.setStyleSheet(f"color:{C_ORANGE};")
         warn.setWordWrap(True)
         l4.addWidget(warn)
-        rst_btn_row = QGridLayout(); rst_btn_row.setSpacing(10)
-        b_rst = btn("🗑  ล้างข้อมูลการใช้งาน", "danger"); b_rst.setFixedWidth(220)
-        b_rst.clicked.connect(self._reset)
-        b_factory = btn("↺  เริ่มตั้งค่าใหม่", "outline"); b_factory.setFixedWidth(200)
-        b_factory.setStyleSheet("QPushButton { background: white !important; color: #DC2626 !important; border: 1.5px solid #DC2626 !important; border-radius: 8px; padding: 8px 18px; font-weight: 700; } QPushButton:hover { background: #DC2626 !important; color: white !important; }")
-        b_factory.clicked.connect(self._factory_reset)
-        b_rst_parser = btn("🗑  รีเซท Parser ทั้งหมด", "danger"); b_rst_parser.setFixedWidth(200)
-        b_rst_parser.setStyleSheet("QPushButton { background: white !important; color: #DC2626 !important; border: 1.5px solid #DC2626 !important; border-radius: 8px; padding: 8px 18px; font-weight: 600; } QPushButton:hover { background: #DC2626 !important; color: white !important; }")
-        b_rst_parser.clicked.connect(self._reset_parser)
-        rst_btn_row.addWidget(b_rst, 0, 0)
-        rst_btn_row.addWidget(b_factory, 0, 1)
-        rst_btn_row.addWidget(b_rst_parser, 1, 0)
-        rst_btn_row.setColumnStretch(2, 1)
-        l4.addLayout(rst_btn_row)
+
+        def maintenance_row(title: str, detail: str, action: str, callback, *, danger: bool = False):
+            row = QFrame()
+            row.setObjectName("maintenance_action_row")
+            row.setStyleSheet(
+                "QFrame#maintenance_action_row{background:#F8FAFC;border:1px solid #D6E0EA;"
+                "border-radius:7px;} QLabel{background:transparent;border:none;}"
+            )
+            body = QHBoxLayout(row); body.setContentsMargins(12,9,12,9); body.setSpacing(12)
+            copy = QVBoxLayout(); copy.setSpacing(2)
+            heading = QLabel(title); heading.setFont(fnt(F_MD, True))
+            explanation = QLabel(detail); explanation.setWordWrap(True)
+            explanation.setStyleSheet(f"color:{C_TEXT2};")
+            copy.addWidget(heading); copy.addWidget(explanation)
+            body.addLayout(copy, 1)
+            button = btn(action, "danger" if danger else "outline")
+            button.setMinimumWidth(180)
+            button.clicked.connect(callback)
+            body.addWidget(button, 0, Qt.AlignmentFlag.AlignVCenter)
+            l4.addWidget(row)
+            return button
+
+        b_rst = maintenance_row(
+            "ล้างเฉพาะประวัติการใช้งาน",
+            "ลบ Reading, Billing และ Log ใน Database · เก็บเครื่องพิมพ์ ราคา Parser และ Registration",
+            "ล้างประวัติ",
+            self._reset,
+            danger=True,
+        )
+        b_rst_cfg = maintenance_row(
+            "คืนค่าการตั้งค่าทั่วไป",
+            "คืนชื่อเครื่อง ราคา และวันตัดรอบเป็นค่าเริ่มต้น · ไม่ลบประวัติการใช้งาน",
+            "คืนค่า Settings",
+            self._reset_settings,
+        )
+        b_rst_parser = maintenance_row(
+            "คืนค่า Parser Mapping",
+            "สำรองและลบ Parser Profile ที่ปรับแต่งไว้ · ไม่ลบ Database",
+            "คืนค่า Parser",
+            self._reset_parser,
+        )
+        b_factory = maintenance_row(
+            "เริ่มติดตั้งและตั้งค่าใหม่ทั้งหมด",
+            "ลบเครื่องพิมพ์ ราคา ประวัติ Parser override และสถานะ Registration แล้วกลับไป Setup Wizard",
+            "เริ่มตั้งค่าใหม่",
+            self._factory_reset,
+            danger=True,
+        )
         lay.addWidget(c4)
         self._btn_reset_db = b_rst
-
-        # ── 9. Reset Settings
-        c5 = mk_card(); c5.setMaximumWidth(700)
-        l5 = QVBoxLayout(c5); l5.setContentsMargins(20,16,20,16); l5.setSpacing(10)
-        l5.addWidget(sub_title("⚠️  รีเซท การตั้งค่า"))
-        warn2 = QLabel("รีเซทค่าตั้งค่า (ชื่อเครื่อง, ราคา, วันตัดรอบ) เป็นค่าเริ่มต้น")
-        warn2.setFont(fnt(F_MD)); warn2.setStyleSheet(f"color:{C_ORANGE};")
-        l5.addWidget(warn2)
-        cfg_btn_row = QHBoxLayout(); cfg_btn_row.setSpacing(10)
-        b_rst_cfg = btn("🔄  รีเซท การตั้งค่า", "outline"); b_rst_cfg.setFixedWidth(240)
-        b_rst_cfg.setStyleSheet("QPushButton { background: white !important; color: #EA580C !important; border: 1.5px solid #EA580C !important; border-radius: 8px; padding: 8px 18px; font-weight: 600; } QPushButton:hover { background: #EA580C !important; color: white !important; }")
-        b_rst_cfg.clicked.connect(self._reset_settings)
-        cfg_btn_row.addWidget(b_rst_cfg)
-        cfg_btn_row.addStretch()
-        l5.addLayout(cfg_btn_row)
-        lay.addWidget(c5)
         self._btn_reset_settings = b_rst_cfg
         lay.addStretch()
 
         # [V4.5] เปิดใช้ระบบรหัสผ่าน — เนื้อหาถูกซ่อนจนกว่าจะ unlock ผ่าน ensure_unlocked()
         self._protected_widgets = [
-            c1, c2, c_waste, c_day, c_log, c3, c_parser, c_runtime, c4, c5
+            c1, c2, c_waste, c_day, c_log, c3, c_parser, c_runtime, c4
         ]
         # V5 owns devices, PricingRepository, billing day and waste discount in
         # its main Settings page.  Keep the legacy cards for V4 compatibility,
@@ -7021,7 +7043,7 @@ class PageManual(QWidget):
         lay.addWidget(self._card("ตรวจผลครั้งแรก", [
             self._step(1, "เปิดเมนูอุปกรณ์ แล้วกด [อ่านข้อมูลตอนนี้]"),
             self._step(2, "ตรวจชื่อรุ่น, Serial, Total Meter, หมึก, ถาดกระดาษ และ Counter จากเครื่องจริง"),
-            self._step(3, "ถ้าข้อมูลไม่อัปเดต ให้เปิด Settings → การตั้งค่าขั้นสูง → สถานะและประวัติการอ่าน"),
+            self._step(3, "ถ้าข้อมูลไม่อัปเดต ให้เปิด Settings → สถานะและประวัติ"),
             self._tip("สถานะ Online เพียงอย่างเดียวไม่ยืนยันว่าข้อมูล Meter ครบ ต้องตรวจ Total Meter และเวลาอ่านล่าสุดด้วย"),
         ]))
 

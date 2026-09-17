@@ -18,7 +18,6 @@ from PyQt6.QtCore import QDate, QEvent, QMargins, QPointF, QSignalBlocker, Qt, Q
 from PyQt6.QtGui import QColor, QFont, QFontMetrics, QMouseEvent, QPainter
 from PyQt6.QtWidgets import (
     QAbstractItemView,
-    QDateEdit,
     QFrame,
     QGridLayout,
     QHBoxLayout,
@@ -31,12 +30,14 @@ from PyQt6.QtWidgets import (
     QSizePolicy,
     QTableWidget,
     QTableWidgetItem,
-    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
 
 from i18n import ENGLISH, apply_language, get_language, translate_text
+from ui.numeric_inputs import NumericDateEdit as QDateEdit
+from ui.page_tabs import PageTabs as QTabWidget
+from ui.page_tabs import PageHeading
 from services.legacy_history_import import build_legacy_usage_intervals
 from services.report_operation_breakdown import (
     breakdown_from_raw_records,
@@ -483,7 +484,7 @@ class CloudReportsWidget(QWidget):
             "QWidget#cloud_reports QLabel{background:transparent;border:none;}"
             f"QFrame#cloud_report_toolbar,QFrame#cloud_report_panel{{"
             f"background:{PANEL};border:1px solid {LINE};border-radius:7px;}}"
-            "QLabel#cloud_title{font-size:25px;font-weight:800;color:#25364A;}"
+            "QLabel#cloud_title{font-weight:700;color:#102A43;}"
             f"QLabel#cloud_subtitle,QLabel#cloud_panel_subtitle{{color:{MUTED};font-size:12px;}}"
             "QLabel#cloud_panel_title{font-size:15px;font-weight:750;color:#25364A;}"
             f"QFrame#cloud_overview_kpi_panel{{background:{PANEL};border:1px solid {LINE};border-radius:12px;}}"
@@ -492,18 +493,6 @@ class CloudReportsWidget(QWidget):
             "QLabel#cloud_overview_metric_title{color:#25364A;font-size:15px;font-weight:750;}"
             f"QLabel#cloud_overview_metric_detail{{color:{MUTED};font-size:11px;}}"
             "QLabel#cloud_overview_metric_value{font-size:24px;font-weight:800;}"
-            "QTabWidget#cloud_report_tabs::pane{border:0;background:transparent;}"
-            "QTabWidget#cloud_report_tabs::tab-bar{alignment:center;}"
-            "QTabBar#cloud_report_tabbar::tab{border:1px solid #A9BDCF;"
-            "border-top-left-radius:4px;border-top-right-radius:4px;"
-            "border-bottom:0;margin:0;padding:4px 12px;"
-            "font-size:13px;background:#FFFFFF;}"
-            f"QTabBar#cloud_report_tabbar::tab:selected{{color:{NAVY};background:#E7F2FA;"
-            f"border-color:{BLUE};border-bottom:0;}}"
-            "QTabBar#cloud_report_tabbar::tab:hover{background:#F0F6FB;}"
-            f"QTabBar::tab{{background:transparent;color:{MUTED};padding:10px 24px;"
-            f"border-bottom:3px solid transparent;font-weight:700;}}"
-            f"QTabBar::tab:selected{{color:{NAVY};border-bottom:3px solid {ORANGE};}}"
             f"QTableWidget{{background:white;border:1px solid {LINE};gridline-color:#E8EDF2;"
             "alternate-background-color:#F7F9FB;selection-background-color:#E8F2FB;"
             "selection-color:#203247;}"
@@ -543,7 +532,7 @@ class CloudReportsWidget(QWidget):
         )
         self._base_qss = self.styleSheet()
         root = QVBoxLayout(self)
-        root.setContentsMargins(16, 16, 16, 16)
+        root.setContentsMargins(22, 18, 22, 18)
         root.setSpacing(12)
 
         self.header = QWidget()
@@ -552,18 +541,11 @@ class CloudReportsWidget(QWidget):
         heading.setContentsMargins(0, 0, 0, 0)
         heading.setSpacing(12)
         self._header_grid = heading
-        self._header_title = QWidget()
-        title_box = QVBoxLayout(self._header_title)
-        title_box.setSpacing(4)
-        title_box.setContentsMargins(0, 0, 0, 0)
-        title = QLabel("Reports")
+        self._header_title = PageHeading("Reports", "ภาพรวมการใช้งานจากเครื่องพิมพ์ทั้งหมด")
+        title = self._header_title.title
         title.setObjectName("cloud_title")
-        title_box.addWidget(title)
-        subtitle = QLabel("ภาพรวมการใช้งานจากเครื่องพิมพ์ทั้งหมด")
-        subtitle.setObjectName("cloud_subtitle")
-        subtitle.setWordWrap(True)
+        subtitle = self._header_title.description
         self._header_subtitle = subtitle
-        title_box.addWidget(subtitle)
         heading.addWidget(self._header_title, 0, 0)
         heading.setColumnStretch(0, 1)
         self.updated_label = QLabel("กำลังอ่านข้อมูลล่าสุด…")
@@ -796,7 +778,6 @@ class CloudReportsWidget(QWidget):
             return
         self._compact_density = compact
         sizes = {
-            "cloud_title": 21 if compact else 24,
             "cloud_subtitle": 11 if compact else 12,
             "cloud_panel_title": 13 if compact else 15,
             "cloud_panel_subtitle": 11 if compact else 12,
@@ -808,12 +789,11 @@ class CloudReportsWidget(QWidget):
             f"QLabel#{name}{{font-size:{size}px;}}" for name, size in sizes.items()
         )
         density_qss += (
-            f"QTabBar#cloud_report_tabbar::tab{{font-size:{12 if compact else 13}px;}}"
             f"QDateEdit#cloud_period_date{{font-size:{11 if compact else 12}px;padding:4px 7px;min-width:126px;}}"
             f"QPushButton#cloud_export,QPushButton#cloud_primary{{font-size:{11 if compact else 12}px;padding:6px 10px;}}"
         )
         self.setStyleSheet(self._base_qss + density_qss)
-        self._header_subtitle.setVisible(not compact)
+        self._header_subtitle.setVisible(True)
         for card in (*self.overview_kpis.values(), *self.user_metric_cards.values(), *self.printer_metric_cards.values()):
             card.set_compact(compact)
 

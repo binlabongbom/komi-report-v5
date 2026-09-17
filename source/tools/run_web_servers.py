@@ -82,6 +82,26 @@ def _stop(process: subprocess.Popen[bytes] | None) -> None:
 
 
 def _process_alive(pid: int) -> bool:
+    if sys.platform.startswith("win"):
+        # os.kill(pid, 0) terminates the process on Windows. Query its handle
+        # without sending any signal to the Desktop that owns this worker.
+        import ctypes
+        from ctypes import wintypes
+
+        kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+        kernel.OpenProcess.restype = wintypes.HANDLE
+        kernel.GetExitCodeProcess.argtypes = [wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD)]
+        kernel.GetExitCodeProcess.restype = wintypes.BOOL
+        kernel.CloseHandle.argtypes = [wintypes.HANDLE]
+        handle = kernel.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
+        if not handle:
+            return False
+        try:
+            code = wintypes.DWORD()
+            return bool(kernel.GetExitCodeProcess(handle, ctypes.byref(code))) and code.value == 259
+        finally:
+            kernel.CloseHandle(handle)
     try:
         os.kill(pid, 0)
         return True
@@ -95,6 +115,7 @@ def run(
     *,
     open_browser: bool = True,
     parent_pid: int | None = None,
+    stop_file: Path | None = None,
 ) -> int:
     source_root = source_root.resolve()
     web_runtime = web_runtime.expanduser().resolve()
@@ -103,7 +124,7 @@ def run(
     web_port_open = _port_open("127.0.0.1", port)
     web_ready = _https_open("127.0.0.1", port) if web_port_open else False
     if api_ready and web_ready:
-        local_url = f"https://127.0.0.1:{port}"
+        local_url = f"https://{_lan_ip()}:{port}"
         print(f"KOMI Report Web ทำงานอยู่แล้ว: {local_url}", flush=True)
         if open_browser:
             webbrowser.open(local_url)
@@ -177,7 +198,7 @@ def run(
             web = subprocess.Popen([str(npm), "run", "start"], cwd=web_runtime, env=environment)
             _wait_for_https("127.0.0.1", port, web)
 
-        local_url = f"https://127.0.0.1:{port}"
+        local_url = f"https://{_lan_ip()}:{port}"
         print(f"KOMI Report Web พร้อม: {local_url}", flush=True)
         print(f"ผู้ใช้ใน LAN เปิดแบบเข้ารหัสได้ที่: https://{_lan_ip()}:{port}", flush=True)
         print("ปิดหน้าต่างนี้เพื่อหยุด Web Server", flush=True)
@@ -185,6 +206,8 @@ def run(
             webbrowser.open(local_url)
 
         while True:
+            if stop_file is not None and stop_file.exists():
+                return 0
             if parent_pid is not None and not _process_alive(parent_pid):
                 return 0
             if api.poll() is not None:

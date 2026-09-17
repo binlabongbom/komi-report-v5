@@ -31,6 +31,7 @@ def test_first_window_fits_available_workarea_with_native_frame(window):
     available = window.screen().availableGeometry()
     assert available.contains(window.frameGeometry())
     assert window.minimumHeight() <= 560
+    assert not window.windowIcon().isNull()
 
 
 @pytest.mark.parametrize("language", [THAI, ENGLISH])
@@ -79,3 +80,23 @@ def test_screen_change_rebinds_geometry_notifications(window):
     screen.availableGeometryChanged.emit(screen.availableGeometry())
     QApplication.processEvents()
     assert screen.availableGeometry().contains(window.frameGeometry())
+
+
+def test_sidebar_logo_uses_display_pixels_without_changing_layout_size(window, monkeypatch):
+    window.resize(1024, 768)
+    monkeypatch.setattr(window, "devicePixelRatioF", lambda: 2.0)
+    supplied = []
+    set_pixmap = window._sidebar_logo_image.setPixmap
+
+    def capture_pixmap(pixmap):
+        supplied.append(pixmap)
+        set_pixmap(pixmap)
+
+    monkeypatch.setattr(window._sidebar_logo_image, "setPixmap", capture_pixmap)
+    window._update_sidebar_layout()
+    # QLabel.pixmap() normalizes to the *actual* offscreen monitor (1x), so
+    # inspect the high-resolution resource supplied to Qt for this 2x screen.
+    logo = supplied[-1]
+    assert logo.width() == 88
+    assert logo.devicePixelRatio() == 2.0
+    assert window._sidebar_logo_image.width() == 44

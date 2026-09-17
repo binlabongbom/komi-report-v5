@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+import sys
 import pytest
 
 import database
@@ -7,6 +9,18 @@ from komi_snmp_profiler.credential_store import SessionCredentialStore
 from services import device_config
 
 _qt_app_keepalive = None
+
+
+@pytest.fixture(scope="session", autouse=True)
+def native_offscreen_fonts():
+    """Avoid tofu glyphs and false layout failures in Windows offscreen tests."""
+    global _qt_app_keepalive
+    if sys.platform == "win32" and os.environ.get("QT_QPA_PLATFORM") == "offscreen":
+        from PyQt6.QtWidgets import QApplication
+        from qt_render_environment import configure_offscreen_fonts
+
+        _qt_app_keepalive = QApplication.instance() or QApplication([])
+        configure_offscreen_fonts(_qt_app_keepalive)
 
 
 @pytest.fixture(autouse=True)
