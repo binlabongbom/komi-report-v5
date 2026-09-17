@@ -18,6 +18,25 @@ from services.reconciliation import ReconciliationReport
 log = logging.getLogger(__name__)
 
 
+def _counter_reviews_before(slot: int, day: date, identity: dict) -> dict:
+    """Carry unresolved reviews even when Web succeeds without an SNMP heartbeat."""
+    with _open(commit=False) as conn:
+        row = conn.execute(
+            "SELECT source_json FROM daily_meter_records WHERE device_slot=? AND record_date<? ORDER BY record_date DESC LIMIT 1",
+            (slot, day.isoformat()),
+        ).fetchone()
+    if row is None:
+        return {}
+    try:
+        source = json.loads(row[0])
+    except (TypeError, json.JSONDecodeError):
+        return {}
+    if not isinstance(source, dict) or not isinstance(source.get("device_identity"), dict):
+        return {}
+    reviews = source.get("counter_review", {})
+    return reviews if isinstance(reviews, dict) and _identity_matches(source["device_identity"], identity) else {}
+
+
 def _device_identity_snapshot(slot: int) -> dict[str, str]:
     with _open(commit=False) as conn:
         row = conn.execute("SELECT name,serial,host FROM devices WHERE slot=?", (slot,)).fetchone()
@@ -250,6 +269,7 @@ class DailyCacheStore:
             "last_checked": None,
             "last_status": "pending",
             "device_identity": identity,
+            "counter_review": _counter_reviews_before(slot, day, identity),
         }
         captured_identity = state.get("device_identity")
         if isinstance(captured_identity, dict) and _identity_conflicts(captured_identity, identity):
@@ -324,15 +344,35 @@ class DailyCacheStore:
             state["resets"] = []
             previous = current
         delta = state.setdefault("delta", {})
+        if "counter_review" not in state:
+            state["counter_review"] = _counter_reviews_before(slot, day, identity)
+        pending = state["counter_review"]
+        # A smaller absolute counter is not proof that counting restarted at
+        # zero. Keep observations, but require an explicit baseline decision.
+        for reset in state.get("resets", []):
+            pending.setdefault(reset["key"], dict(reset))
         for key, value in current.items():
             old = previous.get(key)
-            if old is None:
+            if key in pending:
+                pending[key]["latest_observed"] = value
+                pending[key]["last_observed_at"] = incoming_stamp
+                delta.setdefault(key, 0)
+            elif old is None:
                 delta.setdefault(key, 0)
             elif value >= old:
                 delta[key] = delta.get(key, 0) + (value - old)
             else:
-                state.setdefault("resets", []).append({"key": key, "before": old, "after": value, "at": stamp.isoformat()})
-                delta[key] = delta.get(key, 0) + max(0, value)
+                issue = {"key": key, "before": old, "after": value, "at": stamp.isoformat()}
+                state.setdefault("resets", []).append(issue)
+                pending[key] = {**issue, "latest_observed": value, "last_observed_at": incoming_stamp}
+                delta.setdefault(key, 0)
+                from services.pipeline_log import pipeline_log
+                pipeline_log.append(
+                    stage="CACHE", action="มิเตอร์ลดลง · รอตรวจสอบค่าเริ่มต้น",
+                    device_slot=slot, target=key, value=f"{old} → {value}",
+                    detail="ไม่นำมิเตอร์เดิมมาบวกเป็นยอดใช้งาน และยังไม่ตั้ง baseline ใหม่อัตโนมัติ",
+                    status="warning", at=stamp,
+                )
         state["latest"] = current
         state["schema_version"] = "komi.daily.cache.v2"
         state["last_success"] = incoming_stamp
@@ -414,6 +454,7 @@ class DailyCacheStore:
                     (slot,),
                 ).fetchone()
             previous_identity: dict = {}
+            previous_source: dict = {}
             if previous:
                 try:
                     previous_source = json.loads(previous[1])
@@ -437,6 +478,7 @@ class DailyCacheStore:
                 "error_count": 0,
                 "source": {"name": "carry_forward_snmp", "schema_version": "komi.daily.cache.v1"},
                 "device_identity": identity,
+                "counter_review": _counter_reviews_before(slot, day, identity),
             }
             if previous and not identity_matches:
                 state["identity_baseline_mismatch"] = {
@@ -532,6 +574,8 @@ class DailyCacheStore:
             return None
         # A heartbeat/error proves that the device was polled, but cannot be
         # promoted into meter usage when Web Connection returned no counters.
+        if "counter_review" not in state:
+            state["counter_review"] = _counter_reviews_before(slot, day, state.get("device_identity", {}))
         incomplete = bool(incomplete or not has_web_success)
         opening = state.get("opening", {}) if has_web_success else {}
         closing = state.get("latest", {}) if has_web_success else {}
@@ -550,7 +594,8 @@ class DailyCacheStore:
             "device_identity": state.get("device_identity", {}),
             "identity_conflict": state.get("identity_conflict"),
             "identity_baseline_mismatch": state.get("identity_baseline_mismatch"),
-            "reset_detected": bool(state.get("resets")),
+            "reset_detected": bool(state.get("resets") or state.get("counter_review")),
+            "counter_review": state.get("counter_review", {}),
             "out_of_order": bool(state.get("out_of_order")),
             "ordering_issues": state.get("ordering_issues", []),
             "unsafe_reconciliation_seen": bool(state.get("unsafe_reconciliation_seen")),

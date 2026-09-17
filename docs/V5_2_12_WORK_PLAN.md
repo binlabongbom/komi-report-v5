@@ -90,6 +90,27 @@ disabled foundation, not a working customer Hotfix. UI preview is a prototype.
 
 ## Existing evidence (not release approval)
 
+### 2026-09-18 continuation — falling meter safeguard
+
+- Moved to slot/meter work while native Tray verification remains outstanding.
+  Found daily cache treated a falling counter as a zero reset and added its new
+  absolute value to usage (100→7 added 7). Removed that automatic interpretation.
+- Counter drops now retain the known accumulated delta and observed raw values,
+  record a per-counter review marker and warning in the pipeline log, and stop
+  accumulating that counter until an explicit resolution exists. Catching back
+  up above the former value does not silently clear review. Other counters are
+  not rewritten. Existing billing reset hold is retained.
+- Review evidence persists in daily source JSON and carries forward for the
+  same device identity across restart/day rollover, direct Web fallback without
+  SNMP heartbeat, and intervening offline-only days. This does not change the
+  separate missing-interval pricing policy or invent daily usage.
+- Cache/billing/polling/report regression: **46 passed**. After adding offline-day
+  carry-forward coverage, daily cache suite: **19 passed**. Temporary DB only.
+- NOT complete: explicit reviewed baseline resolution + audit, confirmation UI,
+  shared peer resolution, new-serial slot replacement and retained slot totals.
+  This safeguard must not be presented as a completed replacement workflow.
+  Historical finalized rows are unchanged; no automatic historical correction.
+
 ### 2026-09-18 continuation — idle footprint and cancellation state
 
 - Handoff now explicitly records ready/cancelled state. An unready or cancelled

@@ -85,7 +85,7 @@ def test_daily_rollup_preserves_counter_sources_and_reconciliation_audit(tmp_pat
     }
 
 
-def test_counter_reset_creates_segment_without_negative_usage(tmp_path):
+def test_counter_drop_requires_review_without_adding_absolute_meter(tmp_path):
     set_db_path(tmp_path / "reset.db")
     init_db()
     DeviceConfigRepository().replace_all([DeviceConfig(0, "Office", "192.0.2.10")])
@@ -95,8 +95,50 @@ def test_counter_reset_creates_segment_without_negative_usage(tmp_path):
     cache.update_reading(0, _reading(100, first), at=first)
     state = cache.update_reading(0, _reading(7, first.replace(hour=9)), at=first.replace(hour=9))
 
-    assert state["delta"]["counter.paper.full_color.a4"] == 7
+    assert state["delta"]["counter.paper.full_color.a4"] == 0
     assert len(state["resets"]) == 1
+    assert state["counter_review"]["counter.paper.full_color.a4"]["before"] == 100
+    later = first.replace(hour=10)
+    state = cache.update_reading(0, _reading(12, later), at=later)
+    assert state["delta"]["counter.paper.full_color.a4"] == 0
+    assert state["counter_review"]["counter.paper.full_color.a4"]["latest_observed"] == 12
+
+
+@pytest.mark.parametrize("heartbeat", [True, False])
+def test_counter_review_preserves_known_usage_and_survives_next_day(tmp_path, heartbeat):
+    DeviceConfigRepository().replace_all([DeviceConfig(0, "Office", "192.0.2.10", serial="SAME-SERIAL")])
+    cache = DailyCacheStore(tmp_path / "cache")
+    first = datetime(2026, 7, 16, 8, 0, tzinfo=UTC)
+    key = "counter.paper.full_color.a4"
+    for hour, value in ((8, 100), (9, 120), (11, 7)):
+        stamp = first.replace(hour=hour)
+        state = cache.update_reading(0, _reading(value, stamp), at=stamp)
+    assert state["delta"][key] == 20
+    cache.finalize(0, first.date())
+    next_day = first.replace(day=17)
+    # Reload from persisted daily records, not the previous in-memory instance.
+    cache = DailyCacheStore(tmp_path / "cache")
+    if heartbeat:
+        cache.record_heartbeat(0, total=8, at=next_day)
+    later = next_day.replace(hour=9)
+    state = cache.update_reading(0, _reading(15, later), at=later)
+    assert state["delta"][key] == 0
+    assert state["counter_review"][key]["before"] == 120
+    assert state["counter_review"][key]["latest_observed"] == 15
+    cache.finalize(0, next_day.date())
+    with _open(commit=False) as conn:
+        source = json.loads(conn.execute(
+            "SELECT source_json FROM daily_meter_records WHERE record_date=?", (next_day.date().isoformat(),)
+        ).fetchone()[0])
+    assert source["reset_detected"]
+    assert source["counter_review"][key]["before"] == 120
+    offline_day = first.replace(day=18)
+    cache.record_error(0, offline_day.date(), "synthetic offline", at=offline_day)
+    cache.finalize(0, offline_day.date())
+    recovered = first.replace(day=19)
+    state = cache.update_reading(0, _reading(160, recovered), at=recovered)
+    assert state["delta"][key] == 0
+    assert state["counter_review"][key]["before"] == 120
 
 
 def test_snmp_heartbeat_persists_latest_toner_without_clearing_last_known_value(tmp_path):
