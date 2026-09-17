@@ -31,11 +31,15 @@ class AgentHandoff(QObject):
         self.directory = Path(tempfile.mkdtemp(prefix="komi-agent-handoff-"))
         self.process = None
         self.committed = False
+        self.cancelled = False
+        self.ready_received = False
         self.timer = QTimer(self)
         self.timer.setInterval(100)
         self.timer.timeout.connect(self.check)
 
     def start(self):
+        if self.process is not None or self.cancelled:
+            return
         self.deadline = monotonic() + 30
         environment = os.environ.copy()
         environment["KOMI_DB_PATH"] = str(Path(get_db_path()).resolve())
@@ -47,24 +51,33 @@ class AgentHandoff(QObject):
                 creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
             )
         except OSError:
+            self.cancelled = True
             clean_rendezvous(self.directory)
             self.failed.emit("launch_failed")
             return
         self.timer.start()
 
     def check(self):
+        if self.cancelled or self.committed or self.ready_received:
+            return
         if self.process.poll() is not None:
             self.timer.stop()
+            self.cancelled = True
             clean_rendezvous(self.directory)
             self.failed.emit("agent_exited")
         elif (self.directory / "ready").is_file():
             self.timer.stop()
+            self.ready_received = True
             self.ready.emit()
         elif monotonic() >= self.deadline:
             self.cancel()
             self.failed.emit("timeout")
 
     def commit(self) -> bool:
+        if self.committed:
+            return True
+        if self.cancelled or not self.ready_received:
+            return False
         if self.process is None or self.process.poll() is not None:
             self.cancel()
             return False
@@ -79,6 +92,7 @@ class AgentHandoff(QObject):
     def cancel(self):
         self.timer.stop()
         if not self.committed:
+            self.cancelled = True
             try:
                 (self.directory / "cancel").touch()
             except OSError:

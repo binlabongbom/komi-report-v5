@@ -90,6 +90,31 @@ disabled foundation, not a working customer Hotfix. UI preview is a prototype.
 
 ## Existing evidence (not release approval)
 
+### 2026-09-18 continuation — idle footprint and cancellation state
+
+- Handoff now explicitly records ready/cancelled state. An unready or cancelled
+  request cannot commit, and late timer events cannot revive a cancelled request.
+  Handoff/tray/lifecycle regressions: **23 passed**.
+- Added reproducible Windows experiment `tools/measure_idle_runtime.py`; raw
+  results: `docs/qa/v5_2_12_idle_footprint.json`. Six fresh subprocesses (3 per
+  mode), each with its own temporary database. Real MainWindow construction,
+  offscreen show/refresh/close versus constructed BackgroundAgent + AgentTray.
+  Workers not started, Web disabled, no printers configured. Python network and
+  child-process launch attempts blocked by audit hook inside each sample.
+- Median interpreter working set after 5 seconds idle: desktop **95.85 MiB**,
+  Agent + Tray **67.63 MiB**, approximately **29.4% lower**. Observed idle CPU
+  sample: desktop 0%, agent 0–0.31% of one core. Short samples/Windows counters;
+  do not interpret zero as no CPU use. This excludes Web/Node, interpreter
+  launcher overhead, active collection/sync and loaded customer history. It is
+  NOT a whole-process-tree or production workload benchmark.
+- First harness attempts failed during close because its network audit hook
+  raised RuntimeError where network callers handle OSError. Corrected the
+  fixture to raise OSError (still denies connection); all six final samples
+  then closed cleanly. No confirmed product crash from that harness failure.
+- Remaining: complete GUI→Agent→GUI lifecycle with active synthetic reads and
+  local Web fixture, OS tray verification and whole-tree resource sampling.
+  Source feature still pending full validation; no build or Host/customer edits.
+
 ### 2026-09-18 continuation — source desktop-to-agent handoff
 
 - Source desktop close now prepares an independent `--tray --handoff` agent

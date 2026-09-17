@@ -92,3 +92,26 @@ def test_launch_failure_reports_failure_without_committing(monkeypatch):
     assert not handoff.committed
     assert not handoff.directory.exists()
     app.processEvents()
+
+
+def test_cancelled_or_unready_handoff_cannot_be_committed(monkeypatch):
+    from types import SimpleNamespace
+    app = QApplication.instance() or QApplication([])
+    handoff = agent_handoff.AgentHandoff()
+    process = SimpleNamespace(poll=lambda: None)
+    monkeypatch.setattr(agent_handoff.subprocess, "Popen", lambda *a, **kw: process)
+    ready = []
+    handoff.ready.connect(lambda: ready.append(True))
+    try:
+        handoff.start()
+        assert not handoff.commit()
+        (handoff.directory / "ready").touch()
+        handoff.cancel()
+        handoff.check()
+        assert not ready
+        assert not handoff.commit()
+        assert not (handoff.directory / "commit").exists()
+    finally:
+        handoff.timer.stop()
+        agent_handoff.clean_rendezvous(handoff.directory)
+        app.processEvents()
