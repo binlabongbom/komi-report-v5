@@ -126,16 +126,19 @@ class V52ContractClient:
         *,
         transport: V52Transport | None = None,
         policy: TelemetryPolicy | None = None,
+        registration_recovery=None,
     ) -> None:
         self.config = config
         self.transport = transport or UrllibV52Transport()
         self.policy = policy or TelemetryPolicy()
+        self.registration_recovery = registration_recovery
 
     def send(
         self,
         operation: V52OutboxOperation,
         *,
         installation_token: str | None = None,
+        _record_registration: bool = True,
     ) -> V52ClientResult:
         if is_offline_edition():
             return self._failure("offline_edition", retryable=False)
@@ -163,15 +166,22 @@ class V52ContractClient:
                 timeout=self.config.timeout_seconds,
             )
         except V52NetworkError as err:
+            if (err.code == "tls_certificate_error" and operation.event_type == "register"
+                    and self.registration_recovery is not None):
+                return self.registration_recovery.send(self, operation)
             return self._failure(err.code, retryable=err.retryable,
                                  retry_after_seconds=300 if err.code.startswith("tls_") else None)
         payload = self._json(response.body)
         if not 200 <= response.status < 300:
             return self._error_response(response, payload)
         try:
-            return self._success_response(operation, response.status, payload)
+            result = self._success_response(operation, response.status, payload)
         except (KeyError, TypeError, ValueError):
             return self._failure("contract_invalid", retryable=False, http_status=response.status)
+        if result.success and operation.event_type == "register" and _record_registration:
+            from services.registration_recovery import RegistrationRecovery
+            RegistrationRecovery.close(str(operation.payload["installation_id"]))
+        return result
 
     def _success_response(
         self,
