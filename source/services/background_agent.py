@@ -119,6 +119,8 @@ class BackgroundAgent(QObject):
         log.info("headless background agent started")
 
     def _apply_collection_gate(self, _status: str = "") -> None:
+        if self._stopping:
+            return
         eligible, reason = self.registration.usage_eligibility()
         if eligible:
             self.polling.resume()

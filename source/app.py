@@ -933,6 +933,8 @@ class MainWindow(QMainWindow):
                 target.setEnabled(enabled)
 
     def _apply_registration_collection_gate(self) -> None:
+        if getattr(self, "_quitting", False):
+            return
         """Keep local history open while fail-closing every new device read."""
         eligible, reason = self._registration_usage_eligibility()
         if eligible:

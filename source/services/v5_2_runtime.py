@@ -516,9 +516,12 @@ class V52RuntimeCoordinator(QObject):
         self.timer.timeout.connect(self.tick)
         self.executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="komi-v52-runtime")
         self._future: Future | None = None
+        self._stopped = False
         self._work_finished.connect(self._after_work)
 
     def start(self) -> None:
+        if self._stopped:
+            raise RuntimeError("registration runtime cannot restart after shutdown")
         state = self.state_repository.internal()
         if is_offline_edition() and state is not None and state["mode"] != "offline":
             self.set_mode("offline")
@@ -535,6 +538,7 @@ class V52RuntimeCoordinator(QObject):
         self.tick(force_recovery=True, force_status_probe=True)
 
     def stop(self, *, wait: bool = False) -> int:
+        self._stopped = True
         self.timer.stop()
         remaining = int(self._future is not None and not self._future.done())
         self.executor.shutdown(wait=wait, cancel_futures=True)
@@ -546,7 +550,7 @@ class V52RuntimeCoordinator(QObject):
         force_recovery: bool = False,
         force_status_probe: bool = False,
     ) -> None:
-        if self._future is not None and not self._future.done():
+        if self._stopped or (self._future is not None and not self._future.done()):
             return
         self._future = self.executor.submit(
             self.processor.run_once,
@@ -556,6 +560,8 @@ class V52RuntimeCoordinator(QObject):
         self._future.add_done_callback(lambda _future: self._work_finished.emit())
 
     def configuration_changed(self) -> None:
+        if self._stopped:
+            return
         if self.snapshot().get("mode") != "online":
             self.timer.stop()
             return
@@ -572,6 +578,8 @@ class V52RuntimeCoordinator(QObject):
         """
 
     def network_recovered(self) -> int:
+        if self._stopped:
+            return 0
         state = self.state_repository.internal()
         if state is None or state["mode"] != "online":
             return 0
@@ -584,6 +592,8 @@ class V52RuntimeCoordinator(QObject):
         return queued
 
     def retry_now(self) -> int:
+        if self._stopped:
+            return 0
         if self.snapshot().get("mode") != "online":
             return 0
         changed = self.outbox.make_due(now=self.clock())
@@ -721,6 +731,8 @@ class V52RuntimeCoordinator(QObject):
         return state
 
     def _after_work(self) -> None:
+        if self._stopped:
+            return
         future = self._future
         if future is not None:
             try:

@@ -90,6 +90,25 @@ disabled foundation, not a working customer Hotfix. UI preview is a prototype.
 
 ## Existing evidence (not release approval)
 
+### 2026-09-18 continuation — worker cancellation prerequisite
+
+- While tracing UI-to-agent handoff, found two existing shutdown hazards:
+  cancelling queued futures invokes completion callbacks immediately, removing
+  entries from the dictionary being iterated; queued timer/network/status events
+  could submit to a shut-down executor or try to resume a stopped collector.
+- Polling pause/stop now iterate a snapshot. Stop serializes with submissions
+  using the existing rollover lock, then releases locks before draining workers.
+  Scheduled/manual reads and direct submissions no-op after shutdown.
+- Registration runtime ignores late timer/retry/network/config/completion events
+  after stop; desktop and agent ignore late collection-gate changes on shutdown.
+- Lifecycle/polling/registration/tray suite: **49 passed**. Added the matching
+  pause cancellation regression and reran lifecycle: **9 passed**. The tests use
+  real queued futures with a blocked synthetic worker, no printer/Host calls.
+- Desktop-close handoff is still NOT wired. Safe integration needs child tray
+  readiness before parent stops, failure recovery that retains the existing UI,
+  and ownership transfer only after worker drain. Continue this next; do not
+  mark lightweight-agent feature complete from these prerequisite fixes.
+
 ### 2026-09-18 continuation — isolated Agent tray
 
 - Added `ui/agent_tray.py` and opt-in source `background_agent.py --tray`.

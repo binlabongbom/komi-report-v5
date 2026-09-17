@@ -77,6 +77,56 @@ def test_takeover_waits_for_release_after_acknowledgement(tmp_path):
         app.processEvents()
 
 
+@pytest.mark.parametrize("operation", ["stop", "pause"])
+def test_shutdown_cancels_queued_polls_without_mutating_iteration(monkeypatch, operation):
+    from concurrent.futures import ThreadPoolExecutor
+    from services.background_polling import BackgroundPollingCoordinator
+    from services.device_config import DeviceConfig
+    app = QApplication.instance() or QApplication([])
+    coordinator = BackgroundPollingCoordinator()
+    coordinator.executor.shutdown()
+    coordinator.executor = ThreadPoolExecutor(max_workers=1)
+    started, release = Event(), Event()
+    def poll(*args):
+        started.set()
+        assert release.wait(3)
+        return False
+    monkeypatch.setattr(coordinator, "_poll_device", poll)
+    try:
+        coordinator._submit(DeviceConfig(0, "Test", "192.0.2.1"), force_web=False)
+        assert started.wait(1)
+        for slot in (1, 2):
+            coordinator._submit(DeviceConfig(slot, "Test", "192.0.2.1"), force_web=False)
+        getattr(coordinator, operation)()
+        assert coordinator.active == {0}
+        coordinator.tick()
+        coordinator._submit(DeviceConfig(2, "Test", "192.0.2.1"), force_web=True)
+        assert coordinator.active == {0}
+    finally:
+        release.set()
+        coordinator.stop(wait=True)
+        app.processEvents()
+    assert not coordinator.active
+
+
+def test_registration_ignores_queued_events_after_shutdown(monkeypatch):
+    from services.v5_2_runtime import V52RuntimeCoordinator
+    app = QApplication.instance() or QApplication([])
+    coordinator = V52RuntimeCoordinator(None)
+    coordinator.stop()
+    def unexpected(*args, **kwargs):
+        pytest.fail("a shutdown runtime must not access state or schedule work")
+    monkeypatch.setattr(coordinator, "snapshot", unexpected)
+    monkeypatch.setattr(coordinator.state_repository, "internal", unexpected)
+    coordinator.tick()
+    coordinator.configuration_changed()
+    coordinator._after_work()
+    assert coordinator.retry_now() == 0
+    assert coordinator.network_recovered() == 0
+    assert not coordinator.timer.isActive()
+    app.processEvents()
+
+
 @pytest.mark.parametrize("chunks,accepted", [([b"st", b"op"], True), ([b"ping"], False)])
 def test_agent_pipe_handles_split_commands_and_rejects_unknown(tmp_path, chunks, accepted):
     from PyQt6.QtNetwork import QLocalServer, QLocalSocket

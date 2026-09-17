@@ -133,7 +133,7 @@ class BackgroundPollingCoordinator(QObject):
         self.timer.stop()
         with self._lock:
             self._paused_reason = reason.strip() or "registration_ineligible"
-            cancelled = sum(future.cancel() for future in self._futures.values())
+            cancelled = sum(future.cancel() for future in list(self._futures.values()))
         log.info(
             "background polling paused: %s",
             self._paused_reason,
@@ -165,11 +165,14 @@ class BackgroundPollingCoordinator(QObject):
         blocking Qt's UI event loop.
         """
         self.timer.stop()
-        self._stopped = True
-        with self._lock:
-            remaining = sum(not future.done() for future in self._futures.values())
-            for future in self._futures.values():
-                future.cancel()
+        # Serialize shutdown against submission, but release both locks before
+        # draining workers (their completion callbacks also acquire _lock).
+        with self._rollover_lock:
+            with self._lock:
+                self._stopped = True
+                remaining = sum(not future.done() for future in self._futures.values())
+                for future in list(self._futures.values()):
+                    future.cancel()
         self.executor.shutdown(wait=wait, cancel_futures=True)
         log.info(
             "background polling stopped",
@@ -178,7 +181,7 @@ class BackgroundPollingCoordinator(QObject):
         return remaining
 
     def tick(self) -> None:
-        if self.is_paused:
+        if self._stopped or self.is_paused:
             return
         now = datetime.now().astimezone()
         self._finalize_before(now.date())
@@ -210,7 +213,7 @@ class BackgroundPollingCoordinator(QObject):
         )
 
     def poll_now(self, slot: int | None = None) -> None:
-        if self.is_paused:
+        if self._stopped or self.is_paused:
             return
         for device in self.repository.list(enabled_only=True):
             if slot is None or device.slot == slot:
@@ -354,7 +357,7 @@ class BackgroundPollingCoordinator(QObject):
     def _submit(self, device: DeviceConfig, *, force_web: bool) -> None:
         with self._rollover_lock:
             with self._lock:
-                if self._paused_reason:
+                if self._stopped or self._paused_reason:
                     return
                 if device.slot in self.active:
                     return
