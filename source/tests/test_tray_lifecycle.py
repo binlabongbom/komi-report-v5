@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import app
+import pytest
 
 
 class _Event:
@@ -185,3 +186,30 @@ def test_older_macos_keeps_the_context_menu(monkeypatch):
     monkeypatch.setattr(app.platform, "mac_ver", lambda: ("26.6", (0, 0, 0), ""))
 
     assert app._disable_tray_context_menu_for_current_macos() is False
+
+
+@pytest.mark.parametrize("confirm,discard,expected", [
+    (False, True, 0), (True, False, 0), (True, True, 1),
+])
+def test_tray_stop_requires_confirmation_and_preserves_unsaved_draft(monkeypatch, confirm, discard, expected):
+    window = _WindowDouble()
+    window.allow_exit = discard
+    questions, quits = [], []
+
+    def question(*args):
+        questions.append(args)
+        return app.QMessageBox.StandardButton.Yes if confirm else app.QMessageBox.StandardButton.Cancel
+
+    monkeypatch.setattr(app.QMessageBox, "question", question)
+    monkeypatch.setattr(app.QApplication, "instance", lambda: type("Application", (), {"quit": lambda self: quits.append(True)})())
+    app.MainWindow._exit_application(window)
+    assert questions[0][-1] == app.QMessageBox.StandardButton.Cancel
+    assert window.polling.stopped == expected
+    assert window.registration.stopped == expected
+    assert window.web_service.stopped == expected
+    assert len(quits) == expected
+    assert window._quitting == bool(expected)
+    if expected:
+        app.MainWindow._exit_application(window)
+        assert len(questions) == 1
+        assert len(quits) == 1

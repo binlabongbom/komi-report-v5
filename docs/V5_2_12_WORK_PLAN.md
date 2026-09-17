@@ -90,6 +90,27 @@ disabled foundation, not a working customer Hotfix. UI preview is a prototype.
 
 ## Existing evidence (not release approval)
 
+### 2026-09-18 continuation — shutdown safety
+
+- System Tray stop now requires explicit confirmation (Cancel is the default),
+  preserves the separate unsaved-settings check, and ignores duplicate exit
+  actions once shutdown starts. Cancel leaves all workers and Web running.
+- Desktop now drains polling/registration workers before releasing its instance
+  lock, closing the reverse takeover race as well as the agent-to-desktop race.
+- Agent IPC reads split stop commands asynchronously instead of blocking Qt;
+  unknown commands return an error and cannot stop the agent. Named-pipe server
+  access is restricted to the current OS user.
+- Lifecycle/tray/setup/startup source tests: **30 passed**, including split pipe
+  delivery, unknown command rejection, stop cancellation, unsaved draft refusal,
+  and duplicate stop actions. Tests use isolated databases and local IPC.
+- Remaining Agent work is substantial: closing UI still hides the large desktop
+  process; no memory reduction is claimed. Next implement an independently owned
+  tray/runtime and a verified desktop-close handoff (or disposable UI client),
+  preserve setup/settings operations, then measure total process tree CPU/RAM.
+  The existing agent has QCoreApplication only and no tray; simply exiting the
+  GUI and spawning it would remove the user's tray stop control. Do not ship
+  that incomplete shortcut. Do not enable production services for measurements.
+
 ### 2026-09-17 overnight implementation
 
 - Web source: 60-second refresh, 20-second request timeout, complete-snapshot

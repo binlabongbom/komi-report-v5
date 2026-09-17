@@ -130,14 +130,32 @@ class BackgroundAgent(QObject):
             socket = self.server.nextPendingConnection()
             if socket is None:
                 continue
-            socket.waitForReadyRead(250)
-            command = bytes(socket.read(32)).strip()
-            socket.write(b"ok")
-            socket.flush()
-            socket.waitForBytesWritten(250)
-            socket.disconnectFromServer()
-            if command == b"stop":
-                QTimer.singleShot(0, self.stop)
+            # A named-pipe connection can precede its command. Accumulate the
+            # four-byte command asynchronously; do not block collection/Qt.
+            socket.setProperty("command", b"")
+            timer = QTimer(socket)
+            timer.setSingleShot(True)
+            socket.readyRead.connect(lambda client=socket: self._read_command(client))
+            timer.timeout.connect(lambda client=socket: self._read_command(client, expired=True))
+            timer.start(1000)
+            socket.disconnected.connect(socket.deleteLater)
+            if socket.bytesAvailable():
+                self._read_command(socket)
+
+    def _read_command(self, socket: QLocalSocket, *, expired: bool = False) -> None:
+        if socket.property("handled"):
+            return
+        command = bytes(socket.property("command") or b"") + bytes(socket.read(33))
+        socket.setProperty("command", command)
+        if not expired and len(command) < 4 and b"stop".startswith(command):
+            return
+        socket.setProperty("handled", True)
+        valid = command == b"stop"
+        socket.write(b"ok" if valid else b"error")
+        socket.flush()
+        socket.disconnectFromServer()
+        if valid:
+            QTimer.singleShot(0, self.stop)
 
     def stop(self) -> None:
         if self._stopping:
@@ -177,6 +195,7 @@ def main() -> int:
     server_name = agent_server_name()
     QLocalServer.removeServer(server_name)
     server = QLocalServer()
+    server.setSocketOptions(QLocalServer.SocketOption.UserAccessOption)
     if not server.listen(server_name):
         lock.unlock()
         return 1

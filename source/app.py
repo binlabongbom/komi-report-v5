@@ -1061,6 +1061,20 @@ class MainWindow(QMainWindow):
         return True
 
     def _exit_application(self):
+        if self._quitting:
+            return
+        reply = QMessageBox.question(
+            self,
+            tr("หยุดโปรแกรมทั้งหมด", "Stop the application"),
+            tr(
+                "การอ่านมิเตอร์และรายงานผ่านเว็บบนคอมพิวเตอร์เครื่องนี้จะหยุดจนกว่าจะเปิดโปรแกรมอีกครั้ง ต้องการหยุดทั้งหมดหรือไม่?",
+                "Meter collection and web reports on this computer will stop until the application is opened again. Stop everything?",
+            ),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Cancel,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
         if not self._confirm_discard_settings_on_exit():
             return
         self._quitting = True
@@ -2127,5 +2141,9 @@ if __name__ == "__main__":
     try:
         exit_code = app.exec()
     finally:
+        # Keep desktop ownership while worker transactions finish. Otherwise a
+        # new agent/desktop can collect concurrently during Python shutdown.
+        win.polling.stop(wait=True)
+        win.registration.stop(wait=True)
         instance_guard.release()
     sys.exit(exit_code)

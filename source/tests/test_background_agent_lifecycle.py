@@ -12,6 +12,7 @@ from PyQt6.QtWidgets import QApplication
 import pytest
 
 from services.background_agent import (
+    BackgroundAgent,
     agent_lock_path,
     agent_server_name,
     stop_running_background_agent,
@@ -73,6 +74,42 @@ def test_takeover_waits_for_release_after_acknowledgement(tmp_path):
         if child.poll() is None:
             child.kill()
             child.communicate(timeout=5)
+        app.processEvents()
+
+
+@pytest.mark.parametrize("chunks,accepted", [([b"st", b"op"], True), ([b"ping"], False)])
+def test_agent_pipe_handles_split_commands_and_rejects_unknown(tmp_path, chunks, accepted):
+    from PyQt6.QtNetwork import QLocalServer, QLocalSocket
+    from PyQt6.QtTest import QTest
+    app = QApplication.instance() or QApplication([])
+    server = QLocalServer()
+    assert server.listen(agent_server_name(tmp_path / "protocol.sqlite3"))
+    agent = BackgroundAgent(server)
+    stops = []
+    agent.stop = lambda: stops.append(True)
+    client = QLocalSocket()
+    try:
+        client.connectToServer(server.serverName())
+        assert client.waitForConnected(1000)
+        for index, chunk in enumerate(chunks):
+            client.write(chunk)
+            client.flush()
+            QTest.qWait(30)
+            if index < len(chunks) - 1:
+                assert not stops
+                assert client.bytesAvailable() == 0
+        deadline = monotonic() + 2
+        while client.bytesAvailable() == 0 and monotonic() < deadline:
+            QTest.qWait(10)
+        assert bytes(client.readAll()) == (b"ok" if accepted else b"error")
+        QTest.qWait(10)
+        assert bool(stops) == accepted
+    finally:
+        client.abort()
+        agent.polling.stop(wait=True)
+        agent.registration.stop(wait=True)
+        server.close()
+        QLocalServer.removeServer(server.serverName())
         app.processEvents()
 
 
