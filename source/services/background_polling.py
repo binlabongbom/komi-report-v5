@@ -157,7 +157,7 @@ class BackgroundPollingCoordinator(QObject):
         self._activate_scheduler()
         log.info("background polling resumed")
 
-    def stop(self) -> int:
+    def stop(self, *, wait: bool = False) -> int:
         """Stop scheduling new work and cancel queued polls where possible.
 
         A running device read is allowed to finish its transaction/cache write;
@@ -170,7 +170,7 @@ class BackgroundPollingCoordinator(QObject):
             remaining = sum(not future.done() for future in self._futures.values())
             for future in self._futures.values():
                 future.cancel()
-        self.executor.shutdown(wait=False, cancel_futures=True)
+        self.executor.shutdown(wait=wait, cancel_futures=True)
         log.info(
             "background polling stopped",
             extra={"event": "polling_stopped", "operation": "shutdown", "remaining_polls": remaining},

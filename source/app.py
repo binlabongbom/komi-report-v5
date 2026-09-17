@@ -2033,9 +2033,6 @@ if __name__ == "__main__":
     configure_qt_application_identity(app, version=APP_VER)
     app.setWindowIcon(load_application_icon())
     install_button_system(app)
-    # Auto-start uses a QCoreApplication-only agent.  Stop it before the full
-    # desktop takes ownership of polling and Web services.
-    stop_running_background_agent(Path(get_db_path()))
     try:
         refresh_existing_autostart()
     except OSError:
@@ -2044,6 +2041,17 @@ if __name__ == "__main__":
     if not instance_guard.acquire(command="open-web" if "--open-web" in sys.argv else "activate"):
         log.warning("another KOMI Report V5 instance is already running")
         sys.exit(0)
+    # Hold desktop ownership before stopping the agent, and never start a second
+    # set of collectors while its current transactions are still completing.
+    if not stop_running_background_agent(Path(get_db_path())):
+        QMessageBox.information(
+            None,
+            "KOMI Report V5",
+            tr("Agent กำลังบันทึกข้อมูล กรุณาเปิดโปรแกรมอีกครั้งเมื่อเสร็จ",
+               "The agent is finishing its current work. Please reopen the application shortly."),
+        )
+        instance_guard.release()
+        sys.exit(1)
     _install_excepthook()
 
     # กำหนดฟอนต์ default ให้ทุก widget ที่ไม่ได้ set font เอง

@@ -534,10 +534,10 @@ class V52RuntimeCoordinator(QObject):
         # meter telemetry or a new device read can start.
         self.tick(force_recovery=True, force_status_probe=True)
 
-    def stop(self) -> int:
+    def stop(self, *, wait: bool = False) -> int:
         self.timer.stop()
         remaining = int(self._future is not None and not self._future.done())
-        self.executor.shutdown(wait=False, cancel_futures=True)
+        self.executor.shutdown(wait=wait, cancel_futures=True)
         return remaining
 
     def tick(

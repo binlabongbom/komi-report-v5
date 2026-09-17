@@ -51,21 +51,28 @@ def desktop_lock_path(database_path: Path | None = None) -> Path:
     return path.with_suffix(".instance.lock")
 
 
-def stop_running_background_agent(database_path: Path | None = None) -> bool:
-    """Ask the headless agent to stop before the full desktop starts."""
+def stop_running_background_agent(database_path: Path | None = None, *, timeout_ms: int = 10_000) -> bool:
+    """Return true only when the agent has released ownership.
+
+    The caller must hold the desktop lock to prevent another agent starting.
+    An IPC acknowledgement means receipt, not that in-flight reads have ended.
+    """
 
     socket = QLocalSocket()
     socket.connectToServer(agent_server_name(database_path))
-    if not socket.waitForConnected(350):
+    if socket.waitForConnected(350):
+        socket.write(b"stop")
+        socket.flush()
+        socket.waitForBytesWritten(350)
+        socket.waitForReadyRead(1_500)
+        socket.disconnectFromServer()
+    lock = QLockFile(str(agent_lock_path(database_path)))
+    lock.setStaleLockTime(30_000)
+    if not lock.tryLock(timeout_ms):
+        log.warning("background agent still owns the runtime; desktop startup deferred")
         return False
-    socket.write(b"stop")
-    socket.flush()
-    socket.waitForBytesWritten(350)
-    socket.waitForReadyRead(1_500)
-    acknowledged = bytes(socket.readAll()).strip() == b"ok"
-    socket.disconnectFromServer()
-    socket.waitForDisconnected(500)
-    return acknowledged
+    lock.unlock()
+    return True
 
 
 class BackgroundAgent(QObject):
@@ -159,12 +166,13 @@ def main() -> int:
     desktop_lock.setStaleLockTime(30_000)
     if not desktop_lock.tryLock(0):
         return 0
-    desktop_lock.unlock()
-
     lock = QLockFile(str(agent_lock_path()))
     lock.setStaleLockTime(30_000)
     if not lock.tryLock(0):
+        desktop_lock.unlock()
         return 0
+    # Publish ownership before letting the desktop request takeover.
+    desktop_lock.unlock()
 
     server_name = agent_server_name()
     QLocalServer.removeServer(server_name)
@@ -179,6 +187,10 @@ def main() -> int:
     try:
         return application.exec()
     finally:
+        # Keep ownership until writes/Host requests have really finished.
+        # This runs outside the UI event loop and must not release the lock early.
+        agent.polling.stop(wait=True)
+        agent.registration.stop(wait=True)
         server.close()
         QLocalServer.removeServer(server_name)
         lock.unlock()
