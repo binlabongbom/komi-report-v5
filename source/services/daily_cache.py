@@ -108,6 +108,64 @@ class DailyCacheStore:
         with self._path_lock(path):
             return self._load_unlocked(slot, day, path)
 
+    @staticmethod
+    def _review_revision(state: dict) -> str:
+        return hashlib.sha256(json.dumps(state, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()
+
+    def _review_candidate(self, slot: int, day: date, key: str, path: Path) -> tuple[dict, dict]:
+        with _open(commit=False) as conn:
+            if conn.execute("SELECT 1 FROM daily_meter_records WHERE device_slot=? AND record_date=?", (slot, day.isoformat())).fetchone():
+                raise ValueError("Finalized days require a separate amended-report workflow")
+        state = self._load_unlocked(slot, day, path)
+        if not state or key not in state.get("counter_review", {}):
+            raise ValueError("No unresolved review for this counter")
+        identity = _device_identity_snapshot(slot)
+        if not identity.get("serial") or not _identity_matches(state.get("device_identity", {}), identity):
+            raise ValueError("Read and confirm the current printer serial before resolving a counter")
+        if not state.get("sample_count") or key not in state.get("latest", {}):
+            raise ValueError("A current Web counter observation is required")
+        return state, identity
+
+    def preview_counter_baseline(self, slot: int, day: date, key: str) -> dict:
+        """Prepare review data only; never clears a hold or edits usage."""
+        path = self.path(slot, day)
+        with self._path_lock(path):
+            state, identity = self._review_candidate(slot, day, key, path)
+            issue = state["counter_review"][key]
+            return {"revision": self._review_revision(state), "device_identity": identity,
+                    "key": key, "before": issue["before"], "detected_at": issue["at"],
+                    "baseline": state["latest"][key], "observed_at": state["last_success"],
+                    "preserved_delta": state["delta"].get(key, 0)}
+
+    def confirm_counter_baseline(self, slot: int, day: date, key: str, *,
+                                 expected_revision: str, actor: str, reason: str,
+                                 at: datetime | None = None) -> dict:
+        """Resume future counting from the reviewed observation, with atomic audit.
+
+        The resolution day remains held for billing; historical totals are never
+        recalculated here. Call only after the user confirms the preview.
+        """
+        stamp = at or datetime.now().astimezone()
+        if stamp.date() != day or not actor.strip() or not reason.strip():
+            raise ValueError("Resolution needs today's observation, actor and reason")
+        path = self.path(slot, day)
+        with self._path_lock(path):
+            state, identity = self._review_candidate(slot, day, key, path)
+            if self._review_revision(state) != expected_revision:
+                raise ValueError("Counter changed after preview; review the latest values again")
+            if _timestamp(stamp.isoformat()) < _timestamp(state["last_success"]):
+                raise ValueError("Resolution cannot precede its observation")
+            issue = state["counter_review"][key]
+            resolution = {"id": str(uuid.uuid4()), "key": key, "review_at": issue["at"],
+                          "previous_counter": issue["before"], "baseline": state["latest"][key],
+                          "observed_at": state["last_success"], "resolved_at": stamp.isoformat(),
+                          "actor": actor.strip(), "reason": reason.strip(), "device_identity": identity,
+                          "preserved_delta": state["delta"].get(key, 0)}
+            state.setdefault("counter_resolutions", []).append(resolution)
+            del state["counter_review"][key]
+            self._atomic_write(path, state)
+            return resolution
+
     @classmethod
     def _path_lock(cls, path: Path) -> threading.RLock:
         key = str(path.absolute())
@@ -350,6 +408,9 @@ class DailyCacheStore:
         # A smaller absolute counter is not proof that counting restarted at
         # zero. Keep observations, but require an explicit baseline decision.
         for reset in state.get("resets", []):
+            if any(item["key"] == reset["key"] and item["review_at"] == reset["at"]
+                   for item in state.get("counter_resolutions", [])):
+                continue
             pending.setdefault(reset["key"], dict(reset))
         for key, value in current.items():
             old = previous.get(key)
@@ -594,8 +655,9 @@ class DailyCacheStore:
             "device_identity": state.get("device_identity", {}),
             "identity_conflict": state.get("identity_conflict"),
             "identity_baseline_mismatch": state.get("identity_baseline_mismatch"),
-            "reset_detected": bool(state.get("resets") or state.get("counter_review")),
+            "reset_detected": bool(state.get("resets") or state.get("counter_review") or state.get("counter_resolutions")),
             "counter_review": state.get("counter_review", {}),
+            "counter_resolutions": state.get("counter_resolutions", []),
             "out_of_order": bool(state.get("out_of_order")),
             "ordering_issues": state.get("ordering_issues", []),
             "unsafe_reconciliation_seen": bool(state.get("unsafe_reconciliation_seen")),

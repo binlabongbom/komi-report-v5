@@ -90,6 +90,28 @@ disabled foundation, not a working customer Hotfix. UI preview is a prototype.
 
 ## Existing evidence (not release approval)
 
+### 2026-09-18 continuation — explicit baseline resolution engine
+
+- Added preview/confirm APIs to DailyCacheStore for an unresolved counter. A
+  preview includes printer identity, old counter, observed new baseline/time,
+  preserved usage and a revision digest. Confirmation requires the same revision,
+  matching known serial, a current Web observation, actor/reason and valid time.
+  Heartbeat-only carried values cannot be confirmed as a new baseline.
+- Confirmation atomically appends an audit record (ID, actor, reason, serial,
+  before/baseline/observed/resolved times, preserved delta) with clearing the
+  pending marker. It does not add the absolute baseline to usage. New increments
+  resume from the reviewed observation. Repeated confirmation cannot apply twice;
+  a later counter drop creates a new review.
+- Finalized days and changed observations/identity reject stale confirmation
+  without altering cache or persisted daily records. Resolution-day billing stays
+  held for review; no historical recalculation or pricing allocation is invented.
+  Audit travels into daily source JSON on finalization.
+- Counter review/cache/billing suite: **34 passed**. All synthetic data and
+  temporary databases, no Host activity.
+- Still pending: confirmation dialog wiring, peer replication of decisions,
+  slot replacement (different serial), and amended-report release of held periods.
+  APIs are not invoked automatically and do not imply a completed user workflow.
+
 ### 2026-09-18 continuation — falling meter safeguard
 
 - Moved to slot/meter work while native Tray verification remains outstanding.
