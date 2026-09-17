@@ -90,6 +90,30 @@ disabled foundation, not a working customer Hotfix. UI preview is a prototype.
 
 ## Existing evidence (not release approval)
 
+### 2026-09-18 continuation — counter review UI
+
+- Added Meter review under Settings / Status and history, in an extracted
+  `ui/counter_review.py` panel. Today's pending counters open a nonblocking
+  preview showing printer, serial, counter label, old/new observation and
+  preserved usage. Confirmation requires a reason and explicit serial/meter
+  verification; Cancel is the default action.
+- Confirmation records the computer name and reason through the existing
+  revision-checked API. Changed observations reject the open preview; reopening
+  reads the new baseline. Cancel leaves cache bytes unchanged. A successful
+  confirmation removes the pending row but does not release held billing.
+- Source tests: **47 passed** across counter review engine/UI, pipeline log,
+  settings navigation and settings V5. Updated navigation coverage for the new
+  fourth status tab. `git diff --check` passed.
+- Rendered the actual dialog offscreen against a temporary synthetic database:
+  `Temp/komi-counter-review-final-ccanocz9/dialog.png`. This checks text/layout,
+  not native desktop interaction or full application theme acceptance.
+- Scope is explicitly local in the dialog. Peer replication of confirmation,
+  different-serial slot replacement, amended reports and shared audit remain
+  unfinished. No installer/release build, publish or production Host activity.
+- Next unblocked work: inspect different-serial slot replacement and preserve
+  cumulative usage with a reviewed baseline. Company/Host enforcement stays
+  parked until authoritative identity is provided.
+
 ### 2026-09-18 continuation — explicit baseline resolution engine
 
 - Added preview/confirm APIs to DailyCacheStore for an unresolved counter. A

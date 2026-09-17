@@ -4785,6 +4785,9 @@ class PagePipelineLog(QWidget):
         self.tabs.addTab(self._cache_tab(), "ข้อมูลวันนี้")
         self.timeline_scroll = self._timeline_tab()
         self.tabs.addTab(self.timeline_scroll, "การทำงานอัตโนมัติ")
+        from ui.counter_review import CounterReviewPanel
+        self.counter_reviews = CounterReviewPanel(self.repository, self.cache)
+        self.tabs.addTab(self.counter_reviews, tr("ตรวจสอบมิเตอร์", "Meter review"))
         self.tabs.currentChanged.connect(lambda _index: self.refresh())
         root.addWidget(self.tabs, 1)
 
@@ -5060,7 +5063,9 @@ class PagePipelineLog(QWidget):
             self.refresh_timeline()
 
     def refresh(self) -> None:
-        if self.tabs.currentIndex() == 0:
+        if self.tabs.currentWidget() is self.counter_reviews:
+            self.counter_reviews.refresh()
+        elif self.tabs.currentIndex() == 0:
             self.refresh_status()
         elif self.tabs.currentIndex() == 1:
             self.refresh_live()

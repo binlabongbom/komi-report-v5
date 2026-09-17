@@ -133,6 +133,7 @@ class DailyCacheStore:
             state, identity = self._review_candidate(slot, day, key, path)
             issue = state["counter_review"][key]
             return {"revision": self._review_revision(state), "device_identity": identity,
+                    "label": state.get("source", {}).get("counter_sources", {}).get(key, {}).get("label", key),
                     "key": key, "before": issue["before"], "detected_at": issue["at"],
                     "baseline": state["latest"][key], "observed_at": state["last_success"],
                     "preserved_delta": state["delta"].get(key, 0)}
