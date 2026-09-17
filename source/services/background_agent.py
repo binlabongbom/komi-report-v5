@@ -10,6 +10,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import sys
+from time import monotonic
 from pathlib import Path
 
 SOURCE_ROOT = Path(__file__).resolve().parents[1]
@@ -189,19 +190,29 @@ def main() -> int:
         application = QCoreApplication(sys.argv)
     application.setApplicationName("KOMI Report V5 Background Agent")
     init_db()
+    handoff = None
+    if "--handoff" in sys.argv:
+        position = sys.argv.index("--handoff")
+        if not with_tray or position + 1 >= len(sys.argv):
+            return 2
+        handoff = Path(sys.argv[position + 1])
+        if not handoff.is_dir():
+            return 2
 
     # Do not start beside an already-running full desktop.
     desktop_lock = QLockFile(str(desktop_lock_path()))
     desktop_lock.setStaleLockTime(30_000)
-    if not desktop_lock.tryLock(0):
+    if handoff is None and not desktop_lock.tryLock(0):
         return 0
     lock = QLockFile(str(agent_lock_path()))
     lock.setStaleLockTime(30_000)
     if not lock.tryLock(0):
-        desktop_lock.unlock()
+        if handoff is None:
+            desktop_lock.unlock()
         return 0
     # Publish ownership before letting the desktop request takeover.
-    desktop_lock.unlock()
+    if handoff is None:
+        desktop_lock.unlock()
 
     server_name = agent_server_name()
     QLocalServer.removeServer(server_name)
@@ -218,10 +229,37 @@ def main() -> int:
         tray = AgentTray(agent.stop, parent=agent)
         tray.tray.show()
     application.aboutToQuit.connect(agent.stop)
-    QTimer.singleShot(0, agent.start)
+    wait_timer = QTimer()
+    if handoff is None:
+        QTimer.singleShot(0, agent.start)
+    else:
+        from services.agent_handoff import clean_rendezvous
+        # Constructors and tray must succeed before the desktop is asked to exit.
+        (handoff / "ready").touch()
+        deadline = monotonic() + 45
+        def receive_handoff():
+            if agent._stopping:
+                wait_timer.stop()
+                return
+            committed = (handoff / "commit").is_file()
+            if (handoff / "cancel").exists() or (not committed and monotonic() >= deadline):
+                wait_timer.stop()
+                agent.stop()
+            elif committed and desktop_lock.tryLock(0):
+                wait_timer.stop()
+                # The parent releases this only after all old workers drain.
+                desktop_lock.unlock()
+                clean_rendezvous(handoff)
+                agent.start()
+        wait_timer.setInterval(100)
+        wait_timer.timeout.connect(receive_handoff)
+        wait_timer.start()
     try:
         return application.exec()
     finally:
+        wait_timer.stop()
+        if handoff is not None:
+            clean_rendezvous(handoff)
         if tray is not None:
             tray.close()
         # Keep ownership until writes/Host requests have really finished.

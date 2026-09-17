@@ -126,6 +126,46 @@ def test_close_really_exits_when_tray_is_unavailable(monkeypatch):
     assert event.accepted is True
 
 
+def test_source_close_waits_for_agent_without_hiding_or_stopping(monkeypatch):
+    window = _WindowDouble()
+    window._background_started = True
+    handoffs = []
+    window._begin_agent_handoff = lambda: handoffs.append(True)
+    event = _Event()
+    monkeypatch.setattr(app.QSystemTrayIcon, "isSystemTrayAvailable", lambda: True)
+    monkeypatch.setattr(app.sys, "frozen", False, raising=False)
+    app.MainWindow.closeEvent(window, event)
+    assert handoffs == [True]
+    assert window.hidden == window.polling.stopped == window.registration.stopped == 0
+    assert event.ignored and not event.accepted
+
+
+def test_handoff_confirmation_does_not_discard_draft_before_commit(monkeypatch):
+    from types import SimpleNamespace
+    window = _WindowDouble()
+    discarded = []
+    page = SimpleNamespace(discard_unsaved_changes=lambda: discarded.append(True))
+    window._settings_page_with_draft = lambda: page
+    monkeypatch.setattr(app.QMessageBox, "question", lambda *args: app.QMessageBox.StandardButton.Discard)
+    assert app.MainWindow._confirm_discard_settings_on_exit(window, discard=False)
+    assert not discarded
+    assert app.MainWindow._confirm_discard_settings_on_exit(window)
+    assert discarded == [True]
+
+
+def test_reopening_window_cancels_uncommitted_handoff():
+    from types import SimpleNamespace
+    window = _WindowDouble()
+    cancelled = []
+    window._agent_handoff = SimpleNamespace(
+        committed=False, cancel=lambda: cancelled.append(True), deleteLater=lambda: None,
+    )
+    app.MainWindow._show_from_tray(window)
+    assert cancelled == [True]
+    assert window._agent_handoff is None
+    assert window.maximized == 1
+
+
 def test_close_keeps_app_open_when_settings_draft_is_not_discarded(monkeypatch):
     window = _WindowDouble()
     window.allow_exit = False

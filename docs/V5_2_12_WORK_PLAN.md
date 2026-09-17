@@ -90,6 +90,32 @@ disabled foundation, not a working customer Hotfix. UI preview is a prototype.
 
 ## Existing evidence (not release approval)
 
+### 2026-09-18 continuation — source desktop-to-agent handoff
+
+- Source desktop close now prepares an independent `--tray --handoff` agent
+  while keeping the current window and collectors alive. A private temporary
+  rendezvous carries ready/commit/cancel. Only a live, ready child is committed;
+  the child cannot start collection until the desktop lock is released after
+  old workers drain. Closing UI then exits the large desktop process.
+- Failure before readiness keeps the current UI/services. Unsaved draft approval
+  is deferred until readiness, and the draft is not discarded before commit.
+  Reopening the window or choosing explicit full-stop cancels an uncommitted
+  handoff. Duplicate close attempts reuse the pending request.
+- Packaged/frozen close behavior and autostart are unchanged pending packaging
+  verification; default agent launch is still headless unless `--tray` is passed.
+  This is a source implementation, not installer/release validation.
+- Real subprocess tests run the actual child main with offscreen tray availability
+  substituted and collection start replaced by a marker. They prove no start
+  before commit or while the desktop lock remains held, cancellation without
+  collection, and child cleanup. No real printer or Host calls are made.
+- Handoff/agent/tray/setup/startup suite: **43 passed**. After adding draft and
+  reopen regressions, tray lifecycle alone: **13 passed**. Native OS tray display,
+  complete real GUI close/reopen, process-tree RAM/CPU and Web continuity still
+  need verification. Do not mark the entire Agent feature complete yet.
+- Next: measure and verify this source lifecycle in an isolated environment;
+  retain the no-build restriction and avoid customer DB/Host traffic. Then move
+  into remaining peer/slot/archive work, parking authoritative Host decisions.
+
 ### 2026-09-18 continuation — worker cancellation prerequisite
 
 - While tracing UI-to-agent handoff, found two existing shutdown hazards:

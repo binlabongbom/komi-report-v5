@@ -1007,6 +1007,11 @@ class MainWindow(QMainWindow):
             schedule()
 
     def _show_from_tray(self):
+        pending = getattr(self, "_agent_handoff", None)
+        if pending is not None and not pending.committed:
+            pending.cancel()
+            self._agent_handoff = None
+            pending.deleteLater()
         self._show_main_window()
 
     def _language_changed(self, _index: int) -> None:
@@ -1041,7 +1046,7 @@ class MainWindow(QMainWindow):
         )
         return reply == QMessageBox.StandardButton.Yes
 
-    def _confirm_discard_settings_on_exit(self) -> bool:
+    def _confirm_discard_settings_on_exit(self, *, discard: bool = True) -> bool:
         page = self._settings_page_with_draft()
         if page is None:
             return True
@@ -1057,14 +1062,19 @@ class MainWindow(QMainWindow):
         )
         if reply != QMessageBox.StandardButton.Discard:
             return False
-        discard = getattr(page, "discard_unsaved_changes", None)
-        if callable(discard):
-            discard()
+        discard_action = getattr(page, "discard_unsaved_changes", None)
+        if discard and callable(discard_action):
+            discard_action()
         return True
 
     def _exit_application(self):
         if self._quitting:
             return
+        pending = getattr(self, "_agent_handoff", None)
+        if pending is not None and not pending.committed:
+            pending.cancel()
+            self._agent_handoff = None
+            pending.deleteLater()
         reply = QMessageBox.question(
             self,
             tr("หยุดโปรแกรมทั้งหมด", "Stop the application"),
@@ -1088,6 +1098,38 @@ class MainWindow(QMainWindow):
         self.web_service.stop()
         QApplication.instance().quit()
 
+    def _begin_agent_handoff(self):
+        if getattr(self, "_agent_handoff", None) is not None:
+            return
+        from services.agent_handoff import AgentHandoff
+        handoff = AgentHandoff(self)
+        self._agent_handoff = handoff
+
+        def failed(_reason):
+            self._agent_handoff = None
+            handoff.deleteLater()
+            QMessageBox.warning(self, "KOMI Report V5", tr(
+                "Agent ยังไม่พร้อม หน้าต่างและการอ่านข้อมูลเดิมยังทำงานอยู่ กรุณาลองปิดอีกครั้ง",
+                "The agent is not ready. This window and its collection services are still running. Please try closing again.",
+            ))
+
+        def ready():
+            if self._quitting or not self._confirm_discard_settings_on_exit(discard=False):
+                handoff.cancel()
+                self._agent_handoff = None
+                handoff.deleteLater()
+                return
+            if not handoff.commit():
+                failed("commit_failed")
+                return
+            self._quitting = True
+            self.close()
+            QApplication.instance().quit()
+
+        handoff.failed.connect(failed)
+        handoff.ready.connect(ready)
+        handoff.start()
+
     def closeEvent(self, event: QCloseEvent):
         close_to_tray = get_cfg("close_to_tray", "1") != "0"
         if self._quitting or not close_to_tray or not QSystemTrayIcon.isSystemTrayAvailable():
@@ -1105,6 +1147,11 @@ class MainWindow(QMainWindow):
             self.registration.stop()
             self.web_service.stop()
             event.accept()
+            return
+        # Keep packaged routing unchanged until packaging verification.
+        if self._background_started and not getattr(sys, "frozen", False):
+            self._begin_agent_handoff()
+            event.ignore()
             return
         self.hide()
         self.tray.showMessage(
