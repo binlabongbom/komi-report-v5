@@ -11,13 +11,19 @@ from database import _open
 from services.device_config import DeviceConfig, DeviceConfigRepository
 from services.reader_jobs import ReadScope, ReaderJobs, VerifiedReader
 from services.web_observations import WebObservationStore, _json
+from services.slot_epoch_store import SlotEpochStore
+from services.slot_epoch_exchange import SlotEpochExchange
 from test_subject_history import _reading
 
 
 def fixture():
     DeviceConfigRepository().replace_all([DeviceConfig(0, "Fixture", "192.0.2.10", serial="SER-A")])
+    anchor = WebObservationStore().record(0, _reading(90, collected_at=datetime(2026, 9, 17, 10, tzinfo=UTC)),
+        serial="SER-A", printer_name="Fixture")
+    epochs = SlotEpochStore()
+    epoch = epochs.confirm(epochs.preview(0, anchor["id"], operation="initial", actor="A", reason="Fixture baseline"))
     now = [100.0]
-    scope = [ReadScope("fixture-company", 0, "SER-A", "fixture-settings", "fixture-reviewed-epoch")]
+    scope = [ReadScope("fixture-company", 0, "SER-A", "fixture-settings", epoch)]
     origins = {member: str(uuid.uuid4()) for member in ("A", "B", "C")}
     def authorize(member, slot):
         if member not in origins or slot != scope[0].slot:
@@ -29,14 +35,15 @@ def fixture():
 
 def committed_event(job_id, origin):
     store = WebObservationStore()
+    epoch = SlotEpochStore().head(0)["id"]
     event = store.record(0, _reading(100, collected_at=datetime(2026, 9, 18, 10, tzinfo=UTC)),
-        serial="SER-A", printer_name="Fixture", read_id=str(uuid.uuid4()))
+        serial="SER-A", printer_name="Fixture", read_id=str(uuid.uuid4()), epoch_id=epoch)
     # Simulate the already-authorized remote journal import. No membership or
     # Host trust is inferred from this fixture's arbitrary IDs.
     event["payload"]["origin"] = origin
     event["payload"]["read_id"] = job_id
     event["id"] = hashlib.sha256(_json(event["payload"]).encode()).hexdigest()
-    store.receive([event], expected_slot=0, expected_serial="SER-A")
+    store.receive([event], expected_slot=0, expected_serial="SER-A", expected_epoch=epoch)
     return event["id"]
 
 
@@ -173,31 +180,68 @@ def test_three_separate_databases_join_one_read_and_receive_only_persisted_web(t
             with _open() as conn:
                 conn.execute("INSERT INTO web_observation_state VALUES('origin',?)", (origin,))
             paths[member], stores[member], origins[member] = path, WebObservationStore(path), origin
-        scope = ReadScope("fixture-company", 0, "SER-A", "same-settings", "same-reviewed-epoch")
+        # Start from one actually reviewed epoch replicated to independent DBs.
+        anchor = stores["A"].record(0, _reading(50000, collected_at=datetime(2026, 9, 17, 10, tzinfo=UTC)),
+            serial="SER-A", printer_name="Fixture")
+        epochs = SlotEpochStore(paths["A"])
+        epoch = epochs.confirm(epochs.preview(0, anchor["id"], operation="initial", actor="A", reason="Fixture"))
+        exchange = SlotEpochExchange(path=paths["A"], authorize=lambda member, decision: member in paths)
+        for member in ("B", "C"):
+            peer = SlotEpochExchange(path=paths[member], authorize=lambda member, decision: member in paths)
+            peer.receive("A", exchange.export(member, epoch))
+            peer.adopt("A", epoch, expected_head=None)
+        scope = ReadScope("fixture-company", 0, "SER-A", "same-settings", epoch)
         jobs = ReaderJobs(path=paths["A"], authorize=lambda member, slot: VerifiedReader(member, origins[member], scope),
             current_scope=lambda slot: scope)
         first = jobs.request("B", "manual-first", scope)
         joined = jobs.request("C", "manual-second", scope)
         assert joined["job_id"] == first["job_id"] and joined["event_id"] is None
-        assert stores["A"].page()["events"] == stores["C"].page()["events"] == []
+        assert stores["A"].page()["events"] == stores["C"].page()["events"] == [anchor]
         event = stores["B"].record(0, _reading(50100, collected_at=datetime(2026, 9, 18, 10, tzinfo=UTC)),
-            serial="SER-A", printer_name="Fixture", read_id=first["job_id"])
+            serial="SER-A", printer_name="Fixture", read_id=first["job_id"], epoch_id=epoch)
         with pytest.raises(ValueError, match="Committed"):
             jobs.complete("B", first["job_id"], scope, event_id=event["id"])
-        receipts = stores["A"].receive([event], expected_slot=0, expected_serial="SER-A")
+        receipts = stores["A"].receive([event], expected_slot=0, expected_serial="SER-A", expected_epoch=epoch)
         stores["B"].acknowledge("A", receipts)
         jobs.complete("B", first["job_id"], scope, event_id=event["id"])
         assert jobs.status("C", first["job_id"], scope)["event_id"] == event["id"]
         # Authorized transport forwards persisted parsed data, never printer
         # HTML, a whole database, or SNMP status represented as fresh Web.
-        received = stores["A"].page()["events"]
-        stores["C"].receive(received, expected_slot=0, expected_serial="SER-A")
-        stores["C"].receive(received, expected_slot=0, expected_serial="SER-A")
+        received = [item for item in stores["A"].page()["events"] if item["id"] != anchor["id"]]
+        stores["C"].receive(received, expected_slot=0, expected_serial="SER-A", expected_epoch=epoch)
+        stores["C"].receive(received, expected_slot=0, expected_serial="SER-A", expected_epoch=epoch)
         restarted_c = WebObservationStore(paths["C"])
-        assert restarted_c.page()["events"] == stores["B"].page()["events"] == [event]
+        assert restarted_c.page()["events"] == stores["B"].page()["events"] == [anchor, event]
         assert restarted_c.pending("A") == []  # Incoming data does not become an echo outbox.
         assert stores["B"].pending("A") == []
         with closing(sqlite3.connect(paths["A"])) as conn:
             assert conn.execute("SELECT COUNT(*) FROM reader_jobs").fetchone()[0] == 1
     finally:
         database.set_db_path(original)
+
+
+def test_unbound_web_cannot_complete_a_grant_for_reviewed_epoch():
+    jobs, _, scope, origins, _ = fixture()
+    job = jobs.request("B", "unbound", scope[0])
+    event = WebObservationStore().record(0, _reading(100, collected_at=datetime(2026, 9, 18, 10, tzinfo=UTC)),
+        serial="SER-A", printer_name="Fixture")
+    event["payload"].update(origin=origins["B"], read_id=job["job_id"])
+    event["id"] = hashlib.sha256(_json(event["payload"]).encode()).hexdigest()
+    WebObservationStore().receive([event], expected_slot=0, expected_serial="SER-A")
+    with pytest.raises(ValueError, match="matching reviewed epoch"):
+        jobs.complete("B", job["job_id"], scope[0], event_id=event["id"])
+    assert jobs.status("C", job["job_id"], scope[0])["phase"] == "reading"
+
+
+def test_epoch_change_fences_grant_even_if_scope_provider_is_stale():
+    jobs, _, scope, origins, _ = fixture()
+    job = jobs.request("A", "before-reset", scope[0])
+    result = committed_event(job["job_id"], origins["A"])
+    event = WebObservationStore().record(0, _reading(1, collected_at=datetime(2026, 9, 19, 10, tzinfo=UTC)),
+        serial="SER-A", printer_name="Fixture", epoch_id=scope[0].epoch_id)
+    epochs = SlotEpochStore()
+    epochs.confirm(epochs.preview(0, event["id"], operation="reset", actor="A", reason="Confirmed reset"))
+    with pytest.raises(ValueError, match="not active"):
+        jobs.complete("A", job["job_id"], scope[0], event_id=result)
+    with pytest.raises(ValueError, match="not active"):
+        jobs.request("B", "stale-scope", scope[0])

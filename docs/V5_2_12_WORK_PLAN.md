@@ -207,6 +207,12 @@ bf453738b934dcf5bea59dd8c70e191b52ba6b89 และ merge เข้า local main
   epoch review UI integrated with shared settings and legacy cache/billing holds;
   explicit historical migration/amendment. Do not enable peer suppression or
   claim the full shared replacement workflow complete from these primitives.
+- Reader grants now require the active persisted epoch, not only the caller's
+  scope string. Completion requires a committed Web observation assigned to the
+  same epoch; an unbound result or reset racing a stale scope provider cannot
+  complete the job. Three-database reader simulation now uses real replicated
+  epochs. Reader/store/exchange regression: **30 passed**. Portable backup of
+  archived epoch maxima was separately verified with the 2,100-page result.
 
 ### 2026-09-18 — reviewed slot continuity reducer and billing-day consistency
 

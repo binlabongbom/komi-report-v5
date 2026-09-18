@@ -91,6 +91,16 @@ class ReaderJobs:
             raise ValueError("Invalid authority clock")
         return value
 
+    @staticmethod
+    def _active_epoch(conn, scope):
+        from services.slot_epoch_store import SlotEpochStore
+        if SlotEpochStore._head(conn, scope.slot) != scope.epoch_id:
+            raise ValueError("Reviewed slot epoch is not active for this read")
+        epoch = SlotEpochStore._epoch(conn, scope.epoch_id)
+        anchor = epoch["document"]["baseline_event"]["payload"]
+        if (anchor["slot"], anchor["serial"]) != (scope.slot, scope.serial):
+            raise ValueError("Reviewed slot epoch does not match the granted printer")
+
     def _expire(self, conn, slot, scope, now):
         conn.execute("""UPDATE reader_jobs SET phase='expired',reason='authority_restart_or_scope_or_deadline'
             WHERE device_slot=? AND phase='reading'
@@ -117,6 +127,7 @@ class ReaderJobs:
             raise ValueError("Reader lease must be between 5 and 300 seconds")
         with self._write() as conn:
             member, encoded = self._member(member_id, scope)
+            self._active_epoch(conn, scope)
             now = self._now()
             self._expire(conn, scope.slot, encoded, now)
             previous = conn.execute("SELECT scope_json,job_id FROM reader_job_requests WHERE member_id=? AND request_id=?",
@@ -159,6 +170,7 @@ class ReaderJobs:
         _text(event_id)
         with self._write() as conn:
             member, encoded = self._member(member_id, scope)
+            self._active_epoch(conn, scope)
             now = self._now()
             row = conn.execute("SELECT * FROM reader_jobs WHERE id=? AND scope_json=?", (job_id, encoded)).fetchone()
             if row is None or row["reader_id"] != member_id or row["reader_origin"] != member.observation_origin:
@@ -171,6 +183,10 @@ class ReaderJobs:
                 (event_id,)).fetchone()
             if event is None or tuple(event) != (member.observation_origin, job_id, scope.slot, scope.serial):
                 raise ValueError("Committed Web observation does not match the granted read")
+            assigned = conn.execute("SELECT 1 FROM slot_meter_assignments WHERE event_id=? AND epoch_id=?",
+                (event_id, scope.epoch_id)).fetchone()
+            if assigned is None:
+                raise ValueError("Committed Web observation has no matching reviewed epoch")
             conn.execute("UPDATE reader_jobs SET phase='complete',event_id=? WHERE id=?", (event_id, job_id))
             row = conn.execute("SELECT * FROM reader_jobs WHERE id=?", (job_id,)).fetchone()
             return self._result(row, member_id, now)
