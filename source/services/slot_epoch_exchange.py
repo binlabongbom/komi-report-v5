@@ -87,8 +87,14 @@ class SlotEpochExchange:
                 carry = {key: _number(value) for key, value in doc["carried"].items()}
                 if ("late_parent_evidence" in projection.issues or
                         any(item.slot_total > carry.get(item.key, -1) for item in projection.counters)):
-                    conn.execute("UPDATE slot_meter_epoch_state SET issues_json=? WHERE epoch_id=?",
-                        (_json(["late_parent_evidence"]), epoch["id"]))
+                    self.store._flag_branch(conn, epoch["id"], "late_parent_evidence")
+                if "competing_epoch_decisions" in projection.issues:
+                    self.store._flag_branch(conn, epoch["id"], "competing_epoch_decisions")
+            siblings = conn.execute("SELECT id FROM slot_meter_epochs WHERE device_slot=? AND parent_id IS ?",
+                (baseline["payload"]["slot"], doc["parent"])).fetchall()
+            if len(siblings) > 1:
+                for (sibling,) in siblings:
+                    self.store._flag_branch(conn, sibling, "competing_epoch_decisions")
             return epoch["id"]
 
     def adopt(self, member, epoch_id, *, expected_head):
@@ -119,6 +125,8 @@ class SlotEpochExchange:
                 cursor = self.store._epoch(conn, parent_id)
             for decision in chain:
                 issues = self.store._projection(conn, decision)[0].issues
+                if "competing_epoch_decisions" in issues:
+                    raise ValueError("Conflicting slot decision branch needs review")
                 if {"late_parent_evidence", "normalization_schema_changed", "counter_without_reviewed_baseline"}.intersection(issues):
                     raise ValueError("Slot evidence needs review before adoption")
                 # A second locally known child is an explicit conflict, even

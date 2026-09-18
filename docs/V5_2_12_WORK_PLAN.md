@@ -243,6 +243,13 @@ bf453738b934dcf5bea59dd8c70e191b52ba6b89 และ merge เข้า local main
   explicit old-epoch selection and disabled export while recalculating.
 - Regenerated and visually checked both Web evidence manual screenshots with
   the actual offscreen Qt widgets. Updated the source manual selection steps.
+- Later conflict regression: receiving a competing epoch now flags both branches
+  and descendants, including an already-active local head. It never switches
+  head by arrival order; new local replacement/reset previews stay held.
+  Evidence inspection shows stored conflict/late-parent flags even with only one
+  reading and no intervals; exports retain the same flags. Store/exchange/report
+  26 passed, then final evidence UI tests 8 passed. Manual conflict resolution
+  and its authenticated shared-setting workflow remain to be implemented.
 
 ### 2026-09-18 — durable slot epochs and reviewed peer ancestry
 

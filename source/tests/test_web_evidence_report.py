@@ -146,3 +146,20 @@ def test_projector_rejects_bound_events_from_other_epoch():
     with pytest.raises(ValueError, match="different reviewed"):
         project_counter([event], slot=0, serial="OLD", epoch_id="unrelated",
             counter=CounterIdentity("counter.user.total.total", "user", "u-1"), calendar_timezone=BANGKOK)
+
+
+def test_single_reading_still_shows_pending_epoch_conflict():
+    from test_slot_epoch_store import fixture
+    store, _, epoch = fixture()
+    with store._connection(write=True) as conn:
+        store._flag_branch(conn, epoch, "competing_epoch_decisions")
+    dialog = WebEvidenceDialog(DeviceConfigRepository().list(enabled_only=False), today=date(2026, 9, 19), calendar_timezone=BANGKOK)
+    dialog.load()
+    dialog.future.result(timeout=10)
+    dialog.collect()
+    dialog.future.result(timeout=10)
+    dialog.collect()
+    assert not dialog.projection.intervals
+    assert "รอตรวจสอบ" in dialog.epochs.currentText()
+    assert "ยืนยันฐาน Slot ขัดกัน" in dialog.status.text()
+    dialog.pool.shutdown(wait=True)

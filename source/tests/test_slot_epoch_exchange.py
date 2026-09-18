@@ -154,14 +154,18 @@ def test_conflicting_sibling_cannot_be_selected_by_arrival_time(peers):
     second = confirm(store, read("USED", 50000, 18), "replacement")
     second_bundle = exchanges["A"].export("B", second)
     exchanges["B"].receive("A", second_bundle)
+    device(paths["B"], "USED")
+    exchanges["B"].adopt("A", second, expected_head=None)
     third_candidate = read("OTHER", 9000, 19)
     sibling = reviewed_epoch(third_candidate, parent=parent, operation="replacement", actor="C", reason="Concurrent review")
     sibling_bundle = {"epoch": sibling, "parent_evidence": [parent["document"]["baseline_event"]]}
     exchanges["B"].receive("C", sibling_bundle)
     device(paths["B"], "OTHER")
     with pytest.raises(ValueError, match="Conflicting"):
-        exchanges["B"].adopt("C", sibling["id"], expected_head=None)
-    assert SlotEpochStore(paths["B"]).head(0) is None
+        exchanges["B"].adopt("C", sibling["id"], expected_head=second)
+    target = SlotEpochStore(paths["B"])
+    assert target.head(0)["id"] == second
+    assert "competing_epoch_decisions" in target.current(0).issues
 
 
 def test_imported_initial_does_not_discard_unreviewed_legacy_printer(peers):

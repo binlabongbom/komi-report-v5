@@ -229,6 +229,8 @@ class WebEvidenceDialog(QDialog):
         result = self.projection
         held = sum(bool(item.holds) for item in result.intervals)
         self.status.setText(f"{len(result.points):,} จุดอ่านจริง · ผลต่างรวม {display_number(result.total_usage)} · รอตรวจ {held:,} ช่วง · สีส้ม = ประมาณการ")
+        if result.issues:
+            self.status.setText(self.status.text() + "\n" + review_labels(result.issues))
         chart = QChart()
         chart.setTitle("ยอดรายวันจากช่วงอ่าน Web · สีส้มเป็นค่าประมาณ แม้แสดงเป็นจำนวนเต็ม")
         series = QBarSeries()

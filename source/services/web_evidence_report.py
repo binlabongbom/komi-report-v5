@@ -1,5 +1,6 @@
 """Explicit, bounded inspection/export of persisted Web reading intervals."""
 from contextlib import closing
+from dataclasses import replace
 from datetime import date, datetime, time, timedelta
 from pathlib import Path
 import json
@@ -20,6 +21,9 @@ REVIEW_LABELS = {
     "interval_crosses_billing_period": "ช่วงอ่านคร่อมรอบบิล",
     "interval_crosses_price_change": "ช่วงอ่านคร่อมวันเปลี่ยนราคา",
     "selected_counter_missing_on_observed_days": "บางวันมี Web แต่ไม่มีตัวนับที่เลือก",
+    "competing_epoch_decisions": "มีการยืนยันฐาน Slot ขัดกัน ต้องตรวจสอบก่อนใช้ยอด",
+    "late_parent_evidence": "พบหลักฐานเครื่องเก่าสูงกว่าฐานที่ยืนยันไว้ ต้องตรวจยอดต่อเนื่อง",
+    "counter_without_reviewed_baseline": "มีตัวนับที่ยังไม่ได้ยืนยันฐาน",
 }
 
 
@@ -67,7 +71,13 @@ def load_evidence(database_path, *, slot, serial, start, end, calendar_timezone,
                         action = {"initial": "ฐานเริ่มต้น", "reset": "หลังรีเซ็ต", "replacement": "หลังเปลี่ยนเครื่อง"}[definition["operation"]]
                         at = datetime.fromisoformat(definition["baseline_event"]["payload"]["observed_at"]).astimezone(calendar_timezone)
                         label = f"{action} · {at:%d/%m/%Y %H:%M} · {epoch_id[:8]}"
-                    groups[epoch_id] = {"epoch": epoch, "label": label, "events": []}
+                    issues = []
+                    if epoch is not None:
+                        row = conn.execute("SELECT issues_json FROM slot_meter_epoch_state WHERE epoch_id=?", (epoch_id,)).fetchone()
+                        issues = json.loads(row[0])
+                    if issues:
+                        label += " · รอตรวจสอบ"
+                    groups[epoch_id] = {"epoch": epoch, "label": label, "events": [], "issues": issues}
                 groups[epoch_id]["events"].append(event)
             for c in event["payload"]["reading"]["counters"]:
                 if not c["canonical_field"].startswith("counter."):
@@ -98,11 +108,16 @@ def inspect_counter(evidence, counter, *, slot, serial, start, end, calendar_tim
     if epoch_id not in groups:
         raise ValueError("ไม่พบข้อมูลในช่วงฐานมิเตอร์ที่เลือก")
     group = groups[epoch_id]
-    return project_counter(group["events"], slot=slot, serial=serial,
+    result = project_counter(group["events"], slot=slot, serial=serial,
         epoch_id=epoch_id or f"inspection:{serial}:{start}:{end}", counter=counter,
         reviewed_epoch=group["epoch"],
         calendar_timezone=calendar_timezone, billing_day=evidence["billing_day"],
         price_change_dates=evidence["price_change_dates"])
+    issues = set(group.get("issues", ()))
+    if issues:
+        result = replace(result, issues=tuple(sorted(set(result.issues) | issues)),
+            intervals=tuple(replace(item, holds=tuple(sorted(set(item.holds) | issues))) for item in result.intervals))
+    return result
 
 
 def export_evidence_xlsx(path, projection, *, printer, serial, counter_label):

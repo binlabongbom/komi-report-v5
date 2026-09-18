@@ -79,6 +79,19 @@ class SlotEpochStore:
         issues = set(json.loads(conn.execute("SELECT issues_json FROM slot_meter_epoch_state WHERE epoch_id=?", (epoch["id"],)).fetchone()[0]))
         return replace(result, issues=tuple(sorted(set(result.issues) | issues))), proof
 
+    @staticmethod
+    def _flag_branch(conn, root, flag):
+        for (epoch_id,) in conn.execute("""WITH RECURSIVE descendants(id) AS (
+            SELECT id FROM slot_meter_epochs WHERE id=?
+            UNION ALL SELECT e.id FROM slot_meter_epochs e JOIN descendants d ON e.parent_id=d.id)
+            SELECT id FROM descendants""", (root,)).fetchall():
+            row = conn.execute("SELECT issues_json FROM slot_meter_epoch_state WHERE epoch_id=?", (epoch_id,)).fetchone()
+            issues = set(json.loads(row[0]))
+            if flag not in issues:
+                issues.add(flag)
+                conn.execute("UPDATE slot_meter_epoch_state SET version=version+1,issues_json=? WHERE epoch_id=?",
+                    (_json(sorted(issues)), epoch_id))
+
     def current(self, slot):
         with self._connection() as conn:
             head = self._head(conn, slot)
@@ -120,7 +133,8 @@ class SlotEpochStore:
         if head:
             parent = self._epoch(conn, head)
             projection, proof = self._projection(conn, parent)
-            if {"normalization_schema_changed", "counter_without_reviewed_baseline", "late_parent_evidence"}.intersection(projection.issues):
+            if {"normalization_schema_changed", "counter_without_reviewed_baseline", "late_parent_evidence",
+                    "competing_epoch_decisions"}.intersection(projection.issues):
                 raise ValueError("Resolve pending slot evidence or mapping changes first")
             version = conn.execute("SELECT version FROM slot_meter_epoch_state WHERE epoch_id=?", (head,)).fetchone()[0]
         epoch = reviewed_epoch(candidate, parent=parent, parent_observations=proof,
