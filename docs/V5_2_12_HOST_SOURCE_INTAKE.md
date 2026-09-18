@@ -1,5 +1,15 @@
 # Host source intake — 18 September 2026
 
+## Latest user boundary: retain the existing Host
+
+The user explicitly instructed that nothing on the Host is to be changed yet.
+Do not modify/deploy its backend, schema, APIs, configuration, certificates or
+data. This intake remains a read-only review of the existing implementation.
+Desktop adapters may target a verified existing contract; if a capability needs
+a Host change, park that specific dependency and continue independent Desktop
+work. Missing backend evidence does not prove that the existing Host lacks the
+capability and does not authorize inventing membership or bypassing trust.
+
 Reviewed the two files supplied by the user without executing them, opening the
 License screen, or calling Host APIs. This is a static frontend review, not a
 backend or deployed integration test. No production data was changed.
