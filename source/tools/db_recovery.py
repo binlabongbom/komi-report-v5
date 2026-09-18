@@ -28,6 +28,8 @@ CRITICAL_TABLES = (
     "report_detail_archives",
     "archived_subject_periods",
     "report_archive_days",
+    "reader_jobs",
+    "reader_job_requests",
     "web_observation_outbox",
     "web_observation_receipts",
 )

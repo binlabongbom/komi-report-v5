@@ -175,6 +175,34 @@ bf453738b934dcf5bea59dd8c70e191b52ba6b89 และ merge เข้า local main
   หลักฐานทดสอบเก่าตรวจว่ามีบน GitHub/commit/tag/release จริงก่อนเก็บกวาด
 - ปรับคู่มือ ภาพหน้าจอ และขั้นตอนทดสอบสองเครื่องให้ตรง ก่อนขออนุญาต build
 
+### 2026-09-18 — durable reader grants and joined-request simulation
+
+- Schema 26 and `ReaderJobs` provide first-accepted-request ordering at one
+  already authorized coordinator. A manual requester owns the temporary job;
+  overlapping manual/scheduled requests join the same job and never create an
+  extra Web point. Retrying a lost grant response returns the original job.
+- Bounded leases use the coordinator's monotonic clock, never client wall clocks.
+  Authority restart fences the old instance and expires old in-flight grants;
+  old/late readers cannot complete a replacement job. Explicit Web failure frees
+  the next request without fabricating a successful reading.
+- A result becomes complete only if its parsed Web observation is already in the
+  coordinator journal with the matching job, reader origin, slot and serial.
+  Failed request persistence rolls back its new grant; resets respect all FKs.
+- Injected verified member/current-scope providers must agree on company, shared
+  settings revision, physical serial and reviewed counter epoch. There is no
+  default broadcast/name-based authorization and no production endpoint enabled.
+- Three independent A/B/C SQLite databases simulate B receiving the first manual
+  grant, C joining, B recording Web, A importing durably before completion, then
+  C receiving the same event twice and reopening without duplicate history.
+  This is data/service simulation with explicit fixture trust, not real HTTPS,
+  Host membership, authority election, UI wiring or physical multi-PC proof.
+- Reader/Web/backup source regression: **33 passed (13.46s)** before the final
+  old-authority fence regression; final reader/migration/reset run:
+  **17 passed (9.00s)**, including fencing a surviving obsolete coordinator.
+- Next P2 work still includes verified membership transport, authority selection,
+  durable event workers/startup catch-up and complete runtime integration. Do not
+  suppress local collection on other PCs until those paths are working together.
+
 ### 2026-09-18 — verified daily detail archives and hot monthly summaries
 
 - Schema 25 stores immutable compressed yearly chunks for old daily subject/raw
@@ -201,9 +229,21 @@ bf453738b934dcf5bea59dd8c70e191b52ba6b89 และ merge เข้า local main
   corruption/stale-source/frozen-period/snapshot/exports/layout/batch-repricing
   regression: **58 passed (65.87s)**. Runtime/Agent/manual collection lifecycle:
   **46 passed (22.58s)**. Counts overlap; not a whole-suite claim.
-- Five-year archival benchmark is running against a new COPY of the synthetic
-  100-user/three-printer fixture. Result and timings will be recorded when done.
-  No customer DB, Host writes, installer/release build or publication.
+- Completed archival benchmark on a new COPY of the synthetic five-year,
+  100-user/three-printer fixture: **876,300 rows**, **224 files**, **430.024s**.
+  Independent row compression initially used 422,047,744 bytes; bounded blocks
+  now share repeated fields and use **25,554,944 bytes (24.37 MiB)**. Per-block
+  decoding remains size-bounded with a digest and exact pre-prune comparison.
+- Final checksum/report tests after block compression: **18 passed (18.87s)**.
+  Benchmark verified **6,573,600 pages**, exact old canonical/custom/raw results,
+  and SQLite quick_check. Old month **50.48ms**, custom week **230.37ms**, raw
+  week **318.47ms**, all subject months **9,245.03ms** (single warm runs, with
+  other source work on the machine; not real-printer/cold-start measurements).
+- Main DB file **479,129,600 bytes**, including **351,895,552 reusable bytes**;
+  no automatic VACUUM. Active DB pages plus archives are about **145.71 MiB**,
+  but actual file occupancy stays about **481.30 MiB** until explicit compaction.
+  Original fixture file was 435,490,816 bytes. Evidence: `docs/qa/v5.2.12/five-year-archive.json`.
+- No customer DB, Host writes, installer/release build or publication.
 
 ## สถานะสิ่งที่มีอยู่จริง
 
@@ -216,10 +256,10 @@ bf453738b934dcf5bea59dd8c70e191b52ba6b89 และ merge เข้า local main
 | ประวัติการตั้งค่า | Setup/ราคา save พร้อม revision แบบ atomic; มีหน้าประวัติ/เลือกค่าขัดแย้ง/undo ราคา รอบบิล ส่วนลด ตาราง; การส่งอัตโนมัติและ apply การเปลี่ยนเครื่องร่วมยังไม่ครบ |
 | Agent/handoff/tray | มี source implementation/tests บางส่วน ยังต้องรวมการเป็นผู้อ่านและวัดงานจริงทั้ง process tree |
 | เปลี่ยนเครื่อง/มิเตอร์ลด | มี review มิเตอร์เครื่อง/รายผู้ใช้/Raw และป้องกันบวก absolute หลังลด; การเปลี่ยนเครื่องมี engine เฉพาะ local ยังไม่ครบ epoch ข้ามวันและ peer |
-| ผู้อ่านร่วม/อ่านด้วยมือ/ส่งผล Web | มี journal/คิว/ACK Web และ manual local ไม่เลื่อนตาราง/รวมคำขอซ้อน; peer election/grants/delivery ยังไม่ครบ |
+| ผู้อ่านร่วม/อ่านด้วยมือ/ส่งผล Web | มี journal/คิว/ACK Web, manual local ไม่เลื่อนตาราง และ durable grants/join จำลอง A/B/C แยกฐาน; authority election/สมาชิก/HTTPS delivery และ runtime ร่วมยังไม่ครบ |
 | ยอดลงวันก่อนหน้า/remark/กราฟเฉลี่ย | มี engine และหน้าตรวจหลักฐานพร้อมกราฟทศนิยม/Excel/PDF; ยังไม่เชื่อมการแก้ ledger/ฉบับเรียกเก็บเดิม |
 | Hotfix ลงทะเบียน | มี foundation ที่ยังปิดใช้งาน ไม่ใช่ Hotfix ลูกค้าที่พร้อมติดตั้ง |
-| Archive/benchmark/คู่มือใหม่ | Archive ผล Web และ daily subject/raw แยกปี พร้อมสรุปรายเดือน/backup/restore; ผ่าน source regressions; กำลังวัดหลัง archive บนสำเนา 5 ปี/100 user; คู่มือ source มีแล้ว ยังเหลือฉบับส่งมอบ |
+| Archive/benchmark/คู่มือใหม่ | Archive ผล Web และ daily subject/raw แยกปี พร้อมสรุปรายเดือน/backup/restore; ผ่าน source regressions และวัดหลัง archive 876,300 แถว/24.37 MiB ยอดตรง; คู่มือ source มีแล้ว ยังเหลือฉบับส่งมอบ |
 
 ห้ามนำจำนวน tests ในบันทึกเก่ามาอ้างว่าฟีเจอร์ที่เพิ่งตกลงผ่านแล้ว
 ผลวัด Agent เดิมเป็น fixture งานว่าง ไม่ใช่ผลรวมภายใต้ workload จริง

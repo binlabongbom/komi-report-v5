@@ -12,7 +12,7 @@ from contextlib import closing
 from datetime import datetime
 from pathlib import Path
 
-CURRENT_SCHEMA_VERSION = 25
+CURRENT_SCHEMA_VERSION = 26
 
 
 class UnsupportedSchemaVersionError(RuntimeError):
@@ -30,6 +30,9 @@ _REQUIRED_SCHEMA: dict[str, frozenset[str]] = {
     "web_observation_receipts": frozenset({"peer_id", "event_id", "acknowledged_at"}),
     "report_detail_archives": frozenset({"id", "kind", "relative_path", "sha256", "row_count"}),
     "report_archive_days": frozenset({"kind", "device_slot", "record_date"}),
+    "reader_jobs": frozenset({"id", "authority_boot", "scope_json", "reader_id", "phase", "event_id"}),
+    "reader_job_requests": frozenset({"member_id", "request_id", "scope_json", "job_id"}),
+    "reader_authority_state": frozenset({"singleton_id", "boot_id"}),
     "archived_subject_periods": frozenset({"archive_id", "device_slot", "summary_json"}),
     "web_observation_archives": frozenset({"id", "relative_path", "sha256", "event_count", "year"}),
     "peer_settings_revisions": frozenset({"revision", "document_json"}),
@@ -706,6 +709,20 @@ def _migration_025_report_detail_archives(connection: sqlite3.Connection) -> Non
                 BEGIN SELECT RAISE(ABORT,'Archived day requires an explicit history amendment'); END""")
 
 
+def _migration_026_reader_jobs(connection: sqlite3.Connection) -> None:
+    connection.execute("CREATE TABLE reader_authority_state(singleton_id INTEGER PRIMARY KEY CHECK(singleton_id=1),boot_id TEXT NOT NULL)")
+    connection.execute("""CREATE TABLE reader_jobs(
+        id TEXT PRIMARY KEY,authority_boot TEXT NOT NULL,scope_json TEXT NOT NULL,
+        device_slot INTEGER NOT NULL,reader_id TEXT NOT NULL,reader_origin TEXT NOT NULL,
+        created_at TEXT NOT NULL,deadline REAL NOT NULL,phase TEXT NOT NULL,
+        event_id TEXT REFERENCES web_observations(event_id),reason TEXT NOT NULL DEFAULT '')""")
+    connection.execute("CREATE INDEX idx_reader_jobs_active ON reader_jobs(device_slot,phase)")
+    connection.execute("""CREATE TABLE reader_job_requests(
+        member_id TEXT NOT NULL,request_id TEXT NOT NULL,scope_json TEXT NOT NULL,
+        job_id TEXT NOT NULL REFERENCES reader_jobs(id),
+        PRIMARY KEY(member_id,request_id))""")
+
+
 MIGRATIONS: tuple[tuple[int, str, object], ...] = (
     (8, "record_schema_history_and_reporting_indexes", _migration_008_record_schema_history),
     (9, "add_legacy_usage_history_import_provenance", _migration_009_legacy_history_import),
@@ -725,6 +742,7 @@ MIGRATIONS: tuple[tuple[int, str, object], ...] = (
     (23, "add_durable_web_observation_journal", _migration_023_web_observations),
     (24, "add_on_demand_web_observation_archives", _migration_024_web_observation_archives),
     (25, "add_verified_report_details_and_monthly_summaries", _migration_025_report_detail_archives),
+    (26, "add_durable_reader_grants_and_joined_requests", _migration_026_reader_jobs),
 )
 
 
