@@ -51,6 +51,25 @@ workbook and total runtime are unavailable.
 
 ## Correctness and interaction checks
 
+### One-year follow-up
+
+At the user's request, repeated the same background-controller benchmark on commit
+`dbe711e` with **365 days**, 90 users and three printers: **797,160 Raw rows**.
+The writer completed in **60.101 seconds** and produced a 154,236-byte workbook.
+All 90 user rows passed validation: 8,760 pages per user across three printers,
+and 5,840 cost per user on the first printer. During export the Qt event loop
+processed **3,758 timer callbacks and simulated button clicks**, with a largest
+callback gap of **135 ms**. No sustained GUI freeze occurred in this fixture.
+
+This timing has the same limits as the monthly run: it excludes fixture preparation,
+database/Archive loading and workbook validation. It does not guarantee the duration
+or responsiveness of a real customer installation on different hardware.
+
+- [One-year measurement](excel-export-one-year.json)
+- Reproduce: `python tools/benchmark_excel_export.py --ui --days 365 --name one-year-ui`
+
+### Regression suite
+
 The focused run covers 17 source test files. It passed 150 tests, followed by 28 tests
 in four files after an additional varying-price/missing-evidence assertion and final
 fixture/manual adjustments. Latest results per file: **151 passed in 17 files**, with
