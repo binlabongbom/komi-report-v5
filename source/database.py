@@ -57,6 +57,7 @@ def _clear_read_caches(slot: int | None = None):
 
 
 _USAGE_RESET_TABLES = (
+    "web_catchup_progress",
     "slot_meter_epoch_outbox",
     "slot_meter_maxima",
     "slot_meter_epoch_state",
@@ -96,6 +97,7 @@ _USAGE_RESET_SEQUENCES = (
 )
 
 _FACTORY_RESET_TABLES = (
+    "web_catchup_progress",
     "slot_meter_epoch_outbox",
     "slot_meter_maxima",
     "slot_meter_epoch_state",
@@ -965,6 +967,7 @@ def reset_usage_data():
                 tables=_USAGE_RESET_TABLES,
                 sequences=_USAGE_RESET_SEQUENCES,
             )
+            c.execute("DELETE FROM web_observation_state WHERE key='catchup_stream'")
             _create_billing_ledger_immutability_triggers(c)
             validate_current_schema(c)
     except Exception:

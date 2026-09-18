@@ -12,7 +12,7 @@ from contextlib import closing
 from datetime import datetime
 from pathlib import Path
 
-CURRENT_SCHEMA_VERSION = 27
+CURRENT_SCHEMA_VERSION = 28
 
 
 class UnsupportedSchemaVersionError(RuntimeError):
@@ -24,6 +24,7 @@ class SchemaDriftError(RuntimeError):
 
 
 _REQUIRED_SCHEMA: dict[str, frozenset[str]] = {
+    "web_catchup_progress": frozenset({"peer_id", "state_json"}),
     "web_observations": frozenset({"sequence", "event_id", "document_json", "recorded_at", "archive_id"}),
     "web_observation_state": frozenset({"key", "value"}),
     "web_observation_outbox": frozenset({"event_id"}),
@@ -749,6 +750,10 @@ def _migration_027_slot_meter_epochs(connection: sqlite3.Connection) -> None:
     connection.execute("CREATE TABLE slot_meter_epoch_outbox(epoch_id TEXT PRIMARY KEY REFERENCES slot_meter_epochs(id))")
 
 
+def _migration_028_web_catchup(connection: sqlite3.Connection) -> None:
+    connection.execute("CREATE TABLE web_catchup_progress(peer_id TEXT PRIMARY KEY,state_json TEXT NOT NULL)")
+
+
 MIGRATIONS: tuple[tuple[int, str, object], ...] = (
     (8, "record_schema_history_and_reporting_indexes", _migration_008_record_schema_history),
     (9, "add_legacy_usage_history_import_provenance", _migration_009_legacy_history_import),
@@ -770,6 +775,7 @@ MIGRATIONS: tuple[tuple[int, str, object], ...] = (
     (25, "add_verified_report_details_and_monthly_summaries", _migration_025_report_detail_archives),
     (26, "add_durable_reader_grants_and_joined_requests", _migration_026_reader_jobs),
     (27, "add_reviewed_slot_epoch_storage_and_maximum_index", _migration_027_slot_meter_epochs),
+    (28, "add_atomic_web_history_catchup_progress", _migration_028_web_catchup),
 )
 
 

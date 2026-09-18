@@ -175,6 +175,32 @@ bf453738b934dcf5bea59dd8c70e191b52ba6b89 และ merge เข้า local main
   หลักฐานทดสอบเก่าตรวจว่ามีบน GitHub/commit/tag/release จริงก่อนเก็บกวาด
 - ปรับคู่มือ ภาพหน้าจอ และขั้นตอนทดสอบสองเครื่องให้ตรง ก่อนขออนุญาต build
 
+### 2026-09-18 — restartable history catch-up repository
+
+- Schema 28 persists per-member Web catch-up progress. A page's evidence and
+  cursor commit atomically; a failed row/cursor write or authorization failure
+  leaves the entire page pending. Repeated pages return the same receipt after
+  durable storage; sequence-order and snapshot checks reject stale pages.
+- Startup handshake pins a bounded high-water mark and resumes incomplete work.
+  Later observations wait for the next explicit wake rather than extending a
+  running snapshot forever. Source reset rotates its stream identity; a saved
+  event anchor detects backup rollback even when the stream ID is unchanged.
+  Receiver reset clears resume cursors. Replay deduplicates and never deletes
+  evidence that another peer still holds.
+- Source archive files are read only on the requested page, without holding a
+  SQLite write lock during payload decoding. Missing/corrupt archives cannot
+  advance a receiver. A missing v2 epoch blocks the entire page until its reviewed
+  ancestry arrives. Imports never become outgoing echo entries.
+- Three separate synthetic DBs exercise recovery from a peer's imported data,
+  restart, repeat delivery, pinned snapshots, reset/backup rollback, unauthorized
+  events, failed storage and missing reviewed ancestry. Catch-up/Web/epoch/
+  recovery/reset/migrations regression: **50 passed**.
+- This is a callable repository with required verified authorization, not an
+  enabled network worker. Verified Host company provider, HTTPS endpoints and
+  Agent startup/reconnect orchestration are still required. Legacy v1 events
+  remain unbound unless explicitly part of imported reviewed ancestry; do not
+  infer their epoch from dates. No periodic settings poll was added.
+
 ### 2026-09-18 — source UI shutdown and evidence housekeeping
 
 - Desktop shutdown now stops pending refresh/startup timers and report loading,

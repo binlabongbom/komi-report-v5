@@ -14,6 +14,7 @@ from datetime import datetime
 from pathlib import Path
 
 CRITICAL_TABLES = (
+    "web_catchup_progress",
     "devices",
     "price_snapshot",
     "price_history",
