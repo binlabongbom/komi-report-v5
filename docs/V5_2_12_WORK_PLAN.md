@@ -175,6 +175,22 @@ bf453738b934dcf5bea59dd8c70e191b52ba6b89 และ merge เข้า local main
   หลักฐานทดสอบเก่าตรวจว่ามีบน GitHub/commit/tag/release จริงก่อนเก็บกวาด
 - ปรับคู่มือ ภาพหน้าจอ และขั้นตอนทดสอบสองเครื่องให้ตรง ก่อนขออนุญาต build
 
+### 2026-09-18 — source UI shutdown and evidence housekeeping
+
+- Desktop shutdown now stops pending refresh/startup timers and report loading,
+  ignores late collection UI signals, and checks shutdown again before a queued
+  page refresh runs. Tray/agent lifecycle regression: **29 passed**.
+- Active footprint pilot exposed a Windows Qt offscreen access violation during
+  interpreter teardown. UI guards alone did not resolve that harness failure.
+  Disposing the benchmark-owned window through Qt's live event loop before quit
+  resolved the pilot; both child processes exited cleanly with all 30 expected
+  Web observations/outbox rows. Repeated measurements follow separately.
+- Verified GitHub tag v5.2.10 read-only against local SHA and exact original blobs.
+  Moved the August readiness review and September 4 printer UAT unchanged to
+  docs/archive/pre-v5.2.12. EVIDENCE_INDEX.md separates current evidence from old
+  results and records verification. Existing delivery-guide inputs stay in place
+  until the new manual is finalized; no unverified historical evidence deleted.
+
 ### 2026-09-18 — epoch-aware evidence reports
 
 - Web evidence inspection now groups explicitly assigned observations by reviewed

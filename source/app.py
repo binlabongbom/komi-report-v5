@@ -985,6 +985,8 @@ class MainWindow(QMainWindow):
             self.registration.network_recovered()
 
     def _device_updated(self, _slot: int):
+        if self._quitting:
+            return
         # Device and reading signals often arrive together (and once per
         # device). Coalesce that burst so the UI thread redraws only once.
         self._schedule_refresh_all()
@@ -1067,6 +1069,18 @@ class MainWindow(QMainWindow):
             discard_action()
         return True
 
+    def _stop_ui_work(self):
+        if getattr(self, "_ui_work_stopped", False):
+            return
+        self._ui_work_stopped = True
+        for name in ("_refresh_timer", "_startup_poll_timer"):
+            timer = getattr(self, name, None)
+            if timer is not None:
+                timer.stop()
+        shutdown_reports = getattr(getattr(self, "pg_history", None), "shutdown_report_loading", None)
+        if callable(shutdown_reports):
+            shutdown_reports()
+
     def _exit_application(self):
         if self._quitting:
             return
@@ -1090,6 +1104,7 @@ class MainWindow(QMainWindow):
         if not self._confirm_discard_settings_on_exit():
             return
         self._quitting = True
+        self._stop_ui_work()
         hide_tray = getattr(self.tray, "hide", None)
         if callable(hide_tray):
             hide_tray()
@@ -1137,9 +1152,7 @@ class MainWindow(QMainWindow):
                 event.ignore()
                 return
             self._quitting = True
-            shutdown_reports = getattr(getattr(self, "pg_history", None), "shutdown_report_loading", None)
-            if callable(shutdown_reports):
-                shutdown_reports()
+            self._stop_ui_work()
             hide_tray = getattr(self.tray, "hide", None)
             if callable(hide_tray):
                 hide_tray()
@@ -1207,10 +1220,14 @@ class MainWindow(QMainWindow):
 
     def _schedule_refresh_all(self) -> None:
         """Debounce bursts of polling signals before querying and redrawing."""
+        if self._quitting:
+            return
         self._refresh_timer.start()
 
     def _refresh_visible_page(self) -> None:
         """Refresh a stale page only when it is actually visible."""
+        if getattr(self, "_quitting", False):
+            return
         index = self.stack.currentIndex()
         if index not in self._dirty_pages:
             return
@@ -1222,7 +1239,7 @@ class MainWindow(QMainWindow):
         if callable(refresh_visible):
             apply_language(page)
             self._dirty_pages.discard(index)
-            QTimer.singleShot(0, refresh_visible)
+            QTimer.singleShot(0, lambda: refresh_visible() if not self._quitting else None)
             return
         refresh = getattr(page, "refresh", None)
         if callable(refresh):
@@ -1235,6 +1252,8 @@ class MainWindow(QMainWindow):
     # เรียกเมื่อ: (1) เปิดโปรแกรม  (2) import ไฟล์ใหม่  (3) เปลี่ยน settings
     # ──────────────────────────────────────────────────────
     def _refresh_all(self):
+        if self._quitting:
+            return
         # วนทั้ง 3 slot (เครื่องพิมพ์ 3 เครื่อง)
         for i in range(3):
             # get_last_two(slot) — ดึงข้อมูล 2 record ล่าสุดจาก DB

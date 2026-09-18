@@ -63,6 +63,7 @@ class _WebService:
 
 
 class _WindowDouble:
+    _stop_ui_work = app.MainWindow._stop_ui_work
     def __init__(self) -> None:
         self._quitting = False
         self._background_started = False
@@ -96,6 +97,30 @@ class _WindowDouble:
 
     def _confirm_discard_settings_on_exit(self) -> bool:
         return self.allow_exit
+
+
+def test_shutdown_discards_late_refresh_requests_and_queued_page_callback(monkeypatch):
+    from types import SimpleNamespace
+    window = _WindowDouble()
+    refreshed, callbacks, stopped = [], [], []
+    window._refresh_timer = SimpleNamespace(start=lambda: refreshed.append("timer"), stop=lambda: stopped.append("refresh"))
+    window._startup_poll_timer = SimpleNamespace(stop=lambda: stopped.append("startup"))
+    window.pg_history = SimpleNamespace(shutdown_report_loading=lambda: stopped.append("reports"))
+    window._dirty_pages = {0}
+    window.stack = SimpleNamespace(currentIndex=lambda: 0)
+    window._page_widgets = [SimpleNamespace(refresh_visible_cached=lambda: refreshed.append("page"))]
+    monkeypatch.setattr(app, "apply_language", lambda page: None)
+    monkeypatch.setattr(app.QTimer, "singleShot", lambda delay, callback: callbacks.append(callback))
+    app.MainWindow._refresh_visible_page(window)
+    window._quitting = True
+    window._stop_ui_work()
+    window._stop_ui_work()
+    callbacks[0]()
+    app.MainWindow._schedule_refresh_all(window)
+    app.MainWindow._device_updated(window, 0)
+    app.MainWindow._refresh_all(window)
+    assert stopped == ["refresh", "startup", "reports"]
+    assert refreshed == []
 
 
 def test_close_hides_to_tray_without_stopping_polling(monkeypatch):
