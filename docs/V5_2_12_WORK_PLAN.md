@@ -240,6 +240,10 @@ disabled foundation, not a working customer Hotfix. UI preview is a prototype.
   Final image: `Temp/komi-wizard-retry-c_xqo7cq/retry-final.png`. No live LAN scan,
   Host requests, firewall changes or build. The retry button currently uses the
   existing IP discovery; this is not evidence that broadcast is implemented.
+- The final standalone render helper produced the PNG but did not exit during
+  the follow-up waits and was interrupted. Do not count that helper as a clean
+  shutdown test; the 59-test Wizard suite did exit successfully. Investigate the
+  helper shutdown separately if it recurs in lifecycle QA.
 
 ### 2026-09-18 — authenticated Host UI inspection (read only)
 
