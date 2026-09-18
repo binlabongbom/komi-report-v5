@@ -556,19 +556,22 @@ def _daily_record_from_cache(
 def _latest_device_ledger_periods(slots: list[int], *, period_start: date | None = None,
                                   period_end: date | None = None) -> dict[tuple[int, date], tuple[date, date]]:
     """Return each device day's immutable period without changing legacy rows."""
+    with _open(commit=False) as conn:
+        return _device_ledger_periods(conn, slots, period_start=period_start, period_end=period_end)
 
+
+def _device_ledger_periods(conn, slots, *, period_start=None, period_end=None):
     if not slots:
         return {}
     placeholders = ",".join("?" for _ in slots)
     filters, parameters = _date_filter(period_start, period_end)
-    with _open(commit=False) as conn:
-        rows = conn.execute(
-            f"""SELECT device_slot,record_date,period_start,period_end
-                FROM billing_ledger
-                WHERE device_slot IN ({placeholders}) {filters}
-                ORDER BY id""",
-            [*slots, *parameters],
-        ).fetchall()
+    rows = conn.execute(
+        f"""SELECT device_slot,record_date,period_start,period_end
+            FROM billing_ledger
+            WHERE device_slot IN ({placeholders}) {filters}
+            ORDER BY id""",
+        [*slots, *parameters],
+    ).fetchall()
 
     periods: dict[tuple[int, date], tuple[date, date]] = {}
     for slot, record_day, period_start, period_end in rows:
@@ -605,8 +608,7 @@ def load_subject_history(
     if only_period is not None and (period_start is not None or period_end is not None or only_period[0] > only_period[1]):
         raise ValueError("Choose a canonical period or a custom date range")
     source_start, source_end = only_period or (period_start, period_end)
-    frozen_periods = {} if period_start is not None and period_end is not None else _latest_device_ledger_periods(
-        slots, period_start=source_start, period_end=source_end)
+    frozen_periods = {}
     daily: list[tuple[SubjectDailyRecord, tuple[date, date] | None]] = []
     archived_buckets = {}
     if slots:
@@ -614,6 +616,8 @@ def load_subject_history(
         filters, parameters = _date_filter(source_start, source_end)
         with _open(commit=False) as conn:
             conn.execute("BEGIN")
+            if period_start is None or period_end is None:
+                frozen_periods = _device_ledger_periods(conn, slots, period_start=source_start, period_end=source_end)
             rows = conn.execute(
                 f"""SELECT device_slot,record_date,subject_type,subject_id,subject_name,
                            opening_total,closing_total,delta_total,reset_count,missing_baseline,

@@ -175,6 +175,62 @@ bf453738b934dcf5bea59dd8c70e191b52ba6b89 และ merge เข้า local main
   หลักฐานทดสอบเก่าตรวจว่ามีบน GitHub/commit/tag/release จริงก่อนเก็บกวาด
 - ปรับคู่มือ ภาพหน้าจอ และขั้นตอนทดสอบสองเครื่องให้ตรง ก่อนขออนุญาต build
 
+### 2026-09-18 — reviewed historical discounts and billing periods
+
+- Completed the previously unstarted local recalculation option: the date-range
+  dialog can explicitly apply the current discount and/or billing cutoff.
+  Defaults preserve both. Previews display old/new rates, amounts and periods;
+  stale settings or evidence invalidate confirmation. Manual/held entries stay
+  excluded; original ledger evidence remains immutable.
+- Billing-period corrections rebuild affected archived subject monthly summaries
+  in the same transaction as ledger reversal/replacement and the durable receipt.
+  Missing/corrupt files or summary writes abort the whole change. Prior period
+  corrections survive later rebucketing; original archive files remain unchanged.
+  Detail work is bounded to 32 archives/64 MiB and requires an explicit request.
+- Monthly subject history reads live ledger periods and archived summaries from
+  one DB snapshot, avoiding a mixture across an amendment commit. Monthly reads
+  after amendment still use hot summaries without opening cold files.
+- Confirmation runs off the GUI thread; dismissal waits for the commit result.
+  Failed confirmation clears the preview. Updated the source manual and rendered
+  the actual dialog with both options; inspected the new screenshot.
+- Repricing/period amendment/archive/subject/ledger/audit UI regression:
+  **63 passed in 37.54 seconds**. This completes these local correction paths;
+  cross-member invoice amendments and broader Sync integration remain pending.
+  No build, publication, printer access or Host/customer writes.
+
+### 2026-09-18 — checkpoint verified after reported power outage
+
+- HEAD remains `b00303c`; no uncommitted source edits were found. The only
+  pending working-tree changes were this plan and the new Host source intake
+  document. The Host review was saved, but those documents were not committed.
+- Reran slot epoch store/exchange, Web evidence report and Web catch-up tests
+  against the current source with offscreen Qt: **38 passed in 27.08 seconds**.
+  This checks the latest affected modules, not the full suite, actual customer
+  databases, or physical multi-PC operation.
+- The proposed optional use of the current discount in historical repricing
+  has not been implemented: current repricing still preserves the original
+  discount and billing period. Resume with that explicitly reviewed option;
+  do not describe it as a half-written or completed feature.
+- Host backend review, authenticated peer transport/runtime integration and
+  shared slot review UI remain open as documented below. No release build.
+
+### 2026-09-18 — supplied Host License frontend reviewed
+
+- Reviewed both supplied `screens-license.jsx` and minified `screens-license.js`
+  as source only. Recorded hashes, actual API actions, evidence limits and the
+  exact backend files needed in [Host source intake](V5_2_12_HOST_SOURCE_INTAKE.md).
+- These files establish the dashboard/offline-license integration surface.
+  `company_key` is used to scope alert rules; the server's company/installation
+  binding and three-slot enforcement are not included, so it cannot yet serve
+  as verified peer authorization. This is a missing implementation dependency,
+  not a request for another Host login or a claim that the backend lacks it.
+- Identified that offline issuance bypasses the staging URL helper, and that
+  opening the KOMI tab triggers an alert POST which may send email. No browser
+  navigation, API call, license issuance or production edit was performed.
+- Next source needed: `register-api.php` and its includes; `/api.php`'s relevant
+  KOMI handlers; their company/installation/key/slot schema and membership code.
+  Keep real peer transport disabled pending that review. No build or publish.
+
 ### 2026-09-18 — restartable history catch-up repository
 
 - Schema 28 persists per-member Web catch-up progress. A page's evidence and
