@@ -1,0 +1,10 @@
+{
+  "completed": false,
+  "stopped_after_seconds": 195.9,
+  "users": 90,
+  "days": 30,
+  "synthetic": true,
+  "printers": 3,
+  "reason": "Baseline exceeded three minutes; stopped only this synthetic benchmark process",
+  "raw_rows": 65520
+}

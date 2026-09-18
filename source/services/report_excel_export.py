@@ -4,7 +4,11 @@ from __future__ import annotations
 
 import re
 import unicodedata
+import os
+import tempfile
 from collections import defaultdict
+from concurrent.futures import CancelledError
+from contextvars import ContextVar
 from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
@@ -34,6 +38,17 @@ WHITE = "FFFFFF"
 
 _EXCEL_FORMULA_PREFIXES = frozenset("=+-@")
 _ILLEGAL_XML_CONTROL_RE = re.compile(r"[\x00-\x08\x0b-\x0c\x0e-\x1f]")
+_export_control = ContextVar('excel_export_control', default=(None, None))
+
+
+def _checkpoint(percent=None, message=''):
+    cancelled, progress = _export_control.get()
+    if cancelled is not None and cancelled.is_set():
+        raise CancelledError()
+    if percent is not None and progress is not None:
+        progress(percent, message)
+    if cancelled is not None and cancelled.is_set():
+        raise CancelledError()
 
 CATEGORY_FIELDS = (
     ("a4_color", "A4 สี"),
@@ -183,8 +198,31 @@ def build_daily_category_costs(
 def export_cloud_reports_xlsx(
     target: str | Path,
     report: CloudReportsExportData,
+    *, cancelled=None, progress=None,
 ) -> Path:
-    """Save normalized and exact-source report views without credentials."""
+    """Publish only a complete workbook; cancellation/errors preserve old files."""
+    destination = Path(target).expanduser()
+    if destination.suffix.casefold() != '.xlsx':
+        destination = destination.with_suffix('.xlsx')
+    token = _export_control.set((cancelled, progress))
+    temporary = None
+    try:
+        _checkpoint(0, 'กำลังเตรียมรายงาน…')
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        descriptor, name = tempfile.mkstemp(prefix='.komi-export-', suffix='.xlsx', dir=destination.parent)
+        os.close(descriptor)
+        temporary = Path(name)
+        _write_report_workbook(temporary, report)
+        _checkpoint(99, 'กำลังบันทึกไฟล์…')
+        os.replace(temporary, destination)
+        return destination
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+        _export_control.reset(token)
+
+
+def _write_report_workbook(target, report):
 
     destination = Path(target).expanduser()
     if destination.suffix.casefold() != ".xlsx":
@@ -234,6 +272,7 @@ def export_cloud_reports_xlsx(
         notes.column_dimensions["B"].width = 24
         notes.column_dimensions["C"].width = notes.column_dimensions["D"].width = 16
         notes.column_dimensions["E"].width = 100
+    _checkpoint(10, 'กำลังสร้างรายงานรายเครื่อง…')
     _write_machine_sheet(
         machine_sheet,
         records,
@@ -243,6 +282,7 @@ def export_cloud_reports_xlsx(
         cost_field=cost_field,
         cost_note=cost_note,
     )
+    _checkpoint(25, 'กำลังสร้างรายงานผู้ใช้…')
     _write_user_sheet(
         workbook.create_sheet("มุมมองผู้ใช้"),
         report.subjects,
@@ -252,6 +292,7 @@ def export_cloud_reports_xlsx(
         costs,
         cost_note=cost_note,
     )
+    _checkpoint(50, 'กำลังสร้างรายงานรายวัน…')
     _write_daily_sheet(
         workbook.create_sheet("มุมมองรายวัน"),
         records,
@@ -261,18 +302,21 @@ def export_cloud_reports_xlsx(
         cost_field=cost_field,
         cost_note=cost_note,
     )
+    _checkpoint(60, 'กำลังสร้างรายละเอียดรายเครื่อง…')
     _write_legacy_machine_sheet(
         workbook.create_sheet("Legacy-รายเครื่อง"),
         report.raw_counter_records,
         report.devices,
         period_text,
     )
+    _checkpoint(70, 'กำลังสร้างรายละเอียดผู้ใช้…')
     _write_legacy_user_sheet(
         workbook.create_sheet("Legacy-ผู้ใช้"),
         report.raw_counter_records,
         report.devices,
         period_text,
     )
+    _checkpoint(80, 'กำลังสร้างรายละเอียดรายวัน…')
     _write_legacy_daily_sheet(
         workbook.create_sheet("Legacy-รายวัน"),
         report.raw_counter_records,
@@ -282,7 +326,11 @@ def export_cloud_reports_xlsx(
 
     workbook.calculation.fullCalcOnLoad = True
     workbook.calculation.forceFullCalc = True
-    workbook.save(destination)
+    _checkpoint(90, 'กำลังเขียนไฟล์ Excel…')
+    try:
+        workbook.save(destination)
+    finally:
+        workbook.close()
     return destination
 
 
@@ -390,6 +438,9 @@ def _write_legacy_machine_sheet(
     period_text: str,
 ) -> None:
     device_records = tuple(record for record in records if not record.is_subject)
+    indexed = defaultdict(list)
+    for record in device_records:
+        indexed[(_raw_device_key(record), _raw_type(record))].append(record)
     device_columns = _raw_device_columns(records, devices)
     types = tuple(
         sorted({_raw_type(record) for record in device_records}, key=lambda item: (item[1].casefold(), item[0]))
@@ -413,10 +464,7 @@ def _write_legacy_machine_sheet(
         for device in device_columns:
             row.append(
                 _raw_total(
-                    record
-                    for record in device_records
-                    if _raw_device_key(record) == device.key
-                    and _raw_type(record) == raw_type
+                    indexed.get((device.key, raw_type), ())
                 )
             )
         _write_row(worksheet, row_no, row, currency_columns=set())
@@ -453,6 +501,9 @@ def _write_legacy_user_sheet(
     period_text: str,
 ) -> None:
     subject_records = tuple(record for record in records if record.is_subject)
+    indexed = defaultdict(list)
+    for record in subject_records:
+        indexed[(record.subject_type, record.subject_id, _raw_device_key(record), _raw_type(record))].append(record)
     names = {item.key: item.label for item in _raw_device_columns(records, devices)}
     dynamic = _raw_dynamic_columns(subject_records)
     subjects = tuple(
@@ -490,12 +541,7 @@ def _write_legacy_user_sheet(
         for slot, identity, field, label, source_path in dynamic:
             row.append(
                 _raw_total(
-                    record
-                    for record in subject_records
-                    if record.subject_type == subject_type
-                    and record.subject_id == subject_id
-                    and _raw_device_key(record) == (slot, identity)
-                    and _raw_type(record) == (field, label, source_path)
+                    indexed.get((subject_type, subject_id, (slot, identity), (field, label, source_path)), ())
                 )
             )
         _write_row(worksheet, row_no, row, currency_columns=set())
@@ -511,6 +557,9 @@ def _write_legacy_daily_sheet(
     period_text: str,
 ) -> None:
     device_records = tuple(record for record in records if not record.is_subject)
+    indexed = defaultdict(list)
+    for record in device_records:
+        indexed[(record.record_date, _raw_device_key(record), _raw_type(record))].append(record)
     names = {item.key: item.label for item in _raw_device_columns(records, devices)}
     dynamic = _raw_dynamic_columns(device_records)
     days = tuple(sorted({record.record_date for record in device_records}))
@@ -540,11 +589,7 @@ def _write_legacy_daily_sheet(
         for slot, identity, field, label, source_path in dynamic:
             row.append(
                 _raw_total(
-                    record
-                    for record in device_records
-                    if record.record_date == day
-                    and _raw_device_key(record) == (slot, identity)
-                    and _raw_type(record) == (field, label, source_path)
+                    indexed.get((day, (slot, identity), (field, label, source_path)), ())
                 )
             )
         _write_row(worksheet, row_no, row, currency_columns=set())
@@ -595,100 +640,60 @@ def _operation_cost(
     return round(amount, 2)
 
 
-def _raw_matches_device(
-    record: RawCounterDailyRecord,
-    device_key: tuple[int, str],
-) -> bool:
-    slot, identity = device_key
-    if int(record.device_slot) != int(slot):
-        return False
-    if identity.startswith("serial:"):
-        return record.device_serial_snapshot == identity.removeprefix("serial:")
-    return True
+def _device_daily_evidence(raw_records, costs):
+    """Index device evidence once instead of scanning every user on every day."""
+    grouped = defaultdict(list)
+    for record in raw_records:
+        if record.is_subject:
+            continue
+        identities = {f"slot:{record.device_slot}"}
+        if record.device_serial_snapshot:
+            identities.add('serial:' + record.device_serial_snapshot)
+        for identity in identities:
+            grouped[(record.record_date, (record.device_slot, identity))].append(record)
+    breakdowns = {key: breakdown_from_raw_records(rows) for key, rows in grouped.items()}
+    prices = {}
+    for cost in costs:
+        prices.setdefault((cost.record_date, (cost.device_slot, cost.device_identity)), cost)
+    return breakdowns, prices
 
 
-def _subject_operation_cost(
-    subject_records: tuple[RawCounterDailyRecord, ...],
-    all_raw_records: tuple[RawCounterDailyRecord, ...],
-    costs: tuple[DailyCategoryCost, ...],
-    device_key: tuple[int, str],
-    operation_field: str,
-    category_field: str,
-) -> float | None:
-    """Attribute frozen device-day cost only when exact operation evidence exists.
-
-    The calculation never invents a user paper mix.  It uses the exact subject
-    counter as a share of the matching exact device Print+Copy counter for the
-    same day.  A missing denominator or frozen daily category cost is shown as
-    unavailable by returning ``None``.
-    """
-
-    if not category_field:
-        return None
-    by_day: defaultdict[date, list[RawCounterDailyRecord]] = defaultdict(list)
+def _subject_costs(subject_records, device_key, evidence):
+    """Use the same exact daily denominators and rounding as the frozen export."""
+    by_day = defaultdict(list)
     for record in subject_records:
         by_day[record.record_date].append(record)
-    amount = 0.0
-    evidence_seen = False
+    device_days, costs = evidence
+    amounts, seen, missing = defaultdict(float), set(), set()
     for day, rows in by_day.items():
-        subject_breakdown = breakdown_from_raw_records(rows)
-        subject_pages = float(getattr(subject_breakdown, operation_field, 0.0) or 0.0)
-        if subject_pages <= 0:
-            continue
-        evidence_seen = True
-        device_rows = tuple(
-            record
-            for record in all_raw_records
-            if not record.is_subject
-            and record.record_date == day
-            and _raw_matches_device(record, device_key)
-        )
-        device_breakdown = breakdown_from_raw_records(device_rows)
-        suffix = operation_field.split("_", 1)[1]
-        category_pages = float(
-            getattr(device_breakdown, f"print_{suffix}", 0.0) or 0.0
-        ) + float(getattr(device_breakdown, f"copy_{suffix}", 0.0) or 0.0)
-        daily_cost = next(
-            (
-                cost
-                for cost in costs
-                if cost.record_date == day
-                and (cost.device_slot, cost.device_identity) == device_key
-            ),
-            None,
-        )
-        if daily_cost is None or category_pages <= 0:
-            return None
-        amount += (
-            float(getattr(daily_cost, category_field, 0.0) or 0.0)
-            * subject_pages
-            / category_pages
-        )
-    return round(amount, 2) if evidence_seen else None
+        _checkpoint()
+        subject = breakdown_from_raw_records(rows)
+        device = device_days.get((day, device_key))
+        daily_cost = costs.get((day, device_key))
+        for field, _label, category, _operation in OPERATION_FIELDS:
+            pages = float(getattr(subject, field) or 0.0)
+            if not category or pages <= 0:
+                continue
+            seen.add(field)
+            suffix = field.split('_', 1)[1]
+            denominator = (getattr(device, 'print_' + suffix, 0.0) +
+                           getattr(device, 'copy_' + suffix, 0.0)) if device else 0.0
+            if daily_cost is None or denominator <= 0:
+                missing.add(field)
+            else:
+                amounts[field] += float(getattr(daily_cost, category) or 0.0) * pages / denominator
+    return {field: round(amounts[field], 2) if field in seen and field not in missing else None
+            for field, _label, _category, _operation in OPERATION_FIELDS}
 
 
-def _subject_total_cost(
-    subject_records: tuple[RawCounterDailyRecord, ...],
-    all_raw_records: tuple[RawCounterDailyRecord, ...],
-    costs: tuple[DailyCategoryCost, ...],
-    device_key: tuple[int, str],
-) -> float | None:
-    breakdown = breakdown_from_raw_records(subject_records)
-    values: list[float] = []
-    for field, _label, category_field, _operation in OPERATION_FIELDS:
-        if not category_field or float(getattr(breakdown, field, 0.0) or 0.0) <= 0:
+def _subject_total_cost(breakdown, amounts):
+    values = []
+    for field, _label, category, _operation in OPERATION_FIELDS:
+        if not category or float(getattr(breakdown, field) or 0.0) <= 0:
             continue
-        value = _subject_operation_cost(
-            subject_records,
-            all_raw_records,
-            costs,
-            device_key,
-            field,
-            category_field,
-        )
-        if value is None:
+        if amounts[field] is None:
             return None
-        values.append(value)
+        values.append(amounts[field])
     return round(sum(values), 2) if values else None
 
 
@@ -839,6 +844,7 @@ def _write_user_sheet(
         raw_groups[
             (record.subject_type, record.subject_id, (record.device_slot, identity))
         ].append(record)
+    evidence = _device_daily_evidence(raw_records, costs)
     for row_index, ((subject_type, subject_id), group) in enumerate(ordered_groups, start=5):
         subject_records = tuple(group["records"])
         row: list[object] = [group["name"], subject_type, subject_id]
@@ -852,6 +858,7 @@ def _write_user_sheet(
                 raw_groups.get((subject_type, subject_id, device.key), ())
             )
             breakdown = breakdown_from_raw_records(subject_raw)
+            amounts = _subject_costs(subject_raw, device.key, evidence)
             for field, _label, category_field, operation in OPERATION_FIELDS:
                 available = (
                     breakdown.print_available
@@ -861,14 +868,7 @@ def _write_user_sheet(
                 row.extend(
                     (
                         getattr(breakdown, field) if available else None,
-                        _subject_operation_cost(
-                            subject_raw,
-                            raw_records,
-                            costs,
-                            device.key,
-                            field,
-                            category_field,
-                        )
+                        amounts[field]
                         if available
                         else None,
                     )
@@ -879,12 +879,7 @@ def _write_user_sheet(
                     breakdown.print_total if breakdown.print_available else None,
                     breakdown.copy_total if breakdown.copy_available else None,
                     usage,
-                    _subject_total_cost(
-                        subject_raw,
-                        raw_records,
-                        costs,
-                        device.key,
-                    ),
+                    _subject_total_cost(breakdown, amounts),
                 )
             )
         row.extend(
@@ -1178,6 +1173,7 @@ def _header_cell(cell, color: str) -> None:
 
 
 def _write_row(worksheet, row_index: int, row: list[object], *, currency_columns: set[int]) -> None:
+    _checkpoint()
     for column, value in enumerate(row, start=1):
         cell = _set_cell_value(worksheet, row_index, column, value)
         is_number = isinstance(value, (int, float)) and not isinstance(value, bool)

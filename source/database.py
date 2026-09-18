@@ -13,6 +13,7 @@ import sqlite3
 import tempfile
 import threading
 from contextlib import closing, contextmanager
+from contextvars import ContextVar
 from datetime import datetime
 from pathlib import Path
 
@@ -40,6 +41,7 @@ log = logging.getLogger(__name__)
 # path ของ database (อาจเปลี่ยนได้จากหน้า ตั้งค่า)
 # ──────────────────────────────────────────────────────────
 _db_path = DB_PATH
+_report_read_path = ContextVar('report_read_path', default=None)
 _read_cache_lock = threading.RLock()
 _all_readings_cache: dict[int, list] = {}
 _monthly_summary_cache: dict[int, dict] = {}
@@ -207,7 +209,21 @@ def set_db_path(path: Path):
     _clear_read_caches()
 
 def get_db_path():
-    return _db_path
+    return _report_read_path.get() or _db_path
+
+
+@contextmanager
+def report_read_database(path):
+    """Pin background report reads to one database without switching the app.
+
+    Connections are read-only; settings bypass the application's shared cache.
+    The context is private to the worker and is reset even after cancellation.
+    """
+    token = _report_read_path.set(Path(path).resolve())
+    try:
+        yield
+    finally:
+        _report_read_path.reset(token)
 
 
 def copy_database_for_first_run(destination: Path) -> Path:
@@ -253,6 +269,9 @@ def copy_database_for_first_run(destination: Path) -> Path:
 
 def _conn():
     """[V4.5] เปิด connection + เปิด foreign_keys + WAL mode"""
+    scoped = _report_read_path.get()
+    if scoped is not None:
+        return sqlite3.connect(scoped.as_uri() + '?mode=ro', uri=True, timeout=2)
     Path(_db_path).parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(_db_path, timeout=30)
     conn.execute("PRAGMA foreign_keys = ON")
@@ -564,6 +583,10 @@ def config_write_transaction():
 def get_cfg(key: str, default: str = "") -> str:
     """อ่านค่า setting จาก database (ใช้ cache ลด I/O) — thread-safe"""
     global _cfg_cache
+    if _report_read_path.get() is not None:
+        with _open(commit=False) as conn:
+            row = conn.execute('SELECT value FROM settings WHERE key=?', (key,)).fetchone()
+        return row[0] if row else default
     with _cfg_lock:
         if _cfg_cache is None:
             with _open(commit=False) as c:

@@ -1162,6 +1162,10 @@ def test_report_center_replaces_legacy_reports_with_cloud_overview_users_and_pri
         cloud._select_printer_row(0, 0)
         assert "ทุกเครื่องพร้อมกัน" in cloud.printer_compare_note.text()
         exported = []
+        import services.report_export_job as export_job
+        import services.report_excel_export as excel
+        monkeypatch.setattr(export_job, 'load_usage_history', load_report_usage)
+        monkeypatch.setattr(export_job, 'load_subject_history', lambda *args, **kwargs: ())
         monkeypatch.setattr(
             v5_pages.QFileDialog,
             "getSaveFileName",
@@ -1173,17 +1177,23 @@ def test_report_center_replaces_legacy_reports_with_cloud_overview_users_and_pri
             lambda *_args, **_kwargs: (current_day, current_day),
         )
         monkeypatch.setattr(
-            v5_pages,
+            excel,
             "export_cloud_reports_xlsx",
-            lambda path, report: exported.append(report) or Path(path),
+            lambda path, report, **kwargs: exported.append(report) or Path(path),
         )
         monkeypatch.setattr(v5_pages.QMessageBox, "information", lambda *_args, **_kwargs: None)
         cloud.export_button.click()
+        # This legacy suite leaves QtCharts deferred deletes from earlier pages.
+        # Drain just this stubbed job; live event-loop responsiveness is covered
+        # with fresh report pages in test_report_export_job.
+        page._export_controller.future.result(timeout=5)
+        page._export_controller._collect()
         assert len(exported) == 1
         assert exported[0].monthly_records == records
         assert exported[0].period == (current_day.isoformat(), current_day.isoformat())
         assert exported[0].selected_daily_records == records
         assert exported[0].devices[0].name == "Printer 1"
+        page.shutdown_report_loading()
         page.close()
         app.processEvents()
     finally:

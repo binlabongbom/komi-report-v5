@@ -424,11 +424,12 @@ def test_cloud_reports_header_and_date_range_fit_desktop_minimum():
 
     export_requests = QSignalSpy(widget.export_requested)
     date_exports = widget.findChildren(QPushButton, "cloud_period_export")
-    assert len(date_exports) == 4
+    assert date_exports == []
     selected_period = (start_edit.date(), _end_edit.date())
-    for index, button in enumerate(date_exports, start=1):
-        button.click()
-        assert len(export_requests) == index
+    for index in range(widget.tabs.count()):
+        widget.tabs.setCurrentIndex(index)
+        widget.export_button.click()
+        assert len(export_requests) == index + 1
         assert (start_edit.date(), _end_edit.date()) == selected_period
 
     widget.close()

@@ -6874,6 +6874,7 @@ class PageManual(QWidget):
                 ("Legacy and Excel", [
                     self._txt("Legacy preserves exact printer counter labels such as A5, Large Size or FAX instead of forcing them into A3/A4."),
                     self._txt("Excel exports six sheets: three normalized views and three Legacy views for printer, user and daily data."),
+                    self._txt("Use Export Excel in the Reports header, then choose dates and a destination. Export runs in the background with progress and Cancel; duplicate requests stay disabled until it finishes. Cancellation or failure preserves an existing destination file."),
                 ]),
             ]),
             self._english_manual_section("Settings", [
@@ -7129,9 +7130,10 @@ class PageManual(QWidget):
         ]))
 
         lay.addWidget(self._card("ส่งออก Excel", [
-            self._step(1, "กด [ส่งออก Excel] แล้วเลือกช่วงวันที่ใน Popup"),
+            self._step(1, "กด [ส่งออก Excel] ที่หัวหน้า Reports แล้วเลือกช่วงวันที่และตำแหน่งบันทึก"),
             self._step(2, "ไฟล์มี 6 ชีท: รายเครื่อง, ผู้ใช้, รายวัน และ Legacy ของทั้งสามมุมมอง"),
             self._step(3, "ชีทมาตรฐานแยก Print/Copy; ชีท Legacy คงชื่อประเภทจากเครื่องไว้ตรงๆ"),
+            self._step(4, "ระหว่างส่งออกยังใช้หน้าจอได้ ดูความคืบหน้าหรือกดยกเลิก งานที่ไม่สำเร็จไม่เขียนทับไฟล์เดิม"),
             self._tip("ตรวจชื่อบริษัท ช่วงวันที่ และวันเวลาส่งออกที่หัวเอกสารก่อนนำไปใช้งาน"),
         ]))
 

@@ -6,16 +6,19 @@
 - [ขั้นตอนทดสอบจาก source](V5_2_12_SOURCE_QA.md)
 - [HTTPS/คิวส่ง/รับค่าร่วมและข้อจำกัด](V5_2_12_PEER_TRANSPORT.md)
 - [คู่มือ source และภาพหน้าจอข้อมูลจำลอง](CUSTOMER_GUIDE_V5_2_12_DRAFT.md)
-- [คู่มือ source PDF — ตรวจภาพครบ 9 หน้า](customer-guide/KOMI_Report_5.2.12_Source_Guide.pdf)
+- [คู่มือ source PDF — ตรวจภาพครบ 10 หน้า](customer-guide/KOMI_Report_5.2.12_Source_Guide.pdf)
 - [การทดลองข้อมูลห้าปี](qa/v5.2.12/FIVE_YEAR_BENCHMARK.md)
 - [ผลหลัง Archive](qa/v5.2.12/five-year-archive.json)
 - [ผลวัด Agent ขณะอ่านข้อมูลจำลอง](V5_2_12_ACTIVE_FOOTPRINT.json)
 - [ตรวจ source หลัก 88 ไฟล์ — 818 passed](qa/v5.2.12/source-regression.json)
 - [ตรวจ source อีก 79 ไฟล์ — 561 passed](qa/v5.2.12/additional-source-regression.json)
-- [ตรวจซ้ำท้ายรอบบัญชี/รายละเอียด/คู่มือ 9 ไฟล์ — 72 passed](qa/v5.2.12/source-followup-regression.json)
+- [ผลทดสอบส่งออก Excel สำหรับ 90 ผู้ใช้](qa/v5.2.12/EXCEL_EXPORT_BENCHMARK.md)
+- [ตรวจงาน Excel และส่วนเกี่ยวข้อง 17 ไฟล์ — 150 passed](qa/v5.2.12/excel-export-regression.json)
+- [ตรวจท้ายรอบ Excel/คู่มือ 4 ไฟล์ — 28 passed](qa/v5.2.12/source-followup-regression.json)
 
-ผลล่าสุดต่อไฟล์รวม 167 ไฟล์ ผ่าน 1,380 tests ไม่มี failed/skipped;
-ไม่ได้บวกผลซ้อนจากรอบตรวจซ้ำ รายละเอียด version gate/ขอบเขตอยู่ใน SOURCE_QA
+รอบ Excel ใช้ผลล่าสุดต่อไฟล์ **151 passed / 17 ไฟล์** ไม่บวกผลซ้อน
+ฐานก่อนรอบนี้ที่ commit `8b3e31b` รวม 167 ไฟล์ ผ่าน 1,380 tests ไม่มี failed/skipped
+ไม่ได้รันชุดเต็มซ้ำหลังแก้ Excel รายละเอียด version gate/ขอบเขตอยู่ใน SOURCE_QA
 ผลชุดเก่าและความล้มเหลว Web API รอบก่อนดูผ่าน Git commit `26f1fc6`
 ผลรอบ schema 29 ก่อนเพิ่มฉบับแก้รายละเอียดดู commit `2046da0`
 

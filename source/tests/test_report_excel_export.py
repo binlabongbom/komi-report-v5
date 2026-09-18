@@ -475,6 +475,37 @@ def test_excel_export_neutralizes_untrusted_formula_strings(tmp_path):
     assert isinstance(workbook["มุมมองรายวัน"]["A5"].value, datetime)
 
 
+def test_user_cost_uses_each_days_evidence_and_keeps_missing_cost_unavailable(tmp_path):
+    from excel_export_fixture import report_for
+    report = report_for(users=1, days=2, printers=1)
+    raw, costs = [], []
+    for day, printer_counts, user_counts, cost in (
+        (date(2026, 7, 1), (10, 10), (3, 1), 40),
+        (date(2026, 7, 2), (30, 10), (2, 2), 120),
+    ):
+        for operation, device_pages, user_pages in zip(('print', 'copy'), printer_counts, user_counts):
+            for subject, pages in ((False, device_pages), (True, user_pages)):
+                raw.append(replace(_raw(day, slot=0, field=f'counter.{operation}.full_color.a4',
+                    label=f'{operation} A4 color', delta=pages, subject=subject, serial='SYNTH-0'),
+                    subject_id='0' if subject else ''))
+        costs.append(DailyCategoryCost(0, 'serial:SYNTH-0', day, cost, 0, 0, 0))
+    report = replace(report, raw_counter_records=tuple(raw), category_costs=tuple(costs),
+                     subjects=(replace(report.subjects[0], period_usage=8),))
+    for missing in (False, True):
+        payload = replace(report, category_costs=tuple(costs[:1])) if missing else report
+        book = load_workbook(export_cloud_reports_xlsx(tmp_path/f'cost-{missing}.xlsx', payload), data_only=True)
+        try:
+            users = book['มุมมองผู้ใช้']
+            assert users['D5'].value == 5 and users['N5'].value == 3
+            # Rates differ each day: Print = 3*2 + 2*3; Copy = 1*2 + 2*3.
+            assert users['E5'].value == (None if missing else 12)
+            assert users['O5'].value == (None if missing else 8)
+            assert users['AB5'].value == (None if missing else 20)
+            assert users['AA5'].value == 8
+        finally:
+            book.close()
+
+
 def test_excel_cell_writer_preserves_program_authored_formula():
     workbook = Workbook()
     cell = _set_cell_value(

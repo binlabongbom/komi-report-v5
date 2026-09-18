@@ -6764,7 +6764,7 @@ class ReportExportPeriodDialog(QDialog):
         title.setFont(fnt(F_LG, True))
         layout.addWidget(title)
         description = QLabel(
-            "Excel จะมี 3 ชีต: การใช้งานรายเครื่อง, มุมมองผู้ใช้ และมุมมองรายวัน"
+            "Excel มีรายงานรายเครื่อง ผู้ใช้ รายวัน และรายละเอียด Legacy พร้อมหมายเหตุเมื่อมีฉบับแก้ไข"
         )
         description.setWordWrap(True)
         description.setStyleSheet(f"color:{C_TEXT2};")
@@ -6984,6 +6984,9 @@ class PageHistoryV5(PageHistory):
             app.aboutToQuit.connect(self.shutdown_report_loading)
 
     def shutdown_report_loading(self) -> None:
+        controller = getattr(self, '_export_controller', None)
+        if controller is not None:
+            controller.shutdown()
         if not self._staged or self._snapshot_closed:
             return
         self._snapshot_closed = True
@@ -7275,22 +7278,14 @@ class PageHistoryV5(PageHistory):
                 self._report_refresh_timer.start()
 
     def _export_report_center_excel(self) -> None:
-        """Choose a date range, then export three user-facing report views."""
-        cloud = self.report_center
-        # Hidden tabs intentionally skip daily data during refresh. Export
-        # needs its own read so it works from any tab without making every
-        # navigation load the complete daily history.
-        try:
-            available_records = tuple(
-                load_usage_history(report_slots(), granularity="daily", cache=self.cache)
-            )
-        except Exception as error:
-            QMessageBox.critical(
-                self,
-                "Export ไม่สำเร็จ",
-                f"ไม่สามารถโหลดข้อมูลรายงานได้:\n{error}",
-            )
+        """Choose the destination on Qt; all reading/writing runs in a worker."""
+        controller = getattr(self, '_export_controller', None)
+        if controller is not None and (controller.busy or controller.closed):
             return
+        cloud = self.report_center
+        # Use the already loaded summary to offer dates immediately. Never read
+        # the full daily/user/Raw history just to open the date selector.
+        available_records = tuple(cloud._monthly_records)
         available_start = min(
             (record.period_start for record in available_records),
             default=None,
@@ -7317,29 +7312,6 @@ class PageHistoryV5(PageHistory):
         if selected is None:
             return
         start, end = selected
-        daily_records = tuple(
-            record
-            for record in available_records
-            if record.period_start <= end and record.period_end >= start
-        )
-        if not daily_records:
-            QMessageBox.warning(
-                self,
-                "ไม่พบข้อมูล",
-                "ไม่มีข้อมูลรายงานในช่วงวันที่เลือก กรุณาเลือกช่วงเวลาใหม่",
-            )
-            return
-        subjects = tuple(
-            load_subject_history(
-                report_slots(),
-                cache=self.subject_cache,
-                period_start=start,
-                period_end=end,
-            )
-        )
-        raw_counter_records = load_raw_counter_history(
-            report_slots(), period_start=start, period_end=end
-        )
         suggested = (
             f"KOMI_Reports_{start:%Y%m%d}_{end:%Y%m%d}.xlsx"
         )
@@ -7351,30 +7323,27 @@ class PageHistoryV5(PageHistory):
         )
         if not path:
             return
-        try:
-            saved = export_cloud_reports_xlsx(
-                path,
-                CloudReportsExportData(
-                    selected_records=daily_records,
-                    selected_daily_records=daily_records,
-                    usage_daily_records=daily_records,
-                    monthly_records=tuple(cloud._monthly_records),
-                    subjects=subjects,
-                    devices=tuple(cloud._devices),
-                    period=(start.isoformat(), end.isoformat()),
-                    last_sync_at=cloud._last_sync_at,
-                    generated_at=datetime.now().astimezone(),
-                    include_waste_adjustment=cloud.include_waste_adjustment(),
-                    raw_counter_records=raw_counter_records,
-                ),
-            )
-        except Exception as error:
-            QMessageBox.critical(
-                self,
-                "Export ไม่สำเร็จ",
-                f"ไม่สามารถสร้างไฟล์ Excel ได้:\n{error}",
-            )
-            return
+        from functools import partial
+        from services.report_export_job import export_report_selection
+        from ui.report_export import ReportExportController
+        if controller is None:
+            controller = self._export_controller = ReportExportController(self)
+            controller.busy_changed.connect(cloud.set_export_busy)
+            controller.failed.connect(self._report_export_failed)
+            controller.succeeded.connect(self._report_export_succeeded)
+        controller.start(partial(export_report_selection, path, start, end,
+            database_path=get_db_path(), devices=tuple(cloud._devices),
+            monthly_records=available_records, last_sync_at=cloud._last_sync_at,
+            include_waste_adjustment=cloud.include_waste_adjustment()))
+
+    def _report_export_failed(self, error) -> None:
+        from services.report_export_job import EmptyReportError
+        if isinstance(error, EmptyReportError):
+            QMessageBox.warning(self, 'ไม่พบข้อมูล', str(error))
+        else:
+            QMessageBox.critical(self, 'Export ไม่สำเร็จ', f'ไม่สามารถสร้างไฟล์ Excel ได้:\n{error}')
+
+    def _report_export_succeeded(self, saved) -> None:
         QMessageBox.information(
             self,
             "Export สำเร็จ",

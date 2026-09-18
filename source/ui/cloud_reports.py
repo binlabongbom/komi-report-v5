@@ -430,6 +430,7 @@ class CloudReportsWidget(QWidget):
     def __init__(self, parent=None, *, staged: bool = False) -> None:
         super().__init__(parent)
         self._staged = staged
+        self._export_busy = False
         self._has_data = False
         self._data_tab: int | None = None
         self._loaded_tabs: set[int] = set()
@@ -509,10 +510,6 @@ class CloudReportsWidget(QWidget):
             f"QPushButton#cloud_export{{background:white;color:{NAVY};border:1px solid #B9CBDD;"
             "border-radius:5px;padding:9px 14px;font-weight:700;}"
             f"QPushButton#cloud_export:hover{{background:#EEF5FB;border-color:{BLUE};}}"
-            f"QPushButton#cloud_period_export{{background:#FFFFFF;color:{NAVY};"
-            "border:1px solid #B9CBDD;border-radius:4px;padding:3px 8px;font-size:11px;font-weight:700;}"
-            f"QPushButton#cloud_period_export:hover,QPushButton#cloud_period_export:focus{{"
-            f"background:#EEF5FB;border-color:{BLUE};}}"
             f"QPushButton#cloud_reset{{background:#EEF3F7;color:{NAVY};border:1px solid {LINE};"
             "border-radius:5px;padding:7px 11px;font-weight:700;}"
             "QWidget#cloud_calendar_control{background:transparent;border:0;}"
@@ -713,7 +710,12 @@ class CloudReportsWidget(QWidget):
         if not busy:
             self._slow_loading_timer.stop()
         self.retry_button.setVisible(not busy or not self._slow_loading_timer.isActive())
-        self.export_button.setEnabled(self.has_data or not self._staged)
+        self.export_button.setEnabled(not self._export_busy and (self.has_data or not self._staged))
+
+    def set_export_busy(self, busy: bool) -> None:
+        self._export_busy = busy
+        self.export_button.setText("กำลังส่งออก…" if busy else "ส่งออก Excel")
+        self._update_loading_visibility()
 
     def _show_slow_loading(self) -> None:
         if self._loading or self.tabs.currentIndex() in self._tab_loading:
@@ -823,8 +825,8 @@ class CloudReportsWidget(QWidget):
             # The two calendar groups remain intact when moved to another row.
             margins = grid.contentsMargins()
             wide_minimum = (
-                sum(max(w.minimumWidth(), w.minimumSizeHint().width()) for w in widgets[:6])
-                + 6 * grid.horizontalSpacing() + margins.left() + margins.right()
+                sum(max(w.minimumWidth(), w.minimumSizeHint().width()) for w in widgets[:5])
+                + 5 * grid.horizontalSpacing() + margins.left() + margins.right()
             )
             mode = 0 if width >= max(740, wide_minimum) else (1 if width >= 540 else 2)
             if getattr(grid, "_report_mode", None) == mode:
@@ -833,9 +835,9 @@ class CloudReportsWidget(QWidget):
                 grid.removeWidget(widget)
             for column in range(7):
                 grid.setColumnStretch(column, 0)
-            title, start_label, start, end_label, end, export, note = widgets
+            title, start_label, start, end_label, end, note = widgets
             if mode == 0:
-                for column, widget in enumerate(widgets[:6]):
+                for column, widget in enumerate(widgets[:5]):
                     grid.addWidget(widget, 0, column)
                 grid.addWidget(note, 1, 0, 1, 7)
                 grid.setColumnStretch(6, 1)
@@ -845,7 +847,6 @@ class CloudReportsWidget(QWidget):
                 grid.addWidget(start, 0, 2)
                 grid.addWidget(end_label, 1, 1)
                 grid.addWidget(end, 1, 2)
-                grid.addWidget(export, 1, 3)
                 grid.addWidget(note, 2, 0, 1, 4)
                 grid.setColumnStretch(4, 1)
             else:
@@ -854,8 +855,7 @@ class CloudReportsWidget(QWidget):
                 grid.addWidget(start, 1, 1)
                 grid.addWidget(end_label, 2, 0)
                 grid.addWidget(end, 2, 1)
-                grid.addWidget(export, 3, 1, alignment=Qt.AlignmentFlag.AlignLeft)
-                grid.addWidget(note, 4, 0, 1, 2)
+                grid.addWidget(note, 3, 0, 1, 2)
                 grid.setColumnStretch(1, 1)
             grid._report_mode = mode
             grid.invalidate()
@@ -1320,13 +1320,6 @@ class CloudReportsWidget(QWidget):
         end_label.setBuddy(end_edit)
         end_control = self._calendar_control(end_edit)
         toolbar_layout.addWidget(end_control, 0, 4)
-        export = QPushButton("Export to Excel")
-        export.setObjectName("cloud_period_export")
-        export.setProperty("uiButtonRole", "compact")
-        export.setFixedHeight(28)
-        export.setAccessibleName("Export report to Excel for the selected dates")
-        export.clicked.connect(self.export_requested.emit)
-        toolbar_layout.addWidget(export, 0, 5)
         freshness = QLabel("ตัวเลขทั้งหมดในแท็บนี้ใช้ช่วงเวลาเดียวกัน")
         freshness.setObjectName("cloud_subtitle")
         freshness.setWordWrap(True)
@@ -1350,7 +1343,7 @@ class CloudReportsWidget(QWidget):
         if len(self.period_edit_pairs) == 1:
             self.period_start_edit = start_edit
             self.period_end_edit = end_edit
-        self._period_toolbars.append((toolbar_layout, (title, start_label, start_control, end_label, end_control, export, freshness)))
+        self._period_toolbars.append((toolbar_layout, (title, start_label, start_control, end_label, end_control, freshness)))
         layout.addWidget(toolbar)
 
     @staticmethod
