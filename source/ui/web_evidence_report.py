@@ -35,6 +35,7 @@ def projection_pdf(path, projection, *, title):
     document.setHtml(
         "<style>body{font-family:'Tahoma';font-size:9pt}td,th{padding:5px}th{background:#eaf2f8}</style>"
         f"<h2>{html.escape(title)}</h2><p>เริ่มนับจากจุด Web แรกในช่วงที่เลือก · รายงานหลักฐาน ไม่ใช่ยอดเรียกเก็บ</p>"
+        f"<p>ช่วงฐานมิเตอร์: {html.escape(projection.epoch_id)}</p>"
         f"<p>รุ่นหลักฐาน: {projection.revision}</p><p>ข้อควรตรวจ: {html.escape(review_labels(projection.issues))}</p>"
         "<h3>ยอดตามช่วงอ่าน</h3><table border='1' cellspacing='0'><thead><tr><th>เริ่ม</th><th>ถึง</th><th>ผลต่าง</th>"
         "<th>วันลงยอด</th><th>หมายเหตุ</th><th>รอตรวจ</th></tr></thead>" + "".join(rows) + "</table>"
@@ -87,6 +88,9 @@ class WebEvidenceDialog(QDialog):
         layout.addLayout(controls)
         self.counters = QComboBox()
         layout.addWidget(self.counters)
+        self.epochs = QComboBox()
+        self.epochs.setAccessibleName("ช่วงฐานมิเตอร์ · แยกก่อนและหลังรีเซ็ต")
+        layout.addWidget(self.epochs)
         self.status = plain("")
         layout.addWidget(self.status)
         self.tabs = QTabWidget()
@@ -119,6 +123,7 @@ class WebEvidenceDialog(QDialog):
         self.timer.timeout.connect(self.collect)
         self.load_button.clicked.connect(self.load)
         self.counters.currentIndexChanged.connect(self.project)
+        self.epochs.currentIndexChanged.connect(self.project)
         self.xlsx_button.clicked.connect(lambda: self.export("xlsx"))
         self.pdf_button.clicked.connect(lambda: self.export("pdf"))
         self.devices.currentIndexChanged.connect(self.invalidate)
@@ -130,13 +135,14 @@ class WebEvidenceDialog(QDialog):
         self.xlsx_button.setEnabled(False)
         self.pdf_button.setEnabled(False)
         self.counters.clear()
+        self.epochs.clear()
         self.table.setRowCount(0)
         self._replace_chart(self.chart, QChart())
         self._replace_chart(self.cumulative, QChart())
         self.status.setText("เลือกช่วงแล้วกดเรียกดูข้อมูล")
 
     def _busy(self, value):
-        for control in (self.devices, self.start_date, self.end_date, self.counters):
+        for control in (self.devices, self.start_date, self.end_date, self.counters, self.epochs):
             control.setEnabled(not value)
         self.load_button.setEnabled(not value and self.devices.count() > 0)
         self.xlsx_button.setEnabled(not value and self.projection is not None)
@@ -165,7 +171,8 @@ class WebEvidenceDialog(QDialog):
         self._busy(True)
         self.status.setText("กำลังตรวจช่วงข้อมูลและคำนวณค่าเฉลี่ย…")
         self.job = "project"
-        self.future = self.pool.submit(inspect_counter, self.evidence, self.counters.currentData(), **self.request)
+        self.future = self.pool.submit(inspect_counter, self.evidence, self.counters.currentData(),
+            epoch_id=self.epochs.currentData(), **self.request)
         self.timer.start()
 
     def collect(self):
@@ -185,6 +192,13 @@ class WebEvidenceDialog(QDialog):
         self._busy(False)
         if self.job == "load":
             self.evidence = result
+            self.epochs.blockSignals(True)
+            for epoch_id, group in result["epochs"].items():
+                self.epochs.addItem(group["label"], epoch_id or "legacy")
+            preferred_epoch = self.epochs.findData(result["current_epoch"])
+            if preferred_epoch >= 0:
+                self.epochs.setCurrentIndex(preferred_epoch)
+            self.epochs.blockSignals(False)
             self.counters.blockSignals(True)
             for key, label in result["choices"]:
                 self.counters.addItem(label, key)

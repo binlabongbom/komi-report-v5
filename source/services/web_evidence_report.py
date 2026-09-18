@@ -38,8 +38,9 @@ def load_evidence(database_path, *, slot, serial, start, end, calendar_timezone,
     first = datetime.combine(start, time.min, calendar_timezone).isoformat()
     last = datetime.combine(end + timedelta(days=1), time.min, calendar_timezone).isoformat()
     store = WebObservationStore(Path(database_path))
-    events, size, choices = [], 0, {}
+    events, size, choices, groups = [], 0, {}, {}
     with closing(sqlite3.connect(store.path)) as conn:
+        conn.execute("BEGIN")
         rows = conn.execute("""SELECT event_id,document_json,archive_id FROM web_observations
             WHERE device_slot=? AND device_serial=? AND julianday(observed_at)>=julianday(?)
               AND julianday(observed_at)<julianday(?) ORDER BY sequence LIMIT ?""",
@@ -54,6 +55,20 @@ def load_evidence(database_path, *, slot, serial, start, end, calendar_timezone,
                 raise ValueError("ข้อมูลในช่วงนี้มากเกินไป กรุณาเลือกช่วงวันที่สั้นลง")
             event = json.loads(document)
             events.append(event)
+            assigned = [item[0] for item in conn.execute("SELECT epoch_id FROM slot_meter_assignments WHERE event_id=?", (event_id,))]
+            for epoch_id in assigned or [None]:
+                if epoch_id not in groups:
+                    epoch = None
+                    label = "ข้อมูลเดิมที่ยังไม่ได้ผูกฐานมิเตอร์"
+                    if epoch_id is not None:
+                        from services.slot_epoch_store import SlotEpochStore
+                        epoch = SlotEpochStore._epoch(conn, epoch_id)
+                        definition = epoch["document"]
+                        action = {"initial": "ฐานเริ่มต้น", "reset": "หลังรีเซ็ต", "replacement": "หลังเปลี่ยนเครื่อง"}[definition["operation"]]
+                        at = datetime.fromisoformat(definition["baseline_event"]["payload"]["observed_at"]).astimezone(calendar_timezone)
+                        label = f"{action} · {at:%d/%m/%Y %H:%M} · {epoch_id[:8]}"
+                    groups[epoch_id] = {"epoch": epoch, "label": label, "events": []}
+                groups[epoch_id]["events"].append(event)
             for c in event["payload"]["reading"]["counters"]:
                 if not c["canonical_field"].startswith("counter."):
                     continue
@@ -63,14 +78,29 @@ def load_evidence(database_path, *, slot, serial, start, end, calendar_timezone,
         prices = [date.fromisoformat(row[0]) for row in conn.execute("SELECT DISTINCT effective_date FROM price_history WHERE device_slot=?", (slot,))]
         row = conn.execute("SELECT value FROM settings WHERE key='billing_day'").fetchone()
         billing_day = effective_billing_day(row[0] if row else None)
+        current = conn.execute("SELECT epoch_id FROM slot_meter_heads WHERE device_slot=?", (slot,)).fetchone()
     return {"events": events, "choices": sorted(choices.items(), key=lambda item: item[1]),
-            "price_change_dates": prices, "billing_day": billing_day}
+            "price_change_dates": prices, "billing_day": billing_day, "epochs": groups,
+            "current_epoch": current[0] if current and current[0] in groups else None}
 
 
-def inspect_counter(evidence, counter, *, slot, serial, start, end, calendar_timezone):
+def inspect_counter(evidence, counter, *, slot, serial, start, end, calendar_timezone, epoch_id=None):
     # Inspection is not approval of a reset epoch or a billable posting.
-    return project_counter(evidence["events"], slot=slot, serial=serial,
-        epoch_id=f"inspection:{serial}:{start}:{end}", counter=counter,
+    groups = evidence.get("epochs", {None: {"events": evidence["events"], "epoch": None}})
+    if epoch_id is None and len(groups) == 1:
+        epoch_id = next(iter(groups))
+    # The UI passes 'legacy' explicitly so choosing it cannot silently select
+    # a different group after an asynchronous load.
+    if epoch_id == "legacy":
+        epoch_id = None
+    elif epoch_id is None and len(groups) > 1:
+        raise ValueError("เลือกช่วงฐานมิเตอร์ก่อน ไม่รวมข้อมูลก่อนและหลังรีเซ็ต")
+    if epoch_id not in groups:
+        raise ValueError("ไม่พบข้อมูลในช่วงฐานมิเตอร์ที่เลือก")
+    group = groups[epoch_id]
+    return project_counter(group["events"], slot=slot, serial=serial,
+        epoch_id=epoch_id or f"inspection:{serial}:{start}:{end}", counter=counter,
+        reviewed_epoch=group["epoch"],
         calendar_timezone=calendar_timezone, billing_day=evidence["billing_day"],
         price_change_dates=evidence["price_change_dates"])
 
@@ -85,6 +115,7 @@ def export_evidence_xlsx(path, projection, *, printer, serial, counter_label):
     for row in [
         ["เครื่องพิมพ์", printer], ["Serial", serial], ["มิเตอร์", counter_label],
         ["รุ่นหลักฐาน", projection.revision],
+        ["ช่วงฐานมิเตอร์", projection.epoch_id],
         ["ขอบเขต", "เริ่มนับจากจุด Web แรกในช่วงที่เลือก; รายงานหลักฐานนี้ไม่ใช่ยอดเรียกเก็บหรือการยืนยันฐานหลัง reset"],
         ["กราฟประมาณการ", "เฉลี่ยเฉพาะวันที่ไม่มี Web ทั้งวัน ปัดเฉพาะการแสดง ยอดบันทึกวันก่อนกลับมาอ่านได้ไม่ถูกบวกซ้ำ"],
         ["ข้อควรตรวจ", review_labels(projection.issues)],

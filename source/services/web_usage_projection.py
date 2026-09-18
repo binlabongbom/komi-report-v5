@@ -100,7 +100,7 @@ class CounterProjection:
 
 def project_counter(events, *, slot: int, serial: str, epoch_id: str,
                     counter: CounterIdentity, calendar_timezone: tzinfo,
-                    billing_day: int = 31, price_change_dates=()):
+                    billing_day: int = 31, price_change_dates=(), reviewed_epoch=None):
     """Project one reviewed serial/counter epoch, independent of arrival order.
 
     Current value is the maximum, never a sum or last-arrival value. Decreases
@@ -114,6 +114,15 @@ def project_counter(events, *, slot: int, serial: str, epoch_id: str,
             or type(billing_day) is not int or not 1 <= billing_day <= 31):
         raise ValueError("A cumulative counter, calendar and reviewed meter epoch are required")
     changes = tuple(sorted(set(price_change_dates)))
+    reset_boundary = None
+    if reviewed_epoch is not None:
+        from services.slot_meter_continuity import validate_epoch
+        definition = validate_epoch(reviewed_epoch)
+        anchor = definition["baseline_event"]
+        if (reviewed_epoch["id"], anchor["payload"]["slot"], anchor["payload"]["serial"]) != (epoch_id, slot, serial):
+            raise ValueError("Reviewed epoch does not match this projection")
+        if definition["operation"] == "reset":
+            reset_boundary = (anchor["id"], definition["parent"])
     if any(type(day) is not date for day in changes):
         raise ValueError("Invalid price effective date")
     unique, jobs, web_days, by_time, schemas = {}, {}, set(), {}, set()
@@ -123,6 +132,9 @@ def project_counter(events, *, slot: int, serial: str, epoch_id: str,
         p = event["payload"]
         if (p["slot"], p["serial"]) != (slot, serial):
             raise ValueError("Cannot combine different slots or physical printers")
+        declared = p.get("meter_epoch_id")
+        if declared is not None and declared != epoch_id and (event["id"], declared) != reset_boundary:
+            raise ValueError("Cannot combine different reviewed meter epochs")
         if event["id"] in unique:
             continue
         job = p["origin"], p["read_id"]

@@ -86,3 +86,63 @@ def test_missing_history_shows_unavailable_instead_of_zero_result():
     assert "ไม่มีผล Web" in dialog.status.text()
     assert not dialog.xlsx_button.isEnabled()
     dialog.pool.shutdown(wait=True)
+
+
+def test_reviewed_reset_epochs_are_separate_in_projection_dialog_and_export(tmp_path):
+    from datetime import datetime, UTC
+    from services.web_observations import WebObservationStore
+    from test_slot_epoch_store import fixture, confirm
+    from test_subject_history import _reading
+    store, _, initial = fixture()
+    at = datetime(2026, 9, 18, 10, tzinfo=UTC)
+    events = WebObservationStore()
+    boundary = events.record(0, _reading(50, collected_at=at), at=at,
+        serial="OLD", printer_name="Fixture", epoch_id=initial)
+    reset = confirm(store, boundary, "reset")
+    at = datetime(2026, 9, 19, 10, tzinfo=UTC)
+    events.record(0, _reading(80, collected_at=at), at=at,
+        serial="OLD", printer_name="Fixture", epoch_id=reset)
+    args = dict(slot=0, serial="OLD", start=date(2026, 9, 16), end=date(2026, 9, 19), calendar_timezone=BANGKOK)
+    evidence = load_evidence(database.get_db_path(), **args, cancelled=Event())
+    counter = CounterIdentity("counter.user.total.total", "user", "u-1")
+    assert set(evidence["epochs"]) == {initial, reset}
+    with pytest.raises(ValueError, match="เลือกช่วงฐาน"):
+        inspect_counter(evidence, counter, **args)
+    projection = inspect_counter(evidence, counter, **args, epoch_id=reset)
+    assert projection.total_usage == 30
+    assert [point.value for point in projection.points] == [50, 80]
+    exported = tmp_path / "reset.xlsx"
+    export_evidence_xlsx(exported, projection, printer="Fixture", serial="OLD", counter_label="User")
+    workbook = load_workbook(exported)
+    assert dict(workbook["ขอบเขตข้อมูล"].values)["ช่วงฐานมิเตอร์"] == reset
+    workbook.close()
+    dialog = WebEvidenceDialog(DeviceConfigRepository().list(enabled_only=False), today=date(2026, 9, 19), calendar_timezone=BANGKOK)
+    dialog.load()
+    dialog.future.result(timeout=10)
+    dialog.collect()
+    dialog.future.result(timeout=10)
+    dialog.collect()
+    assert dialog.epochs.count() == 2 and dialog.epochs.currentData() == reset
+    assert dialog.projection.total_usage == 30
+    dialog.epochs.setCurrentIndex(dialog.epochs.findData(initial))
+    assert not dialog.xlsx_button.isEnabled()
+    dialog.future.result(timeout=10)
+    dialog.collect()
+    assert dialog.projection.epoch_id == initial
+    assert "lower_counter_or_clock_conflict" in dialog.projection.issues
+    dialog.pool.shutdown(wait=True)
+
+
+def test_projector_rejects_bound_events_from_other_epoch():
+    from datetime import datetime, UTC
+    from services.web_observations import WebObservationStore
+    from services.web_usage_projection import project_counter
+    from test_slot_epoch_store import fixture
+    from test_subject_history import _reading
+    _, _, epoch = fixture()
+    at = datetime(2026, 9, 18, 10, tzinfo=UTC)
+    event = WebObservationStore().record(0, _reading(2010, collected_at=at), at=at,
+        serial="OLD", printer_name="Fixture", epoch_id=epoch)
+    with pytest.raises(ValueError, match="different reviewed"):
+        project_counter([event], slot=0, serial="OLD", epoch_id="unrelated",
+            counter=CounterIdentity("counter.user.total.total", "user", "u-1"), calendar_timezone=BANGKOK)

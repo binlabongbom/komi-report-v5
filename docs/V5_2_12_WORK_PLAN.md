@@ -175,6 +175,22 @@ bf453738b934dcf5bea59dd8c70e191b52ba6b89 และ merge เข้า local main
   หลักฐานทดสอบเก่าตรวจว่ามีบน GitHub/commit/tag/release จริงก่อนเก็บกวาด
 - ปรับคู่มือ ภาพหน้าจอ และขั้นตอนทดสอบสองเครื่องให้ตรง ก่อนขออนุญาต build
 
+### 2026-09-18 — epoch-aware evidence reports
+
+- Web evidence inspection now groups explicitly assigned observations by reviewed
+  epoch, including the reviewed reset boundary in both relevant histories.
+  Legacy unbound events remain a separate group. The dialog selects the current
+  reviewed epoch when present and offers previous epochs independently.
+- Projection rejects cross-epoch v2 events. Reset-boundary exceptions require
+  the exact validated review definition; no timestamp or Serial-only shortcut.
+  Excel/PDF identifies the selected epoch. Inspection still does not post usage
+  to billing or release legacy counter holds.
+- Evidence/projection/billing-period regression **22 passed**, including a
+  same-Serial 2,000 -> reset 50 -> 80 fixture producing 30 in the new epoch,
+  explicit old-epoch selection and disabled export while recalculating.
+- Regenerated and visually checked both Web evidence manual screenshots with
+  the actual offscreen Qt widgets. Updated the source manual selection steps.
+
 ### 2026-09-18 — durable slot epochs and reviewed peer ancestry
 
 - Schema 27 stores immutable slot epochs, an active head, explicit observation
