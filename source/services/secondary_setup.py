@@ -408,6 +408,13 @@ class SecondaryPeerClient:
         return sorted(candidates, key=lambda item: item.base_url)
 
     def fetch_snapshot(self, candidate: SecondaryPeerCandidate) -> dict[str, object]:
+        return validate_setup_snapshot(self._fetch_authorized(candidate, "/api/v1/peer/setup-snapshot"))
+
+    def fetch_settings_history(self, candidate: SecondaryPeerCandidate) -> dict[str, object]:
+        """Fetch only; SettingsHistory.receive validates before persisting."""
+        return self._fetch_authorized(candidate, "/api/v2/peer/settings-history")
+
+    def _fetch_authorized(self, candidate: SecondaryPeerCandidate, path: str) -> dict[str, object]:
         parsed = urlsplit(candidate.base_url)
         if parsed.scheme != "https" or not parsed.hostname:
             raise SecondarySetupError("ที่อยู่ Primary ต้องเป็น HTTPS")
@@ -439,7 +446,7 @@ class SecondaryPeerClient:
         status, snapshot, _fingerprint, _cookies = self._request(
             host,
             "GET",
-            "/api/v1/peer/setup-snapshot",
+            path,
             headers={PEER_SYNC_TOKEN_HEADER: token},
             expected_fingerprint=candidate.certificate_sha256,
             port=port,
@@ -447,4 +454,4 @@ class SecondaryPeerClient:
         )
         if status != 200:
             raise SecondarySetupError("ไม่สามารถดึงการตั้งค่าจากเครื่องหลักได้")
-        return validate_setup_snapshot(snapshot)
+        return snapshot

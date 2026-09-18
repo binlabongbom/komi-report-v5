@@ -165,7 +165,7 @@ def test_raw_history_identity_migration_preserves_rows_and_allows_slot_replaceme
             row,
         )
 
-        assert apply_migrations(connection) == [18, 19]
+        assert apply_migrations(connection) == [18, 19, 20]
         connection.execute(
             """INSERT INTO daily_raw_counter_records(
                    device_slot,record_date,canonical_field,label,source_path,

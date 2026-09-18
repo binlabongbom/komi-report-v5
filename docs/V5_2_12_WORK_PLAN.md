@@ -92,6 +92,46 @@ disabled foundation, not a working customer Hotfix. UI preview is a prototype.
 
 ## Existing evidence (not release approval)
 
+### 2026-09-18 — LAN discovery audit and causal settings history
+
+- User instructed continuing after discussion of differing LAN announcements.
+  Inspection found bounded IP scanning plus HTTPS discovery/setup fetch in
+  `secondary_setup.py`, not UDP settings broadcasts or periodic peer replication.
+  Existing v1 setup is a one-time authorized snapshot import without ancestry.
+  No demonstrated cross-company exploit was found; do not present hypothetical
+  company risks as a blocker to this implementation work.
+- Schema 20 adds durable settings revision/state tables. New
+  `peer_settings_history.py` records normalized shared snapshots with parent
+  revisions, random persistent local actor ID, timestamp and reason. It excludes
+  local installation ID and snapshot generation time from shared values. This
+  actor ID is not a company identity or authorization credential.
+- Import validates hashes, allowed fields, ancestry and bounded packet size in
+  one transaction. It classifies same revision, incoming/local newer, same values,
+  conflicting branches and unrelated histories without sorting by clock time.
+  Receive never changes local settings or local head. Explicit journal resolution
+  retains both parents and rejects a stale local head.
+- Added typed `/api/v2/peer/settings-history` and a client fetch method using the
+  existing certificate pin/one-use claim token flow; Web proxy forwards the exact
+  endpoint, with authorization still enforced by Python. v1 remains compatible.
+  No settings POST/apply endpoint or relaxed authorization was introduced.
+- **56 Python tests passed** across history, migrations, secondary setup,
+  authorization and Web API; **6 Web security tests passed** on a temporary copy
+  using existing dependencies. Direct Web test attempt initially lacked the
+  worktree's Next dependency; temporary dependency setup fixed the harness.
+  Synthetic separate SQLite journals cover offline edits, duplicate deliveries,
+  diverging edits, clock skew, stale resolution, malformed history rollback,
+  restart persistence and endpoint token replay rejection. No printer/Host calls.
+- Still unfinished: capture each settings save transaction, atomic application
+  of chosen values together with journal head, conflict preview/choice UI, startup
+  and five-minute exchange, durable peer membership, history paging beyond
+  256 revisions/128 KiB, and data/backup sync. `resolve` currently changes journal
+  state only and must not be wired as an app-setting apply action on its own.
+  Export observes current settings, not every intermediate save. This is a tested
+  protocol/history foundation, not completed continuous sync.
+- Next: integrate settings-save auditing and transactional application before
+  wiring conflict UI and automatic exchange. No user answer is needed for this
+  next implementation step. No build, publish or Documents/customer mutations.
+
 ### 2026-09-18 — user-authorized merge into local main
 
 - User clarified that the new work should be merged into the main branch because

@@ -138,6 +138,31 @@ class PeriodOut(ApiModel):
     end: str
 
 
+class PeerSharedOrganizationOut(ApiModel):
+    company_name: str
+    first_started_at: str
+
+
+class PeerSharedSettingsOut(ApiModel):
+    organization: PeerSharedOrganizationOut
+    settings: PeerSettingsOut
+    devices: list[PeerDeviceOut]
+
+
+class PeerSettingsRevisionOut(ApiModel):
+    parents: list[str]
+    payload: PeerSharedSettingsOut
+    actor: str
+    created_at: str
+    reason: str
+
+
+class PeerSettingsHistoryResponse(ApiModel):
+    contract: Literal["komi-peer-settings-history/v1"]
+    head: str
+    revisions: dict[str, PeerSettingsRevisionOut]
+
+
 class PeriodListResponse(ApiModel):
     billing_day: int
     items: list[PeriodOut]
@@ -608,6 +633,20 @@ def peer_setup_snapshot(request: Request) -> dict:
     except PeerSyncAuthorizationError as exc:
         raise HTTPException(status_code=401, detail=str(exc)) from exc
     return primary_setup_snapshot()
+
+
+@app.get("/api/v2/peer/settings-history", response_model=PeerSettingsHistoryResponse)
+def peer_settings_history(request: Request) -> dict:
+    """Versioned history through the existing single-use approved capability."""
+    from services.peer_settings_history import SettingsHistory
+
+    snapshot = peer_setup_snapshot(request)
+    history = SettingsHistory()
+    try:
+        history.observe(snapshot)
+        return history.export()
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 @app.get("/api/v1/reports/periods", response_model=PeriodListResponse)

@@ -12,7 +12,7 @@ from contextlib import closing
 from datetime import datetime
 from pathlib import Path
 
-CURRENT_SCHEMA_VERSION = 19
+CURRENT_SCHEMA_VERSION = 20
 
 
 class UnsupportedSchemaVersionError(RuntimeError):
@@ -608,6 +608,13 @@ def _migration_018_raw_counter_device_identity(connection: sqlite3.Connection) -
     )
 
 
+def _migration_020_peer_settings_history(connection: sqlite3.Connection) -> None:
+    connection.execute("""CREATE TABLE peer_settings_revisions(
+        revision TEXT PRIMARY KEY, document_json TEXT NOT NULL)""")
+    connection.execute("""CREATE TABLE peer_settings_state(
+        key TEXT PRIMARY KEY, value TEXT NOT NULL)""")
+
+
 MIGRATIONS: tuple[tuple[int, str, object], ...] = (
     (8, "record_schema_history_and_reporting_indexes", _migration_008_record_schema_history),
     (9, "add_legacy_usage_history_import_provenance", _migration_009_legacy_history_import),
@@ -621,6 +628,7 @@ MIGRATIONS: tuple[tuple[int, str, object], ...] = (
     (17, "add_per_serial_parser_mapping_overrides", _migration_017_parser_mapping_overrides),
     (18, "separate_raw_counter_history_by_printer_serial", _migration_018_raw_counter_device_identity),
     (19, "add_v52_registration_inventory_baselines", _migration_019_v52_registration_inventory_baseline),
+    (20, "add_peer_settings_revision_history", _migration_020_peer_settings_history),
 )
 
 

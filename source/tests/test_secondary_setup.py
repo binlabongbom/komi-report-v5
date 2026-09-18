@@ -219,7 +219,8 @@ def test_discovery_payload_contains_no_device_identity(monkeypatch):
     assert "192.0.2.10" not in repr(payload)
 
 
-def test_secondary_fetches_snapshot_with_one_time_primary_approval(monkeypatch):
+@pytest.mark.parametrize("history", [False, True])
+def test_secondary_fetches_snapshot_with_one_time_primary_approval(monkeypatch, history):
     candidate = secondary_setup.SecondaryPeerCandidate(
         base_url="https://192.0.2.20:3000",
         company_name="บริษัท ทดสอบ จำกัด",
@@ -247,10 +248,11 @@ def test_secondary_fetches_snapshot_with_one_time_primary_approval(monkeypatch):
     client = secondary_setup.SecondaryPeerClient()
     monkeypatch.setattr(client, "_request", request)
 
-    assert client.fetch_snapshot(candidate) == _valid_snapshot()
+    fetch = client.fetch_settings_history if history else client.fetch_snapshot
+    assert fetch(candidate) == _valid_snapshot()
     assert requests == [
         ("POST", "/api/v1/peer/claim"),
-        ("GET", "/api/v1/peer/setup-snapshot"),
+        ("GET", "/api/v2/peer/settings-history" if history else "/api/v1/peer/setup-snapshot"),
     ]
 
 

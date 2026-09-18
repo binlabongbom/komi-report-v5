@@ -111,6 +111,7 @@ test("peer setup routes remain capability-gated outside Web login", () => {
   assert.equal(proxySource.includes('path === "/api/v1/peer/discovery"'), true);
   assert.equal(proxySource.includes('path === "/api/v1/peer/claim"'), true);
   assert.equal(proxySource.includes('path === "/api/v1/peer/setup-snapshot"'), true);
+  assert.equal(proxySource.includes('path === "/api/v2/peer/settings-history"'), true);
   assert.equal(proxySource.includes("X-KOMI-Peer-Sync-Token"), false);
 });
 
