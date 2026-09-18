@@ -51,6 +51,8 @@ a = Analysis(
         ('../docs/data-storage-overview.html', 'docs'),
         ('../docs/data-storage-overview.png', 'docs'),
         ('../docs/customer-guide/assets-v5.2', 'docs/customer-guide/assets-v5.2'),
+        ('../docs/customer-guide/assets-v5.2.12-source', 'docs/customer-guide/assets-v5.2.12-source'),
+        ('../docs/customer-guide/KOMI_Report_5.2.12_Source_Guide.pdf', 'docs/customer-guide'),
     ] + web_datas,
     hiddenimports=['tools.check_parser', 'web_api'] + collect_submodules('pysnmp'),
     hookspath=[],

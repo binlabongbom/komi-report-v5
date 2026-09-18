@@ -34,6 +34,7 @@ class PeerHistoryRuntime(QObject):
     changed = pyqtSignal()
     history_received = pyqtSignal(str, object)
     _finished = pyqtSignal(object, object)
+    _local_committed = pyqtSignal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -44,6 +45,27 @@ class PeerHistoryRuntime(QObject):
         self._started = False
         self._stopped = False
         self._finished.connect(self._complete, Qt.ConnectionType.QueuedConnection)
+        from database import get_db_path
+        from services.peer_change_events import subscribe
+        self._unsubscribe = subscribe(get_db_path(), self._notify_local)
+        self._local_committed.connect(self.local_changed, Qt.ConnectionType.QueuedConnection)
+
+    def _notify_local(self):
+        self._local_committed.emit()
+
+    def local_changed(self):
+        """Wake a verified delivery session after a local commit, without polling."""
+        if not self._started or self._stopped:
+            return
+        for state in self._members.values():
+            # A history-only session cannot send the local queue.
+            if not hasattr(state.session, 'reconnected'):
+                continue
+            if state.future is not None:
+                state.wake_again = True
+            else:
+                self._enqueue(state)
+        self._dispatch()
 
     def attach(self, session):
         """Attach a transport with independent, current authorization checks.
@@ -90,6 +112,9 @@ class PeerHistoryRuntime(QObject):
         if not self._started or self._stopped:
             return
         for state in self._members.values():
+            reconnect = getattr(state.session, 'reconnected', None)
+            if reconnect is not None:
+                reconnect()
             if state.future is not None:
                 state.wake_again = True  # Do not lose a reconnect during a call.
             else:
@@ -155,7 +180,9 @@ class PeerHistoryRuntime(QObject):
                 self.history_received.emit(state.session.member, result)
             # Continue only if a bounded quantum actually committed a page.
             # An oversized dependency must not cause an infinite busy loop.
-            again = again or (result.status == "pending" and result.pages > 0)
+            again = again or getattr(result, 'more_work', result.status == "pending" and result.pages > 0)
+            if getattr(result, 'errors', ()):
+                state.error = result.errors[0][1]
         if again and not self._stopped and self._members.get(state.session.member) is state:
             self._enqueue(state)
         self.changed.emit()
@@ -173,6 +200,7 @@ class PeerHistoryRuntime(QObject):
 
     def stop(self, *, wait=False):
         self._stopped = True
+        self._unsubscribe()
         self._queue.clear()
         for state in (*self._members.values(), *self._running.values()):
             state.cancelled.set()

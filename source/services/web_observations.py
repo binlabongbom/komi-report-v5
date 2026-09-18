@@ -12,6 +12,7 @@ import math
 import sqlite3
 import uuid
 
+from services.peer_change_events import notify_local_change
 from database import get_db_path
 from komi_snmp_profiler.models import Confidence, WebAuthState
 
@@ -105,6 +106,7 @@ class WebObservationStore:
         from services.web_observation_archive import WebObservationArchive
         return WebObservationArchive(self.path).read_document(archive_id, event_id)
 
+    @notify_local_change
     def record(self, slot, reading, *, serial, printer_name, at=None, read_id=None, epoch_id=None):
         """Durably capture a completed Web result before updating presentations."""
         stamp = at or datetime.now().astimezone()

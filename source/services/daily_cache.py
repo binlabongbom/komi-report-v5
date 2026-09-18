@@ -330,6 +330,8 @@ class DailyCacheStore:
             "device_identity": identity,
             "counter_review": _counter_reviews_before(slot, day, identity),
         }
+        from services.slot_cache_bridge import bridge_device_state
+        bridge_device_state(slot, state, reading, stamp)
         captured_identity = state.get("device_identity")
         if isinstance(captured_identity, dict) and _identity_conflicts(captured_identity, identity):
             from services.slot_replacement import capture_candidate
@@ -661,6 +663,7 @@ class DailyCacheStore:
             "replacement_candidate": state.get("replacement_candidate"),
             "device_segments": state.get("device_segments", []),
             "slot_replacements": state.get("slot_replacements", []),
+            "slot_epoch": state.get("slot_epoch"),
             "reset_detected": bool(state.get("resets") or state.get("counter_review") or state.get("counter_resolutions")),
             "counter_review": state.get("counter_review", {}),
             "counter_resolutions": state.get("counter_resolutions", []),

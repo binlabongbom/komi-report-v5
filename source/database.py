@@ -57,6 +57,8 @@ def _clear_read_caches(slot: int | None = None):
 
 
 _USAGE_RESET_TABLES = (
+    "peer_billing_deliveries",
+    "peer_billing_amendments",
     "web_catchup_progress",
     "slot_meter_epoch_outbox",
     "slot_meter_maxima",
@@ -97,6 +99,8 @@ _USAGE_RESET_SEQUENCES = (
 )
 
 _FACTORY_RESET_TABLES = (
+    "peer_billing_deliveries",
+    "peer_billing_amendments",
     "web_catchup_progress",
     "slot_meter_epoch_outbox",
     "slot_meter_maxima",

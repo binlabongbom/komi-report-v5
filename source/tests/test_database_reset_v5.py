@@ -22,6 +22,10 @@ STAMP = "2026-08-31T09:00:00+07:00"
 
 def _seed_reset_state() -> dict[str, object]:
     with _open() as connection:
+        connection.execute('INSERT INTO peer_billing_amendments(amendment_id,document_json,results_json,created_at) VALUES(?,?,?,?)',
+                           ('fixture-amendment', '{}', '[]', STAMP))
+        connection.execute('INSERT INTO peer_billing_deliveries(member_id,amendment_id) VALUES(?,?)',
+                           ('fixture-member', 'fixture-amendment'))
         connection.execute(
             """INSERT INTO devices(
                    slot,name,host,username,password,enabled,model,serial,updated_at
@@ -188,6 +192,8 @@ def test_usage_reset_clears_report_history_and_preserves_configuration():
     reset_usage_data()
 
     for table in (
+        "peer_billing_deliveries",
+        "peer_billing_amendments",
         "legacy_history_items",
         "billing_ledger",
         "daily_subject_records",
@@ -234,6 +240,8 @@ def test_factory_reset_clears_v52_raw_parser_and_all_registration_secrets():
     factory_reset_v5(registration_secret_store=vault)
 
     for table in (
+        "peer_billing_deliveries",
+        "peer_billing_amendments",
         "registration_attempt_history",
         "registration_outbox",
         "registration_profile",

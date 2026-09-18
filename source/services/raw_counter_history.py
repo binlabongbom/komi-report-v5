@@ -211,7 +211,10 @@ class RawCounterHistoryStore:
                     "Raw Counter history requires printer Serial Number identity"
                 )
             changed = 0
+            from services.slot_cache_bridge import approved_baseline, bridge_raw_counter
+            epoch = approved_baseline(connection, slot, reading, stamp)
             for counter in reading.counters:
+                bridge_raw_counter(connection, epoch, slot, day, counter)
                 subject_type, subject_id, subject_name = _subject_identity(counter)
                 field = str(counter.canonical_field or "").strip()
                 label = str(counter.label or field or "Unknown")
@@ -237,7 +240,7 @@ class RawCounterHistoryStore:
                 ).fetchone()
                 if existing is None:
                     previous_day = connection.execute(
-                        """SELECT closing_value,counter_review_json
+                        """SELECT closing_value,counter_review_json,last_success
                            FROM daily_raw_counter_records
                            WHERE device_slot=? AND record_date<? AND canonical_field=?
                              AND source_path=? AND subject_type=? AND subject_id=?
@@ -256,6 +259,10 @@ class RawCounterHistoryStore:
                     ).fetchone()
                     opening = float(previous_day[0]) if previous_day else value
                     review = json.loads(previous_day[1]) if previous_day else None
+                    from services.slot_cache_bridge import raw_baseline_after_gap
+                    resolved = raw_baseline_after_gap(epoch, counter, previous_day[2] if previous_day else None)
+                    if resolved:
+                        opening, review = float(resolved['baseline']), None
                     if review:
                         initial_delta = 0.0
                         initial_resets = 0
@@ -273,8 +280,8 @@ class RawCounterHistoryStore:
                                closing_value,delta_value,reset_count,sample_count,
                                first_success,last_success,source_name,
                                device_name_snapshot,device_serial_snapshot,
-                               incomplete,created_at,updated_at,counter_review_json
-                           ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                               incomplete,created_at,updated_at,counter_review_json,counter_resolutions_json
+                           ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                         (
                             slot,
                             day,
@@ -298,6 +305,7 @@ class RawCounterHistoryStore:
                             stamp_text,
                             stamp_text,
                             json.dumps(review, sort_keys=True),
+                            json.dumps([resolved] if resolved else [], sort_keys=True),
                         ),
                     )
                     changed += 1

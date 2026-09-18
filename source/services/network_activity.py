@@ -35,5 +35,9 @@ def load_network_activity(path, members):
                 WHERE NOT EXISTS(SELECT 1 FROM peer_settings_deliveries d
                     WHERE d.peer_id=? AND d.revision=e.revision AND d.acknowledged_at IS NOT NULL)""",
                 (member,)).fetchone()[0]
-            queues[member] = {"web_pending": outgoing - acknowledged, "settings_pending": bool(pending_settings)}
+            pending_amendments = conn.execute('''SELECT COUNT(*) FROM peer_billing_amendments a
+                WHERE NOT EXISTS(SELECT 1 FROM peer_billing_deliveries d WHERE d.member_id=?
+                    AND d.amendment_id=a.amendment_id AND d.acknowledged_at IS NOT NULL)''', (member,)).fetchone()[0]
+            queues[member] = {"web_pending": outgoing - acknowledged, "settings_pending": bool(pending_settings),
+                              "amendments_pending": pending_amendments}
     return {"queues": queues, "settings_reviews": len(reviews - ancestors), "slot_reviews": slot_reviews}

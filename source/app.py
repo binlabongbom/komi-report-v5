@@ -452,6 +452,8 @@ class MainWindow(QMainWindow):
         self.polling.device_updated.connect(self._device_updated)
         self.polling.reading_saved.connect(lambda _slot: self._schedule_refresh_all())
         self.polling.reading_saved.connect(self.registration.meter_observed)
+        self.polling.shared_settings_applied.connect(self._refresh_all)
+        self.polling.shared_settings_applied.connect(self.registration.configuration_changed)
         self.pg_import.sync_requested.connect(self._request_manual_poll)
         self.pg_overview.sync_requested.connect(self._request_manual_poll)
         self._build_tray()

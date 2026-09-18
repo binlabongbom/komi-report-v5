@@ -25,8 +25,8 @@ def test_status_uses_per_member_durable_receipts_without_changing_them():
     observation = record(store(), 1)
     WebObservationStore().acknowledge("A", [observation["id"]])
     before = load_network_activity(database.get_db_path(), ["A", "B"])
-    assert before["queues"] == {"A": {"web_pending": 0, "settings_pending": True},
-                                "B": {"web_pending": 1, "settings_pending": True}}
+    assert before["queues"] == {"A": {"web_pending": 0, "settings_pending": True, "amendments_pending": 0},
+                                "B": {"web_pending": 1, "settings_pending": True, "amendments_pending": 0}}
     assert load_network_activity(database.get_db_path(), ["A", "B"]) == before
     PeerSettingsOutbox().acknowledge("A", newest)
     assert load_network_activity(database.get_db_path(), ["A"])["queues"]["A"]["settings_pending"] is False

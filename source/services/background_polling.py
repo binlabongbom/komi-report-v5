@@ -35,6 +35,7 @@ class BackgroundPollingCoordinator(QObject):
     device_updated = pyqtSignal(int)
     reading_saved = pyqtSignal(int)
     activity_changed = pyqtSignal()
+    shared_settings_applied = pyqtSignal()
 
     def __init__(
         self,
@@ -65,6 +66,7 @@ class BackgroundPollingCoordinator(QObject):
         # Attached only by a verified member/session provider. Discovery alone
         # never suppresses local collection or authorizes shared observations.
         self.shared_reads = shared_reads
+        self.peer_settings = None
         self.clock = clock or (lambda: datetime.now().astimezone())
         self.machine = PollingStateMachine()
         self.snmp_interval = timedelta(minutes=5)
@@ -98,6 +100,16 @@ class BackgroundPollingCoordinator(QObject):
     def active_slots(self):
         with self._lock:
             return tuple(sorted(self.active))
+
+    def bind_verified_settings(self, *, authorize, authorize_epoch):
+        """Called on the Qt owner thread by the verified membership adapter."""
+        from services.peer_settings_runtime import PeerSettingsRuntime
+        if self.peer_settings is not None:
+            self.peer_settings.stop()
+        self.peer_settings = PeerSettingsRuntime(self, authorize=authorize, authorize_epoch=authorize_epoch)
+        self.peer_settings.applied.connect(self.shared_settings_applied.emit)
+        self.peer_settings.notify()
+        return self.peer_settings
 
     def start(self) -> None:
         if self._stopped:
@@ -202,6 +214,9 @@ class BackgroundPollingCoordinator(QObject):
                 for future in list(self._futures.values()):
                     future.cancel()
         self.executor.shutdown(wait=wait, cancel_futures=True)
+        if self.peer_settings is not None:
+            self.peer_settings.stop()
+            self.peer_settings = None
         remaining += self.peer_history.stop(wait=wait)
         remaining += self.archive_maintenance.stop(wait=wait)
         log.info(

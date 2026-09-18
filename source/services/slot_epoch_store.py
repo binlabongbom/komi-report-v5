@@ -65,7 +65,11 @@ class SlotEpochStore:
             UNION ALL SELECT 1 FROM daily_raw_counter_records WHERE device_slot=? AND COALESCE(device_serial_snapshot,'') NOT IN ({placeholders})
             UNION ALL SELECT 1 FROM daily_meter_records WHERE device_slot=? AND
                 CASE WHEN json_valid(source_json) THEN COALESCE(json_extract(source_json,'$.device_identity.serial'),'') ELSE '' END NOT IN ({placeholders})
-            LIMIT 1""", (slot, *serials, slot, *serials, slot, *serials)).fetchone() is not None
+            UNION ALL SELECT 1 FROM daily_subject_records WHERE device_slot=? AND
+                CASE WHEN json_valid(source_json) THEN COALESCE(json_extract(source_json,'$.device_identity.serial'),'') ELSE '' END NOT IN ({placeholders})
+            UNION ALL SELECT 1 FROM archived_subject_periods WHERE device_slot=? AND
+                CASE WHEN json_valid(summary_json) THEN COALESCE(json_extract(summary_json,'$.device_serial_snapshot'),'') ELSE '' END NOT IN ({placeholders})
+            LIMIT 1""", (slot, *serials, slot, *serials, slot, *serials, slot, *serials, slot, *serials)).fetchone() is not None
 
     def _proof(self, conn, epoch):
         anchor_id = epoch["document"]["baseline_event"]["id"]

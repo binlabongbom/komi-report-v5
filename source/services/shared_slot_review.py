@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 import json
 from pathlib import Path
 
+from services.peer_change_events import notify_local_change
 from database import get_db_path
 from services.peer_settings_history import SettingsHistory, _json
 from services.shared_settings_document import from_connection
@@ -32,6 +33,7 @@ class SharedSlotReviewService:
                 "counter_labels": labels,
                 "previous_serial": previous["document"]["baseline_event"]["payload"]["serial"] if previous else None}
 
+    @notify_local_change
     def confirm(self, preview):
         if str(Path(get_db_path()).resolve()) != preview["path"] or preview["path"] != str(self.store.path):
             raise ValueError("Database changed after slot review")

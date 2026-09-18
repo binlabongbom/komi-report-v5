@@ -6470,6 +6470,8 @@ class PageManual(QWidget):
             13: "manual.png",
         }
         image_path = self._manual_asset(filename + names[index])
+        if index == 11:
+            image_path = self._manual_asset('customer-guide/assets-v5.2.12-source/network-activity.png')
         pixmap = (
             QPixmap(str(image_path))
             if self._manual_asset_available(image_path)
@@ -6506,14 +6508,14 @@ class PageManual(QWidget):
             ((1, 2, 3, 4), ("ตั้งค่าบริษัทและฐานข้อมูล", "ค้นหาและเลือกเครื่องพิมพ์", "ตั้งราคาและรอบบิล", "ตรวจสอบก่อนเริ่มใช้งาน")),
             ((5, 6), ("ภาพรวมการใช้งาน", "ข้อมูลรายเครื่อง")),
             ((7, 8, 9), ("รายงานภาพรวม", "รายงาน Usage", "รายงาน Legacy")),
-            ((10, 11, 12), ("การตั้งค่าหลัก", "Web Report ใน LAN", "เครื่องมือขั้นสูงและ Parser Mapping")),
+            ((10, 11, 12), ("การตั้งค่าหลัก", "สถานะการตั้งค่าเครือข่าย · ข้อมูลจำลอง", "เครื่องมือขั้นสูงและ Parser Mapping")),
             ((13,), ("คู่มือฉบับย่อในโปรแกรม",)),
         )
         english_captions = (
             ("Company and Database setup", "Discover and select printers", "Prices and billing cycle", "Review before first use"),
             ("Operational overview", "Per-device information"),
             ("Report overview", "Usage report", "Legacy report"),
-            ("Main Settings", "LAN Web Report", "Advanced tools and Parser Mapping"),
+            ("Main Settings", "Network activity · synthetic example", "Advanced tools and Parser Mapping"),
             ("In-app quick guide",),
         )
         for sections, captions, english in (
@@ -6655,6 +6657,7 @@ class PageManual(QWidget):
         ]
         self._english_manual_sections = self._build_english_manual_sections()
         self._insert_customer_guide_screenshots()
+        self._insert_updated_guide()
         for section in (*self._thai_manual_sections, *self._english_manual_sections):
             section.setSizePolicy(
                 QSizePolicy.Policy.Expanding,
@@ -6703,6 +6706,30 @@ class PageManual(QWidget):
 
         self._apply_i18n_visibility(get_language())
         self._update_manual_responsive_layout(self.width())
+
+    def _insert_updated_guide(self):
+        for sections, english in ((self._thai_manual_sections, False), (self._english_manual_sections, True)):
+            guide = self._manual_asset('customer-guide/KOMI_Report_5.2.12_Source_Guide.pdf')
+            button = QPushButton('Open updated illustrated guide (Thai PDF)' if english else 'เปิดคู่มือฉบับปรับปรุงพร้อมภาพ (PDF)')
+            button.setEnabled(self._manual_asset_available(guide))
+            button.clicked.connect(lambda _=False, path=guide: QDesktopServices.openUrl(QUrl.fromLocalFile(str(path))))
+            sections[0].layout().insertWidget(1, self._card('Updated guide' if english else 'คู่มือหน้าจอที่ปรับปรุง', [
+                self._txt('Network settings, shared Slot baselines, revised reports and Archive. The guide identifies features awaiting verified member connections.' if english else
+                    'รวมการตั้งค่าเครือข่าย ฐาน Slot รายงานฉบับแก้ไข และ Archive คู่มือระบุส่วนที่ยังรอเชื่อมต่อสมาชิกที่ยืนยันสิทธิ์ไว้ด้วย'), button]))
+            sections[3].layout().insertWidget(1, self._card('Network settings and shared changes' if english else 'การตั้งค่าเครือข่ายและค่าร่วมกัน', [
+                self._txt('Settings > Advanced > Network settings shows actual work and durable receipt queues. A completed send is not proof that the peer saved it.' if english else
+                    'ตั้งค่า > ขั้นสูง > การตั้งค่าเครือข่าย แสดงงานที่กำลังทำและคิวรอยืนยันรับ การส่งข้อความสำเร็จยังไม่ใช่หลักฐานว่าปลายทางบันทึกแล้ว'),
+                self._txt('Verified descendants apply after active reads finish. Conflicting edits remain available in shared settings history for review. Discovery alone does not enroll a computer.' if english else
+                    'ค่าที่รับมาและต่อจากประวัติเดิมจะใช้เมื่ออ่านมิเตอร์เสร็จ หากแก้ชนกันให้ตรวจเลือกในประวัติการตั้งค่าร่วม การค้นพบใน LAN อย่างเดียวยังไม่ถือว่าเข้าร่วมระบบ'),
+                self._txt('Each computer keeps its own identity and shares the same three printer Slots. Replacing a used printer starts from its reviewed meter baseline.' if english else
+                    'แต่ละคอมมีตัวตนของตนเองและใช้ Slot เครื่องพิมพ์สามช่องชุดเดียวกัน เมื่อเปลี่ยนเป็นเครื่องมือสอง ยอดจะนับต่อจากฐานที่ตรวจยืนยันแล้ว')]))
+            sections[2].layout().insertWidget(1, self._card('Missing history and revised reports' if english else 'ช่วงขาดข้อมูลและรายงานฉบับแก้ไข', [
+                self._txt('A 301-page gap over two entirely missing days is shown as an estimated 150.5 pages per day. The graph never determines invoice amounts.' if english else
+                    'ช่วงขาด 301 หน้าในสองวันที่ไม่มีข้อมูลทั้งวัน กราฟแสดงเฉลี่ยประมาณการวันละ 150.5 หน้า ไม่ใช้ค่าเฉลี่ยกราฟคิดเงิน'),
+                self._txt('Review Web evidence before confirming revised allocation. Originals remain intact and delivery awaits verified receipts. Old user/Raw details are not rewritten by this action.' if english else
+                    'ตรวจหลักฐาน Web ก่อนยืนยันฉบับแก้ไขการแบ่งยอด ระบบเก็บต้นฉบับและคิวรอรับไว้ การยืนยันนี้ไม่เขียนทับรายละเอียดผู้ใช้หรือ Raw เก่า'),
+                self._txt('Details older than twelve months can be archived. Monthly summaries remain available; older files open only when requested.' if english else
+                    'รายละเอียดเกิน 12 เดือนเก็บเป็น Archive ได้ สรุปรายเดือนยังเรียกดูได้ และเปิดไฟล์เก่าเฉพาะเมื่อขอดูรายละเอียด')]))
 
     def _apply_i18n_visibility(self, language: str) -> None:
         self._manual_language = language
@@ -6810,7 +6837,7 @@ class PageManual(QWidget):
     def _build_english_manual_sections(self) -> list[QWidget]:
         return [
             self._english_manual_section("Getting started", [
-                ("Primary setup", [
+                ("First computer setup", [
                     self._step(1, "Enter the company name. Start date and Version are filled automatically."),
                     self._step(2, "Keep the Database path, select Browse, or use Import for an existing database."),
                     self._step(3, "Discover or add printers manually, then select and verify up to three devices."),
@@ -6818,9 +6845,9 @@ class PageManual(QWidget):
                     self._step(5, "Review and save. Online Registration completes before the main window opens."),
                     self._tip("If Online Registration cannot connect, the Wizard offers the Offline License flow."),
                 ]),
-                ("Secondary setup", [
-                    self._txt("A Secondary desktop can copy the Primary configuration on the same LAN without a sync code.", bold=True),
-                    self._txt("Rejecting the offer starts a normal new setup. Printer connectivity is checked again from the Secondary desktop before saving."),
+                ("Additional computer setup", [
+                    self._txt("An additional desktop can review the company configuration offered by an authorized computer on the same LAN.", bold=True),
+                    self._txt("The initial setup copy is separate from continuous shared work. Each computer retains its own registration identity."),
                 ]),
             ]),
             self._english_manual_section("Daily workflow", [
@@ -6866,7 +6893,7 @@ class PageManual(QWidget):
                     self._step(3, "The Host marks a missing Desktop connection only after three days; this is not a printer-failure claim."),
                     self._step(4, "Offline License stops Registration, Status and Meter telemetry without deleting local reports."),
                 ]),
-                ("Primary, Secondary and recovery", [
+                ("Computers and recovery", [
                     self._txt("Primary and Secondary desktops can run together and continue serving the same read-only Web Report on the LAN."),
                     self._txt("Back up the Database before restore, reset or moving the data path."),
                 ]),
@@ -6882,14 +6909,14 @@ class PageManual(QWidget):
         layout.addWidget(
             self._txt(
                 "โปรแกรมเก็บฐานข้อมูลและรายงานไว้ในเครือข่ายลูกค้า ส่วนการลงทะเบียนส่งเฉพาะข้อมูลที่ระบุในประกาศ "
-                "หัวข้อนี้อธิบายการอ่านเครื่อง การทำงานของ Primary/Secondary และการลงทะเบียน Online/Offline"
+                "หัวข้อนี้อธิบายการอ่านเครื่อง การทำงานร่วมกัน และการลงทะเบียน Online/Offline"
             )
         )
-        layout.addWidget(self._card("Primary, Secondary และ Web Report", [
-            self._step(1, "Primary เป็น Desktop เครื่องแรกที่ตั้งค่าเครื่องพิมพ์ ราคา รอบบิล และฐานข้อมูล"),
-            self._step(2, "Secondary ที่อยู่ใน LAN เดียวกันสามารถ Sync ค่าจาก Primary โดยไม่ต้องใช้รหัส Sync"),
-            self._step(3, "Primary และ Secondary เปิดพร้อมกันได้ และ Web Report แบบอ่านอย่างเดียวยังคงใช้งานผ่าน LAN"),
-            self._step(4, "เมื่อปิดหน้าต่าง โปรแกรมอาจยังทำงานใน System Tray; ใช้ Exit เมื่อต้องการหยุดจริง"),
+        layout.addWidget(self._card("คอมพิวเตอร์ร่วมกันและ Web Report", [
+            self._step(1, "คอมเครื่องแรกตั้งค่าเครื่องพิมพ์ ราคา รอบบิล และฐานข้อมูล"),
+            self._step(2, "คอมเพิ่มเติมตรวจและรับชุดค่าบริษัทที่ได้รับสิทธิ์มาใช้ โดยคงตัวตนการลงทะเบียนของตนเอง"),
+            self._step(3, "คอมทุกเครื่องใช้ Slot ชุดเดียวกัน Web Report แบบอ่านอย่างเดียวเปิดผ่าน LAN ได้เมื่อเครื่องที่ให้บริการยังออนไลน์"),
+            self._step(4, "เมื่อปิดหน้าต่าง Agent ทำงานต่อที่ System Tray; ใช้เมนูออกจาก Agent เมื่อต้องการหยุดจริง"),
             self._tip("ก่อน Sync ให้ตรวจชื่อบริษัท รายการเครื่อง ราคา และรอบบิลบนหน้าสรุปทุกครั้ง"),
         ]))
         layout.addWidget(self._card("การลงทะเบียนและสถานะ", [
@@ -7019,7 +7046,7 @@ class PageManual(QWidget):
 
         lay.addWidget(self._sec("เริ่มต้นใช้งาน KOMI Report V5.2"))
 
-        lay.addWidget(self._card("เครื่อง Primary — ตั้งค่าครั้งแรก", [
+        lay.addWidget(self._card("คอมเครื่องแรก — ตั้งค่าครั้งแรก", [
             self._step(1, "กรอกชื่อบริษัท วันที่เริ่มใช้งานและ Version จะแสดงให้อัตโนมัติ"),
             self._step(2, "ตรวจ Database Path ใช้ [Browse] เมื่อต้องการเปลี่ยนตำแหน่ง หรือ [Import] เมื่อต้องการนำฐานข้อมูลเดิมมาใช้"),
             self._step(3, "อ่านประกาศข้อมูลการลงทะเบียน แล้วกดค้นหาเครื่องพิมพ์ใน LAN หรือกำหนดช่วง IP/เพิ่ม IP ด้วยตนเอง"),
@@ -7028,11 +7055,11 @@ class PageManual(QWidget):
             self._tip("ระหว่างสแกนจะแสดงความคืบหน้า กด Enter ในหน้ากำหนดช่วง IP เพื่อเริ่มสแกนได้"),
         ]))
 
-        lay.addWidget(self._card("เครื่อง Secondary — ใช้ค่าร่วมกับ Primary", [
-            self._step(1, "เมื่อพบ Primary ใน LAN โปรแกรมจะแสดงข้อเสนอให้นำการตั้งค่ามาใช้"),
-            self._step(2, "ตรวจชื่อบริษัท เครื่องพิมพ์ ราคา และรอบบิล แล้วเลือก Sync โดยไม่ต้องกรอกรหัส"),
-            self._step(3, "ถ้าไม่ต้องการใช้ค่าที่พบ ให้ยกเลิกและตั้งค่าเครื่องนี้ใหม่ตาม Wizard ปกติ"),
-            self._tip("Primary และ Secondary เปิดพร้อมกันได้ Web Report ยังใช้งานได้ และ Desktop จะใช้ฐานข้อมูลที่ Sync มาเป็นจุดเริ่มต้นเดียวกัน"),
+        lay.addWidget(self._card("คอมเพิ่มเติม — รับค่าบริษัท", [
+            self._step(1, "เมื่อพบคอมที่ตอบกลับใน LAN โปรแกรมแสดงข้อเสนอให้นำการตั้งค่ามาตรวจ"),
+            self._step(2, "ตรวจชื่อบริษัท Slot เครื่องพิมพ์ ราคา รอบบิล และสิทธิ์เข้าร่วมก่อนรับค่า"),
+            self._step(3, "ถ้าไม่พบคอมที่ต้องการ ให้กดค้นหาอีกครั้ง หรือกรอก IP ของคอมที่ให้บริการ"),
+            self._tip("การรับค่าเริ่มต้นไม่คัดลอกตัวตนของอีกคอม การ Sync ต่อเนื่องเริ่มเมื่อมีสมาชิกที่ยืนยันสิทธิ์แล้ว"),
         ]))
 
         lay.addWidget(self._card("ลงทะเบียนก่อนเปิดโปรแกรม", [

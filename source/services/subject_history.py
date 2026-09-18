@@ -220,6 +220,8 @@ class SubjectDailyCacheStore:
             "device_identity": _device_identity_snapshot(slot),
         }
         current_identity = _device_identity_snapshot(slot)
+        from services.slot_cache_bridge import bridge_subject_state
+        bridge_subject_state(slot, state, reading, stamp)
         if not isinstance(state.get("device_identity"), dict):
             state["device_identity"] = current_identity
         captured_identity = state["device_identity"]
@@ -420,6 +422,7 @@ class SubjectDailyCacheStore:
                                 "resets": item.get("resets", []),
                                 "counter_review": item.get("counter_review"),
                                 "counter_resolutions": item.get("counter_resolutions", []),
+                                "slot_epoch": state.get("slot_epoch"),
                                 "ordering_issues": state.get("ordering_issues", []),
                             },
                             ensure_ascii=False,

@@ -68,6 +68,7 @@ class SlotEpochExchange:
             if existing:
                 if existing[0] != _json(epoch):
                     raise ValueError("Conflicting stored slot decision")
+                self._allowed(member, epoch)
                 return epoch["id"]
             # Parent first: a v2 reset boundary declares the parent epoch.
             for event in bundle["parent_evidence"]:
@@ -96,6 +97,7 @@ class SlotEpochExchange:
             if len(siblings) > 1:
                 for (sibling,) in siblings:
                     self.store._flag_branch(conn, sibling, "competing_epoch_decisions")
+            self._allowed(member, epoch)
             return epoch["id"]
 
     def adopt(self, member, epoch_id, *, expected_head):

@@ -11,6 +11,7 @@ import math
 import re
 from pathlib import Path
 
+from services.peer_change_events import notify_local_change
 from database import _open, config_write_transaction, get_db_path
 from services.peer_settings_history import SettingsHistory, _json
 from services.shared_settings_document import from_connection, validate_price_history, PRICE_KEYS
@@ -168,6 +169,7 @@ class SharedSettingsService:
             raise ValueError("This change requires the printer or setup workflow")
         return changes
 
+    @notify_local_change
     def commit(self, preview):
         """Persist the reviewed fields and history head in one SQLite commit."""
         before, after = json.loads(preview.before_json), json.loads(preview.after_json)

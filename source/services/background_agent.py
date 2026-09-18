@@ -99,6 +99,9 @@ class BackgroundAgent(QObject):
         self.polling = BackgroundPollingCoordinator(repository=self.repository, parent=self)
         self.web_service = web_service_manager()
         self.polling.reading_saved.connect(self.registration.meter_observed)
+        applied = getattr(self.polling, 'shared_settings_applied', None)
+        if applied is not None:
+            applied.connect(self.registration.configuration_changed)
         self.registration.status_changed.connect(self._apply_collection_gate)
         self._stopping = False
         self._network_information = None

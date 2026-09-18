@@ -10,6 +10,7 @@ import json
 from pathlib import Path
 import sqlite3
 
+from services.peer_change_events import notify_local_change
 from database import get_db_path
 from komi_snmp_profiler.models import Confidence
 from services.billing_ledger import FORMULA_VERSION, _source_hash, _load_correction_source, _ensure_reversal
@@ -191,7 +192,12 @@ def _preview(conn, slot, epoch_id, start, end, zone, today):
     revision = _source_hash({"database": str(path), "scope": scope, "rows": rows, "sources": sources,
         "evidence": [e["id"] for e in events], "epoch": epoch, "projections": revisions, "prices": changes and [d.isoformat() for d in changes]})
     return {"revision": revision, "scope": scope, "changed": changed, "categories": categories,
+        "calendar": {"name": str(zone), "iana": getattr(zone, "key", None),
+                     "offset_seconds": int(datetime.combine(start, time.min, zone).utcoffset().total_seconds())},
         "price_cents": prices, "discount": discount, "billing_day": billing_day, "currency": currency,
+        "before": [{"day": day, "delta": item["delta"], "net_cents": item["source"][15],
+                    "gross_cents": item["source"][13], "period": list(item["source"][6:8])}
+                   for day, item in sorted(sources.items())],
         "template": next(iter(sources.values()))["source"], "events": [e["id"] for e in events],
         "old_net_cents": sum(c["old_net_cents"] for c in changed), "net_cents": sum(c["net_cents"] for c in changed)}
 
@@ -212,6 +218,7 @@ class BillingWebAmendmentService:
         with self._connection() as conn:
             return _preview(conn, slot, epoch_id, start, end, calendar_timezone, self.today())
 
+    @notify_local_change
     def confirm(self, slot, epoch_id, start, end, calendar_timezone, *, expected_revision, actor, reason):
         if not isinstance(actor, str) or not actor.strip() or not isinstance(reason, str) or not reason.strip():
             raise ValueError("ต้องระบุผู้ยืนยันและเหตุผล")
@@ -232,43 +239,55 @@ class BillingWebAmendmentService:
                 raise ValueError("หลักฐานหรือรายการบัญชีเปลี่ยน กรุณาตรวจตัวอย่างใหม่")
             if not preview["changed"]:
                 raise ValueError("ไม่มีการแบ่งยอดที่ต้องแก้ไข")
-            now, results = datetime.now().astimezone().isoformat(), []
-            for item in preview["changed"]:
-                source = item["source"]
-                proof = {"scope": preview["scope"], "events": preview["events"], "intervals": item["intervals"],
-                         "revision": expected_revision, "actor": actor.strip(), "reason": reason.strip(), "created_at": now}
-                if source:
-                    record_id, source_hash = source[8:10]
-                    reversal = _ensure_reversal(conn, item["ledger_id"], source, reason=reason.strip(), now=now)
-                    kind = "replacement"
-                else:
-                    source = preview["template"]
-                    raw = {"allocation_only": True, "web_allocation": proof,
-                           "device_identity": {"serial": source[4], "name": source[3]}}
-                    # This is an accounting allocation, NOT a successful read.
-                    record_id = conn.execute("""INSERT INTO daily_meter_records
-                        (device_slot,record_date,opening_json,closing_json,delta_json,category_json,source_json,
-                         first_success,last_success,sample_count,error_count,incomplete,created_at)
-                        VALUES(?,?, '{}','{}',?,?,?,NULL,NULL,0,0,0,?)""",
-                        (slot, item["day"], _json(item["delta"]), _json(preview["categories"]), _json(raw), now)).lastrowid
-                    source_hash = _source_hash({"record_date": item["day"], "opening": {}, "closing": {},
-                        "delta": item["delta"], "category": preview["categories"], "source": raw,
-                        "first_success": None, "last_success": None, "sample_count": 0, "error_count": 0, "incomplete": False})
-                    reversal, kind = None, "posting"
-                key = f"web-allocation:{expected_revision}:{item['day']}"
-                attestation = {"billing_safe": True, "calculation_mode": "reviewed_web_redistribution",
-                               "web_allocation": proof}
-                cursor = conn.execute("""INSERT INTO billing_ledger
-                    (entry_kind,device_slot,device_identity,device_name_snapshot,device_serial_snapshot,
-                     record_date,period_start,period_end,source_daily_record_id,source_hash,idempotency_key,
-                     replaces_ledger_id,delta_json,category_json,price_cents_json,gross_cents,waste_basis_points,
-                     net_cents,billing_day,currency,formula_version,hold_reason,attestation_json,created_at)
-                    VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-                    (kind, slot, source[2], source[3], source[4], item["day"], *item["period"], record_id, source_hash,
-                     key, reversal, _json(item["delta"]), _json(preview["categories"]), _json(preview["price_cents"]),
-                     item["gross_cents"], preview["discount"], item["net_cents"], preview["billing_day"], preview["currency"],
-                     WEB_AMENDMENT_VERSION, reason.strip(), _json(attestation), now))
-                results.append({"id": int(cursor.lastrowid), "key": key})
-            conn.execute("INSERT INTO config_log(config_key,old_value,new_value,changed_at) VALUES(?,?,?,?)",
-                ("billing_web_allocation", expected_revision, _json({"request": request, "results": results}), now))
-            return tuple(r["id"] for r in results)
+            return self._commit(conn, preview, actor=actor, reason=reason)
+
+    @staticmethod
+    def _commit(conn, preview, *, actor, reason):
+        """Caller holds one write transaction for ledger, receipt and outbox."""
+        if not conn.in_transaction:
+            raise ValueError("An amendment transaction is required")
+        expected_revision = preview["revision"]
+        slot = preview["scope"][0]
+        request = {"scope": preview["scope"], "actor": actor.strip(), "reason": reason.strip()}
+        now, results = datetime.now().astimezone().isoformat(), []
+        for item in preview["changed"]:
+            source = item["source"]
+            proof = {"scope": preview["scope"], "events": preview["events"], "intervals": item["intervals"],
+                     "revision": expected_revision, "actor": actor.strip(), "reason": reason.strip(), "created_at": now}
+            if source:
+                record_id, source_hash = source[8:10]
+                reversal = _ensure_reversal(conn, item["ledger_id"], source, reason=reason.strip(), now=now)
+                kind = "replacement"
+            else:
+                source = preview["template"]
+                raw = {"allocation_only": True, "web_allocation": proof,
+                       "device_identity": {"serial": source[4], "name": source[3]}}
+                # This is an accounting allocation, NOT a successful read.
+                record_id = conn.execute("""INSERT INTO daily_meter_records
+                    (device_slot,record_date,opening_json,closing_json,delta_json,category_json,source_json,
+                     first_success,last_success,sample_count,error_count,incomplete,created_at)
+                    VALUES(?,?, '{}','{}',?,?,?,NULL,NULL,0,0,0,?)""",
+                    (slot, item["day"], _json(item["delta"]), _json(preview["categories"]), _json(raw), now)).lastrowid
+                source_hash = _source_hash({"record_date": item["day"], "opening": {}, "closing": {},
+                    "delta": item["delta"], "category": preview["categories"], "source": raw,
+                    "first_success": None, "last_success": None, "sample_count": 0, "error_count": 0, "incomplete": False})
+                reversal, kind = None, "posting"
+            key = f"web-allocation:{expected_revision}:{item['day']}"
+            attestation = {"billing_safe": True, "calculation_mode": "reviewed_web_redistribution",
+                           "web_allocation": proof}
+            cursor = conn.execute("""INSERT INTO billing_ledger
+                (entry_kind,device_slot,device_identity,device_name_snapshot,device_serial_snapshot,
+                 record_date,period_start,period_end,source_daily_record_id,source_hash,idempotency_key,
+                 replaces_ledger_id,delta_json,category_json,price_cents_json,gross_cents,waste_basis_points,
+                 net_cents,billing_day,currency,formula_version,hold_reason,attestation_json,created_at)
+                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (kind, slot, source[2], source[3], source[4], item["day"], *item["period"], record_id, source_hash,
+                 key, reversal, _json(item["delta"]), _json(preview["categories"]), _json(preview["price_cents"]),
+                 item["gross_cents"], preview["discount"], item["net_cents"], preview["billing_day"], preview["currency"],
+                 WEB_AMENDMENT_VERSION, reason.strip(), _json(attestation), now))
+            results.append({"id": int(cursor.lastrowid), "key": key})
+        conn.execute("INSERT INTO config_log(config_key,old_value,new_value,changed_at) VALUES(?,?,?,?)",
+            ("billing_web_allocation", expected_revision, _json({"request": request, "results": results}), now))
+        from services.peer_billing_amendments import enqueue_amendment
+        enqueue_amendment(conn, preview, results, actor=actor, reason=reason, created_at=now)
+        return tuple(r["id"] for r in results)

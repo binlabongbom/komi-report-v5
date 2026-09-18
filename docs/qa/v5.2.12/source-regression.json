@@ -1,7 +1,7 @@
 {
-  "scope": "79 selected operational source files; each in a fresh pytest process",
-  "source_head": "bd62b4b481e9f025e190c75b7fc0419f08d678e4",
-  "working_tree_status": " M source/services/billing_repricing.py\n M source/services/monthly_history.py\n M source/services/report_excel_export.py\n M source/services/shared_web_read.py\n M source/tests/test_network_activity.py\n M source/tests/test_shared_web_read.py\n M source/ui/network_activity.py\n M source/ui/web_evidence_report.py\n M source/v5_pages.py\n M tools/run_source_regression.py\n?? source/services/billing_web_amendment.py\n?? source/tests/test_billing_web_amendment.py\n?? source/ui/billing_web_amendment.py\n",
+  "scope": "85 selected operational source files; each in a fresh pytest process",
+  "source_head": "26f1fc6c91ea8c8f234f6ce427099a6eacafcaf2",
+  "working_tree_status": " M source/app.py\n M source/database.py\n M source/migrations.py\n M source/services/background_polling.py\n M source/services/billing_web_amendment.py\n M source/services/daily_cache.py\n M source/services/network_activity.py\n M source/services/peer_history_runtime.py\n M source/services/peer_settings_history.py\n M source/services/peer_setup_application.py\n M source/services/raw_counter_history.py\n M source/services/setup_settings.py\n M source/services/shared_settings.py\n M source/services/shared_slot_review.py\n M source/services/slot_epoch_exchange.py\n M source/services/slot_epoch_store.py\n M source/services/subject_history.py\n M source/services/web_observations.py\n M source/tests/test_database_reset_v5.py\n M source/tests/test_network_activity.py\n M source/tools/db_recovery.py\n M source/ui/billing_web_amendment.py\n M source/ui/network_activity.py\n M source/ui/shared_settings_history.py\n M tools/run_source_regression.py\n?? source/services/peer_billing_amendments.py\n?? source/services/peer_change_events.py\n?? source/services/peer_delivery.py\n?? source/services/peer_https.py\n?? source/services/peer_settings_inbox.py\n?? source/services/peer_settings_runtime.py\n?? source/services/peer_settings_transfer.py\n?? source/services/slot_cache_bridge.py\n?? source/tests/test_peer_billing_amendments.py\n?? source/tests/test_peer_delivery.py\n?? source/tests/test_peer_https.py\n?? source/tests/test_peer_settings_runtime.py\n?? source/tests/test_peer_settings_transfer.py\n?? source/tests/test_slot_cache_bridge.py\n",
   "excluded_release_build_files": [],
   "non_loopback_network": "denied by an audit hook in each pytest process; subprocess fixtures are separately isolated",
   "installer_or_release_build": false,
@@ -10,480 +10,514 @@
     {
       "file": "test_agent_handoff.py",
       "exit_code": 0,
-      "seconds": 9.91,
-      "output": "....                                                                     [100%]\n4 passed in 7.93s\n"
+      "seconds": 9.54,
+      "output": "....                                                                     [100%]\n4 passed in 7.63s\n"
     },
     {
       "file": "test_agent_tray.py",
       "exit_code": 0,
-      "seconds": 5.65,
-      "output": "......                                                                   [100%]\n6 passed in 3.02s\n"
+      "seconds": 4.64,
+      "output": "......                                                                   [100%]\n6 passed in 2.78s\n"
     },
     {
       "file": "test_background_agent_lifecycle.py",
       "exit_code": 0,
-      "seconds": 6.09,
-      "output": ".........                                                                [100%]\n9 passed in 3.80s\n"
+      "seconds": 5.59,
+      "output": ".........                                                                [100%]\n9 passed in 3.37s\n"
     },
     {
       "file": "test_tray_lifecycle.py",
       "exit_code": 0,
-      "seconds": 5.17,
-      "output": "..............                                                           [100%]\n14 passed in 2.80s\n"
+      "seconds": 4.58,
+      "output": "..............                                                           [100%]\n14 passed in 2.58s\n"
     },
     {
       "file": "test_background_polling.py",
       "exit_code": 0,
-      "seconds": 5.07,
-      "output": "........                                                                 [100%]\n8 passed in 3.17s\n"
+      "seconds": 5.8,
+      "output": "........                                                                 [100%]\n8 passed in 3.53s\n"
     },
     {
       "file": "test_manual_polling_coordination.py",
       "exit_code": 0,
-      "seconds": 5.25,
-      "output": "......                                                                   [100%]\n6 passed in 3.01s\n"
+      "seconds": 5.62,
+      "output": "......                                                                   [100%]\n6 passed in 3.66s\n"
     },
     {
       "file": "test_startup_sync.py",
       "exit_code": 0,
-      "seconds": 6.23,
-      "output": "........                                                                 [100%]\n8 passed in 4.05s\n"
+      "seconds": 5.79,
+      "output": "........                                                                 [100%]\n8 passed in 3.53s\n"
     },
     {
       "file": "test_reader_jobs.py",
       "exit_code": 0,
-      "seconds": 6.98,
-      "output": "...........                                                              [100%]\n11 passed in 4.90s\n"
+      "seconds": 6.64,
+      "output": "...........                                                              [100%]\n11 passed in 4.52s\n"
     },
     {
       "file": "test_reader_election.py",
       "exit_code": 0,
-      "seconds": 6.72,
-      "output": "..........                                                               [100%]\n10 passed in 4.61s\n"
+      "seconds": 7.19,
+      "output": "..........                                                               [100%]\n10 passed in 4.98s\n"
     },
     {
       "file": "test_shared_web_read.py",
       "exit_code": 0,
-      "seconds": 10.42,
-      "output": "...............                                                          [100%]\n15 passed in 8.55s\n"
+      "seconds": 16.34,
+      "output": "...................                                                      [100%]\n19 passed in 14.01s\n"
     },
     {
       "file": "test_app_setup.py",
       "exit_code": 0,
-      "seconds": 3.68,
-      "output": "......                                                                   [100%]\n6 passed in 1.44s\n"
+      "seconds": 4.39,
+      "output": "......                                                                   [100%]\n6 passed in 1.66s\n"
     },
     {
       "file": "test_setup_settings.py",
       "exit_code": 0,
-      "seconds": 4.51,
-      "output": ".............                                                            [100%]\n13 passed in 2.42s\n"
+      "seconds": 4.65,
+      "output": ".............                                                            [100%]\n13 passed in 2.57s\n"
     },
     {
       "file": "test_setup_wizard_v5.py",
       "exit_code": 0,
-      "seconds": 57.99,
-      "output": ".............................................................            [100%]\n61 passed in 55.64s\n"
+      "seconds": 65.14,
+      "output": ".............................................................            [100%]\n61 passed in 63.14s (0:01:03)\n"
     },
     {
       "file": "test_setup_connectivity.py",
       "exit_code": 0,
-      "seconds": 3.64,
-      "output": "....                                                                     [100%]\n4 passed in 1.08s\n"
+      "seconds": 3.84,
+      "output": "....                                                                     [100%]\n4 passed in 1.48s\n"
     },
     {
       "file": "test_shared_settings.py",
       "exit_code": 0,
-      "seconds": 8.88,
-      "output": "....................                                                     [100%]\n20 passed in 6.78s\n"
+      "seconds": 14.55,
+      "output": "....................                                                     [100%]\n20 passed in 11.76s\n"
     },
     {
       "file": "test_shared_price_history.py",
       "exit_code": 0,
-      "seconds": 8.35,
-      "output": "...........                                                              [100%]\n11 passed in 6.30s\n"
+      "seconds": 8.75,
+      "output": "...........                                                              [100%]\n11 passed in 6.27s\n"
     },
     {
       "file": "test_shared_slot_review.py",
       "exit_code": 0,
-      "seconds": 6.75,
-      "output": "...........                                                              [100%]\n11 passed in 4.20s\n"
+      "seconds": 6.73,
+      "output": "...........                                                              [100%]\n11 passed in 4.68s\n"
     },
     {
       "file": "test_shared_settings_history_ui.py",
       "exit_code": 0,
-      "seconds": 5.36,
-      "output": ".......                                                                  [100%]\n7 passed in 2.86s\n"
+      "seconds": 5.48,
+      "output": ".......                                                                  [100%]\n7 passed in 3.34s\n"
     },
     {
       "file": "test_peer_settings_history.py",
       "exit_code": 0,
-      "seconds": 6.65,
-      "output": "..........                                                               [100%]\n============================== warnings summary ===============================\n..\\..\\..\\..\\..\\Documents\\KOMI Report V5\\.venv\\Lib\\site-packages\\starlette\\testclient.py:53\n  C:\\Users\\User\\Documents\\KOMI Report V5\\.venv\\Lib\\site-packages\\starlette\\testclient.py:53: DeprecationWarning: The anyio.abc.BlockingPortal alias is deprecated, use anyio.from_thread.BlockingPortal instead.\n    _PortalFactoryType = Callable[[], AbstractContextManager[anyio.abc.BlockingPortal]]\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n10 passed, 1 warning in 4.31s\n"
+      "seconds": 6.58,
+      "output": "..........                                                               [100%]\n============================== warnings summary ===============================\n..\\..\\..\\..\\..\\Documents\\KOMI Report V5\\.venv\\Lib\\site-packages\\starlette\\testclient.py:53\n  C:\\Users\\User\\Documents\\KOMI Report V5\\.venv\\Lib\\site-packages\\starlette\\testclient.py:53: DeprecationWarning: The anyio.abc.BlockingPortal alias is deprecated, use anyio.from_thread.BlockingPortal instead.\n    _PortalFactoryType = Callable[[], AbstractContextManager[anyio.abc.BlockingPortal]]\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n10 passed, 1 warning in 4.05s\n"
     },
     {
       "file": "test_peer_settings_outbox.py",
       "exit_code": 0,
-      "seconds": 4.94,
-      "output": "........                                                                 [100%]\n8 passed in 2.71s\n"
+      "seconds": 4.32,
+      "output": "........                                                                 [100%]\n8 passed in 2.59s\n"
     },
     {
       "file": "test_peer_settings_pages.py",
       "exit_code": 0,
-      "seconds": 12.15,
-      "output": "...........                                                              [100%]\n============================== warnings summary ===============================\n..\\..\\..\\..\\..\\Documents\\KOMI Report V5\\.venv\\Lib\\site-packages\\starlette\\testclient.py:53\n  C:\\Users\\User\\Documents\\KOMI Report V5\\.venv\\Lib\\site-packages\\starlette\\testclient.py:53: DeprecationWarning: The anyio.abc.BlockingPortal alias is deprecated, use anyio.from_thread.BlockingPortal instead.\n    _PortalFactoryType = Callable[[], AbstractContextManager[anyio.abc.BlockingPortal]]\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n11 passed, 1 warning in 10.12s\n"
+      "seconds": 12.26,
+      "output": "...........                                                              [100%]\n============================== warnings summary ===============================\n..\\..\\..\\..\\..\\Documents\\KOMI Report V5\\.venv\\Lib\\site-packages\\starlette\\testclient.py:53\n  C:\\Users\\User\\Documents\\KOMI Report V5\\.venv\\Lib\\site-packages\\starlette\\testclient.py:53: DeprecationWarning: The anyio.abc.BlockingPortal alias is deprecated, use anyio.from_thread.BlockingPortal instead.\n    _PortalFactoryType = Callable[[], AbstractContextManager[anyio.abc.BlockingPortal]]\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n11 passed, 1 warning in 10.35s\n"
     },
     {
       "file": "test_peer_sync_authorization.py",
       "exit_code": 0,
-      "seconds": 3.91,
-      "output": ".......                                                                  [100%]\n7 passed in 1.68s\n"
+      "seconds": 3.94,
+      "output": ".......                                                                  [100%]\n7 passed in 1.90s\n"
     },
     {
       "file": "test_slot_epoch_store.py",
       "exit_code": 0,
-      "seconds": 9.0,
-      "output": "............                                                             [100%]\n12 passed in 7.00s\n"
+      "seconds": 8.01,
+      "output": "............                                                             [100%]\n12 passed in 6.10s\n"
     },
     {
       "file": "test_slot_epoch_exchange.py",
       "exit_code": 0,
-      "seconds": 6.93,
-      "output": ".......                                                                  [100%]\n7 passed in 4.71s\n"
+      "seconds": 6.9,
+      "output": ".......                                                                  [100%]\n7 passed in 5.01s\n"
     },
     {
       "file": "test_slot_meter_continuity.py",
       "exit_code": 0,
-      "seconds": 5.41,
-      "output": "........                                                                 [100%]\n8 passed in 2.76s\n"
+      "seconds": 4.32,
+      "output": "........                                                                 [100%]\n8 passed in 2.32s\n"
     },
     {
       "file": "test_slot_replacement.py",
       "exit_code": 0,
-      "seconds": 5.86,
-      "output": "..........                                                               [100%]\n10 passed in 3.45s\n"
+      "seconds": 6.13,
+      "output": "..........                                                               [100%]\n10 passed in 3.74s\n"
     },
     {
       "file": "test_peer_history_session.py",
       "exit_code": 0,
-      "seconds": 7.08,
-      "output": "......                                                                   [100%]\n6 passed in 4.62s\n"
+      "seconds": 6.15,
+      "output": "......                                                                   [100%]\n6 passed in 4.35s\n"
     },
     {
       "file": "test_peer_history_runtime.py",
       "exit_code": 0,
-      "seconds": 7.41,
-      "output": ".........                                                                [100%]\n9 passed in 5.32s\n"
+      "seconds": 7.71,
+      "output": ".........                                                                [100%]\n9 passed in 5.34s\n"
     },
     {
       "file": "test_network_activity.py",
       "exit_code": 0,
-      "seconds": 4.43,
-      "output": "......                                                                   [100%]\n6 passed in 2.62s\n"
+      "seconds": 5.03,
+      "output": "......                                                                   [100%]\n6 passed in 2.86s\n"
     },
     {
       "file": "test_peer_setup_application.py",
       "exit_code": 0,
-      "seconds": 14.25,
-      "output": ".............                                                            [100%]\n13 passed in 12.11s\n"
+      "seconds": 14.01,
+      "output": ".............                                                            [100%]\n13 passed in 11.89s\n"
     },
     {
       "file": "test_web_observations.py",
       "exit_code": 0,
-      "seconds": 5.57,
-      "output": "................                                                         [100%]\n16 passed in 3.58s\n"
+      "seconds": 4.91,
+      "output": "................                                                         [100%]\n16 passed in 3.04s\n"
     },
     {
       "file": "test_web_catchup.py",
       "exit_code": 0,
-      "seconds": 8.53,
-      "output": "...........                                                              [100%]\n11 passed in 5.98s\n"
+      "seconds": 8.89,
+      "output": "...........                                                              [100%]\n11 passed in 6.47s\n"
     },
     {
       "file": "test_web_usage_projection.py",
       "exit_code": 0,
-      "seconds": 4.04,
-      "output": "...........                                                              [100%]\n11 passed in 2.03s\n"
+      "seconds": 4.38,
+      "output": "...........                                                              [100%]\n11 passed in 2.04s\n"
     },
     {
       "file": "test_web_evidence_report.py",
       "exit_code": 0,
-      "seconds": 6.57,
-      "output": "........                                                                 [100%]\n8 passed in 3.95s\n"
+      "seconds": 8.13,
+      "output": "........                                                                 [100%]\n8 passed in 6.00s\n"
     },
     {
       "file": "test_web_observation_archive.py",
       "exit_code": 0,
-      "seconds": 4.94,
-      "output": "......                                                                   [100%]\n6 passed in 2.78s\n"
+      "seconds": 5.54,
+      "output": "......                                                                   [100%]\n6 passed in 3.21s\n"
     },
     {
       "file": "test_archive_maintenance.py",
       "exit_code": 0,
-      "seconds": 3.1,
-      "output": "....                                                                     [100%]\n4 passed in 1.03s\n"
+      "seconds": 3.27,
+      "output": "....                                                                     [100%]\n4 passed in 1.23s\n"
     },
     {
       "file": "test_archive_recovery.py",
       "exit_code": 0,
-      "seconds": 9.1,
-      "output": "........                                                                 [100%]\n8 passed in 6.87s\n"
+      "seconds": 7.75,
+      "output": "........                                                                 [100%]\n8 passed in 5.72s\n"
     },
     {
       "file": "test_report_detail_archive.py",
       "exit_code": 0,
-      "seconds": 17.81,
-      "output": "..........                                                               [100%]\n10 passed in 15.72s\n"
+      "seconds": 15.1,
+      "output": "..........                                                               [100%]\n10 passed in 12.67s\n"
     },
     {
       "file": "test_archive_settings_ui.py",
       "exit_code": 0,
-      "seconds": 4.07,
-      "output": "...                                                                      [100%]\n3 passed in 1.80s\n"
+      "seconds": 3.72,
+      "output": "...                                                                      [100%]\n3 passed in 1.53s\n"
     },
     {
       "file": "test_billing_period_amendment.py",
       "exit_code": 0,
-      "seconds": 7.53,
-      "output": "...                                                                      [100%]\n3 passed in 4.98s\n"
+      "seconds": 6.77,
+      "output": "...                                                                      [100%]\n3 passed in 4.50s\n"
     },
     {
       "file": "test_billing_repricing.py",
       "exit_code": 0,
-      "seconds": 5.07,
-      "output": ".......                                                                  [100%]\n7 passed in 2.79s\n"
+      "seconds": 4.83,
+      "output": ".......                                                                  [100%]\n7 passed in 2.72s\n"
     },
     {
       "file": "test_billing_repricing_batch.py",
       "exit_code": 0,
-      "seconds": 13.83,
-      "output": "..................                                                       [100%]\n18 passed in 11.87s\n"
+      "seconds": 13.08,
+      "output": "..................                                                       [100%]\n18 passed in 10.72s\n"
     },
     {
       "file": "test_billing_web_amendment.py",
       "exit_code": 0,
-      "seconds": 10.91,
-      "output": ".............                                                            [100%]\n13 passed in 8.82s\n"
+      "seconds": 11.81,
+      "output": "..............                                                           [100%]\n============================== warnings summary ===============================\ntests/test_billing_web_amendment.py::test_local_web_api_returns_amended_history_and_notes\n  C:\\Users\\User\\Documents\\KOMI Report V5\\.venv\\Lib\\site-packages\\starlette\\testclient.py:53: DeprecationWarning: The anyio.abc.BlockingPortal alias is deprecated, use anyio.from_thread.BlockingPortal instead.\n    _PortalFactoryType = Callable[[], AbstractContextManager[anyio.abc.BlockingPortal]]\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n14 passed, 1 warning in 9.52s\n"
+    },
+    {
+      "file": "test_peer_billing_amendments.py",
+      "exit_code": 0,
+      "seconds": 5.52,
+      "output": ".......                                                                  [100%]\n7 passed in 3.82s\n"
+    },
+    {
+      "file": "test_peer_https.py",
+      "exit_code": 0,
+      "seconds": 11.13,
+      "output": "......                                                                   [100%]\n6 passed in 8.65s\n"
+    },
+    {
+      "file": "test_peer_settings_transfer.py",
+      "exit_code": 0,
+      "seconds": 9.29,
+      "output": "......                                                                   [100%]\n============================== warnings summary ===============================\n..\\..\\..\\..\\..\\Documents\\KOMI Report V5\\.venv\\Lib\\site-packages\\starlette\\testclient.py:53\n  C:\\Users\\User\\Documents\\KOMI Report V5\\.venv\\Lib\\site-packages\\starlette\\testclient.py:53: DeprecationWarning: The anyio.abc.BlockingPortal alias is deprecated, use anyio.from_thread.BlockingPortal instead.\n    _PortalFactoryType = Callable[[], AbstractContextManager[anyio.abc.BlockingPortal]]\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n6 passed, 1 warning in 7.01s\n"
+    },
+    {
+      "file": "test_slot_cache_bridge.py",
+      "exit_code": 0,
+      "seconds": 6.39,
+      "output": "......                                                                   [100%]\n6 passed in 4.06s\n"
+    },
+    {
+      "file": "test_peer_delivery.py",
+      "exit_code": 0,
+      "seconds": 9.68,
+      "output": ".....                                                                    [100%]\n============================== warnings summary ===============================\n..\\..\\..\\..\\..\\Documents\\KOMI Report V5\\.venv\\Lib\\site-packages\\starlette\\testclient.py:53\n  C:\\Users\\User\\Documents\\KOMI Report V5\\.venv\\Lib\\site-packages\\starlette\\testclient.py:53: DeprecationWarning: The anyio.abc.BlockingPortal alias is deprecated, use anyio.from_thread.BlockingPortal instead.\n    _PortalFactoryType = Callable[[], AbstractContextManager[anyio.abc.BlockingPortal]]\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n5 passed, 1 warning in 7.04s\n"
+    },
+    {
+      "file": "test_peer_settings_runtime.py",
+      "exit_code": 0,
+      "seconds": 7.06,
+      "output": "....                                                                     [100%]\n4 passed in 4.56s\n"
     },
     {
       "file": "test_billing_ledger.py",
       "exit_code": 0,
-      "seconds": 6.36,
-      "output": ".........                                                                [100%]\n9 passed in 4.37s\n"
+      "seconds": 5.28,
+      "output": ".........                                                                [100%]\n9 passed in 3.38s\n"
     },
     {
       "file": "test_billing_audit_ui.py",
       "exit_code": 0,
-      "seconds": 4.39,
-      "output": "..                                                                       [100%]\n2 passed in 2.03s\n"
+      "seconds": 3.8,
+      "output": "..                                                                       [100%]\n2 passed in 1.84s\n"
     },
     {
       "file": "test_billing_day_consistency.py",
       "exit_code": 0,
-      "seconds": 3.97,
-      "output": "....                                                                     [100%]\n4 passed in 1.52s\n"
+      "seconds": 3.32,
+      "output": "....                                                                     [100%]\n4 passed in 1.08s\n"
     },
     {
       "file": "test_billing_v5.py",
       "exit_code": 0,
-      "seconds": 3.72,
-      "output": "..                                                                       [100%]\n2 passed in 1.56s\n"
+      "seconds": 2.95,
+      "output": "..                                                                       [100%]\n2 passed in 1.00s\n"
     },
     {
       "file": "test_subject_history.py",
       "exit_code": 0,
-      "seconds": 7.58,
-      "output": "..............                                                           [100%]\n14 passed in 5.18s\n"
+      "seconds": 5.91,
+      "output": "..............                                                           [100%]\n14 passed in 4.11s\n"
     },
     {
       "file": "test_subject_counter_review.py",
       "exit_code": 0,
-      "seconds": 4.38,
-      "output": "......                                                                   [100%]\n6 passed in 2.42s\n"
+      "seconds": 4.5,
+      "output": "......                                                                   [100%]\n6 passed in 2.57s\n"
     },
     {
       "file": "test_raw_counter_history.py",
       "exit_code": 0,
-      "seconds": 3.91,
-      "output": "......                                                                   [100%]\n6 passed in 1.56s\n"
+      "seconds": 4.28,
+      "output": "......                                                                   [100%]\n6 passed in 1.57s\n"
     },
     {
       "file": "test_raw_counter_review.py",
       "exit_code": 0,
-      "seconds": 5.98,
-      "output": ".......                                                                  [100%]\n7 passed in 3.45s\n"
+      "seconds": 5.48,
+      "output": ".......                                                                  [100%]\n7 passed in 3.08s\n"
     },
     {
       "file": "test_daily_cache.py",
       "exit_code": 0,
-      "seconds": 10.41,
-      "output": "...................                                                      [100%]\n19 passed in 7.89s\n"
+      "seconds": 8.8,
+      "output": "...................                                                      [100%]\n19 passed in 6.50s\n"
     },
     {
       "file": "test_counter_review.py",
       "exit_code": 0,
-      "seconds": 4.95,
-      "output": "......                                                                   [100%]\n6 passed in 2.52s\n"
+      "seconds": 3.81,
+      "output": "......                                                                   [100%]\n6 passed in 2.03s\n"
     },
     {
       "file": "test_counter_review_ui.py",
       "exit_code": 0,
-      "seconds": 4.47,
-      "output": "....                                                                     [100%]\n4 passed in 2.22s\n"
+      "seconds": 3.24,
+      "output": "....                                                                     [100%]\n4 passed in 1.57s\n"
     },
     {
       "file": "test_report_snapshot.py",
       "exit_code": 0,
-      "seconds": 3.7,
-      "output": "...........                                                              [100%]\n11 passed in 1.79s\n"
+      "seconds": 2.98,
+      "output": "...........                                                              [100%]\n11 passed in 1.30s\n"
     },
     {
       "file": "test_report_custom_period.py",
       "exit_code": 0,
-      "seconds": 14.48,
-      "output": ".......                                                                  [100%]\n7 passed in 11.96s\n"
+      "seconds": 13.29,
+      "output": ".......                                                                  [100%]\n7 passed in 11.43s\n"
     },
     {
       "file": "test_report_excel_export.py",
       "exit_code": 0,
-      "seconds": 7.0,
-      "output": "......                                                                   [100%]\n6 passed in 4.28s\n"
+      "seconds": 6.33,
+      "output": "......                                                                   [100%]\n6 passed in 3.41s\n"
     },
     {
       "file": "test_reporting_facade.py",
       "exit_code": 0,
-      "seconds": 2.56,
-      "output": "..                                                                       [100%]\n2 passed in 0.43s\n"
+      "seconds": 2.25,
+      "output": "..                                                                       [100%]\n2 passed in 0.45s\n"
     },
     {
       "file": "test_summary_service.py",
       "exit_code": 0,
-      "seconds": 5.99,
-      "output": ".........                                                                [100%]\n9 passed in 3.98s\n"
+      "seconds": 6.86,
+      "output": ".........                                                                [100%]\n9 passed in 4.15s\n"
     },
     {
       "file": "test_reports_background_loading.py",
       "exit_code": 0,
-      "seconds": 6.43,
-      "output": "......                                                                   [100%]\n6 passed in 4.38s\n"
+      "seconds": 6.11,
+      "output": "......                                                                   [100%]\n6 passed in 3.84s\n"
     },
     {
       "file": "test_reports_startup_prefetch.py",
       "exit_code": 0,
-      "seconds": 3.61,
-      "output": ".............                                                            [100%]\n13 passed in 1.16s\n"
+      "seconds": 2.58,
+      "output": ".............                                                            [100%]\n13 passed in 0.78s\n"
     },
     {
       "file": "test_reports_responsive_layout.py",
       "exit_code": 0,
-      "seconds": 28.17,
-      "output": "...........                                                              [100%]\n11 passed in 25.64s\n"
+      "seconds": 29.19,
+      "output": "...........                                                              [100%]\n11 passed in 27.31s\n"
     },
     {
       "file": "test_settings_v5.py",
       "exit_code": 0,
-      "seconds": 37.1,
-      "output": "..............................                                           [100%]\n30 passed in 34.21s\n"
+      "seconds": 38.64,
+      "output": "..............................                                           [100%]\n30 passed in 36.37s\n"
     },
     {
       "file": "test_settings_navigation.py",
       "exit_code": 0,
-      "seconds": 20.3,
-      "output": "........                                                                 [100%]\n8 passed in 17.86s\n"
+      "seconds": 20.01,
+      "output": "........                                                                 [100%]\n8 passed in 17.42s\n"
     },
     {
       "file": "test_sidebar_navigation.py",
       "exit_code": 0,
-      "seconds": 3.23,
-      "output": ".                                                                        [100%]\n1 passed in 0.78s\n"
+      "seconds": 4.33,
+      "output": ".                                                                        [100%]\n1 passed in 1.43s\n"
     },
     {
       "file": "test_overview_v5_ui.py",
       "exit_code": 0,
-      "seconds": 2.92,
-      "output": ".....                                                                    [100%]\n5 passed in 1.05s\n"
+      "seconds": 3.65,
+      "output": ".....                                                                    [100%]\n5 passed in 1.63s\n"
     },
     {
       "file": "test_database.py",
       "exit_code": 0,
-      "seconds": 3.18,
-      "output": ".......                                                                  [100%]\n7 passed in 1.49s\n"
+      "seconds": 4.6,
+      "output": ".......                                                                  [100%]\n7 passed in 1.96s\n"
     },
     {
       "file": "test_database_reset_v5.py",
       "exit_code": 0,
-      "seconds": 2.75,
-      "output": "...                                                                      [100%]\n3 passed in 1.05s\n"
+      "seconds": 2.81,
+      "output": "...                                                                      [100%]\n3 passed in 1.06s\n"
     },
     {
       "file": "test_migrations.py",
       "exit_code": 0,
-      "seconds": 2.53,
-      "output": ".....                                                                    [100%]\n5 passed in 0.81s\n"
+      "seconds": 3.88,
+      "output": "......                                                                   [100%]\n6 passed in 1.21s\n"
     },
     {
       "file": "test_desktop_shortcuts.py",
       "exit_code": 0,
-      "seconds": 2.38,
-      "output": "....                                                                     [100%]\n4 passed in 0.70s\n"
+      "seconds": 3.25,
+      "output": "....                                                                     [100%]\n4 passed in 0.73s\n"
     },
     {
       "file": "test_web_report_launcher.py",
       "exit_code": 0,
-      "seconds": 2.14,
-      "output": "..                                                                       [100%]\n2 passed in 0.40s\n"
+      "seconds": 2.7,
+      "output": "..                                                                       [100%]\n2 passed in 0.74s\n"
     },
     {
       "file": "test_lan_discovery.py",
       "exit_code": 0,
-      "seconds": 6.27,
-      "output": "...............                                                          [100%]\n15 passed in 4.49s\n"
+      "seconds": 6.67,
+      "output": "...............                                                          [100%]\n15 passed in 4.47s\n"
     },
     {
       "file": "test_lan_tls.py",
       "exit_code": 0,
-      "seconds": 6.33,
-      "output": "....                                                                     [100%]\n4 passed in 4.62s\n"
+      "seconds": 9.49,
+      "output": "....                                                                     [100%]\n4 passed in 6.45s\n"
     },
     {
       "file": "test_registration_recovery.py",
       "exit_code": 0,
-      "seconds": 3.26,
-      "output": "...........                                                              [100%]\n11 passed in 1.55s\n"
+      "seconds": 4.94,
+      "output": "...........                                                              [100%]\n11 passed in 2.18s\n"
     },
     {
       "file": "test_registration_client.py",
       "exit_code": 0,
-      "seconds": 4.93,
-      "output": ".................                                                        [100%]\n17 passed in 3.13s\n"
+      "seconds": 4.29,
+      "output": ".................                                                        [100%]\n17 passed in 2.57s\n"
     },
     {
       "file": "test_registration_worker.py",
       "exit_code": 0,
-      "seconds": 5.08,
-      "output": "............                                                             [100%]\n12 passed in 3.05s\n"
+      "seconds": 5.25,
+      "output": "............                                                             [100%]\n12 passed in 2.91s\n"
     },
     {
       "file": "test_v5_2_runtime.py",
       "exit_code": 0,
-      "seconds": 10.86,
-      "output": "........................                                                 [100%]\n24 passed in 8.72s\n"
+      "seconds": 9.2,
+      "output": "........................                                                 [100%]\n24 passed in 7.26s\n"
     },
     {
       "file": "test_runtime_snapshots.py",
       "exit_code": 0,
-      "seconds": 2.59,
+      "seconds": 2.16,
       "output": "..                                                                       [100%]\n2 passed in 0.44s\n"
     },
     {
       "file": "test_web_api.py",
-      "exit_code": 1,
-      "seconds": 14.66,
-      "output": ": 'extra_forbidden', 'loc': ('response', 'devices', 1, 'usage', 'remarks'), 'msg': 'Extra inputs are not permitted', 'input': ()}\n\n  File \"C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\web_api.py\", line 747, in report_overview\n    GET /api/reports/overview\n_______ test_report_api_keeps_frozen_device_after_its_slot_is_disabled ________\n\nmonkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000025742393650>\n\n    def test_report_api_keeps_frozen_device_after_its_slot_is_disabled(monkeypatch):\n        current = DeviceConfig(0, \"Current Printer\", \"192.0.2.10\", serial=\"SER-CURRENT\")\n        retired = _monthly_identity(\n            \"serial:SER-OLD\",\n            \"Retired Printer\",\n            \"SER-OLD\",\n            40,\n            slot=1,\n        )\n        monkeypatch.setattr(web_api, \"_devices\", lambda: [current])\n        monkeypatch.setattr(web_api, \"report_slots\", lambda: [0, 1])\n        monkeypatch.setattr(web_api, \"load_usage_history\", lambda *_args, **_kwargs: (retired,))\n        monkeypatch.setattr(web_api, \"load_subject_history\", lambda *_args, **_kwargs: ())\n        monkeypatch.setattr(\n            web_api,\n            \"current_device_identity\",\n            lambda slot: \"serial:SER-CURRENT\" if slot == 0 else \"\",\n        )\n    \n>       overview = TestClient(web_api.app).get(\"/api/reports/overview\").json()\n                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n\ntests\\test_web_api.py:476: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _\nC:\\Users\\User\\Documents\\KOMI Report V5\\.venv\\Lib\\site-packages\\starlette\\testclient.py:483: in get\n    return super().get(\nC:\\Users\\User\\Documents\\KOMI Report V5\\.venv\\Lib\\site-packages\\httpx2\\_client.py:1113: in get\n    return self.request(\nC:\\Users\\User\\Documents\\KOMI Report V5\\.venv\\Lib\\site-packages\\starlette\\testclient.py:455: in request\n    return super().request(\nC:\\Users\\User\\Documents\\KOMI Report V5\\.venv\\Lib\\site-packages\\httpx2\\_client.py:797: in request\n    return self.send(request, auth=auth, follow_redirects=follow_redirects)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nC:\\Users\\User\\Documents\\KOMI Report V5\\.venv\\Lib\\site-packages\\httpx2\\_client.py:980: in send\n    response = self._send_handling_auth(\nC:\\Users\\User\\Documents\\KOMI Report V5\\.venv\\Lib\\site-packages\\httpx2\\_client.py:1008: in _send_handling_auth\n    response = self._send_handling_redirects(\nC:\\Users\\User\\Documents\\KOMI Report V5\\.venv\\Lib\\site-packages\\httpx2\\_client.py:1043: in _send_handling_redirects\n    response = self._send_single_request(request)\n               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nC:\\Users\\User\\Documents\\KOMI Report V5\\.venv\\Lib\\site-packages\\httpx2\\_client.py:1076: in _send_single_request\n    response = transport.handle_request(request)\n               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nC:\\Users\\User\\Documents\\KOMI Report V5\\.venv\\Lib\\site-packages\\starlette\\testclient.py:354: in handle_request\n    raise exc\nC:\\Users\\User\\Documents\\KOMI Report V5\\.venv\\Lib\\site-packages\\starlette\\testclient.py:351: in handle_request\n    portal.call(self.app, scope, receive, send)\nC:\\Users\\User\\Documents\\KOMI Report V5\\.venv\\Lib\\site-packages\\anyio\\from_thread.py:340: in call\n    return cast(T_Retval, self.start_task_soon(func, *args).result())\n                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nC:\\Users\\User\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\concurrent\\futures\\_base.py:454: in result\n    return self.__get_result()\n           ^^^^^^^^^^^^^^^^^^^\nC:\\Users\\User\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\concurrent\\futures\\_base.py:396: in __get_result\n    raise self._exception\nC:\\Users\\User\\Documents\\KOMI Report V5\\.venv\\Lib\\site-packages\\anyio\\from_thread.py:265: in _call_func\n    retval = await retval_or_awaitable\n             ^^^^^^^^^^^^^^^^^^^^^^^^^\nC:\\Users\\User\\Documents\\KOMI Report V5\\.venv\\Lib\\site-packages\\fastapi\\applications.py:1163: in __call__\n    await super().__call__(scope, receive, send)\nC:\\Users\\User\\Documents\\KOMI Report V5\\.venv\\Lib\\site-packages\\starlette\\applications.py:96: in __call__\n    await self.middleware_stack(scope, receive, send)\nC:\\Users\\User\\Documents\\KOMI Report V5\\.venv\\Lib\\site-packages\\starlette\\middleware\\errors.py:186: in __call__\n    raise exc\nC:\\Users\\User\\Documents\\KOMI Report V5\\.venv\\Lib\\site-packages\\starlette\\middleware\\errors.py:164: in __call__\n    await self.app(scope, receive, _send)\nC:\\Users\\User\\Documents\\KOMI Report V5\\.venv\\Lib\\site-packages\\starlette\\middleware\\base.py:193: in __call__\n    response = await self.dispatch_func(request, call_next)\n               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nweb_api.py:472: in attach_request_id\n    response = await call_next(request)\n               ^^^^^^^^^^^^^^^^^^^^^^^^\nC:\\Users\\User\\Documents\\KOMI Report V5\\.venv\\Lib\\site-packages\\starlette\\middleware\\base.py:168: in call_next\n    raise app_exc from app_exc.__cause__ or app_exc.__context__\nC:\\Users\\User\\Documents\\KOMI Report V5\\.venv\\Lib\\site-packages\\starlette\\middleware\\base.py:144: in coro\n    await self.app(scope, receive_or_disconnect, send_no_error)\nC:\\Users\\User\\Documents\\KOMI Report V5\\.venv\\Lib\\site-packages\\starlette\\middleware\\exceptions.py:63: in __call__\n    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)\nC:\\Users\\User\\Documents\\KOMI Report V5\\.venv\\Lib\\site-packages\\starlette\\_exception_handler.py:53: in wrapped_app\n    raise exc\nC:\\Users\\User\\Documents\\KOMI Report V5\\.venv\\Lib\\site-packages\\starlette\\_exception_handler.py:42: in wrapped_app\n    await app(scope, receive, sender)\nC:\\Users\\User\\Documents\\KOMI Report V5\\.venv\\Lib\\site-packages\\fastapi\\middleware\\asyncexitstack.py:18: in __call__\n    await self.app(scope, receive, send)\nC:\\Users\\User\\Documents\\KOMI Report V5\\.venv\\Lib\\site-packages\\starlette\\routing.py:670: in __call__\n    await self.middleware_stack(scope, receive, send)\nC:\\Users\\User\\Documents\\KOMI Report V5\\.venv\\Lib\\site-packages\\fastapi\\routing.py:2734: in app\n    await route.handle(scope, receive, send)\nC:\\Users\\User\\Documents\\KOMI Report V5\\.venv\\Lib\\site-packages\\fastapi\\routing.py:1281: in handle\n    await super().handle(scope, receive, send)\nC:\\Users\\User\\Documents\\KOMI Report V5\\.venv\\Lib\\site-packages\\starlette\\routing.py:280: in handle\n    await self.app(scope, receive, send)\nC:\\Users\\User\\Documents\\KOMI Report V5\\.venv\\Lib\\site-packages\\fastapi\\routing.py:158: in app\n    await wrap_app_handling_exceptions(app, request)(scope, receive, send)\nC:\\Users\\User\\Documents\\KOMI Report V5\\.venv\\Lib\\site-packages\\starlette\\_exception_handler.py:53: in wrapped_app\n    raise exc\nC:\\Users\\User\\Documents\\KOMI Report V5\\.venv\\Lib\\site-packages\\starlette\\_exception_handler.py:42: in wrapped_app\n    await app(scope, receive, sender)\nC:\\Users\\User\\Documents\\KOMI Report V5\\.venv\\Lib\\site-packages\\fastapi\\routing.py:144: in app\n    response = await f(request)\n               ^^^^^^^^^^^^^^^^\nC:\\Users\\User\\Documents\\KOMI Report V5\\.venv\\Lib\\site-packages\\fastapi\\routing.py:727: in app\n    content = await serialize_response(\n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _\n\nfield = ModelField(field_info=FieldInfo(annotation=OverviewResponse, required=True), name='Response_report_overview_api_reports_overview_get', mode='serialization', config=None)\nresponse_content = {'period': {'start': '2026-07-01', 'end': '2026-07-31'}, 'billing_day': 31, 'waste_pct': 2.0, 'last_sync_at': None, ...}\ninclude = None, exclude = None, by_alias = True, exclude_unset = False\nexclude_defaults = False, exclude_none = False, is_coroutine = False\nendpoint_ctx = {'file': 'C:\\\\Users\\\\User\\\\.codex\\\\worktrees\\\\4897\\\\KOMI Report V5\\\\source\\\\web_api.py', 'line': 747, 'function': 'report_overview', 'path': 'GET /api/reports/overview'}\ndump_json = True\n\n    async def serialize_response(\n        *,\n        field: ModelField | None = None,\n        response_content: Any,\n        include: IncEx | None = None,\n        exclude: IncEx | None = None,\n        by_alias: bool = True,\n        exclude_unset: bool = False,\n        exclude_defaults: bool = False,\n        exclude_none: bool = False,\n        is_coroutine: bool = True,\n        endpoint_ctx: EndpointContext | None = None,\n        dump_json: bool = False,\n    ) -> Any:\n        if field:\n            if is_coroutine:\n                value, errors = field.validate(response_content, {}, loc=(\"response\",))\n            else:\n                value, errors = await run_in_threadpool(\n                    field.validate, response_content, {}, loc=(\"response\",)\n                )\n            if errors:\n                ctx = endpoint_ctx or EndpointContext()\n>               raise ResponseValidationError(\n                    errors=errors,\n                    body=response_content,\n                    endpoint_ctx=ctx,\n                )\nE               fastapi.exceptions.ResponseValidationError: 1 validation error:\nE                 {'type': 'extra_forbidden', 'loc': ('response', 'devices', 0, 'usage', 'remarks'), 'msg': 'Extra inputs are not permitted', 'input': ()}\nE               \nE                 File \"C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\web_api.py\", line 747, in report_overview\nE                   GET /api/reports/overview\n\nC:\\Users\\User\\Documents\\KOMI Report V5\\.venv\\Lib\\site-packages\\fastapi\\routing.py:324: ResponseValidationError\n------------------------------ Captured log call ------------------------------\nERROR    web_api:web_api.py:474 api request failed\nTraceback (most recent call last):\n  File \"C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\web_api.py\", line 472, in attach_request_id\n    response = await call_next(request)\n               ^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Users\\User\\Documents\\KOMI Report V5\\.venv\\Lib\\site-packages\\starlette\\middleware\\base.py\", line 168, in call_next\n    raise app_exc from app_exc.__cause__ or app_exc.__context__\n  File \"C:\\Users\\User\\Documents\\KOMI Report V5\\.venv\\Lib\\site-packages\\starlette\\middleware\\base.py\", line 144, in coro\n    await self.app(scope, receive_or_disconnect, send_no_error)\n  File \"C:\\Users\\User\\Documents\\KOMI Report V5\\.venv\\Lib\\site-packages\\starlette\\middleware\\exceptions.py\", line 63, in __call__\n    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)\n  File \"C:\\Users\\User\\Documents\\KOMI Report V5\\.venv\\Lib\\site-packages\\starlette\\_exception_handler.py\", line 53, in wrapped_app\n    raise exc\n  File \"C:\\Users\\User\\Documents\\KOMI Report V5\\.venv\\Lib\\site-packages\\starlette\\_exception_handler.py\", line 42, in wrapped_app\n    await app(scope, receive, sender)\n  File \"C:\\Users\\User\\Documents\\KOMI Report V5\\.venv\\Lib\\site-packages\\fastapi\\middleware\\asyncexitstack.py\", line 18, in __call__\n    await self.app(scope, receive, send)\n  File \"C:\\Users\\User\\Documents\\KOMI Report V5\\.venv\\Lib\\site-packages\\starlette\\routing.py\", line 670, in __call__\n    await self.middleware_stack(scope, receive, send)\n  File \"C:\\Users\\User\\Documents\\KOMI Report V5\\.venv\\Lib\\site-packages\\fastapi\\routing.py\", line 2734, in app\n    await route.handle(scope, receive, send)\n  File \"C:\\Users\\User\\Documents\\KOMI Report V5\\.venv\\Lib\\site-packages\\fastapi\\routing.py\", line 1281, in handle\n    await super().handle(scope, receive, send)\n  File \"C:\\Users\\User\\Documents\\KOMI Report V5\\.venv\\Lib\\site-packages\\starlette\\routing.py\", line 280, in handle\n    await self.app(scope, receive, send)\n  File \"C:\\Users\\User\\Documents\\KOMI Report V5\\.venv\\Lib\\site-packages\\fastapi\\routing.py\", line 158, in app\n    await wrap_app_handling_exceptions(app, request)(scope, receive, send)\n  File \"C:\\Users\\User\\Documents\\KOMI Report V5\\.venv\\Lib\\site-packages\\starlette\\_exception_handler.py\", line 53, in wrapped_app\n    raise exc\n  File \"C:\\Users\\User\\Documents\\KOMI Report V5\\.venv\\Lib\\site-packages\\starlette\\_exception_handler.py\", line 42, in wrapped_app\n    await app(scope, receive, sender)\n  File \"C:\\Users\\User\\Documents\\KOMI Report V5\\.venv\\Lib\\site-packages\\fastapi\\routing.py\", line 144, in app\n    response = await f(request)\n               ^^^^^^^^^^^^^^^^\n  File \"C:\\Users\\User\\Documents\\KOMI Report V5\\.venv\\Lib\\site-packages\\fastapi\\routing.py\", line 727, in app\n    content = await serialize_response(\n              ^^^^^^^^^^^^^^^^^^^^^^^^^\n    ...<11 lines>...\n    )\n    ^\n  File \"C:\\Users\\User\\Documents\\KOMI Report V5\\.venv\\Lib\\site-packages\\fastapi\\routing.py\", line 324, in serialize_response\n    raise ResponseValidationError(\n    ...<3 lines>...\n    )\nfastapi.exceptions.ResponseValidationError: 1 validation error:\n  {'type': 'extra_forbidden', 'loc': ('response', 'devices', 0, 'usage', 'remarks'), 'msg': 'Extra inputs are not permitted', 'input': ()}\n\n  File \"C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\web_api.py\", line 747, in report_overview\n    GET /api/reports/overview\n============================== warnings summary ===============================\n..\\..\\..\\..\\..\\Documents\\KOMI Report V5\\.venv\\Lib\\site-packages\\starlette\\testclient.py:53\n  C:\\Users\\User\\Documents\\KOMI Report V5\\.venv\\Lib\\site-packages\\starlette\\testclient.py:53: DeprecationWarning: The anyio.abc.BlockingPortal alias is deprecated, use anyio.from_thread.BlockingPortal instead.\n    _PortalFactoryType = Callable[[], AbstractContextManager[anyio.abc.BlockingPortal]]\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n=========================== short test summary info ===========================\nFAILED tests/test_web_api.py::test_report_api_separates_historical_and_current_slot_identities\nFAILED tests/test_web_api.py::test_report_overview_selects_exact_start_and_end_period\nFAILED tests/test_web_api.py::test_report_api_exposes_current_cache_as_separate_provisional_totals\nFAILED tests/test_web_api.py::test_report_api_combines_complete_periods_inside_selected_range\nFAILED tests/test_web_api.py::test_report_api_keeps_frozen_device_after_its_slot_is_disabled\n5 failed, 9 passed, 1 warning in 12.37s\n"
+      "exit_code": 0,
+      "seconds": 6.17,
+      "output": "..............                                                           [100%]\n============================== warnings summary ===============================\n..\\..\\..\\..\\..\\Documents\\KOMI Report V5\\.venv\\Lib\\site-packages\\starlette\\testclient.py:53\n  C:\\Users\\User\\Documents\\KOMI Report V5\\.venv\\Lib\\site-packages\\starlette\\testclient.py:53: DeprecationWarning: The anyio.abc.BlockingPortal alias is deprecated, use anyio.from_thread.BlockingPortal instead.\n    _PortalFactoryType = Callable[[], AbstractContextManager[anyio.abc.BlockingPortal]]\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n14 passed, 1 warning in 4.15s\n"
     }
   ],
-  "file_count": 79,
-  "failed_files": [
-    "test_web_api.py"
-  ]
+  "file_count": 85,
+  "failed_files": []
 }

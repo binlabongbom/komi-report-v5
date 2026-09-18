@@ -11,6 +11,7 @@ import json
 from pathlib import Path
 
 from config import DEFAULT_ADMIN_USERNAME
+from services.peer_change_events import notify_local_change
 from database import _open, config_write_transaction, get_db_path
 from services.peer_settings_history import SettingsHistory, _json
 from services.peer_settings_outbox import enqueue_revision
@@ -104,6 +105,7 @@ class PeerSetupApplication:
             if slot not in devices and prior.get(slot) != epoch_id:
                 raise ValueError("Cannot adopt a new baseline for a disabled Slot")
 
+    @notify_local_change
     def commit(self, preview):
         if (not isinstance(preview, PeerSetupPreview) or type(preview.resolve_conflict) is not bool
                 or not isinstance(preview.reason, str) or not 1 <= len(preview.reason.strip()) <= 300

@@ -73,6 +73,9 @@ def test_manual_reflows_at_desktop_minimum_and_uses_v52_report_copy():
     assert "ค่าใช้จ่ายสุทธิ = ค่าใช้จ่ายก่อนส่วนลด × (1 − % กระดาษเสีย / 100)" in all_text
     assert "บวกค่ากระดาษเสีย" not in all_text
     assert "ต้องยืนยันรหัสผ่าน" not in all_text
+    assert '150.5' in all_text
+    assert 'รายละเอียดเกิน 12 เดือน' in all_text
+    assert 'คิวรอยืนยันรับ' in all_text
     page.close()
     app.processEvents()
 

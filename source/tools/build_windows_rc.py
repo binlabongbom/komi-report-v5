@@ -466,6 +466,8 @@ def build_payload(
             manual_assets,
             docs_destination / "customer-guide" / "assets-v5.2",
         )
+        from tools.customer_manual import copy_updated_manual
+        copy_updated_manual(PROJECT_ROOT, docs_destination)
 
     runtime_root = payload_root / "runtime"
     python_runtime_sha256 = download_python_runtime(runtime_root)

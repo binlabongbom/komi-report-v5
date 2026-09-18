@@ -25,7 +25,8 @@ class BillingWebAmendmentDialog(QDialog):
         layout = QVBoxLayout(self)
         layout.addWidget(plain(f"Slot {scope[0] + 1} · {scope[2]:%d/%m/%Y} – {scope[3]:%d/%m/%Y}"))
         layout.addWidget(plain("ตรวจตัวนับเครื่องทั้งหมดและยอดรวมเดิม ใช้ราคาและส่วนลดที่บันทึกไว้ ไม่คิดเงินจากกราฟเฉลี่ย "
-            "ยืนยันแล้วจะสร้างฉบับแก้ไขบนคอมนี้พร้อมเก็บต้นฉบับไว้ การส่งฉบับแก้ไขให้คอมอื่นยังไม่เชื่อมต่อ"))
+            "ยืนยันแล้วจะเก็บต้นฉบับและคิวส่งฉบับแก้ไข สมาชิกที่เชื่อมต่อและยืนยันสิทธิ์แล้วจึงรับได้ "
+            "ดูรายการรอยืนยันรับได้ที่การตั้งค่าเครือข่าย"))
         self.load_button = QPushButton("ตรวจการแบ่งยอด")
         self.load_button.clicked.connect(self.load)
         layout.addWidget(self.load_button)

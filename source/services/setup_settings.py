@@ -4,6 +4,7 @@ from datetime import UTC, date, datetime
 import json
 from pathlib import Path
 
+from services.peer_change_events import notify_local_change
 from database import _open, get_db_path
 from services.peer_settings_history import SettingsHistory, _json
 from services.pricing import PriceList, PricingRepository
@@ -112,6 +113,7 @@ class SetupSettingsService:
                             _json(after), _json(settings), _json(updates), devices,
                             _json(list(registration_devices)) if registration_devices is not None else None)
 
+    @notify_local_change
     def commit(self, preview):
         history = SettingsHistory()
         result = []

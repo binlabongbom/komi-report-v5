@@ -12,7 +12,7 @@ from contextlib import closing
 from datetime import datetime
 from pathlib import Path
 
-CURRENT_SCHEMA_VERSION = 28
+CURRENT_SCHEMA_VERSION = 29
 
 
 class UnsupportedSchemaVersionError(RuntimeError):
@@ -24,6 +24,8 @@ class SchemaDriftError(RuntimeError):
 
 
 _REQUIRED_SCHEMA: dict[str, frozenset[str]] = {
+    "peer_billing_amendments": frozenset({"sequence", "amendment_id", "document_json", "results_json"}),
+    "peer_billing_deliveries": frozenset({"member_id", "amendment_id", "acknowledged_at", "retry_at", "attempts", "error_code"}),
     "web_catchup_progress": frozenset({"peer_id", "state_json"}),
     "web_observations": frozenset({"sequence", "event_id", "document_json", "recorded_at", "archive_id"}),
     "web_observation_state": frozenset({"key", "value"}),
@@ -45,7 +47,7 @@ _REQUIRED_SCHEMA: dict[str, frozenset[str]] = {
     "peer_settings_revisions": frozenset({"revision", "document_json"}),
     "peer_settings_state": frozenset({"key", "value"}),
     "peer_settings_events": frozenset({"revision", "created_at"}),
-    "peer_settings_deliveries": frozenset({"peer_id", "revision", "acknowledged_at", "attempts", "retry_at", "error_code"}),
+    "peer_settings_deliveries": frozenset({"peer_id", "revision", "acknowledged_at", "attempts", "retry_at", "error_code", "page_offset"}),
     "readings": frozenset({"id", "slot", "data_json", "read_date_iso", "billing_month"}),
     "settings": frozenset({"key", "value"}),
     "devices": frozenset(
@@ -754,6 +756,17 @@ def _migration_028_web_catchup(connection: sqlite3.Connection) -> None:
     connection.execute("CREATE TABLE web_catchup_progress(peer_id TEXT PRIMARY KEY,state_json TEXT NOT NULL)")
 
 
+def _migration_029_billing_amendments(connection: sqlite3.Connection) -> None:
+    connection.execute('ALTER TABLE peer_settings_deliveries ADD COLUMN page_offset INTEGER NOT NULL DEFAULT 0')
+    connection.execute("""CREATE TABLE peer_billing_amendments(
+        sequence INTEGER PRIMARY KEY AUTOINCREMENT,amendment_id TEXT NOT NULL UNIQUE,
+        document_json TEXT NOT NULL,results_json TEXT NOT NULL,created_at TEXT NOT NULL)""")
+    connection.execute("""CREATE TABLE peer_billing_deliveries(
+        member_id TEXT NOT NULL,amendment_id TEXT NOT NULL REFERENCES peer_billing_amendments(amendment_id),
+        acknowledged_at TEXT, retry_at REAL NOT NULL DEFAULT 0,attempts INTEGER NOT NULL DEFAULT 0,
+        error_code TEXT NOT NULL DEFAULT '',PRIMARY KEY(member_id,amendment_id))""")
+
+
 MIGRATIONS: tuple[tuple[int, str, object], ...] = (
     (8, "record_schema_history_and_reporting_indexes", _migration_008_record_schema_history),
     (9, "add_legacy_usage_history_import_provenance", _migration_009_legacy_history_import),
@@ -776,6 +789,7 @@ MIGRATIONS: tuple[tuple[int, str, object], ...] = (
     (26, "add_durable_reader_grants_and_joined_requests", _migration_026_reader_jobs),
     (27, "add_reviewed_slot_epoch_storage_and_maximum_index", _migration_027_slot_meter_epochs),
     (28, "add_atomic_web_history_catchup_progress", _migration_028_web_catchup),
+    (29, "add_atomic_billing_amendment_delivery", _migration_029_billing_amendments),
 )
 
 

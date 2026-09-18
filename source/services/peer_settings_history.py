@@ -249,13 +249,18 @@ class SettingsHistory:
                 raise ValueError("One settings revision exceeds the transfer limit")
             return packet
 
-    def receive_page(self, packet):
+    def receive_page(self, packet, *, authorize=None, origin_member=None):
         """Persist a verified page; retries are idempotent and never apply values.
 
         Missing previous pages roll back this page. The last page classifies the
         complete ancestry so callers cannot treat a partial transfer as a choice.
         Transport must authenticate the peer before calling this method.
         """
+        if origin_member is not None:
+            from services.peer_settings_outbox import _peer
+            _peer(origin_member)
+            if not callable(authorize):
+                raise PermissionError('Persisting an incoming member requires scope authorization')
         if (not isinstance(packet, dict)
                 or set(packet) != {"contract", "head", "offset", "next_offset", "revisions"}
                 or packet["contract"] != PAGE_CONTRACT or not isinstance(packet["head"], str)
@@ -269,18 +274,29 @@ class SettingsHistory:
             raise ValueError("Invalid settings history page")
         for revision, document in packet["revisions"].items():
             _validate_revision(revision, document)
+        def check_authorization():
+            if authorize is not None:
+                if not callable(authorize) or any(authorize(revision, document['payload']) is not True
+                        for revision, document in packet['revisions'].items()):
+                    raise PermissionError('Member cannot import this settings history')
+        check_authorization()
         with self._transaction() as conn:
             for revision, document in packet["revisions"].items():
                 conn.execute("INSERT OR IGNORE INTO peer_settings_revisions VALUES(?,?)", (revision, _json(document)))
             for revision in packet["revisions"]:
                 self._ancestors(conn, revision)
             local, remote = self._state(conn, "head"), packet["head"]
+            check_authorization()
             if packet["next_offset"] is not None:
                 return {"status": "incomplete", "local_head": local, "remote_head": remote,
                         "next_offset": packet["next_offset"]}
             if remote not in packet["revisions"]:
                 raise ValueError("Final history page must include its head")
-            return {**self._record_incoming_review(conn, remote), "next_offset": None}
+            result = {**self._record_incoming_review(conn, remote), "next_offset": None}
+            if origin_member is not None:
+                conn.execute('INSERT INTO peer_settings_state(key,value) VALUES(?,?) '
+                    'ON CONFLICT(key) DO UPDATE SET value=excluded.value', ('sender:' + remote, origin_member))
+            return result
 
     def resolve(self, remote_head, *, expected_local_head, chosen_head, reason):
         """Journal an explicit choice. Does not apply the selected app settings."""

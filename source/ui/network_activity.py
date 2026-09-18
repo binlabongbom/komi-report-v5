@@ -55,8 +55,8 @@ class NetworkActivityPanel(QWidget):
         self.shared_read.setTextFormat(Qt.TextFormat.PlainText)
         self.shared_read.setWordWrap(True)
         layout.addWidget(self.shared_read)
-        self.table = QTableWidget(0, 5)
-        self.table.setHorizontalHeaderLabels(["คอมพิวเตอร์", "รับประวัติ", "รับครบล่าสุด", "Web รอยืนยันรับ", "การตั้งค่า"])
+        self.table = QTableWidget(0, 6)
+        self.table.setHorizontalHeaderLabels(["คอมพิวเตอร์", "รับ/ส่งข้อมูล", "เสร็จครบล่าสุด", "Web รอยืนยันรับ", "การตั้งค่า", "ฉบับแก้ไขรอรับ"])
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.table.verticalHeader().hide()
         self.table.verticalHeader().setDefaultSectionSize(42)
@@ -183,7 +183,8 @@ class NetworkActivityPanel(QWidget):
                     member = row["member"]
                     queue = data["queues"][member]
                     values = [member, states.get(row["status"], "รอตรวจสอบ"), _date(row["last_success"]),
-                              str(queue["web_pending"]), "รอยืนยันรับ" if queue["settings_pending"] else "ไม่มีค่ารอส่ง"]
+                              str(queue["web_pending"]), "รอยืนยันรับ" if queue["settings_pending"] else "ไม่มีค่ารอส่ง",
+                              str(queue['amendments_pending'])]
                     for column, value in enumerate(values):
                         item = QTableWidgetItem(value)
                         item.setToolTip(errors.get(row["error"], "") if column == 1 else value)

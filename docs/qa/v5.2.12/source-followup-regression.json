@@ -1,115 +1,73 @@
 {
-  "scope": "17 selected operational source files; each in a fresh pytest process",
-  "source_head": "bd62b4b481e9f025e190c75b7fc0419f08d678e4",
-  "working_tree_status": " M docs/CUSTOMER_GUIDE_V5_2_12_DRAFT.md\n M docs/V5_2_12_WORK_PLAN.md\n M docs/qa/v5.2.12/additional-source-regression.json\n M docs/qa/v5.2.12/source-regression.json\n M source/services/background_polling.py\n M source/services/billing_repricing.py\n M source/services/monthly_history.py\n M source/services/reader_jobs.py\n M source/services/report_excel_export.py\n M source/services/shared_reader.py\n M source/services/shared_web_read.py\n M source/tests/test_network_activity.py\n M source/tests/test_shared_web_read.py\n M source/ui/network_activity.py\n M source/ui/web_evidence_report.py\n M source/v5_pages.py\n M source/web_api.py\n M tools/run_source_regression.py\n M web/app/dashboard-types.ts\n?? docs/customer-guide/KOMI_Report_5.2.12_Source_Guide.pdf\n?? docs/customer-guide/assets-v5.2.12-source/web-billing-amendment.png\n?? source/services/billing_web_amendment.py\n?? source/tests/test_billing_web_amendment.py\n?? source/ui/billing_web_amendment.py\n?? tools/render_source_guide.py\n",
+  "scope": "10 selected operational source files; each in a fresh pytest process",
+  "source_head": "26f1fc6c91ea8c8f234f6ce427099a6eacafcaf2",
+  "working_tree_status": " M docs/CUSTOMER_GUIDE_V5_2.md\n M docs/CUSTOMER_GUIDE_V5_2_12_DRAFT.md\n M docs/customer-guide/KOMI_Report_5.2.12_Source_Guide.pdf\n M docs/customer-guide/assets-v5.2.12-source/network-activity.png\n M docs/customer-guide/assets-v5.2.12-source/web-billing-amendment.png\n M docs/qa/v5.2.12/additional-source-regression.json\n M docs/qa/v5.2.12/source-followup-regression.json\n M docs/qa/v5.2.12/source-regression.json\n M source/app.py\n M source/app.spec\n M source/database.py\n M source/migrations.py\n M source/pages.py\n M source/services/background_agent.py\n M source/services/background_polling.py\n M source/services/billing_web_amendment.py\n M source/services/daily_cache.py\n M source/services/network_activity.py\n M source/services/peer_history_runtime.py\n M source/services/peer_settings_history.py\n M source/services/peer_setup_application.py\n M source/services/raw_counter_history.py\n M source/services/setup_settings.py\n M source/services/shared_settings.py\n M source/services/shared_slot_review.py\n M source/services/slot_epoch_exchange.py\n M source/services/slot_epoch_store.py\n M source/services/subject_history.py\n M source/services/web_observations.py\n M source/tests/test_database_reset_v5.py\n M source/tests/test_manual_diagrams.py\n M source/tests/test_migrations.py\n M source/tests/test_network_activity.py\n M source/tests/test_packaged_manual_assets.py\n M source/tools/build_customer_delivery.py\n M source/tools/build_windows_rc.py\n M source/tools/db_recovery.py\n M source/ui/billing_web_amendment.py\n M source/ui/network_activity.py\n M source/ui/shared_settings_history.py\n M tools/run_source_regression.py\n?? docs/V5_2_12_PEER_TRANSPORT.md\n?? source/services/peer_billing_amendments.py\n?? source/services/peer_change_events.py\n?? source/services/peer_delivery.py\n?? source/services/peer_https.py\n?? source/services/peer_settings_inbox.py\n?? source/services/peer_settings_runtime.py\n?? source/services/peer_settings_transfer.py\n?? source/services/slot_cache_bridge.py\n?? source/tests/test_peer_billing_amendments.py\n?? source/tests/test_peer_delivery.py\n?? source/tests/test_peer_https.py\n?? source/tests/test_peer_settings_runtime.py\n?? source/tests/test_peer_settings_transfer.py\n?? source/tests/test_slot_cache_bridge.py\n?? source/tools/customer_manual.py\n?? tools/capture_source_guide_delta.py\n",
   "excluded_release_build_files": [],
   "non_loopback_network": "denied by an audit hook in each pytest process; subprocess fixtures are separately isolated",
   "installer_or_release_build": false,
   "complete": true,
   "results": [
     {
-      "file": "test_web_api.py",
+      "file": "test_manual_diagrams.py",
       "exit_code": 0,
-      "seconds": 6.39,
-      "output": "..............                                                           [100%]\n============================== warnings summary ===============================\n..\\..\\..\\..\\..\\Documents\\KOMI Report V5\\.venv\\Lib\\site-packages\\starlette\\testclient.py:53\n  C:\\Users\\User\\Documents\\KOMI Report V5\\.venv\\Lib\\site-packages\\starlette\\testclient.py:53: DeprecationWarning: The anyio.abc.BlockingPortal alias is deprecated, use anyio.from_thread.BlockingPortal instead.\n    _PortalFactoryType = Callable[[], AbstractContextManager[anyio.abc.BlockingPortal]]\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n14 passed, 1 warning in 4.11s\n"
+      "seconds": 9.46,
+      "output": "...                                                                      [100%]\n3 passed in 7.01s\n"
     },
     {
-      "file": "test_billing_web_amendment.py",
+      "file": "test_packaged_manual_assets.py",
       "exit_code": 0,
-      "seconds": 11.46,
-      "output": "..............                                                           [100%]\n============================== warnings summary ===============================\ntests/test_billing_web_amendment.py::test_local_web_api_returns_amended_history_and_notes\n  C:\\Users\\User\\Documents\\KOMI Report V5\\.venv\\Lib\\site-packages\\starlette\\testclient.py:53: DeprecationWarning: The anyio.abc.BlockingPortal alias is deprecated, use anyio.from_thread.BlockingPortal instead.\n    _PortalFactoryType = Callable[[], AbstractContextManager[anyio.abc.BlockingPortal]]\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n14 passed, 1 warning in 9.17s\n"
+      "seconds": 3.0,
+      "output": "....                                                                     [100%]\n4 passed in 0.73s\n"
     },
     {
-      "file": "test_shared_web_read.py",
+      "file": "test_v5_2_version_authority.py",
       "exit_code": 0,
-      "seconds": 15.58,
-      "output": "...................                                                      [100%]\n19 passed in 13.29s\n"
+      "seconds": 4.48,
+      "output": "......                                                                   [100%]\n6 passed in 1.78s\n"
     },
     {
-      "file": "test_reader_election.py",
+      "file": "test_ui_consistency.py",
       "exit_code": 0,
-      "seconds": 6.88,
-      "output": "..........                                                               [100%]\n10 passed in 4.98s\n"
+      "seconds": 20.44,
+      "output": ".....                                                                    [100%]\n5 passed in 17.37s\n"
     },
     {
-      "file": "test_reader_jobs.py",
+      "file": "test_v528_customer_navigation.py",
       "exit_code": 0,
-      "seconds": 6.69,
-      "output": "...........                                                              [100%]\n11 passed in 4.66s\n"
+      "seconds": 3.38,
+      "output": "..                                                                       [100%]\n2 passed in 0.72s\n"
     },
     {
-      "file": "test_manual_polling_coordination.py",
+      "file": "test_adaptive_window_layout.py",
       "exit_code": 0,
-      "seconds": 5.39,
-      "output": "......                                                                   [100%]\n6 passed in 2.89s\n"
+      "seconds": 12.49,
+      "output": "..........                                                               [100%]\n10 passed in 10.07s\n"
     },
     {
-      "file": "test_background_polling.py",
+      "file": "test_app_setup.py",
       "exit_code": 0,
-      "seconds": 4.59,
-      "output": "........                                                                 [100%]\n8 passed in 2.67s\n"
-    },
-    {
-      "file": "test_network_activity.py",
-      "exit_code": 0,
-      "seconds": 4.47,
-      "output": "......                                                                   [100%]\n6 passed in 2.61s\n"
-    },
-    {
-      "file": "test_billing_repricing.py",
-      "exit_code": 0,
-      "seconds": 4.59,
-      "output": ".......                                                                  [100%]\n7 passed in 2.56s\n"
-    },
-    {
-      "file": "test_billing_repricing_batch.py",
-      "exit_code": 0,
-      "seconds": 11.56,
-      "output": "..................                                                       [100%]\n18 passed in 9.75s\n"
-    },
-    {
-      "file": "test_monthly_history.py",
-      "exit_code": 0,
-      "seconds": 5.87,
-      "output": ".............                                                            [100%]\n13 passed in 3.84s\n"
-    },
-    {
-      "file": "test_report_excel_export.py",
-      "exit_code": 0,
-      "seconds": 4.69,
-      "output": "......                                                                   [100%]\n6 passed in 2.95s\n"
-    },
-    {
-      "file": "test_billing_audit_ui.py",
-      "exit_code": 0,
-      "seconds": 4.01,
-      "output": "..                                                                       [100%]\n2 passed in 2.11s\n"
-    },
-    {
-      "file": "test_counter_review_ui.py",
-      "exit_code": 0,
-      "seconds": 3.99,
-      "output": "....                                                                     [100%]\n4 passed in 1.99s\n"
-    },
-    {
-      "file": "test_web_evidence_report.py",
-      "exit_code": 0,
-      "seconds": 5.58,
-      "output": "........                                                                 [100%]\n8 passed in 3.70s\n"
+      "seconds": 4.57,
+      "output": "......                                                                   [100%]\n6 passed in 1.82s\n"
     },
     {
       "file": "test_background_agent_lifecycle.py",
       "exit_code": 0,
-      "seconds": 5.4,
-      "output": ".........                                                                [100%]\n9 passed in 3.50s\n"
+      "seconds": 5.52,
+      "output": ".........                                                                [100%]\n9 passed in 3.65s\n"
     },
     {
-      "file": "test_peer_history_runtime.py",
+      "file": "test_agent_handoff.py",
       "exit_code": 0,
-      "seconds": 6.71,
-      "output": ".........                                                                [100%]\n9 passed in 4.70s\n"
+      "seconds": 10.83,
+      "output": "....                                                                     [100%]\n4 passed in 8.30s\n"
+    },
+    {
+      "file": "test_agent_tray.py",
+      "exit_code": 0,
+      "seconds": 4.55,
+      "output": "......                                                                   [100%]\n6 passed in 2.45s\n"
     }
   ],
-  "file_count": 17,
+  "file_count": 10,
   "failed_files": []
 }

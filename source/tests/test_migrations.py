@@ -93,6 +93,30 @@ def test_registration_migration_is_additive_and_does_not_change_billing_table(tm
     assert row == (1, "immutable-source", "42.00")
 
 
+def test_v29_upgrade_preserves_existing_delivery_receipts_and_accounting(tmp_path):
+    from migrations import MIGRATIONS
+    path = tmp_path/'existing-v28.sqlite3'
+    with sqlite3.connect(path) as conn:
+        conn.execute('CREATE TABLE schema_migrations(version INTEGER PRIMARY KEY,name TEXT,applied_at TEXT)')
+        conn.execute('CREATE TABLE daily_meter_records(record_date TEXT,device_slot INTEGER)')
+        conn.execute('CREATE TABLE daily_subject_records(device_slot INTEGER,subject_type TEXT,subject_id TEXT,record_date TEXT)')
+        conn.execute('CREATE TABLE billing_ledger(id INTEGER PRIMARY KEY,amount INTEGER)')
+        conn.execute('INSERT INTO billing_ledger VALUES(1,12345)')
+        for version, name, migrate in MIGRATIONS:
+            if version < 29:
+                migrate(conn)
+                conn.execute('INSERT INTO schema_migrations VALUES(?,?,?)', (version, name, 'fixture'))
+        conn.execute('PRAGMA user_version=28')
+        conn.execute("INSERT INTO peer_settings_revisions VALUES('revision','{}')")
+        conn.execute("INSERT INTO peer_settings_events VALUES('revision','fixture')")
+        conn.execute("INSERT INTO peer_settings_deliveries(peer_id,revision,acknowledged_at,attempts,retry_at) VALUES('B','revision','fixture',2,123)")
+        assert apply_migrations(conn) == [29]
+        assert conn.execute('SELECT * FROM billing_ledger').fetchall() == [(1,12345)]
+        assert conn.execute('SELECT acknowledged_at,attempts,retry_at,page_offset FROM peer_settings_deliveries').fetchone() == ('fixture',2,123,0)
+        assert conn.execute('SELECT COUNT(*) FROM peer_billing_amendments').fetchone()[0] == 0
+        assert apply_migrations(conn) == []
+
+
 def test_raw_history_identity_migration_preserves_rows_and_allows_slot_replacement(tmp_path):
     path = tmp_path / "komi-v17.sqlite3"
     with sqlite3.connect(path) as connection:

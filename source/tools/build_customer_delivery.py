@@ -176,6 +176,8 @@ def build_delivery(
         if not source.is_file():
             raise CustomerDeliveryError(f"required customer document is missing: {name}")
         shutil.copy2(source, staging / "docs" / name)
+    from tools.customer_manual import copy_updated_manual
+    copy_updated_manual(PROJECT_ROOT, staging / 'docs')
     manifest = {
         "schema_version": 1,
         "product": "KOMI Report V5",

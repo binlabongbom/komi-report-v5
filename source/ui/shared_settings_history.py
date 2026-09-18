@@ -147,6 +147,33 @@ class SharedSettingsHistoryDialog(QDialog):
             from services.peer_settings_history import SettingsHistory
             with _open(commit=False) as conn:
                 local = SettingsHistory._state(conn, "head")
+                member = SettingsHistory._state(conn, 'sender:' + row['revision'])
+            polling = getattr(self.window(), 'polling', None)
+            owner = self.parent()
+            while polling is None and owner is not None:
+                polling = getattr(owner, 'polling', None)
+                owner = owner.parent()
+            runtime = getattr(polling, 'peer_settings', None)
+            if incoming and member and runtime is not None:
+                if polling.active_slots():
+                    self.status.setText(tr('รอการอ่านที่กำลังทำอยู่เสร็จก่อนเปลี่ยนชุดตั้งค่า',
+                                           'Wait for the active reading before changing configuration'))
+                    return
+                preview = runtime.inbox.prepare(member, row['revision'], resolve_conflict=True)
+                if not confirm_shared_settings(self, preview):
+                    return
+                # The modal review may have allowed a scheduled read to start.
+                if polling.active_slots():
+                    self.status.setText(tr('มีงานอ่านเริ่มระหว่างตรวจ กรุณายืนยันอีกครั้งเมื่ออ่านเสร็จ',
+                                           'A reading started during review; confirm after it finishes'))
+                    return
+                runtime.apply_review(preview)
+                self.settings_changed.emit()
+                self.records.clear()
+                self.cursor = None
+                self._load_more()
+                self.status.setText(tr('ใช้ชุดการตั้งค่าและ Slot ที่ตรวจแล้ว', 'Reviewed configuration and slots applied'))
+                return
             preview = self.service.preview_choice(row["revision"],
                 chosen_head=row["revision"] if incoming else local, reason="reviewed_peer_choice")
             if not confirm_shared_settings(self, preview):
