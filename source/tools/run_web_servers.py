@@ -160,6 +160,7 @@ def run(
     try:
         environment = os.environ.copy()
         environment["PYTHONDONTWRITEBYTECODE"] = "1"
+        environment["KOMI_WEB_PORT"] = str(port)
         api = subprocess.Popen(
             [sys.executable, "-m", "uvicorn", "web_api:app", "--host", "127.0.0.1", "--port", "8766"],
             cwd=source_root,

@@ -262,6 +262,63 @@ P9/H1 ที่ตรวจ source/fixture ได้อาจทำสลับ�
 
 ## Existing evidence (not release approval)
 
+### 2026-09-18 — atomic Setup, dated prices, history review and bounded LAN discovery
+
+- Latest instruction: implement all remaining authorized work in sequence. Work
+  remains in this task on local main; no automation, build, release or production
+  changes are authorized by this instruction.
+- Wizard now reviews and commits device configuration, price updates, settings,
+  registration inventory (edit mode), config audit and causal history together.
+  Repository callbacks share its SQLite transaction; failures also compensate
+  credential-vault writes. Registration activation remains a separate subsequent
+  step; registration failure does not discard the saved configuration or unlock
+  the application. Cancel and concurrent-edit rejection preserve the draft.
+- Shared document format 2 keeps all effective-dated prices, including future
+  dates and historical prices for disabled slots. It excludes computer identity,
+  credentials and current-day price projections. Merely crossing midnight or a
+  price effective date cannot generate a shared edit. Legacy journal documents
+  remain readable; applying old/incompatible setup documents is not automatic.
+- Network settings exposes read-only history, previous/new values, reviewed undo
+  for billing/discount/schedule, and local/incoming conflict choice for supported
+  fields. Undo appends a new revision; conflict choices retain both parents.
+  Partially received pages cannot appear as an actionable incoming head.
+  Printer/price/company application still requires its dedicated workflow;
+  this UI does not bypass slot replacement or retrospective billing review.
+- Added bounded ancestor-first history pages with immutable-head cursors,
+  per-page byte/count limits, hash/ancestry validation, restart/resend support,
+  and no automatic application. One approved claim can read the same pinned
+  history for five minutes; its hash is bound to requester IP and installation.
+  It cannot authorize another head or the setup endpoint; closing pairing
+  revokes it. A lost first reply can be retried without consuming new approval.
+  Individual revisions larger than 128 KiB still fail explicitly; chunking a
+  single large document remains needed before claiming unlimited history size.
+- Added UDP discovery on port 37852: nonce-correlated, size/rate bounded replies
+  contain only an HTTPS port. Replies do not authenticate company membership.
+  Wizard verifies targets through the existing HTTPS discovery path and falls
+  back to IP discovery/manual IP. API lifecycle owns the responder, advertises
+  the configured public HTTPS port and stops its thread on shutdown. Listener
+  failure does not stop Web. Interface scope is refreshed when requests arrive.
+  This listener currently follows Web-service lifecycle; separating peer sync
+  availability from the report enable switch remains part of P2/P3 integration.
+- Tests used synthetic databases, in-memory credentials, loopback UDP, fake
+  HTTPS/Host transports and offscreen Qt. No real LAN advertisements, customer
+  printer calls, Host writes or Windows Firewall changes were performed.
+- Combined regression: **239 passed** in 150.87 seconds, one Starlette/AnyIO
+  deprecation warning, clean exit. Web security suite: **7 passed**, clean exit,
+  using an isolated temporary fixture and read-only existing dependencies.
+  After conflict UI/incomplete-page gating, affected tests: **91 passed** in
+  60.31 seconds (counts overlap). After final strict document validation and
+  UI price-diff refinements: **76 passed** in 28.98 seconds, same warning and
+  clean exit. These counts overlap; they are not additive.
+- Source-rendered price review/history inspected in
+  `Temp/komi-shared-setup-review-t67bhav9`; inspection led to friendly action/date
+  labels, previous/new details and displaying only changed effective-price rows.
+- Remaining P1/P2 integration: apply full approved peer setup/slot decisions and
+  price history safely, durable authenticated membership and event outbox/ACK,
+  reconnect delivery and UI reload after applied settings. Shared reader/manual
+  coordination and Web observation delivery remain pending and are not enabled
+  by discovery alone. P4–P9/H1 and final manuals/real-machine QA remain open.
+
 ### 2026-09-18 — resumed P1: reviewed billing and schedule transactions
 
 - User explicitly resumed development; work continues directly in this task.

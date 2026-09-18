@@ -2180,3 +2180,51 @@ def test_setup_wizard_shared_pricing_and_billing_fit_without_scrolling(tmp_path)
         app.processEvents()
     finally:
         database.set_db_path(original_path)
+
+
+@pytest.fixture(autouse=True)
+def accept_reviewed_setup_in_existing_workflow_tests(monkeypatch):
+    monkeypatch.setattr(v5_pages, "confirm_shared_settings", lambda *_: True)
+
+
+def test_setup_cancel_shared_review_does_not_configure_or_register(tmp_path, monkeypatch):
+    original_path = _wizard_database(tmp_path)
+    app = QApplication.instance() or QApplication([])
+    try:
+        wizard = SetupWizardV5()
+        _add_selected_device(wizard, "DMS Printer", "192.0.2.10")
+        monkeypatch.setattr(v5_pages, "confirm_shared_settings", lambda *_: False)
+        wizard._save()
+        assert DeviceConfigRepository().list(enabled_only=True) == []
+        assert V52RuntimeStateRepository().internal() is None
+        with database._open(commit=False) as conn:
+            assert conn.execute("SELECT count(*) FROM price_history").fetchone()[0] == 0
+            assert conn.execute("SELECT count(*) FROM peer_settings_revisions").fetchone()[0] == 0
+        wizard.close()
+        app.processEvents()
+    finally:
+        database.set_db_path(original_path)
+
+
+def test_setup_change_during_review_keeps_external_edit_and_draft(tmp_path, monkeypatch):
+    original_path = _wizard_database(tmp_path)
+    app = QApplication.instance() or QApplication([])
+    try:
+        wizard = SetupWizardV5()
+        _add_selected_device(wizard, "DMS Printer", "192.0.2.10")
+        errors = []
+        def review(*_args):
+            database.set_cfg("billing_day", "22")
+            return True
+        monkeypatch.setattr(v5_pages, "confirm_shared_settings", review)
+        monkeypatch.setattr(wizard, "_show_wizard_message", lambda *args: errors.append(args))
+        wizard._save()
+        assert errors and "เปลี่ยน" in errors[0][1]
+        assert database.get_cfg("billing_day") == "22"
+        assert DeviceConfigRepository().list(enabled_only=True) == []
+        assert V52RuntimeStateRepository().internal() is None
+        assert wizard._configs()[0].host == "192.0.2.10"
+        wizard.close()
+        app.processEvents()
+    finally:
+        database.set_db_path(original_path)

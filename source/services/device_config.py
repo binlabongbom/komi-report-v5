@@ -8,7 +8,7 @@ from datetime import datetime
 from ipaddress import ip_address
 
 from config import DEFAULT_ADMIN_USERNAME
-from database import _open
+from database import _open, config_write_transaction
 from komi_snmp_profiler.connectors import TlsPolicy
 from komi_snmp_profiler.credential_store import (
     AdminCredential,
@@ -159,7 +159,15 @@ class DeviceConfigRepository:
         devices: list[DeviceConfig],
         *,
         registration_devices: Iterable[Mapping[str, object]] | None = None,
+        before_write=None,
+        after_write=None,
     ) -> None:
+        """Replace configuration and optional related writes in one transaction.
+
+        Callbacks receive the owned SQL connection and must not open another
+        write transaction. Any callback/commit failure also compensates vault
+        changes, so a failed price/history save cannot leave new credentials.
+        """
         if not 1 <= len(devices) <= 3:
             raise ValueError("ต้องตั้งค่าเครื่องอย่างน้อย 1 และไม่เกิน 3 เครื่อง")
         slots = [item.slot for item in devices]
@@ -176,7 +184,9 @@ class DeviceConfigRepository:
             )
         staged: list[tuple[str, AdminCredential | None]] = []
         try:
-            with _open() as conn:
+            with config_write_transaction() as conn:
+                if before_write is not None:
+                    before_write(conn)
                 placeholders = ",".join("?" for _ in slots)
                 conn.execute(f"UPDATE devices SET enabled=0 WHERE slot NOT IN ({placeholders})", slots)
                 for item in devices:
@@ -235,6 +245,8 @@ class DeviceConfigRepository:
                     )
                     if changed.rowcount != 1:
                         raise ValueError("V5.2 runtime is not configured")
+                if after_write is not None:
+                    after_write(conn)
         except Exception:
             for reference, previous in reversed(staged):
                 try:

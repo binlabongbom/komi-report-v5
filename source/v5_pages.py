@@ -676,8 +676,8 @@ class SecondaryPeerDiscoveryWorker(QObject):
     @pyqtSlot()
     def run(self) -> None:
         try:
-            hosts = list(self.hosts) if self.hosts is not None else local_ipv4_hosts()
-            candidates = SecondaryPeerClient(port=self.port).discover(hosts)
+            client = SecondaryPeerClient(port=self.port)
+            candidates = client.discover(list(self.hosts)) if self.hosts is not None else client.discover_lan()
             self.finished.emit(candidates, "")
         except Exception as exc:
             self.finished.emit([], str(exc))
@@ -4214,67 +4214,51 @@ class SetupWizardV5(QDialog):
                 self.accept()
                 return
             self._activate_selected_database_path()
-            self.repository.replace_all(
-                devices,
-                registration_devices=(
-                    self._registration_devices() if self.edit_mode else None
-                ),
-            )
+            from services.setup_settings import SetupSettingsService
+            service = SetupSettingsService(self.repository)
             effective = self.effective_date.date().toPyDate()
             shared = self.shared_price_mode.isChecked()
             deferred = self.deferred_price_mode.isChecked()
+            price_updates = []
             for device in devices:
                 row = self.shared_price_row if shared else self.price_rows[device.slot]
-                self.pricing.set_prices(
-                    device.slot,
-                    effective,
-                    PriceList(
-                        **{
-                            key: 0.0 if deferred else spin.value()
-                            for key, spin in row.items()
-                        }
-                    ),
-                )
-            set_cfg(
-                "pricing_mode",
-                "deferred" if deferred else ("shared" if shared else "per_device"),
-            )
+                price_updates.append((device.slot, effective, PriceList(**{
+                    key: 0.0 if deferred else spin.value() for key, spin in row.items()
+                })))
+            settings = {
+                "pricing_mode": "deferred" if deferred else ("shared" if shared else "per_device"),
+                "work_start": get_cfg("work_start", "08:00") or "08:00",
+                "work_end": get_cfg("work_end", "17:00") or "17:00",
+                "snmp_interval_minutes": "5",
+                "db_path": str(get_db_path()),
+                "company_name": company_name,
+                "client_first_started_at": get_cfg("client_first_started_at", "") or date.today().isoformat(),
+                "installation_id": get_cfg("installation_id", "") or str(uuid4()),
+                "v52_registration_mode": registration_mode,
+            }
             if not self.edit_mode:
-                set_cfg("billing_day", str(self._billing_day()))
-                set_cfg("waste_paper_pct", str(round(self.waste_paper_pct.value(), 1)))
-            set_cfg("work_start", get_cfg("work_start", "08:00") or "08:00")
-            set_cfg("work_end", get_cfg("work_end", "17:00") or "17:00")
-            set_cfg("snmp_interval_minutes", "5")
-            set_cfg("db_path", str(get_db_path()))
-            set_cfg("company_name", company_name)
-            if not get_cfg("client_first_started_at", ""):
-                set_cfg("client_first_started_at", date.today().isoformat())
-            installation_id = get_cfg("installation_id", "") or str(uuid4())
-            set_cfg("installation_id", installation_id)
-            set_cfg("v52_registration_mode", registration_mode)
+                settings.update(billing_day=str(self._billing_day()),
+                                waste_paper_pct=str(round(self.waste_paper_pct.value(), 1)))
+            installation_id = settings["installation_id"]
             if self.secondary_candidate is not None and self.secondary_snapshot is not None:
                 organization = self.secondary_snapshot.get("organization", {})
-                settings = self.secondary_snapshot.get("settings", {})
-                primary_installation_id = (
-                    str(organization.get("primary_installation_id") or "")
-                    if isinstance(organization, dict)
-                    else ""
+                received = self.secondary_snapshot.get("settings", {})
+                received_schedule = str(received.get("sync_schedule_windows") or "").strip()
+                if received_schedule and not get_cfg("sync_schedule_windows", ""):
+                    settings["sync_schedule_windows"] = received_schedule
+                settings.update(
+                    desktop_role="secondary",
+                    primary_peer_url=self.secondary_candidate.base_url,
+                    primary_peer_certificate_sha256=self.secondary_candidate.certificate_sha256,
+                    primary_installation_id=str(organization.get("primary_installation_id") or ""),
                 )
-                if isinstance(settings, dict):
-                    received_schedule = str(
-                        settings.get("sync_schedule_windows") or ""
-                    ).strip()
-                    if received_schedule and not get_cfg("sync_schedule_windows", ""):
-                        set_cfg("sync_schedule_windows", received_schedule)
-                set_cfg("desktop_role", "secondary")
-                set_cfg("primary_peer_url", self.secondary_candidate.base_url)
-                set_cfg(
-                    "primary_peer_certificate_sha256",
-                    self.secondary_candidate.certificate_sha256,
-                )
-                set_cfg("primary_installation_id", primary_installation_id)
             elif not get_cfg("desktop_role", ""):
-                set_cfg("desktop_role", "primary")
+                settings["desktop_role"] = "primary"
+            preview = service.preview(devices, settings, price_updates,
+                registration_devices=self._registration_devices() if self.edit_mode else None)
+            if preview.changes and not confirm_shared_settings(self, preview):
+                return
+            service.commit(preview)
         except Exception as exc:
             self._show_wizard_message("บันทึกไม่สำเร็จ", str(exc))
             return

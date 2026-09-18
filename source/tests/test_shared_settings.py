@@ -147,7 +147,7 @@ def test_two_databases_conflict_choice_is_atomic_preserves_identity_and_deduplic
     a_path, b_path = tmp_path / "a.sqlite3", tmp_path / "b.sqlite3"
     a = configured(a_path)
     # Same initial revision, as established by setup pairing.
-    root = SettingsHistory().observe(primary_setup_snapshot())
+    root = SettingsHistory().observe_current()
     initial = SettingsHistory().export()
     configured(b_path)
     SettingsHistory().receive(initial)
@@ -192,7 +192,7 @@ def test_preview_cannot_write_to_another_database_with_identical_values(tmp_path
 
 def test_peer_printer_change_cannot_bypass_replacement_workflow(tmp_path):
     configured()
-    SettingsHistory().observe(primary_setup_snapshot())
+    SettingsHistory().observe_current()
     other_path = tmp_path / "journal.sqlite3"
     from migrations import _migration_020_peer_settings_history
     with sqlite3.connect(other_path) as conn:
@@ -223,7 +223,7 @@ def test_usage_reset_preserves_settings_history_but_factory_reset_removes_it():
 def test_peer_apply_failure_cannot_commit_values_without_the_new_head():
     from services.peer_settings_history import _revision
     service = configured()
-    root = SettingsHistory().observe(primary_setup_snapshot())
+    root = SettingsHistory().observe_current()
     packet = SettingsHistory().export()
     incoming = deepcopy(packet["revisions"][root])
     incoming["parents"] = [root]

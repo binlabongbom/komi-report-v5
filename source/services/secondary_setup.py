@@ -18,7 +18,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import date, datetime
 from types import SimpleNamespace
-from urllib.parse import urlsplit
+from urllib.parse import urlencode, urlsplit
 
 from PyQt6.QtNetwork import QAbstractSocket, QNetworkInterface
 
@@ -437,6 +437,24 @@ class SecondaryPeerClient:
                     candidates.append(candidate)
         return sorted(candidates, key=lambda item: item.base_url)
 
+    def discover_lan(self) -> list[SecondaryPeerCandidate]:
+        """Use broadcast hints first, then the existing bounded IP fallback."""
+        from services.lan_discovery import discover
+        try:
+            targets = discover(_active_ipv4_subnets())
+        except OSError:
+            targets = []
+        candidates = []
+        if targets:
+            with ThreadPoolExecutor(max_workers=24) as executor:
+                futures = [executor.submit(SecondaryPeerClient(port=port, timeout=self.timeout).discover_one, host)
+                           for host, port in targets]
+                for future in as_completed(futures):
+                    candidate = future.result()
+                    if candidate is not None:
+                        candidates.append(candidate)
+        return sorted(candidates, key=lambda item: item.base_url) if candidates else self.discover(local_ipv4_hosts())
+
     def fetch_snapshot(self, candidate: SecondaryPeerCandidate) -> dict[str, object]:
         return validate_setup_snapshot(self._fetch_authorized(candidate, "/api/v1/peer/setup-snapshot"))
 
@@ -445,11 +463,17 @@ class SecondaryPeerClient:
         return self._fetch_authorized(candidate, "/api/v2/peer/settings-history")
 
     def _fetch_authorized(self, candidate: SecondaryPeerCandidate, path: str) -> dict[str, object]:
+        return self._fetch_with_token(candidate, path, self._claim_authorization(candidate))
+
+    @staticmethod
+    def _peer_endpoint(candidate):
         parsed = urlsplit(candidate.base_url)
         if parsed.scheme != "https" or not parsed.hostname:
             raise SecondarySetupError("ที่อยู่ Primary ต้องเป็น HTTPS")
-        host = normalize_primary_ipv4(parsed.hostname)
-        port = validate_web_port(parsed.port or DEFAULT_WEB_PORT)
+        return normalize_primary_ipv4(parsed.hostname), validate_web_port(parsed.port or DEFAULT_WEB_PORT)
+
+    def _claim_authorization(self, candidate):
+        host, port = self._peer_endpoint(candidate)
         token = new_claim_token()
         claim_body = json.dumps(
             {"token": token},
@@ -473,6 +497,10 @@ class SecondaryPeerClient:
             )
         if claim_status != 202 or not claim_payload.get("accepted"):
             raise SecondarySetupError("เครื่อง Primary ไม่อนุญาต Secondary Sync")
+        return token
+
+    def _fetch_with_token(self, candidate, path, token):
+        host, port = self._peer_endpoint(candidate)
         status, snapshot, _fingerprint, _cookies = self._request(
             host,
             "GET",
@@ -485,3 +513,37 @@ class SecondaryPeerClient:
         if status != 200:
             raise SecondarySetupError("ไม่สามารถดึงการตั้งค่าจากเครื่องหลักได้")
         return snapshot
+
+    def iter_settings_history_pages(self, candidate):
+        """One approval grants a bounded read of one pinned immutable ancestry.
+
+        The caller imports each validated page before advancing. Lost responses
+        may be retried with the same token; no new approval is consumed.
+        """
+        token = self._claim_authorization(candidate)
+        head, offset = None, 0
+        while True:
+            query = {"offset": offset}
+            if head is not None:
+                query["head"] = head
+            path = "/api/v2/peer/settings-history/page?" + urlencode(query)
+            for attempt in range(2):
+                try:
+                    page = self._fetch_with_token(candidate, path, token)
+                    break
+                except (OSError, ssl.SSLError):
+                    if attempt:
+                        raise
+            if (page.get("contract") != "komi-peer-settings-page/v1"
+                    or page.get("offset") != offset
+                    or not isinstance(page.get("head"), str)
+                    or (head is not None and page["head"] != head)):
+                raise SecondarySetupError("ประวัติที่รับไม่ตรงกับชุดที่กำลังรับ")
+            head = page["head"]
+            next_offset = page.get("next_offset")
+            if next_offset is not None and (type(next_offset) is not int or next_offset <= offset):
+                raise SecondarySetupError("ลำดับประวัติไม่ถูกต้อง")
+            yield page
+            if next_offset is None:
+                return
+            offset = next_offset

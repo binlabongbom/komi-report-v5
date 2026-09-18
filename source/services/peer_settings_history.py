@@ -12,9 +12,11 @@ import sqlite3
 import uuid
 
 from database import get_db_path
-from services.secondary_setup import SECONDARY_SETUP_CONTRACT, setup_snapshot_from_connection, validate_setup_snapshot
+from services.secondary_setup import SECONDARY_SETUP_CONTRACT, validate_setup_snapshot
+from services.shared_settings_document import from_connection, validate as validate_document
 
 CONTRACT = "komi-peer-settings-history/v1"
+PAGE_CONTRACT = "komi-peer-settings-page/v1"
 MAX_REVISIONS = 256
 MAX_PACKET_BYTES = 128 * 1024
 
@@ -32,6 +34,9 @@ def shared_settings(snapshot):
 
 
 def _validate_payload(payload):
+    if isinstance(payload, dict) and "format_version" in payload:
+        validate_document(payload)
+        return
     if not isinstance(payload, dict) or set(payload) != {"organization", "settings", "devices"}:
         raise ValueError("Invalid shared settings")
     organization = payload["organization"]
@@ -45,6 +50,19 @@ def _validate_payload(payload):
 
 def _revision(document):
     return hashlib.sha256(_json(document).encode("utf-8")).hexdigest()
+
+
+def _validate_revision(revision, document):
+    if (not isinstance(document, dict)
+            or set(document) != {"parents", "payload", "actor", "created_at", "reason"}
+            or not isinstance(document["parents"], list)
+            or len(document["parents"]) > 2
+            or any(not isinstance(parent, str) for parent in document["parents"])
+            or any(not isinstance(document[key], str) or not document[key]
+                   for key in ("actor", "created_at", "reason"))
+            or revision != _revision(document)):
+        raise ValueError("Invalid settings revision")
+    _validate_payload(document["payload"])
 
 
 class SettingsHistory:
@@ -116,7 +134,7 @@ class SettingsHistory:
         newer settings save has committed, turning a read into an apparent undo.
         """
         with self._transaction() as conn:
-            payload = shared_settings(setup_snapshot_from_connection(conn))
+            payload = from_connection(conn)
             _validate_payload(payload)
             head = self._state(conn, "head")
             if head and self._document(conn, head)["payload"] == payload:
@@ -146,40 +164,121 @@ class SettingsHistory:
                 or len(_json(packet).encode("utf-8")) > MAX_PACKET_BYTES):
             raise ValueError("Invalid settings history packet")
         for revision, document in packet["revisions"].items():
-            if (not isinstance(document, dict)
-                    or set(document) != {"parents", "payload", "actor", "created_at", "reason"}
-                    or not isinstance(document["parents"], list)
-                    or len(document["parents"]) > 2
-                    or any(not isinstance(parent, str) for parent in document["parents"])
-                    or any(not isinstance(document[key], str) or not document[key]
-                           for key in ("actor", "created_at", "reason"))
-                    or revision != _revision(document)):
-                raise ValueError("Invalid settings revision")
-            _validate_payload(document["payload"])
+            _validate_revision(revision, document)
         with self._transaction() as conn:
             for revision, document in packet["revisions"].items():
                 conn.execute("INSERT OR IGNORE INTO peer_settings_revisions VALUES(?,?)", (revision, _json(document)))
             remote = packet["head"]
-            remote_ancestors = self._ancestors(conn, remote)
             # Validate all supplied nodes, including ones unrelated to packet head.
             for revision in packet["revisions"]:
                 self._ancestors(conn, revision)
+            return self._record_incoming_review(conn, remote)
+
+    def _record_incoming_review(self, conn, remote):
+        result = self._classify(conn, remote)
+        obsolete = self._ancestors(conn, remote) | self._ancestors(conn, result["local_head"])
+        for (key,) in conn.execute("SELECT key FROM peer_settings_state WHERE key LIKE 'review:%'").fetchall():
+            if key[7:] in obsolete:
+                conn.execute("DELETE FROM peer_settings_state WHERE key=?", (key,))
+        if result["status"] not in {"in_sync", "local_newer"}:
+            conn.execute("INSERT OR REPLACE INTO peer_settings_state(key,value) VALUES(?,?)",
+                         ("review:" + remote, remote))
+        return result
+
+    def _classify(self, conn, remote):
+        remote_ancestors = self._ancestors(conn, remote)
+        local = self._state(conn, "head")
+        if not local:
+            status = "initial_review"
+        elif local == remote:
+            status = "in_sync"
+        elif local in remote_ancestors:
+            status = "incoming_newer"
+        elif remote in self._ancestors(conn, local):
+            status = "local_newer"
+        elif self._document(conn, local)["payload"] == self._document(conn, remote)["payload"]:
+            status = "same_values"
+        elif self._ancestors(conn, local) & remote_ancestors:
+            status = "conflict"
+        else:
+            status = "unrelated_history"
+        return {"status": status, "local_head": local, "remote_head": remote}
+
+    def export_page(self, *, head=None, offset=0, limit=64):
+        """Export ancestors first, pinned to an immutable head across local edits.
+
+        Packets remain bounded by bytes as well as count. A single oversized
+        revision fails explicitly; it is never silently truncated.
+        """
+        if type(offset) is not int or offset < 0 or type(limit) is not int or not 1 <= limit <= MAX_REVISIONS:
+            raise ValueError("Invalid history page cursor")
+        with self._transaction() as conn:
             local = self._state(conn, "head")
-            if not local:
-                status = "initial_review"
-            elif local == remote:
-                status = "in_sync"
-            elif local in remote_ancestors:
-                status = "incoming_newer"
-            elif remote in self._ancestors(conn, local):
-                status = "local_newer"
-            elif self._document(conn, local)["payload"] == self._document(conn, remote)["payload"]:
-                status = "same_values"
-            elif self._ancestors(conn, local) & remote_ancestors:
-                status = "conflict"
-            else:
-                status = "unrelated_history"
-            return {"status": status, "local_head": local, "remote_head": remote}
+            head = head or local
+            if not head or head not in self._ancestors(conn, local):
+                raise ValueError("Unknown local history head")
+            ordered, seen, documents = [], set(), {}
+            pending = [(head, False)]
+            while pending:
+                revision, expanded = pending.pop()
+                if revision in seen:
+                    continue
+                document = documents.get(revision) or self._document(conn, revision)
+                documents[revision] = document
+                if expanded:
+                    seen.add(revision)
+                    ordered.append(revision)
+                else:
+                    pending.append((revision, True))
+                    pending.extend((parent, False) for parent in reversed(document["parents"]))
+            if offset >= len(ordered):
+                raise ValueError("History page cursor outside this head")
+            packet = {"contract": PAGE_CONTRACT, "head": head, "offset": offset,
+                      "next_offset": None, "revisions": {}}
+            for index in range(offset, min(len(ordered), offset + limit)):
+                revision = ordered[index]
+                packet["revisions"][revision] = documents[revision]
+                packet["next_offset"] = index + 1 if index + 1 < len(ordered) else None
+                if len(_json(packet).encode("utf-8")) > MAX_PACKET_BYTES:
+                    del packet["revisions"][revision]
+                    packet["next_offset"] = index
+                    break
+            if not packet["revisions"]:
+                raise ValueError("One settings revision exceeds the transfer limit")
+            return packet
+
+    def receive_page(self, packet):
+        """Persist a verified page; retries are idempotent and never apply values.
+
+        Missing previous pages roll back this page. The last page classifies the
+        complete ancestry so callers cannot treat a partial transfer as a choice.
+        Transport must authenticate the peer before calling this method.
+        """
+        if (not isinstance(packet, dict)
+                or set(packet) != {"contract", "head", "offset", "next_offset", "revisions"}
+                or packet["contract"] != PAGE_CONTRACT or not isinstance(packet["head"], str)
+                or type(packet["offset"]) is not int or packet["offset"] < 0
+                or not isinstance(packet["revisions"], dict)
+                or not 1 <= len(packet["revisions"]) <= MAX_REVISIONS
+                or (packet["next_offset"] is not None and
+                    (type(packet["next_offset"]) is not int or
+                     packet["next_offset"] != packet["offset"] + len(packet["revisions"])))
+                or len(_json(packet).encode("utf-8")) > MAX_PACKET_BYTES):
+            raise ValueError("Invalid settings history page")
+        for revision, document in packet["revisions"].items():
+            _validate_revision(revision, document)
+        with self._transaction() as conn:
+            for revision, document in packet["revisions"].items():
+                conn.execute("INSERT OR IGNORE INTO peer_settings_revisions VALUES(?,?)", (revision, _json(document)))
+            for revision in packet["revisions"]:
+                self._ancestors(conn, revision)
+            local, remote = self._state(conn, "head"), packet["head"]
+            if packet["next_offset"] is not None:
+                return {"status": "incomplete", "local_head": local, "remote_head": remote,
+                        "next_offset": packet["next_offset"]}
+            if remote not in packet["revisions"]:
+                raise ValueError("Final history page must include its head")
+            return {**self._record_incoming_review(conn, remote), "next_offset": None}
 
     def resolve(self, remote_head, *, expected_local_head, chosen_head, reason):
         """Journal an explicit choice. Does not apply the selected app settings."""

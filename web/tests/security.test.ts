@@ -115,6 +115,15 @@ test("peer setup routes remain capability-gated outside Web login", () => {
   assert.equal(proxySource.includes("X-KOMI-Peer-Sync-Token"), false);
 });
 
+test("paged peer history reaches capability validation without opening other peer paths", async () => {
+  const { NextRequest } = await import("next/server");
+  const { default: proxy } = await import("../proxy");
+  const allowed = await proxy(new NextRequest("https://komi.local/api/v2/peer/settings-history/page?offset=0"));
+  assert.equal(allowed.headers.get("x-middleware-next"), "1");
+  const denied = await proxy(new NextRequest("https://komi.local/api/v2/peer/settings-history/unknown"));
+  assert.equal(denied.status, 401);
+});
+
 test("passwordless proxy redirects stale login to reports while retaining explicit admin login", async () => {
   const { NextRequest } = await import("next/server");
   const { default: proxy } = await import("../proxy");

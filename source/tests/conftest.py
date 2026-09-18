@@ -61,6 +61,8 @@ def isolated_database(tmp_path, monkeypatch):
     a fresh schema makes the suite deterministic and keeps clean-install runs
     inside pytest's temporary directory.
     """
+    # Tests use synthetic databases and must never advertise them on real LAN.
+    monkeypatch.setenv("KOMI_DISCOVERY_DISABLED", "1")
     vault = SessionCredentialStore()
     monkeypatch.setattr(device_config, "platform_credential_store", lambda: vault)
     original_path = database.get_db_path()

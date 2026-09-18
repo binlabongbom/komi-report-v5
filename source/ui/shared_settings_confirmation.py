@@ -10,6 +10,22 @@ from services.sync_schedule import load_schedule_windows
 
 
 def _display(key, value):
+    if value is None:
+        return tr("ยังไม่ได้ตั้งค่า", "Not configured")
+    if key == "organization":
+        return value["company_name"] + "\n" + value["first_started_at"]
+    if key == "devices":
+        return "\n".join(f"Slot {item['slot'] + 1}: {item['name']}\n"
+                         f"{item['host']} · {item['model']} · {item['serial']}\n"
+                         f"TLS: {item['tls_mode']} {item['tls_fingerprint']}" for item in value)
+    if key == "price_history":
+        return "\n".join(f"Slot {item['slot'] + 1} · {item['effective_date']}\n"
+                         f"A3 Color {item['a3_color']:g} · B/W {item['a3_bw']:g}\n"
+                         f"A4 Color {item['a4_color']:g} · B/W {item['a4_bw']:g}" for item in value) or "—"
+    if key == "pricing_mode":
+        return {"shared": tr("ราคาเดียวกัน", "Shared prices"),
+                "per_device": tr("แยกตามเครื่อง", "Per printer"),
+                "deferred": tr("ตั้งราคาภายหลัง", "Set prices later")}.get(value, str(value))
     if key == "sync_schedule_windows":
         if not value:
             return tr("ใช้ตารางเดิมของระบบ", "Use the legacy system schedule")
@@ -32,11 +48,25 @@ def _display(key, value):
     return f"{value:g}%" if key == "waste_paper_pct" else str(value)
 
 
+def setting_labels():
+    return {
+        "billing_day": tr("วันตัดรอบบิล", "Billing day"),
+        "waste_paper_pct": tr("ส่วนลดกระดาษเสีย", "Waste discount"),
+        "sync_schedule_windows": tr("ตารางอ่านข้อมูล", "Reading schedule"),
+        "organization": tr("บริษัท", "Company"),
+        "devices": tr("เครื่องพิมพ์และ Slot", "Printers and slots"),
+        "price_history": tr("ราคาตามวันบังคับใช้", "Prices by effective date"),
+        "pricing_mode": tr("รูปแบบราคา", "Pricing mode"),
+        "work_start": tr("เริ่มเวลาทำงาน", "Work starts"),
+        "work_end": tr("สิ้นสุดเวลาทำงาน", "Work ends"),
+    }
+
+
 class SharedSettingsConfirmation(QDialog):
     def __init__(self, preview, parent=None):
         super().__init__(parent)
         self.setWindowTitle(tr("ยืนยันการตั้งค่าร่วม", "Confirm shared settings"))
-        if "sync_schedule_windows" in preview.changes:
+        if set(preview.changes) & {"sync_schedule_windows", "devices", "price_history"}:
             self.resize(980, 620)
         else:
             self.resize(740, 300)
@@ -49,16 +79,16 @@ class SharedSettingsConfirmation(QDialog):
         ))
         notice.setWordWrap(True)
         layout.addWidget(notice)
-        labels = {
-            "billing_day": tr("วันตัดรอบบิล", "Billing day"),
-            "waste_paper_pct": tr("ส่วนลดกระดาษเสีย", "Waste discount"),
-            "sync_schedule_windows": tr("ตารางอ่านข้อมูล", "Reading schedule"),
-        }
+        if getattr(preview, "remote_head", None) and not preview.changes:
+            layout.addWidget(QLabel(tr("คงค่าปัจจุบันและบันทึกการเลือกนี้ในประวัติร่วม",
+                                      "Keep current values and record this choice in shared history")))
+        labels = setting_labels()
         self.table = QTableWidget(len(preview.changes), 3)
         self.table.setHorizontalHeaderLabels([
             tr("รายการ", "Setting"), tr("ค่าเดิม", "Previous"), tr("ค่าใหม่", "New"),
         ])
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.table.setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
         self.table.verticalHeader().hide()
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)

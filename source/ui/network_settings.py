@@ -147,6 +147,10 @@ def build_network_settings(self, program_body):
     self.peer_sync_authorize_button.clicked.connect(self._authorize_peer_sync)
     peer_sync_layout.addWidget(self.peer_sync_authorize_button)
     program_body.addWidget(peer_sync)
+    from ui.shared_settings_history import show_shared_settings_history
+    self.shared_history_button = btn(tr("ประวัติการตั้งค่าร่วม", "Shared settings history"), "outline")
+    self.shared_history_button.clicked.connect(lambda: show_shared_settings_history(self))
+    program_body.addWidget(self.shared_history_button, 0, Qt.AlignmentFlag.AlignLeft)
     (
         self.web_save_status,
         web_save_actions,

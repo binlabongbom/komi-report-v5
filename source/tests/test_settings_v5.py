@@ -428,14 +428,6 @@ def test_web_recovery_can_start_enabled_but_stopped_service_without_toggling(
         database.set_db_path(original)
 
 
-def test_edit_mode_wizard_keeps_billing_owned_by_settings():
-    source = inspect.getsource(v5_pages.SetupWizardV5._save)
-
-    assert 'if not self.edit_mode:' in source
-    assert 'set_cfg("billing_day"' in source
-    assert 'set_cfg("waste_paper_pct"' in source
-
-
 def test_web_access_dialog_validates_match_and_minimum_length():
     app = QApplication.instance() or QApplication([])
     dialog = WebAccessCodeDialog()

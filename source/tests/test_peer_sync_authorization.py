@@ -55,6 +55,23 @@ def test_capability_is_hashed_ip_bound_single_use_and_installation_bound(isolate
         )
 
 
+def test_history_transfer_is_hashed_scoped_expiring_and_revocable(isolated_state):
+    token = authorization.new_claim_token()
+    authorization.open_pairing_window("a", now=100)
+    authorization.claim_pairing_window(token, "192.0.2.20", now=101)
+    authorization.consume_pairing_token(token, "192.0.2.20", "a", now=102, history_transfer=True)
+    assert authorization.history_transfer_head(token, "192.0.2.20", "a", bind_head="a" * 64, now=103) == "a" * 64
+    assert token not in isolated_state.read_text(encoding="utf-8")
+    assert authorization.history_transfer_head(token, "192.0.2.20", "a", now=104) == "a" * 64
+    for host, identity, head, at in [("192.0.2.21", "a", None, 104), ("192.0.2.20", "b", None, 104),
+                                    ("192.0.2.20", "a", "b" * 64, 104), ("192.0.2.20", "a", None, 403)]:
+        with pytest.raises(authorization.PeerSyncAuthorizationError):
+            authorization.history_transfer_head(token, host, identity, bind_head=head, now=at)
+    authorization.close_pairing_window()
+    with pytest.raises(authorization.PeerSyncAuthorizationError):
+        authorization.history_transfer_head(token, "192.0.2.20", "a", now=104)
+
+
 def test_first_claimant_excludes_other_secondary(isolated_state):
     first = authorization.new_claim_token()
     second = authorization.new_claim_token()

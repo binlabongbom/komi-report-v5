@@ -8,6 +8,7 @@ billing formula.
 from __future__ import annotations
 
 import logging
+import os
 import re
 from collections import defaultdict
 from contextlib import asynccontextmanager
@@ -149,9 +150,37 @@ class PeerSharedSettingsOut(ApiModel):
     devices: list[PeerDeviceOut]
 
 
+class PeerSharedDeviceOut(ApiModel):
+    slot: int
+    name: str
+    host: str
+    model: str
+    serial: str
+    tls_mode: str
+    tls_fingerprint: str
+
+
+class PeerDatedPriceOut(PeerPriceOut):
+    # Preserve JSON number representation: it participates in the revision hash.
+    a3_color: float | int
+    a3_bw: float | int
+    a4_color: float | int
+    a4_bw: float | int
+    slot: int
+    effective_date: str
+
+
+class PeerSharedSettingsV2Out(ApiModel):
+    format_version: Literal[2]
+    organization: PeerSharedOrganizationOut
+    settings: PeerSettingsOut
+    devices: list[PeerSharedDeviceOut]
+    price_history: list[PeerDatedPriceOut]
+
+
 class PeerSettingsRevisionOut(ApiModel):
     parents: list[str]
-    payload: PeerSharedSettingsOut
+    payload: PeerSharedSettingsV2Out | PeerSharedSettingsOut
     actor: str
     created_at: str
     reason: str
@@ -160,6 +189,14 @@ class PeerSettingsRevisionOut(ApiModel):
 class PeerSettingsHistoryResponse(ApiModel):
     contract: Literal["komi-peer-settings-history/v1"]
     head: str
+    revisions: dict[str, PeerSettingsRevisionOut]
+
+
+class PeerSettingsPageResponse(ApiModel):
+    contract: Literal["komi-peer-settings-page/v1"]
+    head: str
+    offset: int
+    next_offset: int | None
     revisions: dict[str, PeerSettingsRevisionOut]
 
 
@@ -399,7 +436,22 @@ class SettingsResponse(ApiModel):
 async def lifespan(_app: FastAPI):
     configure_logging()
     init_db()
-    yield
+    responder = None
+    if os.environ.get("KOMI_DISCOVERY_DISABLED") != "1" and os.environ.get("KOMI_WEB_PORT"):
+        from database import _open
+        from services.lan_discovery import DiscoveryResponder
+        from services.secondary_setup import _active_ipv4_subnets
+        with _open(commit=False) as conn:
+            ready = bool(get_cfg("company_name", "") and conn.execute(
+                "SELECT 1 FROM devices WHERE enabled=1 LIMIT 1").fetchone())
+        responder = DiscoveryResponder(lambda: [network for _, network in _active_ipv4_subnets()],
+            https_port=lambda: os.environ["KOMI_WEB_PORT"], ready=lambda: ready)
+        responder.start()
+    try:
+        yield
+    finally:
+        if responder is not None:
+            responder.stop()
 
 
 app = FastAPI(
@@ -627,7 +679,7 @@ def peer_setup_snapshot(request: Request) -> dict:
     return primary_setup_snapshot()
 
 
-def _authorize_peer_snapshot(request: Request) -> None:
+def _authorize_peer_snapshot(request: Request, *, history_transfer=False) -> None:
 
     token = request.headers.get(PEER_SYNC_TOKEN_HEADER, "")
     try:
@@ -635,6 +687,7 @@ def _authorize_peer_snapshot(request: Request) -> None:
             token,
             _peer_requester_ip(request),
             get_cfg("installation_id", ""),
+            history_transfer=history_transfer,
         )
     except PeerSyncAuthorizationError as exc:
         raise HTTPException(status_code=401, detail=str(exc)) from exc
@@ -650,6 +703,32 @@ def peer_settings_history(request: Request) -> dict:
     try:
         history.observe_current()
         return history.export()
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@app.get("/api/v2/peer/settings-history/page", response_model=PeerSettingsPageResponse)
+def peer_settings_history_page(request: Request, head: str | None = None, offset: int = 0, limit: int = 64) -> dict:
+    from services.peer_settings_history import SettingsHistory
+    from services.peer_sync_authorization import history_transfer_head
+    token = request.headers.get(PEER_SYNC_TOKEN_HEADER, "")
+    requester, installation = _peer_requester_ip(request), get_cfg("installation_id", "")
+    try:
+        bound_head = history_transfer_head(token, requester, installation)
+    except PeerSyncAuthorizationError as exc:
+        if head is not None or offset != 0:
+            raise HTTPException(status_code=401, detail=str(exc)) from exc
+        _authorize_peer_snapshot(request, history_transfer=True)
+        bound_head = ""
+    if head is not None and head != bound_head:
+        raise HTTPException(status_code=401, detail="History transfer does not authorize this revision")
+    history = SettingsHistory()
+    try:
+        selected = bound_head or history.observe_current()
+        history_transfer_head(token, requester, installation, bind_head=selected)
+        return history.export_page(head=selected, offset=offset, limit=limit)
+    except PeerSyncAuthorizationError as exc:
+        raise HTTPException(status_code=401, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 

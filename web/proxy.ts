@@ -22,7 +22,8 @@ export default async function proxy(request: NextRequest) {
     path === "/api/v1/peer/discovery" ||
     path === "/api/v1/peer/claim" ||
     path === "/api/v1/peer/setup-snapshot" ||
-    path === "/api/v2/peer/settings-history"
+    path === "/api/v2/peer/settings-history" ||
+    path === "/api/v2/peer/settings-history/page"
   ) {
     return NextResponse.next();
   }

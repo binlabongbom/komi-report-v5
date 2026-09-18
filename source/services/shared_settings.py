@@ -11,8 +11,8 @@ import math
 from pathlib import Path
 
 from database import _open, config_write_transaction, get_db_path
-from services.peer_settings_history import SettingsHistory, _json, shared_settings
-from services.secondary_setup import setup_snapshot_from_connection
+from services.peer_settings_history import SettingsHistory, _json
+from services.shared_settings_document import from_connection
 from services.sync_schedule import dump_schedule_windows, load_schedule_windows
 
 EDITABLE_KEYS = frozenset({"billing_day", "waste_paper_pct", "sync_schedule_windows"})
@@ -60,13 +60,39 @@ def _normalized_changes(changes):
 
 
 class SharedSettingsService:
+    def history_page(self, *, before_rowid=None, limit=50):
+        """Read a bounded page without recording an observation or changing head."""
+        if type(limit) is not int or not 1 <= limit <= 100:
+            raise ValueError("Invalid history page size")
+        with _open(commit=False) as conn:
+            conn.execute("BEGIN")
+            head = SettingsHistory._state(conn, "head")
+            local_ancestors = SettingsHistory._ancestors(conn, head)
+            pending = {row[0] for row in conn.execute("SELECT value FROM peer_settings_state WHERE key LIKE 'review:%'")}
+            rows = conn.execute(
+                "SELECT rowid,revision,document_json FROM peer_settings_revisions "
+                "WHERE rowid<? ORDER BY rowid DESC LIMIT ?",
+                (before_rowid if before_rowid is not None else 9223372036854775807, limit),
+            ).fetchall()
+            entries = []
+            for rowid, revision, raw in rows:
+                document = json.loads(raw)
+                previous = (SettingsHistory._document(conn, document["parents"][0])["payload"]
+                            if len(document["parents"]) == 1 else None)
+                fields = [key for key in sorted(EDITABLE_KEYS) if previous is not None
+                          and previous["settings"][key] != document["payload"]["settings"][key]]
+                entries.append({"rowid": rowid, "revision": revision, "document": document,
+                                "previous": previous, "incoming": revision in pending and revision not in local_ancestors,
+                                "undo_fields": fields if revision in local_ancestors else [], "current": revision == head})
+        return entries
+
     @staticmethod
     def _database_path():
         return str(Path(get_db_path()).resolve())
 
     @staticmethod
     def _payload(conn):
-        return shared_settings(setup_snapshot_from_connection(conn))
+        return from_connection(conn)
 
     def preview(self, changes, *, reason):
         values = _normalized_changes(changes)

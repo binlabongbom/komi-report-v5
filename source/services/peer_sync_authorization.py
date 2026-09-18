@@ -250,6 +250,7 @@ def consume_pairing_token(
     installation_id: str,
     *,
     now: float | None = None,
+    history_transfer: bool = False,
 ) -> None:
     """Atomically consume a claimed capability before returning the snapshot."""
 
@@ -272,6 +273,8 @@ def consume_pairing_token(
                 raise PeerSyncAuthorizationError("สิทธิ์ Secondary Sync หมดอายุหรือไม่ถูกต้อง")
             del claims[digest]
             payload["claims"] = claims
+            if history_transfer:
+                _grant_history_transfer(payload, value, remote, current)
             _write_state(path, payload)
             return
         valid = (
@@ -291,7 +294,46 @@ def consume_pairing_token(
         payload["used"] = True
         payload["token_sha256"] = ""
         payload["token_expires_at"] = 0.0
+        if history_transfer:
+            _grant_history_transfer(payload, value, remote, current)
         _write_state(path, payload)
+
+
+def _grant_history_transfer(payload, token, remote, now):
+    grants = {key: value for key, value in payload.get("history_transfers", {}).items()
+              if float(value.get("expires_at", 0)) > now}
+    if len(grants) >= 128:
+        raise PeerSyncAuthorizationError("มีการรับประวัติพร้อมกันจำนวนมาก กรุณาลองใหม่")
+    grants[_token_digest(token)] = {"requester_ip": remote, "expires_at": now + PAIRING_WINDOW_SECONDS, "head": ""}
+    payload["history_transfers"] = grants
+
+
+def history_transfer_head(token, requester_ip, installation_id, *, bind_head=None, now=None):
+    """Read/bind a short-lived capability for one immutable history only.
+
+    Repeating pages is allowed; reusing the token for setup or another revision
+    is not. Closing pairing or changing installation invalidates these grants.
+    """
+    value = _validate_token(token)
+    current = float(time.time() if now is None else now)
+    path = state_path()
+    with _state_lock(path):
+        payload = _read_state(path)
+        grant = payload.get("history_transfers", {}).get(_token_digest(value), {})
+        if (payload.get("disabled") or payload.get("installation_id") != installation_id
+                or not installation_id or grant.get("requester_ip") != requester_ip
+                or float(grant.get("expires_at", 0)) <= current):
+            raise PeerSyncAuthorizationError("สิทธิ์รับประวัติหมดอายุหรือไม่ถูกต้อง")
+        head = grant.get("head", "")
+        if bind_head is not None:
+            if (not isinstance(bind_head, str) or len(bind_head) != 64
+                    or any(c not in "0123456789abcdef" for c in bind_head)
+                    or head not in ("", bind_head)):
+                raise PeerSyncAuthorizationError("สิทธิ์นี้ใช้ได้เฉพาะประวัติชุดที่เริ่มรับไว้")
+            grant["head"] = bind_head
+            _write_state(path, payload)
+            head = bind_head
+        return head
 
 def ensure_pairing_default(installation_id: str, *, primary: bool = True, now: float | None = None) -> bool:
     """Migrate a Primary to persistent approval once; preserve explicit choices.

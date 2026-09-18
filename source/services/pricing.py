@@ -78,17 +78,24 @@ def default_cost_category(raw_key: str, label: str = "", category: str = "") -> 
 
 class PricingRepository:
     def set_prices(self, slot: int, effective_date: date, prices: PriceList) -> None:
-        now = datetime.now().astimezone().isoformat(timespec="seconds")
         with _open() as conn:
-            conn.execute(
-                """INSERT INTO price_history(
-                       device_slot,effective_date,a3_color,a3_bw,a4_color,a4_bw,created_at
-                   ) VALUES(?,?,?,?,?,?,?)
-                   ON CONFLICT(device_slot,effective_date) DO UPDATE SET
-                     a3_color=excluded.a3_color,a3_bw=excluded.a3_bw,
-                     a4_color=excluded.a4_color,a4_bw=excluded.a4_bw,created_at=excluded.created_at""",
-                (slot, effective_date.isoformat(), prices.a3_color, prices.a3_bw, prices.a4_color, prices.a4_bw, now),
-            )
+            self.write_prices(conn, slot, effective_date, prices)
+
+    @staticmethod
+    def write_prices(conn, slot: int, effective_date: date, prices: PriceList) -> None:
+        from services.shared_settings_document import PRICE_KEYS, validate_price_history
+        validate_price_history([{"slot": slot, "effective_date": effective_date.isoformat(),
+                                 **{key: getattr(prices, key) for key in PRICE_KEYS}}])
+        now = datetime.now().astimezone().isoformat(timespec="seconds")
+        conn.execute(
+            """INSERT INTO price_history(
+                   device_slot,effective_date,a3_color,a3_bw,a4_color,a4_bw,created_at
+               ) VALUES(?,?,?,?,?,?,?)
+               ON CONFLICT(device_slot,effective_date) DO UPDATE SET
+                 a3_color=excluded.a3_color,a3_bw=excluded.a3_bw,
+                 a4_color=excluded.a4_color,a4_bw=excluded.a4_bw,created_at=excluded.created_at""",
+            (slot, effective_date.isoformat(), prices.a3_color, prices.a3_bw, prices.a4_color, prices.a4_bw, now),
+        )
 
     def get_prices(self, slot: int, on_date: date) -> PriceList:
         with _open(commit=False) as conn:
