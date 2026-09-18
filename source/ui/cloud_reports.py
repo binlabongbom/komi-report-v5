@@ -34,7 +34,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from i18n import ENGLISH, apply_language, get_language, translate_text
+from i18n import ENGLISH, apply_language, get_language, translate_text, tr
 from ui.numeric_inputs import NumericDateEdit as QDateEdit
 from ui.page_tabs import PageTabs as QTabWidget
 from ui.page_tabs import PageHeading
@@ -1680,7 +1680,10 @@ class CloudReportsWidget(QWidget):
         values = tuple(records)
         if not values:
             return "—"
-        return _number(sum(float(getattr(item, "delta_value", 0.0)) for item in values))
+        total = _number(sum(float(getattr(item, "delta_value", 0.0)) for item in values))
+        if any(getattr(item, "needs_review", False) for item in values):
+            return f"{total} · {tr('รอตรวจสอบยอดมิเตอร์', 'Meter usage needs review')}"
+        return total
 
     @staticmethod
     def _raw_device_label(slot: int, records: Iterable, devices_by_slot: dict[int, object]) -> str:

@@ -262,6 +262,24 @@ P9/H1 ที่ตรวจ source/fixture ได้อาจทำสลับ�
 
 ## Existing evidence (not release approval)
 
+### 2026-09-18 — reviewed subject and exact-counter baselines
+
+- Fixed User/Account and Raw Counter accumulation after a falling counter:
+  preserve pre-drop usage, retain subsequent observations, and hold further
+  usage until explicit serial-bound baseline review. Holds survive restart and
+  day rollover; a larger subsequent value alone cannot clear them.
+- Added subject/raw entries to the review panel with reason, verification,
+  stale-preview rejection and atomic audit. Resume only increases after the
+  reviewed observation. Affected reports remain marked for review; confirmation
+  does not amend past reports or invent missing usage.
+- Schema 22 stores raw holds and audit. Legacy reset rows retain original
+  totals and are flagged rather than rewritten. Raw screen/Excel label holds.
+- Source regression: **91 passed** in 48.95 seconds, clean exit: migration,
+  daily/subject/raw history, slot replacement, review UI and Excel. Initial UI
+  label failure (missing translation import) was fixed before the passing run.
+- These are local workflows. Shared baseline decisions, cross-peer replacement
+  and historical amended-report workflows remain open. No installer/build.
+
 ### 2026-09-18 — durable settings events and Host source lookup
 
 - Added additive schema 21 for settings events and per-member receipts/retries.

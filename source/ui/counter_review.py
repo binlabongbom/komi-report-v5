@@ -1,5 +1,6 @@
 """Counter review UI, separate from the settings/report monolith."""
 from datetime import datetime
+import sqlite3
 import socket
 
 from PyQt6.QtCore import Qt
@@ -78,7 +79,7 @@ class CounterReviewDialog(QDialog):
             self.cache.confirm_counter_baseline(self.slot, self.day, self.key,
                 expected_revision=self.preview["revision"], actor=socket.gethostname(),
                 reason=self.reason.text(), at=self.clock())
-        except (ValueError, OSError):
+        except (ValueError, OSError, sqlite3.Error):
             self.error.setText(tr(
                 "ยืนยันไม่สำเร็จ ข้อมูลอาจเปลี่ยนหรือบันทึกไม่ได้ กรุณาปิดหน้าต่างนี้แล้วเปิดตรวจสอบใหม่",
                 "Confirmation failed. Data may have changed or could not be saved. Close this dialog and review again.",
@@ -89,9 +90,17 @@ class CounterReviewDialog(QDialog):
 
 
 class CounterReviewPanel(QWidget):
-    def __init__(self, repository, cache, parent=None, *, clock=None):
+    def __init__(self, repository, cache, parent=None, *, clock=None, subject_cache=None, raw_cache=None):
         super().__init__(parent)
         self.repository, self.cache = repository, cache
+        if subject_cache is None:
+            from services.subject_history import SubjectDailyCacheStore
+            subject_cache = SubjectDailyCacheStore()
+        self.subject_cache = subject_cache
+        if raw_cache is None:
+            from services.raw_counter_review import RawCounterReviewStore
+            raw_cache = RawCounterReviewStore()
+        self.raw_cache = raw_cache
         self.clock = clock or (lambda: datetime.now().astimezone())
         self._dialog = None
         layout = QVBoxLayout(self)
@@ -120,6 +129,15 @@ class CounterReviewPanel(QWidget):
             for key in state.get("counter_review", {}):
                 label = labels.get(key, {}).get("label", key)
                 self.items.addItem(f"{device.name} · {label}", (device.slot, day, key))
+            subject_state = self.subject_cache.load(device.slot, day) or {}
+            for key, item in subject_state.get("subjects", {}).items():
+                if item.get("counter_review"):
+                    label = f"{item['subject_type']} · {item['subject_name']} ({item['subject_id']})"
+                    self.items.addItem(f"{device.name} · {label}", (device.slot, day, key, "subject"))
+            raw_state = self.raw_cache.load(device.slot, day)
+            for key in raw_state["counter_review"]:
+                label = raw_state["source"]["counter_sources"][key]["label"]
+                self.items.addItem(f"{device.name} · {label}", (device.slot, day, key, "raw"))
         index = self.items.findData(selected)
         if index >= 0:
             self.items.setCurrentIndex(index)
@@ -133,13 +151,16 @@ class CounterReviewPanel(QWidget):
         selected = self.items.currentData()
         if not selected:
             return
-        slot, day, key = selected
+        slot, day, key = selected[:3]
+        cache = self.cache
+        if len(selected) == 4:
+            cache = self.raw_cache if selected[3] == "raw" else self.subject_cache
         try:
-            preview = self.cache.preview_counter_baseline(slot, day, key)
-        except (ValueError, OSError):
+            preview = cache.preview_counter_baseline(slot, day, key)
+        except (ValueError, OSError, sqlite3.Error):
             self.message.setText(tr("ยังยืนยันไม่ได้ กรุณาอ่าน Serial และมิเตอร์ล่าสุดแล้วตรวจสอบใหม่", "Read the current serial and meter before reviewing again"))
             return
-        dialog = CounterReviewDialog(self.cache, slot, day, key, preview, self, clock=self.clock)
+        dialog = CounterReviewDialog(cache, slot, day, key, preview, self, clock=self.clock)
         self._dialog = dialog
         def finished(_result):
             self._dialog = None

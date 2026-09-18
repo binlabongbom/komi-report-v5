@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import uuid
 from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
@@ -9,6 +10,7 @@ from pathlib import Path
 from database import _open, get_billing_day, get_cfg, get_db_path
 from komi_snmp_profiler.models import MeterReading, WebCounterValue
 from services.billing_periods import billing_month_range
+from services.daily_cache import DailyCacheStore
 
 
 def _timestamp(value: str) -> float:
@@ -180,7 +182,7 @@ class SubjectDailyCacheStore:
         return json.loads(path.read_text(encoding="utf-8"))
 
     @staticmethod
-    def _previous_total(slot: int, subject_type: str, subject_id: str, day: date) -> tuple[float | None, dict]:
+    def _previous_total(slot: int, subject_type: str, subject_id: str, day: date) -> tuple[float | None, dict, dict | None]:
         with _open(commit=False) as conn:
             row = conn.execute(
                 """SELECT closing_total,source_json FROM daily_subject_records
@@ -189,16 +191,24 @@ class SubjectDailyCacheStore:
                 (slot, subject_type, subject_id, day.isoformat()),
             ).fetchone()
         if row is None:
-            return None, {}
+            return None, {}, None
         try:
             source = json.loads(row[1])
         except (TypeError, json.JSONDecodeError):
             source = {}
         identity = source.get("device_identity", {}) if isinstance(source, dict) else {}
-        return float(row[0]), identity if isinstance(identity, dict) else {}
+        review = source.get("counter_review") if isinstance(source, dict) else None
+        if isinstance(source, dict) and not review and source.get("resets") and not source.get("counter_resolutions"):
+            review = {**source["resets"][-1], "reason": "legacy_reset_requires_review"}
+        return float(row[0]), identity if isinstance(identity, dict) else {}, review
 
     def update_reading(self, slot: int, reading: MeterReading, *, at: datetime | None = None) -> dict:
         stamp = at or datetime.fromisoformat(reading.collected_at.replace("Z", "+00:00")).astimezone()
+        with DailyCacheStore._path_lock(self.path(slot, stamp.date())):
+            return self._update_reading(slot, reading, at=stamp)
+
+    def _update_reading(self, slot: int, reading: MeterReading, *, at: datetime) -> dict:
+        stamp = at
         day = stamp.date()
         loaded = self.load(slot, day)
         state = loaded or {
@@ -229,6 +239,10 @@ class SubjectDailyCacheStore:
             self._atomic_write(self.path(slot, day), state)
             return state
         subjects = state.setdefault("subjects", {})
+        for item in subjects.values():
+            if item.get("resets") and not item.get("counter_review") and not item.get("counter_resolutions"):
+                item["counter_review"] = {**item["resets"][-1], "reason": "legacy_reset_requires_review"}
+                item["warnings"] = sorted(set(item.get("warnings", ())) | {"counter_baseline_review"})
         counters = extract_subject_totals(reading)
         incoming_stamp = stamp.isoformat(timespec="seconds")
         previous_stamp = state.get("last_success")
@@ -266,7 +280,7 @@ class SubjectDailyCacheStore:
         for counter in counters:
             item = subjects.get(counter.identity_key)
             if item is None:
-                previous_total, previous_identity = self._previous_total(
+                previous_total, previous_identity, previous_review = self._previous_total(
                     slot, counter.subject_type, counter.subject_id, day
                 )
                 has_baseline = previous_total is not None and _identity_matches(previous_identity, current_identity)
@@ -293,13 +307,19 @@ class SubjectDailyCacheStore:
                     "warnings": warnings,
                 }
                 subjects[counter.identity_key] = item
+                if has_baseline and previous_review:
+                    item["counter_review"] = previous_review
+                    item["warnings"].append("counter_baseline_review")
 
             previous = float(item.get("latest_total", counter.total_counter))
             current = counter.total_counter
-            if current >= previous:
+            if item.get("counter_review"):
+                pass  # Keep observing while usage is held for a reviewed baseline.
+            elif current >= previous:
                 item["delta_total"] = float(item.get("delta_total", 0.0)) + current - previous
             else:
-                item["delta_total"] = float(item.get("delta_total", 0.0)) + current
+                item["counter_review"] = {"before": previous, "after": current, "at": incoming_stamp}
+                item["warnings"].append("counter_baseline_review")
                 item["reset_count"] = int(item.get("reset_count", 0)) + 1
                 item.setdefault("resets", []).append(
                     {
@@ -320,6 +340,10 @@ class SubjectDailyCacheStore:
         return state
 
     def finalize(self, slot: int, day: date, *, incomplete: bool = False) -> tuple[SubjectDailyRecord, ...]:
+        with DailyCacheStore._path_lock(self.path(slot, day)):
+            return self._finalize(slot, day, incomplete=incomplete)
+
+    def _finalize(self, slot: int, day: date, *, incomplete: bool) -> tuple[SubjectDailyRecord, ...]:
         state = self.load(slot, day)
         if not state:
             return ()
@@ -394,6 +418,8 @@ class SubjectDailyCacheStore:
                                 "source": item.get("source"),
                                 "device_identity": state.get("device_identity", {}),
                                 "resets": item.get("resets", []),
+                                "counter_review": item.get("counter_review"),
+                                "counter_resolutions": item.get("counter_resolutions", []),
                                 "ordering_issues": state.get("ordering_issues", []),
                             },
                             ensure_ascii=False,
@@ -414,6 +440,54 @@ class SubjectDailyCacheStore:
                     )
         self.path(slot, day).unlink(missing_ok=True)
         return tuple(records)
+
+    def _review_candidate(self, slot: int, day: date, key: str) -> tuple[dict, dict, dict]:
+        with _open(commit=False) as conn:
+            if conn.execute("SELECT 1 FROM daily_subject_records WHERE device_slot=? AND record_date=?",
+                            (slot, day.isoformat())).fetchone():
+                raise ValueError("Finalized days require an amended-report workflow")
+        state = self.load(slot, day) or {}
+        item = state.get("subjects", {}).get(key, {})
+        identity = _device_identity_snapshot(slot)
+        captured = state.get("device_identity", {})
+        if (not item.get("counter_review") or not item.get("sample_count")
+                or state.get("identity_conflict") or not identity.get("serial")
+                or captured.get("serial") != identity["serial"]):
+            raise ValueError("A pending review and current serial-bound Web observation are required")
+        return state, item, identity
+
+    def preview_counter_baseline(self, slot: int, day: date, key: str) -> dict:
+        with DailyCacheStore._path_lock(self.path(slot, day)):
+            state, item, identity = self._review_candidate(slot, day, key)
+            issue = item["counter_review"]
+            return {"revision": DailyCacheStore._review_revision(state), "device_identity": identity,
+                    "label": f"{item['subject_type']} · {item['subject_name']} ({item['subject_id']})",
+                    "key": key, "before": issue["before"], "detected_at": issue["at"],
+                    "baseline": item["latest_total"], "observed_at": item["last_success"],
+                    "preserved_delta": item["delta_total"]}
+
+    def confirm_counter_baseline(self, slot: int, day: date, key: str, *,
+                                 expected_revision: str, actor: str, reason: str,
+                                 at: datetime | None = None) -> dict:
+        stamp = at or datetime.now().astimezone()
+        if stamp.date() != day or not actor.strip() or not reason.strip():
+            raise ValueError("Resolution needs today's observation, actor and reason")
+        with DailyCacheStore._path_lock(self.path(slot, day)):
+            state, item, identity = self._review_candidate(slot, day, key)
+            if DailyCacheStore._review_revision(state) != expected_revision:
+                raise ValueError("Counter changed after preview; review again")
+            if _timestamp(stamp.isoformat()) < _timestamp(item["last_success"]):
+                raise ValueError("Resolution cannot precede its observation")
+            issue = item["counter_review"]
+            resolution = {"id": str(uuid.uuid4()), "key": key, "review_at": issue["at"],
+                          "previous_counter": issue["before"], "baseline": item["latest_total"],
+                          "observed_at": item["last_success"], "resolved_at": stamp.isoformat(),
+                          "actor": actor.strip(), "reason": reason.strip(), "device_identity": identity,
+                          "preserved_delta": item["delta_total"]}
+            item.setdefault("counter_resolutions", []).append(resolution)
+            del item["counter_review"]
+            self._atomic_write(self.path(slot, day), state)
+            return resolution
 
     def finalize_before(self, today: date) -> tuple[SubjectDailyRecord, ...]:
         records: list[SubjectDailyRecord] = []
@@ -441,7 +515,10 @@ class SubjectDailyCacheStore:
     def _atomic_write(path: Path, data: dict) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         temporary = path.with_suffix(".tmp")
-        temporary.write_text(json.dumps(data, ensure_ascii=False, sort_keys=True), encoding="utf-8")
+        with temporary.open("w", encoding="utf-8") as stream:
+            stream.write(json.dumps(data, ensure_ascii=False, sort_keys=True))
+            stream.flush()
+            os.fsync(stream.fileno())
         os.replace(temporary, path)
 
 

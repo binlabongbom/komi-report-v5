@@ -9,6 +9,7 @@ model-specific counters such as A5 or Fax without inventing a mapping.
 from __future__ import annotations
 
 import json
+import math
 from dataclasses import dataclass
 from datetime import date, datetime
 
@@ -37,6 +38,12 @@ class RawCounterDailyRecord:
     device_name_snapshot: str
     device_serial_snapshot: str
     incomplete: bool
+    pending_review: bool = False
+    baseline_reviewed: bool = False
+
+    @property
+    def needs_review(self) -> bool:
+        return bool(self.pending_review or self.baseline_reviewed or self.reset_count)
 
     @property
     def is_subject(self) -> bool:
@@ -193,6 +200,7 @@ class RawCounterHistoryStore:
         stamp_text = stamp.isoformat(timespec="seconds")
         day = stamp.date().isoformat()
         with _open() as connection:
+            connection.execute("BEGIN IMMEDIATE")
             device = connection.execute(
                 "SELECT name,serial FROM devices WHERE slot=?", (slot,)
             ).fetchone()
@@ -208,9 +216,11 @@ class RawCounterHistoryStore:
                 field = str(counter.canonical_field or "").strip()
                 label = str(counter.label or field or "Unknown")
                 value = float(counter.count)
+                if not math.isfinite(value) or value < 0:
+                    raise ValueError("Web counter must be finite and non-negative")
                 existing = connection.execute(
                     """SELECT closing_value,delta_value,reset_count,sample_count,
-                              last_success
+                              last_success,counter_review_json
                        FROM daily_raw_counter_records
                        WHERE device_slot=? AND record_date=? AND canonical_field=?
                          AND source_path=? AND subject_type=? AND subject_id=?
@@ -227,7 +237,7 @@ class RawCounterHistoryStore:
                 ).fetchone()
                 if existing is None:
                     previous_day = connection.execute(
-                        """SELECT closing_value
+                        """SELECT closing_value,counter_review_json
                            FROM daily_raw_counter_records
                            WHERE device_slot=? AND record_date<? AND canonical_field=?
                              AND source_path=? AND subject_type=? AND subject_id=?
@@ -245,12 +255,17 @@ class RawCounterHistoryStore:
                         ),
                     ).fetchone()
                     opening = float(previous_day[0]) if previous_day else value
-                    if value >= opening:
+                    review = json.loads(previous_day[1]) if previous_day else None
+                    if review:
+                        initial_delta = 0.0
+                        initial_resets = 0
+                    elif value >= opening:
                         initial_delta = value - opening
                         initial_resets = 0
                     else:
-                        initial_delta = max(0.0, value)
+                        initial_delta = 0.0
                         initial_resets = 1
+                        review = {"before": opening, "after": value, "at": stamp_text}
                     connection.execute(
                         """INSERT INTO daily_raw_counter_records(
                                device_slot,record_date,canonical_field,label,source_path,
@@ -258,8 +273,8 @@ class RawCounterHistoryStore:
                                closing_value,delta_value,reset_count,sample_count,
                                first_success,last_success,source_name,
                                device_name_snapshot,device_serial_snapshot,
-                               incomplete,created_at,updated_at
-                           ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                               incomplete,created_at,updated_at,counter_review_json
+                           ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                         (
                             slot,
                             day,
@@ -282,12 +297,14 @@ class RawCounterHistoryStore:
                             0,
                             stamp_text,
                             stamp_text,
+                            json.dumps(review, sort_keys=True),
                         ),
                     )
                     changed += 1
                     continue
 
-                closing, delta, resets, samples, last_success = existing
+                closing, delta, resets, samples, last_success, review_json = existing
+                review = json.loads(review_json)
                 try:
                     previous_stamp = datetime.fromisoformat(str(last_success))
                     if previous_stamp.tzinfo is None:
@@ -297,20 +314,24 @@ class RawCounterHistoryStore:
                 if stamp < previous_stamp:
                     continue
                 previous = float(closing)
-                if stamp == previous_stamp and value == previous:
+                if stamp == previous_stamp:
                     continue
-                if value >= previous:
+                if review:
+                    next_delta = float(delta)
+                    next_resets = int(resets)
+                elif value >= previous:
                     next_delta = float(delta) + value - previous
                     next_resets = int(resets)
                 else:
-                    next_delta = float(delta) + max(0.0, value)
+                    next_delta = float(delta)
                     next_resets = int(resets) + 1
+                    review = {"before": previous, "after": value, "at": stamp_text}
                 connection.execute(
                     """UPDATE daily_raw_counter_records
                        SET label=?,source_path=?,subject_name=?,closing_value=?,
                            delta_value=?,reset_count=?,sample_count=?,last_success=?,
                            source_name=?,device_name_snapshot=?,device_serial_snapshot=?,
-                           updated_at=?
+                           updated_at=?,counter_review_json=?
                        WHERE device_slot=? AND record_date=? AND canonical_field=?
                          AND source_path=? AND subject_type=? AND subject_id=?
                          AND device_serial_snapshot=?""",
@@ -327,6 +348,7 @@ class RawCounterHistoryStore:
                         str(device_name or f"MFP {slot + 1}"),
                         device_serial,
                         stamp_text,
+                        json.dumps(review, sort_keys=True),
                         slot,
                         day,
                         field,
@@ -373,7 +395,7 @@ def load_raw_counter_history(
                       subject_type,subject_id,subject_name,opening_value,
                       closing_value,delta_value,reset_count,sample_count,
                       first_success,last_success,source_name,device_name_snapshot,
-                      device_serial_snapshot,incomplete
+                      device_serial_snapshot,incomplete,counter_review_json,counter_resolutions_json
                FROM daily_raw_counter_records"""
             + where
             + " ORDER BY record_date,device_slot,subject_type,subject_name,canonical_field",
@@ -400,6 +422,8 @@ def load_raw_counter_history(
             device_name_snapshot=str(row[16]),
             device_serial_snapshot=str(row[17]),
             incomplete=bool(row[18]),
+            pending_review=json.loads(row[19]) is not None,
+            baseline_reviewed=bool(json.loads(row[20])),
         )
         for row in rows
     )

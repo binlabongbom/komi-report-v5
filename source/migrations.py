@@ -12,7 +12,7 @@ from contextlib import closing
 from datetime import datetime
 from pathlib import Path
 
-CURRENT_SCHEMA_VERSION = 21
+CURRENT_SCHEMA_VERSION = 22
 
 
 class UnsupportedSchemaVersionError(RuntimeError):
@@ -48,6 +48,8 @@ _REQUIRED_SCHEMA: dict[str, frozenset[str]] = {
             "opening_value",
             "closing_value",
             "delta_value",
+            "counter_review_json",
+            "counter_resolutions_json",
         }
     ),
     "parser_mapping_overrides": frozenset(
@@ -635,6 +637,17 @@ def _migration_021_peer_settings_outbox(connection: sqlite3.Connection) -> None:
         (datetime.now().astimezone().isoformat(timespec="seconds"),))
 
 
+def _migration_022_raw_counter_reviews(connection: sqlite3.Connection) -> None:
+    connection.execute("ALTER TABLE daily_raw_counter_records ADD COLUMN counter_review_json TEXT NOT NULL DEFAULT 'null'")
+    connection.execute("ALTER TABLE daily_raw_counter_records ADD COLUMN counter_resolutions_json TEXT NOT NULL DEFAULT '[]'")
+    # Earlier releases added the post-drop absolute value to usage. Preserve
+    # historical rows; the next reading must not silently accept that baseline.
+    connection.execute("""UPDATE daily_raw_counter_records
+        SET counter_review_json=json_object('before',opening_value,'after',closing_value,
+            'at',last_success,'reason','legacy_reset_requires_review')
+        WHERE reset_count>0""")
+
+
 MIGRATIONS: tuple[tuple[int, str, object], ...] = (
     (8, "record_schema_history_and_reporting_indexes", _migration_008_record_schema_history),
     (9, "add_legacy_usage_history_import_provenance", _migration_009_legacy_history_import),
@@ -650,6 +663,7 @@ MIGRATIONS: tuple[tuple[int, str, object], ...] = (
     (19, "add_v52_registration_inventory_baselines", _migration_019_v52_registration_inventory_baseline),
     (20, "add_peer_settings_revision_history", _migration_020_peer_settings_history),
     (21, "add_atomic_peer_settings_outbox", _migration_021_peer_settings_outbox),
+    (22, "add_raw_counter_baseline_review", _migration_022_raw_counter_reviews),
 )
 
 

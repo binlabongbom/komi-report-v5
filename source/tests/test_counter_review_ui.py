@@ -8,6 +8,31 @@ from test_counter_review import pending, STAMP, KEY
 from test_daily_cache import _reading
 
 
+def test_subject_and_raw_reviews_use_their_own_store(tmp_path):
+    from services.daily_cache import DailyCacheStore
+    from test_subject_counter_review import pending as subject_pending
+    from test_raw_counter_review import pending as raw_pending
+    app = QApplication.instance() or QApplication([])
+    subjects = subject_pending(tmp_path)
+    _, raw, _ = raw_pending()
+    widget = CounterReviewPanel(DeviceConfigRepository(), DailyCacheStore(tmp_path / "empty"),
+        subject_cache=subjects, raw_cache=raw, clock=lambda: STAMP.replace(hour=12))
+    try:
+        assert widget.items.count() == 2
+        for expected_store in (subjects, raw):
+            widget.open_review()
+            dialog = widget._dialog
+            assert dialog.cache is expected_store
+            dialog.reason.setText("Verified matching counter")
+            dialog.verified.setChecked(True)
+            dialog.confirm.click()
+            assert dialog.result() == QDialog.DialogCode.Accepted
+        assert widget.items.count() == 0
+    finally:
+        widget.close()
+        app.processEvents()
+
+
 def panel(tmp_path):
     app = QApplication.instance() or QApplication([])
     cache = pending(tmp_path)

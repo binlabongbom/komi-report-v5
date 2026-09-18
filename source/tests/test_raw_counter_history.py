@@ -96,7 +96,8 @@ def test_raw_counter_history_records_reset_without_negative_usage():
     latest = load_raw_counter_history([0])[-1]
     assert latest.opening_value == 999
     assert latest.closing_value == 4
-    assert latest.delta_value == 4
+    assert latest.delta_value == 0
+    assert latest.pending_review
     assert latest.reset_count == 1
 
 

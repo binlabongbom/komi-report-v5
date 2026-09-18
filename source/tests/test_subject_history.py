@@ -141,7 +141,7 @@ def test_finalized_subject_history_uses_frozen_device_billing_period(tmp_path):
         database.set_db_path(original)
 
 
-def test_subject_counter_reset_is_accumulated_and_visible(tmp_path):
+def test_subject_counter_reset_preserves_usage_and_requires_review(tmp_path):
     original = database.get_db_path()
     try:
         _setup_database(tmp_path)
@@ -151,7 +151,7 @@ def test_subject_counter_reset_is_accumulated_and_visible(tmp_path):
             state = cache.update_reading(0, _reading(total, collected_at=stamp), at=stamp)
 
         subject = state["subjects"]["user:u-1"]
-        assert subject["delta_total"] == 30
+        assert subject["delta_total"] == 25
         assert subject["reset_count"] == 1
         assert subject["resets"] == [
             {

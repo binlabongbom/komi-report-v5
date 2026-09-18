@@ -351,7 +351,10 @@ def _raw_total(records) -> float | str:
     values = tuple(records)
     if not values:
         return "—"
-    return sum(float(item.delta_value) for item in values)
+    total = sum(float(item.delta_value) for item in values)
+    if any(item.needs_review for item in values):
+        return f"{total:g} · รอตรวจสอบยอดมิเตอร์"
+    return total
 
 
 def _write_legacy_machine_sheet(
