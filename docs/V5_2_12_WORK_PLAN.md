@@ -92,6 +92,23 @@ disabled foundation, not a working customer Hotfix. UI preview is a prototype.
 
 ## Existing evidence (not release approval)
 
+### 2026-09-18 — authenticated Host UI inspection (read only)
+
+- User supplied an already authenticated in-app browser session. Inspected the
+  KOMI Report section and one previously discussed test-named installation in
+  the live list; only navigation/read actions were performed. No registration,
+  license issuance, disable/revoke, export, or production data changes.
+- UI explicitly describes company count as an estimate from normalized names.
+  List/detail are installation-based and show selected printer slots, masked
+  serials, meter observations and heartbeat history. The staging view showed
+  no installations at inspection time.
+- No authoritative company/group key was exposed in the inspected detail.
+  Local `v5_2_contract.py` uses installation_id + company_name and per-payload
+  slot validation. These observations do not prove the Host database lacks a
+  company key or prove an exploitable company-limit bypass. Host server code and
+  its enforcement have not been inspected. Continue local sync implementation;
+  do not treat this uncertainty as a reason to wait on unrelated work.
+
 ### 2026-09-18 — LAN discovery audit and causal settings history
 
 - User instructed continuing after discussion of differing LAN announcements.
