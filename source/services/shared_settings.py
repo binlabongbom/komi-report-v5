@@ -1,22 +1,24 @@
 """Reviewed, atomic changes to the shared billing and collection settings.
 
-Printer replacement, price effective dates and registration need their own
-workflows. This service deliberately cannot apply those parts of a peer snapshot.
+Printer replacement and registration need their own workflows. Dated price
+history can be explicitly reviewed alongside billing and collection settings.
 """
 from copy import deepcopy
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, date
 import json
 import math
+import re
 from pathlib import Path
 
 from database import _open, config_write_transaction, get_db_path
 from services.peer_settings_history import SettingsHistory, _json
-from services.shared_settings_document import from_connection
+from services.shared_settings_document import from_connection, validate_price_history, PRICE_KEYS
 from services.peer_settings_outbox import enqueue_revision
 from services.sync_schedule import dump_schedule_windows, load_schedule_windows
 
-EDITABLE_KEYS = frozenset({"billing_day", "waste_paper_pct", "sync_schedule_windows"})
+EDITABLE_KEYS = frozenset({"billing_day", "waste_paper_pct", "sync_schedule_windows", "pricing_mode", "work_start", "work_end"})
+UNDO_KEYS = EDITABLE_KEYS | {"price_history"}
 
 
 @dataclass(frozen=True)
@@ -30,16 +32,29 @@ class SettingsPreview:
 
     @property
     def changes(self):
-        before = json.loads(self.before_json)["settings"]
-        after = json.loads(self.after_json)["settings"]
-        return {key: (before[key], after[key]) for key in sorted(EDITABLE_KEYS)
+        old, new = json.loads(self.before_json), json.loads(self.after_json)
+        before, after = old["settings"], new["settings"]
+        changes = {key: (before[key], after[key]) for key in sorted(EDITABLE_KEYS)
                 if before[key] != after[key]}
+        if old["price_history"] != new["price_history"]:
+            left = {(r["slot"], r["effective_date"]): r for r in old["price_history"]}
+            right = {(r["slot"], r["effective_date"]): r for r in new["price_history"]}
+            changed = sorted(key for key in left.keys() | right.keys() if left.get(key) != right.get(key))
+            changes["price_history"] = ([left[key] for key in changed if key in left],
+                                         [right[key] for key in changed if key in right])
+        return changes
 
 
 def _normalized_changes(changes):
     if not isinstance(changes, dict) or not changes or not set(changes) <= EDITABLE_KEYS:
         raise ValueError("Unsupported shared setting change")
     values = dict(changes)
+    if "pricing_mode" in values and (not isinstance(values["pricing_mode"], str) or values["pricing_mode"] not in {"shared", "per_device", "deferred"}):
+        raise ValueError("Invalid pricing mode")
+    for key in ("work_start", "work_end"):
+        if key in values:
+            if not isinstance(values[key], str) or not re.fullmatch(r"(?:[01][0-9]|2[0-3]):[0-5][0-9]", values[key]):
+                raise ValueError("Invalid working time")
     if "billing_day" in values:
         value = values["billing_day"]
         if type(value) is not int or not 1 <= value <= 31:
@@ -82,6 +97,9 @@ class SharedSettingsService:
                             if len(document["parents"]) == 1 else None)
                 fields = [key for key in sorted(EDITABLE_KEYS) if previous is not None
                           and previous["settings"][key] != document["payload"]["settings"][key]]
+                if (previous is not None and "price_history" in previous and "price_history" in document["payload"]
+                        and previous["price_history"] != document["payload"]["price_history"]):
+                    fields.append("price_history")
                 entries.append({"rowid": rowid, "revision": revision, "document": document,
                                 "previous": previous, "incoming": revision in pending and revision not in local_ancestors,
                                 "undo_fields": fields if revision in local_ancestors else [], "current": revision == head})
@@ -111,7 +129,7 @@ class SharedSettingsService:
         """Prepare an explicit peer choice without changing any app settings.
 
         The caller must already have authenticated/imported the peer history.
-        Applying a device/price/organization change through this path is rejected.
+        Applying a device/organization change through this path is rejected.
         """
         if not isinstance(reason, str) or not reason.strip():
             raise ValueError("A choice reason is required")
@@ -130,6 +148,8 @@ class SharedSettingsService:
 
     @staticmethod
     def _check_scope(before, after):
+        if after.get("format_version") != 2 or "price_history" not in after:
+            raise ValueError("Legacy snapshots require the setup workflow")
         allowed = deepcopy(before)
         changes = {key: after["settings"][key] for key in EDITABLE_KEYS
                    if before["settings"][key] != after["settings"][key]}
@@ -140,8 +160,12 @@ class SharedSettingsService:
             if validate:
                 _normalized_changes(validate)
             allowed["settings"].update(changes)
+        if before["price_history"] != after["price_history"]:
+            validate_price_history(after["price_history"])
+            allowed["price_history"] = deepcopy(after["price_history"])
+            changes["price_history"] = allowed["price_history"]
         if allowed != after:
-            raise ValueError("This change requires the printer, pricing or setup workflow")
+            raise ValueError("This change requires the printer or setup workflow")
         return changes
 
     def commit(self, preview):
@@ -173,10 +197,23 @@ class SharedSettingsService:
             if not head or history._document(conn, head)["payload"] != before:
                 head = history._append(conn, before, [head] if head else [], "local_settings_baseline")
             for key, value in changes.items():
+                if key == "price_history":
+                    from services.pricing import PriceList, PricingRepository
+                    # Earlier price versions remain immutable in revisions and
+                    # issued ledger rows; this is the reviewed active schedule.
+                    conn.execute("DELETE FROM price_history")
+                    for row in value:
+                        PricingRepository.write_prices(conn, row["slot"], date.fromisoformat(row["effective_date"]),
+                            PriceList(**{field: row[field] for field in PRICE_KEYS}))
+                    conn.execute("INSERT INTO config_log(config_key,old_value,new_value,changed_at) VALUES(?,?,?,?)",
+                        (key, _json(before[key]), _json(value), datetime.now(UTC).isoformat()))
+                    continue
                 conn.execute("INSERT INTO settings(key,value) VALUES(?,?) "
                              "ON CONFLICT(key) DO UPDATE SET value=excluded.value", (key, str(value)))
                 conn.execute("INSERT INTO config_log(config_key,old_value,new_value,changed_at) VALUES(?,?,?,?)",
                              (key, str(before["settings"][key]), str(value), datetime.now(UTC).isoformat()))
+            if self._payload(conn) != after:
+                raise ValueError("Saved settings differ from the reviewed revision")
             if fast_forward:
                 # Receiving an existing edit must not create another edit and
                 # cause an endless revision exchange between identical peers.
@@ -191,7 +228,7 @@ class SharedSettingsService:
         if not isinstance(reason, str) or not reason.strip():
             raise ValueError("An undo reason is required")
         selected = frozenset(keys)
-        if not selected or not selected <= EDITABLE_KEYS:
+        if not selected or not selected <= UNDO_KEYS:
             raise ValueError("Select supported fields to undo")
         with _open(commit=False) as conn:
             conn.execute("BEGIN")
@@ -204,8 +241,28 @@ class SharedSettingsService:
             old = SettingsHistory._document(conn, record["parents"][0])["payload"]
             now = self._payload(conn)
             for key in selected:
+                if key == "price_history":
+                    # Preserve unrelated later price edits; undo only keys
+                    # changed by the selected revision, after checking each.
+                    if key not in old or key not in record["payload"]:
+                        raise ValueError("Legacy snapshots require the setup workflow")
+                    prior = {(r["slot"], r["effective_date"]): r for r in old[key]}
+                    edited = {(r["slot"], r["effective_date"]): r for r in record["payload"][key]}
+                    current = {(r["slot"], r["effective_date"]): r for r in now[key]}
+                    affected = {k for k in prior.keys() | edited.keys() if prior.get(k) != edited.get(k)}
+                    if any(current.get(k) != edited.get(k) for k in affected):
+                        raise ValueError("A selected price has changed again; review the newer edit")
+                    for k in affected:
+                        if k in prior:
+                            current[k] = prior[k]
+                        else:
+                            current.pop(k, None)
+                    prices_after = [current[k] for k in sorted(current)]
+                    continue
                 if now["settings"][key] != record["payload"]["settings"][key]:
                     raise ValueError("A selected field has changed again; review the newer edit")
             after = deepcopy(now)
-            after["settings"].update({key: old["settings"][key] for key in selected})
+            after["settings"].update({key: old["settings"][key] for key in selected if key in EDITABLE_KEYS})
+            if "price_history" in selected:
+                after["price_history"] = prices_after
         return SettingsPreview(head, _json(now), _json(after), f"undo:{revision}: {reason.strip()}", self._database_path())

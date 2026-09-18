@@ -262,6 +262,32 @@ P9/H1 ที่ตรวจ source/fixture ได้อาจทำสลับ�
 
 ## Existing evidence (not release approval)
 
+### 2026-09-18 — dated-price choices, manual read cadence and canonical report performance
+
+- Shared settings review now applies dated price schedules atomically with the
+  chosen history head, retains both parents on conflicts, and supports undo per
+  changed price/date while preserving unrelated later edits. Also covers pricing
+  mode and legacy working hours. Printer/company changes still require their
+  setup/replacement workflow; this is not a company authorization bypass.
+- History changes now notify runtime policy and refresh settings; previously a
+  successful undo could leave the old scheduler running until a later reload.
+  Source price/history/setup/repricing suite: **58 passed in 21.55s**.
+- Manual collection no longer moves the scheduled SNMP/Web clocks. An in-flight
+  SNMP round can be promoted to Web; requests arriving after the skip decision
+  trigger one subsequent real read. Requests during Web share the active read.
+  Scheduled overlap consumes that round without manufacturing another point.
+- Web success/cache dates use the actual observation timestamp, including a
+  midnight crossing; the scheduled round retains a separate cadence anchor.
+  Tests verify 10:00/10:10/10:15/10:30, overlapping requests, boundary race and
+  shutdown: **38 passed in 11.36s**. This is local collection coordination; peer
+  election/grants/transport are still pending, not certified by these tests.
+- Canonical billing-period reports now restrict subject SQL to that period
+  while preserving frozen ledger periods. Previously only custom ranges were
+  bounded, so normal report navigation could still scan all five years.
+  On the existing synthetic 5-year/100-user/3-printer DB: August query median
+  **467.39 ms**, 300 result groups, exact **111,600 pages**; three runs, alongside
+  source tests. Source/history/snapshot/startup suite: **38 passed in 7.57s**.
+
 ### 2026-09-18 — evidence-based gap inspection and idle archival
 
 - Added deterministic single-serial/counter/epoch interval projection using

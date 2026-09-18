@@ -7192,7 +7192,7 @@ class PageHistoryV5(PageHistory):
             # date fields change the actual report instead of only the label.
             selected_records = monthly_records or daily_records
             subject_range = (
-                {"period_start": start, "period_end": end} if is_custom_period else {}
+                {"period_start": start, "period_end": end} if is_custom_period else {"only_period": (start, end)}
             )
             subjects = (
                 tuple(

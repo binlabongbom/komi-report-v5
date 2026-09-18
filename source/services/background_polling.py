@@ -45,6 +45,7 @@ class BackgroundPollingCoordinator(QObject):
         subject_cache: SubjectDailyCacheStore | None = None,
         raw_counter_history: RawCounterHistoryStore | None = None,
         observations: WebObservationStore | None = None,
+        clock=None,
         parent=None,
     ) -> None:
         super().__init__(parent)
@@ -58,6 +59,7 @@ class BackgroundPollingCoordinator(QObject):
         self.subject_cache = subject_cache or SubjectDailyCacheStore()
         self.raw_counter_history = raw_counter_history or RawCounterHistoryStore()
         self.observations = observations or WebObservationStore()
+        self.clock = clock or (lambda: datetime.now().astimezone())
         self.machine = PollingStateMachine()
         self.snmp_interval = timedelta(minutes=5)
         self.executor = ThreadPoolExecutor(max_workers=3, thread_name_prefix="komi-meter")
@@ -66,6 +68,9 @@ class BackgroundPollingCoordinator(QObject):
         self.active: set[int] = set()
         self._futures: dict[int, Future] = {}
         self._started_at: dict[int, float] = {}
+        self._manual_requested: set[int] = set()
+        self._web_attempted: set[int] = set()
+        self._scheduled_joined: dict[int, datetime] = {}
         self._lock = threading.RLock()
         self._rollover_lock = threading.RLock()
         self._paused_reason = ""
@@ -194,7 +199,7 @@ class BackgroundPollingCoordinator(QObject):
     def tick(self) -> None:
         if self._stopped or self.is_paused:
             return
-        now = datetime.now().astimezone()
+        now = self.clock()
         self._finalize_before(now.date())
         interval = self.machine.policy.snmp_interval_at(now, self.snmp_interval)
         if interval is None:
@@ -371,9 +376,21 @@ class BackgroundPollingCoordinator(QObject):
                 if self._stopped or self._paused_reason:
                     return
                 if device.slot in self.active:
+                    if force_web:
+                        self._manual_requested.add(device.slot)
+                    else:
+                        now = self.clock()
+                        self.last_poll[device.slot] = now
+                        state = self.states.get(device.slot)
+                        if state is not None and self.machine.scheduled_web_due(state, now):
+                            self._scheduled_joined.setdefault(device.slot, now)
                     return
                 self.active.add(device.slot)
-                self.last_poll[device.slot] = datetime.now().astimezone()
+                self._manual_requested.discard(device.slot)
+                self._web_attempted.discard(device.slot)
+                self._scheduled_joined.pop(device.slot, None)
+                if not force_web:
+                    self.last_poll[device.slot] = self.clock()
                 self._started_at[device.slot] = monotonic()
             pipeline_log.append(
                 stage="POLICY",
@@ -391,15 +408,25 @@ class BackgroundPollingCoordinator(QObject):
             future.add_done_callback(lambda item, slot=device.slot: self._finished(slot, item))
 
     def _finished(self, slot: int, future: Future) -> None:
-        with self._lock:
-            self.active.discard(slot)
-            self._futures.pop(slot, None)
-            started = self._started_at.pop(slot, None)
         try:
             saved = bool(future.result())
         except Exception:
             log.exception("background device poll failed: slot=%s", slot)
             saved = False
+        with self._lock:
+            joined = self._scheduled_joined.pop(slot, None)
+            if saved and joined is not None and slot in self.states:
+                state = self.states[slot]
+                state.last_scheduled_web_at = joined
+                state.scheduled_clock_initialized = True
+            # A manual request that raced the SNMP-only early return needs
+            # one real Web read, not an old snapshot and not a retry loop.
+            retry_manual = slot in self._manual_requested and slot not in self._web_attempted and not saved
+            self._manual_requested.discard(slot)
+            self._web_attempted.discard(slot)
+            self.active.discard(slot)
+            self._futures.pop(slot, None)
+            started = self._started_at.pop(slot, None)
         duration_ms = round((monotonic() - started) * 1000) if started is not None else None
         log.info(
             "background device poll finished",
@@ -413,13 +440,19 @@ class BackgroundPollingCoordinator(QObject):
         self.device_updated.emit(slot)
         if saved:
             self.reading_saved.emit(slot)
+        elif retry_manual:
+            device = self.repository.get(slot)
+            if device is not None and device.enabled:
+                self._submit(device, force_web=True)
 
     def _poll_device(self, device: DeviceConfig, force_web: bool) -> bool:
         # A future queued before deactivation may start after pause() raced
         # with ThreadPoolExecutor. Do not let it issue its first SNMP/Web read.
         if self.is_paused:
             return False
-        now = datetime.now().astimezone()
+        now = self.clock()
+        manual_round = force_web
+        round_started_at = now
         state = self.states.setdefault(device.slot, DevicePollState(last_snmp_total=device.last_total))
         snmp_error = ""
         probe_result = None
@@ -558,6 +591,9 @@ class BackgroundPollingCoordinator(QObject):
                 at=now,
             )
 
+        scheduled_read = not manual_round and (decision.request_web or calibration_needed)
+        with self._lock:
+            force_web = force_web or device.slot in self._manual_requested
         pipeline_log.append(
             stage="POLICY",
             action="เรียก Web Connection" if force_web or decision.request_web or calibration_needed else "ข้าม Web Connection",
@@ -588,6 +624,8 @@ class BackgroundPollingCoordinator(QObject):
             return False
 
         try:
+            with self._lock:
+                self._web_attempted.add(device.slot)
             pipeline_log.append(
                 stage="WEB",
                 action="เริ่ม Web Connection read",
@@ -607,6 +645,12 @@ class BackgroundPollingCoordinator(QObject):
                 if isinstance(self.reader, MeterReader)
                 else self.reader.read(device.host)
             )
+            # Report the actual Web observation time, including a read that
+            # crosses midnight. Scheduling retains its separate round anchor.
+            observed_at = datetime.fromisoformat(reading.collected_at.replace("Z", "+00:00"))
+            if observed_at.tzinfo is None:
+                raise ValueError("Web observation requires an explicit timezone")
+            now = observed_at.astimezone(round_started_at.tzinfo)
             raw_reconciliation = reconcile_web_counters(
                 {
                     counter.canonical_field: counter.count
@@ -818,7 +862,7 @@ class BackgroundPollingCoordinator(QObject):
             report = meter_reading_to_report(reading, machine_name=device.name)
             total = int(report.get("total_counter", state.last_snmp_total or 0))
             state.last_snmp_total = max(state.last_snmp_total or 0, total)
-            self.machine.web_success(state, now)
+            self.machine.web_success(state, now, scheduled=scheduled_read, scheduled_at=round_started_at)
             self.repository.update_runtime(
                 device.slot,
                 status="online",

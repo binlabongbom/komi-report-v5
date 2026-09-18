@@ -58,7 +58,7 @@ def load_report_snapshot(
     start, end = map(date.fromisoformat, selected)
     daily = tuple(record for record in usage_daily if record.period_start <= end and record.period_end >= start)
     selected_monthly = tuple(record for record in monthly if key(record) == selected)
-    subject_range = {"period_start": start, "period_end": end} if not canonical else {}
+    subject_range = {"period_start": start, "period_end": end} if not canonical else {"only_period": (start, end)}
     subjects = tuple(
         record for record in load_subject_history(slots, cache=subject_cache, **subject_range)
         if record.period_start == start and record.period_end == end

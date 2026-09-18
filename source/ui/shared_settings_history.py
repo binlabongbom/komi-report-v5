@@ -1,7 +1,7 @@
 """Read-only history browsing and explicitly reviewed, append-only undo."""
 import sqlite3
 from datetime import datetime
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (
     QDialog, QDialogButtonBox, QHBoxLayout, QLabel, QListWidget, QListWidgetItem,
     QPushButton, QTextEdit, QVBoxLayout,
@@ -34,6 +34,8 @@ def _date(value):
 
 
 class SharedSettingsHistoryDialog(QDialog):
+    settings_changed = pyqtSignal()
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.service = SharedSettingsService()
@@ -42,9 +44,9 @@ class SharedSettingsHistoryDialog(QDialog):
         layout = QVBoxLayout(self)
         notice = QLabel(tr(
             "เลือกการเปลี่ยนแปลงเพื่อดูรายละเอียด การย้อนค่าจะสร้างประวัติใหม่\n"
-            "ตอนนี้ย้อนจากหน้านี้ได้เฉพาะวันตัดรอบบิล ส่วนลด และตารางอ่านข้อมูล",
+            "ย้อนจากหน้านี้ได้ทั้งวันตัดรอบบิล ส่วนลด ตาราง/เวลาทำงาน รูปแบบราคา และราคาตามวันบังคับใช้",
             "Select a change to inspect it. Undo creates a new history entry.\n"
-            "This screen supports undo for billing day, waste discount and reading schedule.",
+            "This screen supports undo for billing day, discount, schedules, working hours, pricing mode and dated prices.",
         ))
         notice.setWordWrap(True)
         layout.addWidget(notice)
@@ -149,6 +151,7 @@ class SharedSettingsHistoryDialog(QDialog):
             if not confirm_shared_settings(self, preview):
                 return
             self.service.commit(preview)
+            self.settings_changed.emit()
             self.records.clear()
             self.cursor = None
             self._load_more()
@@ -167,6 +170,7 @@ class SharedSettingsHistoryDialog(QDialog):
             if not preview.changes or not confirm_shared_settings(self, preview):
                 return
             self.service.commit(preview)
+            self.settings_changed.emit()
             self.records.clear()
             self.cursor = None
             self._load_more()
@@ -176,4 +180,11 @@ class SharedSettingsHistoryDialog(QDialog):
 
 
 def show_shared_settings_history(parent):
-    SharedSettingsHistoryDialog(parent).exec()
+    dialog = SharedSettingsHistoryDialog(parent)
+    refresh = getattr(parent, "refresh_from_config", None)
+    if callable(refresh):
+        dialog.settings_changed.connect(refresh)
+    changed = getattr(parent, "changed", None)
+    if changed is not None:
+        dialog.settings_changed.connect(changed.emit)
+    dialog.exec()

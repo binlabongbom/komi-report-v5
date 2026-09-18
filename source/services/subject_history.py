@@ -598,15 +598,19 @@ def load_subject_history(
     cache: SubjectDailyCacheStore | None = None,
     period_start: date | None = None,
     period_end: date | None = None,
+    only_period: tuple[date, date] | None = None,
 ) -> tuple[SubjectPeriodUsage, ...]:
     current = today or date.today()
     billing_day = get_billing_day()
+    if only_period is not None and (period_start is not None or period_end is not None or only_period[0] > only_period[1]):
+        raise ValueError("Choose a canonical period or a custom date range")
+    source_start, source_end = only_period or (period_start, period_end)
     frozen_periods = {} if period_start is not None and period_end is not None else _latest_device_ledger_periods(
-        slots, period_start=period_start, period_end=period_end)
+        slots, period_start=source_start, period_end=source_end)
     daily: list[tuple[SubjectDailyRecord, tuple[date, date] | None]] = []
     if slots:
         placeholders = ",".join("?" for _ in slots)
-        filters, parameters = _date_filter(period_start, period_end)
+        filters, parameters = _date_filter(source_start, source_end)
         with _open(commit=False) as conn:
             rows = conn.execute(
                 f"""SELECT device_slot,record_date,subject_type,subject_id,subject_name,
@@ -644,7 +648,7 @@ def load_subject_history(
 
     cache_store = cache or SubjectDailyCacheStore()
     for slot in slots:
-        if (period_start is not None and current < period_start) or (period_end is not None and current > period_end):
+        if (source_start is not None and current < source_start) or (source_end is not None and current > source_end):
             continue
         state = cache_store.load(slot, current)
         if not state:
@@ -674,6 +678,8 @@ def load_subject_history(
             if period_start is not None and period_end is not None
             else frozen_period or billing_month_range(record.record_date, billing_day)
         )
+        if only_period is not None and (start, end) != only_period:
+            continue
         key = (
             start,
             end,

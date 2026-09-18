@@ -167,6 +167,14 @@ def test_finalized_subject_history_uses_frozen_device_billing_period(tmp_path):
         assert history[0].period_start == date(2026, 6, 26)
         assert history[0].period_end == date(2026, 7, 25)
         assert history[0].period_usage == 25
+        with database._open() as conn:
+            conn.execute("""INSERT INTO daily_subject_records
+                (device_slot,record_date,subject_type,subject_id,subject_name,opening_total,closing_total,
+                 delta_total,warnings_json,created_at) VALUES(0,'2000-01-01','user','excluded','excluded',0,0,0,'invalid-json',?)""",
+                (now,))
+        bounded = load_subject_history([0], today=first.date(), cache=cache,
+                                      only_period=(date(2026, 6, 26), date(2026, 7, 25)))
+        assert bounded == history
     finally:
         database.set_db_path(original)
 
