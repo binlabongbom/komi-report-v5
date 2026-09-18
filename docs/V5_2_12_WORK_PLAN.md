@@ -175,6 +175,36 @@ bf453738b934dcf5bea59dd8c70e191b52ba6b89 และ merge เข้า local main
   หลักฐานทดสอบเก่าตรวจว่ามีบน GitHub/commit/tag/release จริงก่อนเก็บกวาด
 - ปรับคู่มือ ภาพหน้าจอ และขั้นตอนทดสอบสองเครื่องให้ตรง ก่อนขออนุญาต build
 
+### 2026-09-18 — atomic complete peer setup and Slot adoption
+
+- Added `PeerSetupApplication` for an already imported and independently
+  authorized settings revision. Its preview uses the existing shared-settings
+  confirmation table. Printer metadata, dated prices, settings, reviewed Slot
+  heads, causal settings head/event and an idempotent receipt commit together.
+  `SlotEpochExchange.adopt_in_transaction` reuses the existing ancestry/conflict
+  checks under that same database transaction.
+- Fast-forward reuses the remote revision. Concurrent edits require an explicit
+  choice and create a two-parent merge; an older incoming revision cannot revert
+  a newer history. Missing epochs, printer/baseline disagreement, discarded
+  existing baselines, stale settings, storage failure, revoked scope or a
+  switched database all reject/roll back the complete operation.
+- Local installation ID, registration mode and vault are not copied. Same
+  printer/address/TLS retains its local credential reference and runtime status;
+  a changed target detaches the old reference and old success/total. An old
+  receipt retry never undoes subsequent settings edits.
+- Tests include three Slots all-or-nothing, 2,000 + (50,100 − 50,000) = 2,100,
+  failed journal/head/receipt writes, revocation during apply, concurrent merge,
+  local credentials/identity, missing dependency, database switching and popup
+  cancellation. Expanded setup/Slot/catch-up regression: **80 passed in 33.82s**.
+  After database guards: **25 passed in 17.64s**; final preview/cancel suite:
+  **13 passed in 10.43s**. These sets overlap.
+- This closes the atomic repository application gap. It is not yet invoked by
+  a production incoming-member workflow: a real verified Host member provider
+  and HTTPS delivery still must bind a received revision to its sender/scope.
+  No authorizer based on broadcast, company spelling or a local node UUID was
+  introduced. Legacy caches/financial holds and Web-driven invoice amendments
+  are not changed or certified by this setup transaction.
+
 ### 2026-09-18 — additional source regression and obsolete check cleanup
 
 - Ran the other **79 source test files** independently with the network audit

@@ -17,6 +17,7 @@
 | งานอ่านจำลอง 3 เครื่อง × 100 ผู้ใช้ | Desktop/Agent อย่างละ 3 รอบทดลอง; บันทึกครบ 180 Web events; exit 0 ทุก process | ไม่รวม Host, Web/Node หรือเครื่องพิมพ์จริง |
 | Archive รายวัน | รายละเอียดและผลวัดอยู่ใน WORK_PLAN และ five-year-archive.json | ไม่ใช่การแก้ไข archived day/ฉบับเรียกเก็บอัตโนมัติ |
 | หน้าสถานะเครือข่าย | Settings/navigation/polling 58 passed; status/runtime/lifecycle 42 passed; read-only query 6 passed | ใช้ runtime และ ACK จริง; ภาพใช้สมาชิกจำลอง ไม่มี provider สมาชิกจริง |
+| รับการตั้งค่าทั้งชุดและฐาน Slot | 80 passed ชุดขยาย; 25 passed หลังเพิ่ม database guards; 13 passed รวม popup cancel | transaction พร้อม; ยังไม่เปิดรับจากสมาชิกจริงโดยไม่มี Host authorizer |
 
 ใช้ Python environment ของโปรเจกต์ ตั้ง `QT_QPA_PLATFORM=offscreen` แล้วรัน pytest
 จากโฟลเดอร์ `source` ทุก test ใช้ฐานชั่วคราวและปิด discovery ไป LAN จริง ตัวอย่าง:

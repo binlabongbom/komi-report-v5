@@ -9,6 +9,7 @@ from services.slot_meter_continuity import (
     EpochObservation, validate_epoch, verify_parent_carry, _json, _number,
 )
 from services.web_observations import WebObservationStore, validate_event
+from pathlib import Path
 
 
 MAX_TRANSFER_BYTES = 8 * 1024 * 1024
@@ -104,45 +105,53 @@ class SlotEpochExchange:
         This does not release legacy cache/billing holds or initialize old data.
         """
         with self.store._connection(write=True) as conn:
-            epoch = self.store._epoch(conn, epoch_id)
-            self._allowed(member, epoch)
-            slot = epoch["document"]["baseline_event"]["payload"]["slot"]
-            head = self.store._head(conn, slot)
-            if head != expected_head:
-                raise ValueError("Active slot decision changed; refresh before adoption")
-            if head == epoch_id:
-                return epoch_id
-            chain, cursor = [], epoch
-            while cursor["id"] != head:
-                chain.append(cursor)
-                if len(chain) > 1024:
-                    raise ValueError("Slot ancestry exceeds adoption limit")
-                parent_id = cursor["document"]["parent"]
-                if parent_id is None:
-                    if head is not None:
-                        raise ValueError("Conflicting slot decision branch needs review")
-                    break
-                cursor = self.store._epoch(conn, parent_id)
-            for decision in chain:
-                issues = self.store._projection(conn, decision)[0].issues
-                if "competing_epoch_decisions" in issues:
-                    raise ValueError("Conflicting slot decision branch needs review")
-                if {"late_parent_evidence", "normalization_schema_changed", "counter_without_reviewed_baseline"}.intersection(issues):
-                    raise ValueError("Slot evidence needs review before adoption")
-                # A second locally known child is an explicit conflict, even
-                # when neither child has been adopted on this computer yet.
-                parent = decision["document"]["parent"]
-                siblings = conn.execute("SELECT id FROM slot_meter_epochs WHERE device_slot=? AND parent_id IS ?",
-                    (slot, parent)).fetchall()
-                if len(siblings) != 1:
-                    raise ValueError("Conflicting slot decision branch needs review")
-            if head is None and self.store._legacy_identity_conflict(conn, slot,
-                    {item["document"]["baseline_event"]["payload"]["serial"] for item in chain}):
-                raise ValueError("Historical slot identity needs migration review before adoption")
-            identity = epoch["document"]["baseline_event"]["payload"]
-            device = conn.execute("SELECT serial,enabled FROM devices WHERE slot=?", (slot,)).fetchone()
-            if device != (identity["serial"], 1):
-                raise ValueError("Apply the reviewed shared printer settings before adoption")
-            conn.execute("INSERT INTO slot_meter_heads VALUES(?,?) ON CONFLICT(device_slot) DO UPDATE SET epoch_id=excluded.epoch_id",
-                (slot, epoch_id))
+            return self.adopt_in_transaction(conn, member, epoch_id, expected_head=expected_head)
+
+    def adopt_in_transaction(self, conn, member, epoch_id, *, expected_head):
+        """Apply under the caller's atomic settings transaction."""
+        if not conn.in_transaction:
+            raise ValueError("An active settings transaction is required")
+        if Path(conn.execute("PRAGMA database_list").fetchone()[2]).resolve() != self.store.path:
+            raise ValueError("Settings and Slot baseline must use the same database")
+        epoch = self.store._epoch(conn, epoch_id)
+        self._allowed(member, epoch)
+        slot = epoch["document"]["baseline_event"]["payload"]["slot"]
+        head = self.store._head(conn, slot)
+        if head != expected_head:
+            raise ValueError("Active slot decision changed; refresh before adoption")
+        if head == epoch_id:
             return epoch_id
+        chain, cursor = [], epoch
+        while cursor["id"] != head:
+            chain.append(cursor)
+            if len(chain) > 1024:
+                raise ValueError("Slot ancestry exceeds adoption limit")
+            parent_id = cursor["document"]["parent"]
+            if parent_id is None:
+                if head is not None:
+                    raise ValueError("Conflicting slot decision branch needs review")
+                break
+            cursor = self.store._epoch(conn, parent_id)
+        for decision in chain:
+            issues = self.store._projection(conn, decision)[0].issues
+            if "competing_epoch_decisions" in issues:
+                raise ValueError("Conflicting slot decision branch needs review")
+            if {"late_parent_evidence", "normalization_schema_changed", "counter_without_reviewed_baseline"}.intersection(issues):
+                raise ValueError("Slot evidence needs review before adoption")
+            # A second locally known child is an explicit conflict, even
+            # when neither child has been adopted on this computer yet.
+            parent = decision["document"]["parent"]
+            siblings = conn.execute("SELECT id FROM slot_meter_epochs WHERE device_slot=? AND parent_id IS ?",
+                (slot, parent)).fetchall()
+            if len(siblings) != 1:
+                raise ValueError("Conflicting slot decision branch needs review")
+        if head is None and self.store._legacy_identity_conflict(conn, slot,
+                {item["document"]["baseline_event"]["payload"]["serial"] for item in chain}):
+            raise ValueError("Historical slot identity needs migration review before adoption")
+        identity = epoch["document"]["baseline_event"]["payload"]
+        device = conn.execute("SELECT serial,enabled FROM devices WHERE slot=?", (slot,)).fetchone()
+        if device != (identity["serial"], 1):
+            raise ValueError("Apply the reviewed shared printer settings before adoption")
+        conn.execute("INSERT INTO slot_meter_heads VALUES(?,?) ON CONFLICT(device_slot) DO UPDATE SET epoch_id=excluded.epoch_id",
+            (slot, epoch_id))
+        return epoch_id
