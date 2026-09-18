@@ -902,6 +902,9 @@ def _write_user_sheet(
             for device_index in range(len(devices))
         }
         _write_row(worksheet, row_index, row, currency_columns=currency_columns)
+        completed = row_index - 4
+        _checkpoint(25 + 25 * completed // len(ordered_groups),
+                    f'กำลังสร้างรายงานผู้ใช้ {completed}/{len(ordered_groups)} คน…')
     if not subject_groups:
         _empty_row(worksheet, 5, total_columns, "ไม่มีข้อมูลผู้ใช้ / Account Track ในช่วงวันที่เลือก")
     _finish_sheet(

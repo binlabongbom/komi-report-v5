@@ -49,7 +49,7 @@ def render():
                 fmt.setName(url.toString())
                 # Qt print() scales document coordinates from logical 96 dpi;
                 # image format sizes must use the same logical coordinates.
-                width = writer.width() * 96 / writer.resolution() * .97
+                width = min(writer.width() * 96 / writer.resolution() * .97, img.width())
                 fmt.setWidth(width)
                 fmt.setHeight(width * img.height() / img.width())
                 cursor = QTextCursor(doc)

@@ -1,5 +1,4 @@
 from concurrent.futures import CancelledError, ThreadPoolExecutor
-from functools import partial
 from datetime import date
 from threading import Event, get_ident
 from time import monotonic
@@ -39,13 +38,22 @@ def test_90_users_export_keeps_qt_responsive_and_verifies_workbook(tmp_path):
     timer.timeout.connect(button.click)
     timer.start()
     report = report_for()
+    updates = []
+    def export(*, cancelled, progress):
+        def notify(percent, message):
+            updates.append((percent, message))
+            progress(percent, message)
+        return export_cloud_reports_xlsx(tmp_path/'users.xlsx', report, cancelled=cancelled, progress=notify)
     try:
-        controller.start(partial(export_cloud_reports_xlsx, tmp_path/'users.xlsx', report))
+        controller.start(export)
         assert not controller.start(lambda **kwargs: None)
         wait_until(lambda: not controller.busy, seconds=45)
         assert successes and not errors and len(ticks) > 10 and len(clicks) == len(ticks)
         # Only a coarse ceiling for a frozen GUI; performance timings are in the benchmark.
         assert max(b - a for a, b in zip(ticks, ticks[1:])) < 2
+        assert [value for value, _ in updates] == sorted(value for value, _ in updates)
+        assert any('45/90 คน' in message for _, message in updates)
+        assert any('90/90 คน' in message for _, message in updates)
         book = load_workbook(successes[0], read_only=True, data_only=True)
         rows = list(book['มุมมองผู้ใช้'].iter_rows(min_row=5, values_only=True))
         assert len(rows) == 90
@@ -94,14 +102,25 @@ def test_controller_cancel_then_retry_and_failure_restore_buttons():
     main = get_ident()
     def blocked(*, cancelled, progress):
         assert get_ident() != main
+        progress(47, 'กำลังสร้างรายงานผู้ใช้ 2/3 คน…')
         started.set()
-        release.wait(3)
+        release.wait(5)
         if cancelled.is_set():
             raise CancelledError()
     try:
         controller.start(blocked)
         wait_until(started.is_set)
-        controller.dialog.canceled.emit()
+        dialog = controller.dialog
+        wait_until(lambda: dialog.progress_bar.value() == 47)
+        assert dialog.isVisible() and '2/3' in dialog.phase_label.text()
+        initial_elapsed = dialog.elapsed_label.text()
+        wait_until(lambda: dialog.elapsed_label.text() != initial_elapsed)
+        # Cancel and window-close keep the popup visible until the worker stops.
+        dialog.cancel_button.click()
+        assert controller.cancelled.is_set() and controller.busy and dialog.isVisible()
+        assert not dialog.cancel_button.isEnabled()
+        dialog.close()
+        assert dialog.isVisible() and 'กำลังยกเลิก' in dialog.phase_label.text()
         release.set()
         wait_until(lambda: not controller.busy)
         assert states == [True, False] and not errors and not successes

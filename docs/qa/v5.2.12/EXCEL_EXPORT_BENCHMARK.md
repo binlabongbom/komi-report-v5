@@ -99,3 +99,18 @@ pass. Separate fresh-page and controller tests still process a real Qt event loo
 The actual Reports screenshot and the Thai/English in-app guide were updated. The source
 PDF was regenerated and all ten pages visually reviewed. Packaged-manual copying tests
 and the 5.2.12 version gate pass; no package was built.
+
+## Progress popup follow-up
+
+Replaced the basic progress dialog with a dedicated popup showing a progress bar,
+stage percentage, completed user count and elapsed time. Percentage advances on real
+stage and per-user completion, not on a simulated timer; elapsed time updates once
+per second. It does not claim a remaining-time estimate. Cancel, window close and
+Escape request cancellation and keep the popup visible until the worker stops.
+
+The updated 90-user test verifies intermediate and final user progress, workbook values
+and GUI responsiveness. The controller test checks elapsed time and that cancellation
+waits for worker acknowledgement. [Five affected test files passed, 47 tests](excel-popup-regression.json).
+An actual synthetic export completed while capturing `reports-excel-progress.png` for
+the guide. The Thai/English in-app guide and source PDF were updated. The PDF keeps
+compact popup images at native size instead of enlarging them to full-page width.

@@ -2,9 +2,112 @@
 from concurrent.futures import CancelledError, ThreadPoolExecutor
 from queue import Empty, SimpleQueue
 from threading import Event
+from time import monotonic
 
 from PyQt6.QtCore import QObject, QTimer, Qt, pyqtSignal
-from PyQt6.QtWidgets import QApplication, QProgressDialog
+from PyQt6.QtWidgets import QApplication, QDialog, QHBoxLayout, QLabel, QProgressBar, QPushButton, QVBoxLayout
+
+
+class ExportProgressDialog(QDialog):
+    """Keep progress visible until the worker has actually finished or cancelled."""
+    canceled = pyqtSignal()
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setObjectName('excel_export_progress')
+        self.setWindowTitle('ส่งออก Excel')
+        self.setWindowModality(Qt.WindowModality.NonModal)
+        self.setMinimumWidth(460)
+        self._finished = False
+        self._cancel_requested = False
+        self._started = monotonic()
+        self.setStyleSheet('''
+            QDialog#excel_export_progress { background:#FFFFFF; }
+            QLabel { color:#123262; background:transparent; }
+            QProgressBar { border:1px solid #C9D8E6; border-radius:7px;
+                background:#EEF4FA; color:#123262; min-height:24px; text-align:center; }
+            QProgressBar::chunk { background:#1677C8; border-radius:6px; }
+            QPushButton { background:#FFFFFF; color:#123262; border:1px solid #C9D8E6;
+                border-radius:6px; padding:8px 20px; }
+            QPushButton:hover { background:#EEF4FA; }
+            QPushButton:disabled { color:#66788A; background:#F3F6F8; }
+        ''')
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(24, 22, 24, 20)
+        layout.setSpacing(14)
+        title = QLabel('กำลังส่งออก Excel')
+        title.setStyleSheet('font-size:18px;font-weight:700;')
+        layout.addWidget(title)
+        self.phase_label = QLabel('กำลังเตรียมส่งออก…')
+        self.phase_label.setWordWrap(True)
+        status_row = QHBoxLayout()
+        status_row.addWidget(self.phase_label, 1)
+        self.percent_label = QLabel('0%')
+        self.percent_label.setStyleSheet('color:#1677C8;font-size:18px;font-weight:700;')
+        status_row.addWidget(self.percent_label)
+        layout.addLayout(status_row)
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setRange(0, 100)
+        self.progress_bar.setValue(0)
+        self.progress_bar.setFormat('%p%')
+        self.progress_bar.setTextVisible(False)
+        self.progress_bar.setAccessibleName('ความคืบหน้าการส่งออก Excel')
+        layout.addWidget(self.progress_bar)
+        self.elapsed_label = QLabel()
+        self.elapsed_label.setStyleSheet('color:#66788A;')
+        layout.addWidget(self.elapsed_label)
+        self.hint_label = QLabel('เปอร์เซ็นต์แสดงความคืบหน้าตามขั้นตอน\nสามารถใช้งานหน้ารายงานต่อได้ระหว่างรอ')
+        self.hint_label.setStyleSheet('color:#66788A;')
+        self.hint_label.setWordWrap(True)
+        layout.addWidget(self.hint_label)
+        row = QHBoxLayout()
+        row.addStretch()
+        self.cancel_button = QPushButton('ยกเลิก')
+        self.cancel_button.setAutoDefault(False)
+        self.cancel_button.clicked.connect(self.request_cancel)
+        row.addWidget(self.cancel_button)
+        layout.addLayout(row)
+        self.elapsed_timer = QTimer(self)
+        self.elapsed_timer.setInterval(1000)
+        self.elapsed_timer.timeout.connect(self._update_elapsed)
+        self._update_elapsed()
+        self.elapsed_timer.start()
+
+    def _update_elapsed(self):
+        seconds = int(monotonic() - self._started)
+        minutes, seconds = divmod(seconds, 60)
+        self.elapsed_label.setText(f'ใช้เวลา {minutes:02d}:{seconds:02d}')
+
+    def set_progress(self, percent, message):
+        if not self._cancel_requested:
+            self.progress_bar.setValue(max(0, min(99, int(percent))))
+            self.percent_label.setText(f'{self.progress_bar.value()}%')
+            self.phase_label.setText(message)
+
+    def request_cancel(self):
+        if self._finished or self._cancel_requested:
+            return
+        self._cancel_requested = True
+        self.phase_label.setText('กำลังยกเลิกการส่งออก…')
+        self.hint_label.setText('โปรดรอจนยกเลิกเสร็จ ไฟล์เดิมจะยังคงอยู่')
+        self.cancel_button.setText('กำลังยกเลิก…')
+        self.cancel_button.setEnabled(False)
+        self.canceled.emit()
+
+    def reject(self):
+        self.request_cancel()
+
+    def closeEvent(self, event):
+        if self._finished:
+            event.accept()
+        else:
+            self.request_cancel()
+            event.ignore()
+
+    def finish(self):
+        self._finished = True
+        self.elapsed_timer.stop()
+        self.accept()
 
 
 class ReportExportController(QObject):
@@ -37,12 +140,7 @@ class ReportExportController(QObject):
             return False
         self.cancelled.clear()
         self.messages = SimpleQueue()
-        self.dialog = QProgressDialog('กำลังเตรียมส่งออก…', 'ยกเลิก', 0, 100, self.parent())
-        self.dialog.setWindowTitle('ส่งออก Excel')
-        self.dialog.setWindowModality(Qt.WindowModality.NonModal)
-        self.dialog.setMinimumDuration(0)
-        self.dialog.setAutoClose(False)
-        self.dialog.setAutoReset(False)
+        self.dialog = ExportProgressDialog(self.parent())
         self.dialog.canceled.connect(self.cancelled.set)
         self.dialog.show()
         self.busy_changed.emit(True)
@@ -62,13 +160,12 @@ class ReportExportController(QObject):
             except Empty:
                 break
         if latest and not self.cancelled.is_set():
-            self.dialog.setValue(latest[0])
-            self.dialog.setLabelText(latest[1])
+            self.dialog.set_progress(latest[0], latest[1])
         if not self.future.done():
             return
         future, self.future = self.future, None
         self.timer.stop()
-        self.dialog.close()
+        self.dialog.finish()
         self.dialog.deleteLater()
         self.dialog = None
         self.busy_changed.emit(False)
@@ -87,6 +184,10 @@ class ReportExportController(QObject):
         self.closed = True
         self.cancelled.set()
         self.timer.stop()
+        if self.dialog is not None:
+            self.dialog.finish()
+            self.dialog.deleteLater()
+            self.dialog = None
         if self.future:
             self.future.cancel()
         self.pool.shutdown(wait=False, cancel_futures=True)

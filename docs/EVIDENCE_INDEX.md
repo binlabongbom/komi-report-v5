@@ -15,6 +15,7 @@
 - [ผลทดสอบส่งออก Excel สำหรับ 90 ผู้ใช้](qa/v5.2.12/EXCEL_EXPORT_BENCHMARK.md)
 - [ตรวจงาน Excel และส่วนเกี่ยวข้อง 17 ไฟล์ — 150 passed](qa/v5.2.12/excel-export-regression.json)
 - [ตรวจท้ายรอบ Excel/คู่มือ 4 ไฟล์ — 28 passed](qa/v5.2.12/source-followup-regression.json)
+- [ตรวจ popup ความคืบหน้า/ส่งออก/คู่มือ 5 ไฟล์ — 47 passed](qa/v5.2.12/excel-popup-regression.json)
 
 รอบ Excel ใช้ผลล่าสุดต่อไฟล์ **151 passed / 17 ไฟล์** ไม่บวกผลซ้อน
 ฐานก่อนรอบนี้ที่ commit `8b3e31b` รวม 167 ไฟล์ ผ่าน 1,380 tests ไม่มี failed/skipped

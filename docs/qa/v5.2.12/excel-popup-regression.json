@@ -1,0 +1,44 @@
+{
+  "scope": "5 selected source files in fresh pytest processes; final two after guide text/image changes",
+  "source_head": "21e19ec9bda45f14bf0427bac37fc94bc844f9d6",
+  "working_tree_status": " M source/services/report_excel_export.py\n M source/tests/test_report_export_job.py\n M source/ui/report_export.py\n",
+  "excluded_release_build_files": [],
+  "non_loopback_network": "denied by an audit hook in each pytest process; subprocess fixtures are separately isolated",
+  "installer_or_release_build": false,
+  "complete": true,
+  "results": [
+    {
+      "file": "test_report_export_job.py",
+      "exit_code": 0,
+      "seconds": 20.97,
+      "output": ".........                                                                [100%]\n9 passed in 18.46s\n"
+    },
+    {
+      "file": "test_report_excel_export.py",
+      "exit_code": 0,
+      "seconds": 8.62,
+      "output": ".......                                                                  [100%]\n7 passed in 5.58s\n"
+    },
+    {
+      "file": "test_history_v5_current.py",
+      "exit_code": 0,
+      "seconds": 33.52,
+      "output": "...................                                                      [100%]\n19 passed in 30.24s\n"
+    },
+    {
+      "file": "test_settings_navigation.py",
+      "exit_code": 0,
+      "seconds": 20.68,
+      "output": "........                                                                 [100%]\n8 passed in 18.26s\n"
+    },
+    {
+      "file": "test_packaged_manual_assets.py",
+      "exit_code": 0,
+      "seconds": 3.87,
+      "output": "....                                                                     [100%]\n4 passed in 0.75s\n"
+    }
+  ],
+  "file_count": 5,
+  "failed_files": [],
+  "final_guide_batch_working_tree_status": " M docs/CUSTOMER_GUIDE_V5_2_12_DRAFT.md\n M docs/customer-guide/KOMI_Report_5.2.12_Source_Guide.pdf\n M docs/qa/v5.2.12/source-followup-regression.json\n M source/pages.py\n M source/services/report_excel_export.py\n M source/tests/test_report_export_job.py\n M source/ui/report_export.py\n M tools/capture_excel_export.py\n?? docs/customer-guide/assets-v5.2.12-source/reports-excel-progress.png\n"
+}
