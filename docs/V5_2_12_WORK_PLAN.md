@@ -4,10 +4,10 @@
 
 อัปเดต 18 กันยายน 2569 ตามข้อสรุปกับผู้ใช้ใน task นี้
 
-**พักการพัฒนาไว้ก่อน** ตามคำสั่งให้สรุปแนวทางครบแล้วค่อยทำทีเดียว
-คำขอรอบนี้อนุญาตให้อัปเดตแผนเท่านั้น ไม่ใช่คำสั่งเริ่มพัฒนาหรือเปิด automation
-Automation komi-5-2-12 มีสถานะ PAUSED; ห้ามเปิดกลับเพียงเพราะแผนเสร็จ
-คำสั่งพักนี้แทนคำสั่งเดิมที่ให้เดินงานต่ออัตโนมัติจนกว่าผู้ใช้จะสั่งเริ่มใหม่
+**เริ่มพัฒนาต่อแล้ว** ตามคำสั่งล่าสุด “จัดการโค๊ดตามแผนพัฒนาเลย”
+ทำงานโดยตรงใน task นี้ ไม่ต้องตั้งเวลาเพื่อเดินงาน ผู้ใช้ทักเรื่องการตั้งเวลาแล้ว
+เครื่องมือแจ้งว่า automation komi-5-2-12 ถูกลบไปแล้ว จึงไม่สร้างกลับหรือเปิดงานซ้ำ
+คำสั่งเริ่มนี้ยกเลิกการพักพัฒนาเดิม แต่ไม่ได้อนุญาต build/เผยแพร่หรือแก้ production
 
 เมื่อผู้ใช้สั่งเริ่ม ให้ทำรายการที่ทำต่อได้ตามลำดับ เก็บผลทดสอบและข้อจำกัดจริง
 ไม่ถามซ้ำเรื่องที่ตกลงแล้ว และไม่ให้ผู้ใช้ตัดสินรายละเอียดทางเทคนิคแทน AI
@@ -183,7 +183,7 @@ bf453738b934dcf5bea59dd8c70e191b52ba6b89 และ merge เข้า local main
 | Web refresh/ข้อมูลค้าง/initial failure | มีโค้ดและ source tests แล้ว ต้อง regression กับระบบใหม่ |
 | หน้าตั้งค่าเครือข่าย | แยกโมดูล/ปรับโครงแล้ว ยังไม่ครบสมาชิกและ Sync ใหม่ |
 | Wizard ค้นหาซ้ำ | ปุ่มและ tests มีแล้ว แต่ยังใช้ IP scan; UDP discovery ยังไม่มี |
-| ประวัติการตั้งค่า | มี journal/ตรวจ conflict/API แบบอนุญาตครั้งเดียว ยังไม่ครบ save/apply/popup/การส่งต่อเนื่อง |
+| ประวัติการตั้งค่า | รอบบิล/ส่วนลดและตารางอ่านมี popup, atomic save พร้อม revision และตรวจ stale แล้ว; มี service รับค่าที่เลือก/undo แต่ยังไม่ครบ Setup/ราคา/หน้าจอ conflict/ส่งต่อเนื่อง |
 | Agent/handoff/tray | มี source implementation/tests บางส่วน ยังต้องรวมการเป็นผู้อ่านและวัดงานจริงทั้ง process tree |
 | เปลี่ยนเครื่อง/มิเตอร์ลด | มี engine/หน้าตรวจบางส่วน ยังไม่ครบข้ามวัน รายผู้ใช้ และ peer |
 | ผู้อ่านร่วม/อ่านด้วยมือ/ส่งผล Web | ข้อสรุปใหม่ ยังไม่ได้พัฒนาครบ; การตรวจโค้ดรอบล่าสุดไม่ได้เพิ่ม election |
@@ -258,9 +258,60 @@ P9/H1 ที่ตรวจ source/fixture ได้อาจทำสลับ�
   ไม่แจ้งว่า “รอ Host” ลอย ๆ หรือขอสิทธิ์ซ้ำก่อนตรวจ
 - ผู้ใช้ตรวจหน้าตาและวิธีใช้งานเมื่อมีตัวอย่างที่เปิดดูได้; เครื่องพิมพ์จริง/สองคอมจริง
   ใช้ขั้นตอนทดสอบที่ AI เตรียม โดยแยกจาก simulation และ installer QA
-- **จุดรอปัจจุบัน: ผู้ใช้สั่งเริ่มพัฒนาใหม่** และภายหลังอนุมัติ build/เผยแพร่แยกต่างหาก
+- ผู้ใช้สั่งเริ่มพัฒนาแล้ว ไม่รอคำยืนยันซ้ำ; build/เผยแพร่ยังต้องอนุมัติแยกภายหลัง
 
 ## Existing evidence (not release approval)
+
+### 2026-09-18 — resumed P1: reviewed billing and schedule transactions
+
+- User explicitly resumed development; work continues directly in this task.
+  The prior heartbeat was briefly reactivated, then the user questioned scheduling.
+  The attempt to pause it reported that the automation had been deleted. Do not
+  recreate it. This does not cancel the user's instruction to develop the code.
+- Added SharedSettingsService for billing_day, waste_paper_pct and reading
+  schedule. Previews are read-only, bound to the database path, causal head and
+  complete shared snapshot. Save writes the changed values, config audit and
+  history revision in one SQLite transaction; cache readers cannot observe a
+  partial commit. Legacy pre-edit values are captured as a baseline when needed.
+- Connected the actual fleet billing/schedule Save buttons to a shared-settings
+  confirmation dialog with old/new values, all-computers/offline notice and
+  Cancel default. Cancellation keeps the draft. A concurrent edit rejects the
+  stale preview and leaves the newer values intact. Missing persisted defaults
+  are checked consistently so a successful save does not leave the form dirty.
+- Added transaction-scoped snapshot reads using the existing setup allowlist;
+  neither cached reads nor a separate repository connection can describe a
+  different commit. Installation IDs and credentials stay out of shared history.
+  The v2 history endpoint now authorizes separately and observes current database
+  values under the history write lock. It cannot append a stale snapshot captured
+  before a concurrent settings save and make that save appear to be undone.
+- Added reviewed peer-choice and selective-undo service paths for these fields.
+  Existing incoming revisions fast-forward without generating another edit;
+  explicit conflict resolution retains both parents. Device/organization/price
+  changes are rejected here and must use their own workflows. This service is
+  not yet a network delivery loop or the user-facing conflict/undo screen.
+- Usage-data reset preserves the shared settings journal; factory reset clears
+  both revision and state tables so the next installation cannot retain the old
+  company's history or journal identity.
+- Source tests exercise injected failure during field writes, revision append
+  and incoming-head update; two separate databases with offline conflicting edits;
+  duplicate delivery/convergence; stale cache/database switch; selective undo;
+  identity preservation; UI Cancel and stale confirmation. The original combined
+  test attempt was interrupted after fixture failures; corrected the missing
+  configured defaults and a save-verification default mismatch, then reran.
+- Inspected synthetic source-rendered dialogs with the application stylesheet.
+  Widened schedule columns and resized wrapped rows; billing and schedule renders
+  are in Temp/komi-shared-review-rsd_9zs3/{billing-final,schedule-final}.png.
+  Render helpers exited cleanly. No live printers or Host calls were used.
+- Ruff is not installed in the existing Python environment; no dependency was
+  installed just for this optional check. Whitespace checked with git diff --check.
+- Final combined source suite: **107 passed**, with one dependency deprecation
+  warning (Starlette/AnyIO), and a clean process exit. After the final endpoint
+  snapshot-race fix, the affected shared-settings/history/Web API suite was rerun:
+  **44 passed**, same warning, clean exit. Counts overlap; do not add them.
+- P1 remains in progress: next wire Setup/device/price saves to a complete atomic
+  history contract (including effective-dated prices), then expose conflict/undo
+  review in the UI. P2 durable authorized membership/outbox/event delivery and all
+  shared-reader, catch-up and chart changes remain pending. No release build.
 
 ### 2026-09-18 — consolidated design and explicit development pause
 

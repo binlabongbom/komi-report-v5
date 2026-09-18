@@ -80,6 +80,8 @@ _USAGE_RESET_SEQUENCES = (
 )
 
 _FACTORY_RESET_TABLES = (
+    "peer_settings_state",
+    "peer_settings_revisions",
     "registration_attempt_history",
     "registration_outbox",
     "registration_profile",
@@ -489,6 +491,22 @@ def init_db():
 # ══════════════════════════════════════════════════════════
 _cfg_cache = None
 _cfg_lock = threading.RLock()  # [V4.5] thread-safe cache
+
+@contextmanager
+def config_write_transaction():
+    """Keep cached readers out until an external settings transaction commits.
+
+    Callers use this connection for all writes, including their audit records.
+    Invalidate on either outcome so a rolled-back value cannot survive in cache.
+    """
+    global _cfg_cache
+    with _cfg_lock:
+        try:
+            with _open() as connection:
+                connection.execute("BEGIN IMMEDIATE")
+                yield connection
+        finally:
+            _cfg_cache = None
 
 def get_cfg(key: str, default: str = "") -> str:
     """อ่านค่า setting จาก database (ใช้ cache ลด I/O) — thread-safe"""

@@ -182,6 +182,8 @@ from services.setup_connectivity import (
 )
 from services.snmp_probe import PaperTrayStatus, SnmpTotalProbe
 from services.subject_history import SubjectDailyCacheStore, SubjectPeriodUsage, load_subject_history
+from services.shared_settings import SharedSettingsService
+from ui.shared_settings_confirmation import confirm_shared_settings
 from services.sync_schedule import (
     DailyTimelineEntry,
     build_daily_timeline,
@@ -12091,11 +12093,28 @@ class PageFleetSettings(QWidget):
         if close:
             self._set_active_editor(None, force=True)
 
+    def _commit_shared_settings(self, section: str, changes: dict) -> bool:
+        service = SharedSettingsService()
+        try:
+            preview = service.preview(changes, reason=f"{section}_settings_saved")
+            if preview.changes and not confirm_shared_settings(self, preview):
+                return False
+            service.commit(preview)
+            return True
+        except Exception as error:
+            status = self.billing_save_status if section == "billing" else self.schedule_save_status
+            status.setText(tr("บันทึกไม่สำเร็จ: ", "Could not save: ") + str(error))
+            status.setStyleSheet("color:#B42318;font-weight:700;border:none;")
+            return False
+
     def _save_billing(self) -> None:
-        set_cfg("billing_day", str(self.billing_day.value()))
-        set_cfg("waste_paper_pct", str(round(self.waste.value(), 1)))
-        stored_day = int(get_cfg("billing_day", "0") or 0)
-        stored_waste = float(get_cfg("waste_paper_pct", "-1") or -1)
+        if not self._commit_shared_settings("billing", {
+            "billing_day": self.billing_day.value(),
+            "waste_paper_pct": round(self.waste.value(), 1),
+        }):
+            return
+        stored_day = int(get_cfg("billing_day", "31") or 31)
+        stored_waste = float(get_cfg("waste_paper_pct", "2") or 2)
         if stored_day != self.billing_day.value() or stored_waste != round(self.waste.value(), 1):
             self.billing_save_status.setText(
                 tr("บันทึกรอบบิลไม่สำเร็จ", "Could not save billing settings")
@@ -12115,7 +12134,8 @@ class PageFleetSettings(QWidget):
             )
             return
         serialized_windows = dump_schedule_windows(schedule_windows)
-        set_cfg("sync_schedule_windows", serialized_windows)
+        if not self._commit_shared_settings("schedule", {"sync_schedule_windows": serialized_windows}):
+            return
         stored_windows = load_schedule_windows(get_cfg("sync_schedule_windows", ""))
         if stored_windows != schedule_windows:
             self.schedule_save_button.setEnabled(True)

@@ -12,7 +12,7 @@ import sqlite3
 import uuid
 
 from database import get_db_path
-from services.secondary_setup import SECONDARY_SETUP_CONTRACT, validate_setup_snapshot
+from services.secondary_setup import SECONDARY_SETUP_CONTRACT, setup_snapshot_from_connection, validate_setup_snapshot
 
 CONTRACT = "komi-peer-settings-history/v1"
 MAX_REVISIONS = 256
@@ -104,6 +104,20 @@ class SettingsHistory:
         payload = shared_settings(snapshot)
         _validate_payload(payload)
         with self._transaction() as conn:
+            head = self._state(conn, "head")
+            if head and self._document(conn, head)["payload"] == payload:
+                return head
+            return self._append(conn, payload, [head] if head else [], "local_settings_observed")
+
+    def observe_current(self):
+        """Capture DB values and advance history under the same write lock.
+
+        An API handler must not record a previously captured snapshot after a
+        newer settings save has committed, turning a read into an apparent undo.
+        """
+        with self._transaction() as conn:
+            payload = shared_settings(setup_snapshot_from_connection(conn))
+            _validate_payload(payload)
             head = self._state(conn, "head")
             if head and self._document(conn, head)["payload"] == payload:
                 return head

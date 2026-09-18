@@ -20,6 +20,10 @@ def settings(monkeypatch, tmp_path):
     set_language("th")
     monkeypatch.setattr(v5_pages, "web_service_manager", lambda: _WebServiceDouble(tmp_path))
     monkeypatch.setattr(v5_pages, "configure_autostart", lambda *a, **kw: tmp_path / "autostart")
+    monkeypatch.setattr(v5_pages, "confirm_shared_settings", lambda *_: True)
+    from services.device_config import DeviceConfig, DeviceConfigRepository
+    database.set_cfg("company_name", "Synthetic settings company")
+    DeviceConfigRepository().replace_all([DeviceConfig(0, "Synthetic Printer", "192.0.2.10")])
     page = PageSettingsV5(PageSettings())
     page.resize(824, 768)
     page.show()

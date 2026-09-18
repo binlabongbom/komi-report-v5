@@ -17,6 +17,7 @@ from collections.abc import Iterable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import date, datetime
+from types import SimpleNamespace
 from urllib.parse import urlsplit
 
 from PyQt6.QtNetwork import QAbstractSocket, QNetworkInterface
@@ -25,7 +26,7 @@ from config import PACKAGE_VERSION
 from database import get_cfg
 from services.device_config import DeviceConfigRepository
 from services.peer_sync_authorization import new_claim_token
-from services.pricing import PricingRepository
+from services.pricing import PriceList, PricingRepository
 from services.web_port import validate_web_port
 from services.sync_schedule import dump_schedule_windows, load_schedule_windows
 
@@ -152,8 +153,37 @@ def primary_setup_snapshot() -> dict[str, object]:
 
     devices = DeviceConfigRepository().list(enabled_only=True)
     pricing = PricingRepository()
+    return _setup_snapshot(devices, pricing, get_cfg)
+
+
+def setup_snapshot_from_connection(connection) -> dict[str, object]:
+    """Read shared values within the caller's SQLite transaction, without secrets.
+
+    Do not consult the process config cache or open repository connections here:
+    both would let a preview/journal describe a different commit from its writes.
+    """
+    settings = dict(connection.execute("SELECT key,value FROM settings"))
+    columns = ("slot", "name", "host", "model", "serial", "tls_mode", "tls_fingerprint")
+    devices = [SimpleNamespace(**dict(zip(columns, row))) for row in connection.execute(
+        "SELECT slot,name,host,model,serial,tls_mode,tls_fingerprint "
+        "FROM devices WHERE enabled=1 ORDER BY slot"
+    )]
+
+    class TransactionPricing:
+        def get_prices(self, slot, on_date):
+            row = connection.execute(
+                "SELECT a3_color,a3_bw,a4_color,a4_bw FROM price_history "
+                "WHERE device_slot=? AND effective_date<=? ORDER BY effective_date DESC LIMIT 1",
+                (slot, on_date.isoformat()),
+            ).fetchone()
+            return PriceList(*row) if row else PriceList()
+
+    return _setup_snapshot(devices, TransactionPricing(), settings.get)
+
+
+def _setup_snapshot(devices, pricing, config) -> dict[str, object]:
     today = date.today()
-    company = " ".join((get_cfg("company_name", "") or "").split())
+    company = " ".join((config("company_name", "") or "").split())
     if not company or not devices:
         raise SecondarySetupError("เครื่องหลักยังตั้งค่าไม่เสร็จ")
     return {
@@ -161,16 +191,16 @@ def primary_setup_snapshot() -> dict[str, object]:
         "generated_at": datetime.now().astimezone().isoformat(timespec="seconds"),
         "organization": {
             "company_name": company,
-            "first_started_at": get_cfg("client_first_started_at", "") or today.isoformat(),
-            "primary_installation_id": get_cfg("installation_id", ""),
+            "first_started_at": config("client_first_started_at", "") or today.isoformat(),
+            "primary_installation_id": config("installation_id", ""),
         },
         "settings": {
-            "pricing_mode": get_cfg("pricing_mode", "shared") or "shared",
-            "billing_day": int(get_cfg("billing_day", "31") or 31),
-            "waste_paper_pct": float(get_cfg("waste_paper_pct", "2") or 2),
-            "work_start": get_cfg("work_start", "08:00") or "08:00",
-            "work_end": get_cfg("work_end", "17:00") or "17:00",
-            "sync_schedule_windows": get_cfg("sync_schedule_windows", "") or "",
+            "pricing_mode": config("pricing_mode", "shared") or "shared",
+            "billing_day": int(config("billing_day", "31") or 31),
+            "waste_paper_pct": float(config("waste_paper_pct", "2") or 2),
+            "work_start": config("work_start", "08:00") or "08:00",
+            "work_end": config("work_end", "17:00") or "17:00",
+            "sync_schedule_windows": config("sync_schedule_windows", "") or "",
         },
         "devices": [
             {

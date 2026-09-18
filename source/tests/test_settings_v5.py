@@ -135,6 +135,7 @@ class _WebServiceDouble:
 def fake_web_service(monkeypatch, tmp_path):
     service = _WebServiceDouble(tmp_path)
     monkeypatch.setattr(v5_pages, "web_service_manager", lambda: service)
+    monkeypatch.setattr(v5_pages, "confirm_shared_settings", lambda *_: True)
     return service
 
 
@@ -142,6 +143,9 @@ def _database(tmp_path):
     original = database.get_db_path()
     database.set_db_path(tmp_path / "settings.sqlite3")
     database.init_db()
+    database.set_cfg("company_name", "Synthetic settings company")
+    database.set_cfg("billing_day", "31")
+    database.set_cfg("waste_paper_pct", "2")
     DeviceConfigRepository().replace_all(
         [DeviceConfig(0, "DMS Printer", "192.0.2.10", model="bizhub C450i", serial="SERIAL-1")]
     )
@@ -154,6 +158,65 @@ def _read_values(path: Path) -> dict[str, str]:
         for line in path.read_text(encoding="utf-8").splitlines()
         if "=" in line and not line.lstrip().startswith("#")
     )
+
+
+def test_shared_billing_cancel_keeps_draft_and_does_not_write_history(tmp_path, monkeypatch):
+    from services.peer_settings_history import SettingsHistory
+    original = _database(tmp_path)
+    page = PageFleetSettings()
+    try:
+        old = database.get_cfg("billing_day")
+        page.billing_day.setValue(15)
+        previews = []
+        monkeypatch.setattr(v5_pages, "confirm_shared_settings", lambda _parent, preview: previews.append(preview) or False)
+        page._save_billing()
+        assert previews[0].changes["billing_day"] == (int(old), 15)
+        assert database.get_cfg("billing_day") == old
+        assert page.billing_day.value() == 15
+        assert page.billing_save_button.isEnabled()
+        with database._open(commit=False) as conn:
+            assert SettingsHistory._state(conn, "head") is None
+    finally:
+        page.close()
+        database.set_db_path(original)
+
+
+def test_shared_billing_rejects_edit_made_while_confirmation_is_open(tmp_path, monkeypatch):
+    original = _database(tmp_path)
+    page = PageFleetSettings()
+    try:
+        page.billing_day.setValue(15)
+
+        def concurrent_change(_parent, _preview):
+            database.set_cfg("billing_day", "20")
+            return True
+
+        monkeypatch.setattr(v5_pages, "confirm_shared_settings", concurrent_change)
+        page._save_billing()
+        assert database.get_cfg("billing_day") == "20"
+        assert page.billing_save_button.isEnabled()
+        assert "เปลี่ยนหลังเปิด" in page.billing_save_status.text()
+    finally:
+        page.close()
+        database.set_db_path(original)
+
+
+def test_shared_confirmation_shows_before_after_and_defaults_to_cancel(tmp_path):
+    from PyQt6.QtWidgets import QDialogButtonBox
+    from services.shared_settings import SharedSettingsService
+    from ui.shared_settings_confirmation import SharedSettingsConfirmation
+    original = _database(tmp_path)
+    try:
+        preview = SharedSettingsService().preview({"billing_day": 15, "waste_paper_pct": 3.5}, reason="UI check")
+        dialog = SharedSettingsConfirmation(preview)
+        assert dialog.table.rowCount() == 2
+        assert dialog.table.item(0, 2).text() == "15"
+        assert dialog.table.item(1, 2).text() == "3.5%"
+        assert dialog.buttons.button(QDialogButtonBox.StandardButton.Cancel).isDefault()
+        assert any("ทุกเครื่อง" in label.text() for label in dialog.findChildren(QLabel))
+        dialog.close()
+    finally:
+        database.set_db_path(original)
 
 
 def test_fleet_settings_groups_fields_and_live_schedule(tmp_path, monkeypatch, fake_web_service):

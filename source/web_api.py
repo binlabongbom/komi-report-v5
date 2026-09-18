@@ -623,6 +623,12 @@ def peer_claim(request: Request, body: PeerClaimRequest) -> dict:
 def peer_setup_snapshot(request: Request) -> dict:
     """Consume one approved capability before returning the allow-list."""
 
+    _authorize_peer_snapshot(request)
+    return primary_setup_snapshot()
+
+
+def _authorize_peer_snapshot(request: Request) -> None:
+
     token = request.headers.get(PEER_SYNC_TOKEN_HEADER, "")
     try:
         consume_pairing_token(
@@ -632,7 +638,6 @@ def peer_setup_snapshot(request: Request) -> dict:
         )
     except PeerSyncAuthorizationError as exc:
         raise HTTPException(status_code=401, detail=str(exc)) from exc
-    return primary_setup_snapshot()
 
 
 @app.get("/api/v2/peer/settings-history", response_model=PeerSettingsHistoryResponse)
@@ -640,10 +645,10 @@ def peer_settings_history(request: Request) -> dict:
     """Versioned history through the existing single-use approved capability."""
     from services.peer_settings_history import SettingsHistory
 
-    snapshot = peer_setup_snapshot(request)
+    _authorize_peer_snapshot(request)
     history = SettingsHistory()
     try:
-        history.observe(snapshot)
+        history.observe_current()
         return history.export()
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc

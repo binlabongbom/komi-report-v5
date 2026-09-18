@@ -125,7 +125,15 @@ def test_bad_history_is_rejected_atomically(tmp_path, damage):
 
 
 def test_history_endpoint_keeps_single_use_authorization(monkeypatch, tmp_path):
+    from database import set_cfg
+    from services.device_config import DeviceConfig, DeviceConfigRepository
+    from services.shared_settings import SharedSettingsService
+    set_cfg("company_name", "Synthetic endpoint company")
+    DeviceConfigRepository().replace_all([DeviceConfig(0, "Printer", "192.0.2.10")])
+    service = SharedSettingsService()
+    expected_head = service.commit(service.preview({"billing_day": 15}, reason="newer committed edit"))
     monkeypatch.setenv("KOMI_PEER_SYNC_STATE_FILE", str(tmp_path / "auth.json"))
+    # This legacy snapshot is stale. A v2 history read must use the DB transaction.
     monkeypatch.setattr(web_api, "primary_setup_snapshot", _valid_snapshot)
     monkeypatch.setattr(web_api, "get_cfg", lambda key, default="": "pc-a" if key == "installation_id" else default)
     client = TestClient(web_api.app)
@@ -137,6 +145,8 @@ def test_history_endpoint_keeps_single_use_authorization(monkeypatch, tmp_path):
     headers = {"X-KOMI-Peer-Sync-Token": token}
     response = client.get(path, headers=headers)
     assert response.status_code == 200
+    assert response.json()["head"] == expected_head
+    assert response.json()["revisions"][expected_head]["payload"]["settings"]["billing_day"] == 15
     receiver = journal(tmp_path / "receiver.db")
     assert receiver.receive(response.json())["status"] == "initial_review"
     assert "primary_installation_id" not in response.text
