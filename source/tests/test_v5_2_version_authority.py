@@ -39,7 +39,7 @@ def test_native_build_identity_is_derived_from_current_version_authority():
     assert PAYLOAD_NAME == "KOMI Report V5.2.11"
     assert MACOS_APP_NAME == "KOMI Report V5.2.11"
     assert INSTALLER_NAME == "KOMI_Report_V5_2_11_Windows_x64_RC.exe"
-    assert CUSTOMER_INSTALLER_NAME == "KOMI_Report_V5_2_11_Windows_x64_Installer.exe"
+    assert CUSTOMER_INSTALLER_NAME == "KOMI_Report_V5_2_11_Windows_x64_Online_Installer.exe"
 
 
 def test_v5_2_version_authority_rejects_old_new_build_metadata():

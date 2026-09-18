@@ -26,6 +26,11 @@ class PageHeading(QWidget):
 
 
 class PageTabs(QTabWidget):
+    def set_compact(self, compact: bool):
+        if getattr(self, "_compact", None) != compact:
+            self._compact = compact
+            self.setStyleSheet(page_tabs_qss(compact=compact))
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setTabPosition(QTabWidget.TabPosition.North)

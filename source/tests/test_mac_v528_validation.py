@@ -65,31 +65,33 @@ def test_rapid_report_tabs_coalesce_and_recover_after_error(window, monkeypatch)
     window._nav(window.nav_btns[2])
     QTest.qWait(300)
     page = window.pg_history
-    original = page._refresh_report_center
+    original = page._request_snapshot
     calls = []
 
-    def counted_refresh():
-        calls.append(page.report_center_tabs.currentIndex())
-        original()
+    def counted_refresh(index, **kwargs):
+        if not kwargs.get("background"):
+            calls.append(index)
+        original(index, **kwargs)
 
-    monkeypatch.setattr(page, "_refresh_report_center", counted_refresh)
+    monkeypatch.setattr(page, "_request_snapshot", counted_refresh)
     for index in (4, 0, 1, 3, 2, 0, 1):
         page.report_center_tabs.setCurrentIndex(index)
     QTest.qWait(400)
-    assert calls == [1]
-    assert page.reports_error.isHidden()
-    assert not page._report_refresh_busy
+    assert calls and all(index == 1 for index in calls)
+    assert page.report_center.error_label.isHidden()
 
-    def failed_refresh():
+    import v5_pages
+    original_loader = v5_pages.load_report_snapshot
+    def failed_refresh(*args, **kwargs):
         raise RuntimeError("synthetic QA error")
 
-    monkeypatch.setattr(page, "_refresh_report_center", failed_refresh)
+    from test_reports_background_loading import wait_until
+    monkeypatch.setattr(v5_pages, "load_report_snapshot", failed_refresh)
     page.refresh_visible()
-    assert "synthetic QA error" in page.reports_error.text()
-    assert not page._report_refresh_busy
-    monkeypatch.setattr(page, "_refresh_report_center", original)
+    wait_until(lambda: "synthetic QA error" in page.report_center.error_label.text())
+    monkeypatch.setattr(v5_pages, "load_report_snapshot", original_loader)
     page.refresh_visible()
-    assert page.reports_error.isHidden()
+    wait_until(lambda: page.report_center.error_label.isHidden())
 
 
 @pytest.mark.parametrize("subject_id", ["1", "001"])

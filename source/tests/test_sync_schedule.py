@@ -14,11 +14,11 @@ def test_default_schedule_has_five_weekday_collection_policies():
     windows = default_schedule_windows()
 
     assert [(item.label, item.start, item.end) for item in windows] == [
-        ("Lazyload", time(0, 0), time(8, 0)),
-        ("Active", time(8, 0), time(8, 30)),
-        ("Standard", time(8, 30), time(16, 30)),
-        ("Active", time(16, 30), time(17, 0)),
-        ("Lazyload", time(17, 0), time(23, 59)),
+        ("นอกเวลางาน", time(0, 0), time(8, 0)),
+        ("ช่วงเร่งด่วน", time(8, 0), time(8, 30)),
+        ("เวลาทำงาน", time(8, 30), time(16, 30)),
+        ("ช่วงเร่งด่วน", time(16, 30), time(17, 0)),
+        ("นอกเวลางาน", time(17, 0), time(23, 59)),
     ]
     assert [int(item.snmp_interval.total_seconds() // 60) for item in windows] == [60, 5, 15, 5, 60]
     assert [int(item.web_interval.total_seconds() // 60) for item in windows] == [240, 10, 60, 10, 240]

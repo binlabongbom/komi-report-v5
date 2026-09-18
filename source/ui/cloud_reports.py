@@ -777,6 +777,7 @@ class CloudReportsWidget(QWidget):
         if getattr(self, "_compact_density", None) == compact:
             return
         self._compact_density = compact
+        self.tabs.set_compact(compact)
         sizes = {
             "cloud_subtitle": 11 if compact else 12,
             "cloud_panel_title": 13 if compact else 15,

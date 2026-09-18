@@ -214,7 +214,7 @@ GRAPH_COLORS_TYPE = {           # สี bar สำหรับประเภ�
 
 # ─── QSS หลัก (stylesheet ทั้งโปรแกรม) ───────────────────
 # แก้ตรงนี้เพื่อเปลี่ยน style ปุ่ม/ตาราง/input ทั้งหมด
-def page_tabs_qss():
+def page_tabs_qss(*, compact=False):
     """One left-aligned tab pattern for all desktop page containers."""
     return f"""
 QTabWidget::pane {{
@@ -225,7 +225,7 @@ QTabWidget::tab-bar {{ alignment: left; }}
 QTabBar::tab {{
     background: #E5ECF2; color: {C_TEXT2};
     border: 1px solid {C_BORDER};
-    padding: 7px 18px; font-size: {F_LG}px;
+    padding: {4 if compact else 7}px {10 if compact else 18}px; font-size: {12 if compact else F_LG}px;
     border-top-left-radius: 6px; border-top-right-radius: 6px;
     margin-right: 2px;
 }}

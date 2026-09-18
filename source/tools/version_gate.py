@@ -104,7 +104,7 @@ def assert_v5_2_version_alignment() -> None:
             'VERSION_TAG = VERSION.replace(".", "_")' in windows_builder
             and 'INSTALLER_NAME = f"KOMI_Report_V{VERSION_TAG}_Windows_x64_RC.exe"'
             in windows_builder
-            and 'CUSTOMER_INSTALLER_NAME = f"KOMI_Report_V{VERSION_TAG}_Windows_x64_Installer.exe"'
+            and 'CUSTOMER_INSTALLER_NAME = f"KOMI_Report_V{VERSION_TAG}_Windows_x64_Online_Installer.exe"'
             in windows_builder
             and not _embedded_v5_2_versions(windows_builder)
         ),
@@ -143,7 +143,7 @@ def assert_v5_2_version_alignment() -> None:
             and not _embedded_v5_2_versions(customer_guide_builder)
         ),
         "shared contract checksum": bool(
-            contract.is_file() and hashlib.sha256(contract.read_bytes()).hexdigest() == CONTRACT_SHA256
+            contract.is_file() and hashlib.sha256(contract.read_bytes().replace(b"\r\n", b"\n")).hexdigest() == CONTRACT_SHA256
         ),
     }
     for label, matches in checks.items():

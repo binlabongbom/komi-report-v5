@@ -30,29 +30,11 @@ from .meter_export import (
     subject_name_map,
 )
 from .models import MeterReading, WebAuthState
+from .subject_identity import subject_name_is_placeholder as _subject_name_is_placeholder, numeric_name_aliases
 
 
 class MeterExportReaderLike(Protocol):
     def read(self, host: str, kind: MeterExportKind) -> MeterExportTable: ...
-
-
-def _subject_name_is_placeholder(subject_id: str | None, subject_name: str | None) -> bool:
-    """Return True when a device echoed the numeric subject ID as its display name."""
-
-    subject_id_text = str(subject_id or "").strip()
-    name_text = str(subject_name or "").strip()
-    if not name_text:
-        return True
-    if not subject_id_text:
-        return False
-    if name_text.casefold() == subject_id_text.casefold():
-        return True
-    if name_text.isdigit() and subject_id_text.isdigit():
-        try:
-            return int(name_text) == int(subject_id_text)
-        except ValueError:
-            return False
-    return False
 
 
 class MeterReader:
@@ -302,9 +284,12 @@ class MeterReader:
             names_by_type[subject_type] = names
 
         enriched = []
+        aliases = {kind: numeric_name_aliases(names) for kind, names in names_by_type.items()}
         for counter in counters:
             lookup_type = "account" if counter.subject_type == "track" else counter.subject_type
             name = names_by_type.get(lookup_type or "", {}).get(counter.subject_id or "")
+            if not name and str(counter.subject_id or "").isdecimal():
+                name = aliases.get(lookup_type or "", {}).get(str(int(counter.subject_id)))
             should_replace = bool(name) and _subject_name_is_placeholder(
                 counter.subject_id,
                 counter.subject_name,

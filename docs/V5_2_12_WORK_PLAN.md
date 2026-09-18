@@ -262,6 +262,32 @@ P9/H1 ที่ตรวจ source/fixture ได้อาจทำสลับ�
 
 ## Existing evidence (not release approval)
 
+### 2026-09-18 — broad regression triage and source fixes
+
+- A monolithic Qt test run stalled after roughly a quarter of the suite; stopped
+  only its verified pytest processes. A separate per-file audit covered 124
+  top-level files. Eleven files initially failed or aborted, including stale
+  synchronous-UI/version assertions and a missing offscreen environment in that
+  audit runner. A standalone import-layout run passed all 19 cases.
+- Fixed real numeric-name issues: leading-zero subject IDs can use an
+  unambiguous export alias without changing the ID/counter; Unicode digit-like
+  names no longer crash reports and are preserved. Ambiguous aliases are not
+  guessed. Shared the lightweight name helper between collection and reporting.
+- Compact reports now apply the common tab theme's compact geometry so tabs
+  remain visible. Updated older tests for deferred pages, staged report jobs,
+  the meter-review tab, Thai schedule labels and desktop-owned Windows Web launch.
+- Version gate now recognizes the existing Online installer name and normalizes
+  CRLF before comparing the unchanged shared-contract SHA. Verified the LF hash
+  equals the existing contract identity; no contract/API policy was rewritten.
+- After fixes: affected UI/schedule/metadata group had 70 passes plus one
+  Unicode-name expectation mismatch; preserved intentional Unicode names, then
+  reran that full Mac/name/history/release-fixture group: **55 passed**. Nested
+  profiler, repricing and summary tests: **111 passed**. Counts overlap; these
+  are not a claim that one monolithic full-suite process completed.
+- Inspected rendered baseline/repricing dialogs from synthetic Qt fixtures;
+  corrected the remaining untranslated Cancel label. Release-builder tests use
+  mocked temporary fixtures; no installer/release build, push or Host changes.
+
 ### 2026-09-18 — reviewed dated-price recalculation
 
 - Billing Audit can preview a selected verified posting against the price

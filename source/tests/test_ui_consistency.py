@@ -1,4 +1,6 @@
 from PyQt6.QtWidgets import QApplication, QPushButton, QWidget
+from PyQt6.QtTest import QTest
+from time import monotonic
 
 from config import BUTTON_HEIGHT, BUTTON_ICON_SIZE, BUTTON_LARGE_HEIGHT, BUTTON_LINK_HEIGHT
 from ui_consistency import ButtonSystem, install_button_system
@@ -88,6 +90,9 @@ def test_heavy_pages_are_constructed_on_first_navigation():
     expected = (PageHistoryV5, PageSettingsV5, PageManual)
     for index, page_type in zip(range(2, 5), expected, strict=True):
         window._nav(window.nav_btns[index])
+        deadline = monotonic() + 3
+        while isinstance(window._page_widgets[index], _DeferredPage) and monotonic() < deadline:
+            QTest.qWait(10)
         assert isinstance(window._page_widgets[index], page_type)
 
     window._quitting = True
@@ -100,6 +105,9 @@ def test_sidebar_navigation_warns_and_preserves_settings_draft(monkeypatch):
     qt_app = QApplication.instance() or QApplication([])
     window = app_module.MainWindow()
     window._nav(window.nav_btns[window._settings_index])
+    deadline = monotonic() + 3
+    while not hasattr(window.pg_settings, "fleet_content") and monotonic() < deadline:
+        QTest.qWait(10)
     settings = window.pg_settings
     settings.fleet_content._set_active_editor("billing")
     settings.fleet_content.waste.setValue(8.5)

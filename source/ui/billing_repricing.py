@@ -51,6 +51,7 @@ class BillingRepricingDialog(QDialog):
         self.confirm_button.setText(tr("ยืนยันรายการแก้ไข", "Confirm correction"))
         self.confirm_button.setEnabled(False)
         self.confirm_button.setAutoDefault(False)
+        buttons.button(QDialogButtonBox.StandardButton.Cancel).setText(tr("ยกเลิก", "Cancel"))
         buttons.button(QDialogButtonBox.StandardButton.Cancel).setDefault(True)
         buttons.accepted.connect(self._confirm)
         buttons.rejected.connect(self.reject)

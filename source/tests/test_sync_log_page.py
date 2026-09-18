@@ -40,7 +40,8 @@ def test_sync_log_opens_with_a_plain_language_status_and_compact_event_history()
     assert page.tabs.tabText(0) == "สถานะการอ่าน"
     assert page.tabs.tabText(1) == "ประวัติการอ่าน"
     assert page.tabs.tabText(3) == "การทำงานอัตโนมัติ"
-    assert page.tabs.count() == 4
+    assert page.tabs.count() == 5
+    assert page.tabs.widget(4) is page.counter_reviews
     assert page.status_rows.count() == 1
     assert "กำลังเริ่มต้นการอ่าน" in page.status_banner.text()
     status_card = page.status_rows.itemAt(0).widget()

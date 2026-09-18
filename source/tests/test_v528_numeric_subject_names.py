@@ -48,6 +48,14 @@ def test_numeric_subject_name_is_treated_as_placeholder():
     assert _subject_name_is_placeholder("039", "39") is True
     assert _subject_name_is_placeholder("39", "Alice Example") is False
     assert _subject_name_is_placeholder("39", None) is True
+    assert _subject_name_is_placeholder("39", "²") is False
+
+
+def test_numeric_aliases_do_not_guess_between_ambiguous_ids():
+    from komi_snmp_profiler.subject_identity import numeric_name_aliases
+    assert numeric_name_aliases({"001": "Alice"}) == {"1": "Alice"}
+    assert numeric_name_aliases({"001": "Alice", "1": "Bob"}) == {}
+    assert numeric_name_aliases({"²": "Bob"}) == {}
 
 
 def test_exported_user_name_replaces_numeric_device_placeholder():

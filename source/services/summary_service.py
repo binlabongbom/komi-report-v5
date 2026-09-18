@@ -15,6 +15,7 @@ from services.monthly_history import load_usage_history
 from services.report_scope import report_slots
 from services.subject_history import load_subject_history
 from services.usage import current_device_identity
+from komi_snmp_profiler.subject_identity import subject_name_is_placeholder as _subject_name_is_placeholder
 
 
 def months_ago(billing_month: str, n_months: int) -> str:
@@ -35,18 +36,6 @@ def _frozen_device_label(record, *, fallback: str) -> str:
         return f"{name} ({serial})"
     identity = record.device_identity.removeprefix("host:")
     return f"{name} ({identity})" if identity and not identity.startswith("unattributed:") else name
-
-
-def _subject_name_is_placeholder(subject_id: str, subject_name: str) -> bool:
-    sid = str(subject_id or "").strip()
-    name = str(subject_name or "").strip()
-    if not name:
-        return True
-    if name.casefold() == sid.casefold():
-        return True
-    if name.isdigit() and sid.isdigit():
-        return int(name) == int(sid)
-    return False
 
 
 def _runtime_status(device, *, now: datetime) -> str:

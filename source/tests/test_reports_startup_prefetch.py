@@ -67,6 +67,7 @@ def test_report_jobs_shutdown_only_on_actual_exit(monkeypatch, quitting):
     monkeypatch.setattr(app.QSystemTrayIcon, "isSystemTrayAvailable", lambda: True)
     window = SimpleNamespace(
         _quitting=quitting,
+        _background_started=False,
         pg_history=SimpleNamespace(shutdown_report_loading=lambda: events.append("report shutdown")),
         tray=SimpleNamespace(showMessage=lambda *_args: None),
         polling=SimpleNamespace(stop=lambda: events.append("polling stop")),
