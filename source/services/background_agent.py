@@ -18,7 +18,7 @@ if str(SOURCE_ROOT) not in sys.path:
     sys.path.insert(0, str(SOURCE_ROOT))
 
 from PyQt6.QtCore import QCoreApplication, QLockFile, QObject, QTimer
-from PyQt6.QtNetwork import QLocalServer, QLocalSocket
+from PyQt6.QtNetwork import QLocalServer, QLocalSocket, QNetworkInformation
 
 from database import get_cfg, get_db_path, init_db
 from services.background_polling import BackgroundPollingCoordinator
@@ -101,12 +101,15 @@ class BackgroundAgent(QObject):
         self.polling.reading_saved.connect(self.registration.meter_observed)
         self.registration.status_changed.connect(self._apply_collection_gate)
         self._stopping = False
+        self._network_information = None
+        self._last_network_reachability = QNetworkInformation.Reachability.Unknown
 
     def start(self) -> None:
         self.polling.pause("registration_status_pending")
         self.registration.start()
         self.registration.configuration_changed()
         self.polling.start()
+        self._install_network_recovery_monitor()
         self._apply_collection_gate()
         if get_cfg("web_service_enabled", "1") != "0":
             try:
@@ -118,6 +121,31 @@ class BackgroundAgent(QObject):
                 log.warning("Peer Sync authorization requires local review")
             self.web_service.start()
         log.info("headless background agent started")
+
+    def _install_network_recovery_monitor(self):
+        if self._network_information is not None:
+            return
+        try:
+            QNetworkInformation.loadDefaultBackend()
+            information = QNetworkInformation.instance()
+            if information is not None:
+                self._network_information = information
+                self._last_network_reachability = information.reachability()
+                information.reachabilityChanged.connect(self._network_reachability_changed)
+        except (RuntimeError, TypeError):
+            log.info("OS network recovery monitor is unavailable for Agent")
+
+    def _network_reachability_changed(self, reachability):
+        if self._stopping:
+            return
+        previous = self._last_network_reachability
+        self._last_network_reachability = reachability
+        connected = {QNetworkInformation.Reachability.Local,
+                     QNetworkInformation.Reachability.Site,
+                     QNetworkInformation.Reachability.Online}
+        if reachability in connected and previous not in connected:
+            self.registration.network_recovered()
+            self.polling.peer_history.network_recovered()
 
     def _apply_collection_gate(self, _status: str = "") -> None:
         if self._stopping:

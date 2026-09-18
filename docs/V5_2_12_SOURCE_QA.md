@@ -11,7 +11,7 @@
 |---|---|---|
 | ฐาน Slot, Web v2, ประวัติจาก peer | epoch/store/exchange tests; จำลองสาม DB แยก | ยังไม่มี verified Host adapter หรือ HTTPS worker |
 | งานอ่านร่วม | reader/store/exchange 30 passed | grant ต้องตรง active epoch; ยังไม่เปิด election ใน runtime |
-| เติมประวัติหลังเปิดเครื่อง | catch-up/Web/epoch/recovery/reset/migrations 50 passed | durable page/cursor พร้อม; ยังไม่ผูก Agent network startup |
+| เติมประวัติหลังเปิดเครื่อง | runtime/session/tray/setup/startup/manual/handoff 53 passed | ต่อ lifecycle Desktop/Agent และ network recovery แล้ว; ยังไม่มี verified member/HTTPS adapter จริง |
 | ประวัติและกราฟหลังรีเซ็ต | evidence/projection/billing-day 22 passed | แยก epoch; ไม่แก้ ledger จากหน้าดูหลักฐาน |
 | ปิด UI และ Agent | tray/agent 29 passed; refresh/tray 27 passed หลังปรับ test doubles | ต้องทดสอบ tray/ตัวติดตั้งจริงอีกครั้ง |
 | งานอ่านจำลอง 3 เครื่อง × 100 ผู้ใช้ | Desktop/Agent อย่างละ 3 รอบทดลอง; บันทึกครบ 180 Web events; exit 0 ทุก process | ไม่รวม Host, Web/Node หรือเครื่องพิมพ์จริง |
@@ -19,6 +19,13 @@
 
 ใช้ Python environment ของโปรเจกต์ ตั้ง `QT_QPA_PLATFORM=offscreen` แล้วรัน pytest
 จากโฟลเดอร์ `source` ทุก test ใช้ฐานชั่วคราวและปิด discovery ไป LAN จริง ตัวอย่าง:
+
+ตรวจถดถอยก่อนเพิ่ม runtime catch-up: **685 passed ใน 72 ไฟล์** แต่ละไฟล์แยก
+process ใช้เวลารวม 518.60 วินาที รายละเอียดใน
+`qa/v5.2.12/source-regression.json` ชุดนี้ไม่ใช่ full suite หรือสองคอมจริง
+สคริปต์ `tools/run_source_regression.py` ใช้รันซ้ำจาก source โดยไม่ build
+และเพิ่มสองไฟล์ runtime/session เข้าในรายการแล้ว ผลชุด runtime ด้านบนรันภายหลัง
+จึงไม่รวมจำนวนเข้าด้วยกันเป็นยอด tests ที่ไม่ซ้ำ
 
 ```powershell
 $env:QT_QPA_PLATFORM='offscreen'

@@ -175,6 +175,34 @@ bf453738b934dcf5bea59dd8c70e191b52ba6b89 และ merge เข้า local main
   หลักฐานทดสอบเก่าตรวจว่ามีบน GitHub/commit/tag/release จริงก่อนเก็บกวาด
 - ปรับคู่มือ ภาพหน้าจอ และขั้นตอนทดสอบสองเครื่องให้ตรง ก่อนขออนุญาต build
 
+### 2026-09-18 — Agent/Desktop catch-up lifetime and source regression
+
+- The completed checkpoint regression covered **72 operational test files,
+  685 passed, zero failed files**, each in a fresh pytest process (518.60 seconds
+  total wall time). `docs/qa/v5.2.12/source-regression.json` records individual
+  outputs. This checkpoint precedes the runtime integration below; it is not
+  full-suite, real-machine, installer or Host acceptance. The reusable runner
+  now lives in `tools/run_source_regression.py` and includes the two new files.
+- `BackgroundPollingCoordinator`, used by Desktop and Agent, now owns
+  `PeerHistoryRuntime`: startup, explicit network recovery, bounded fair session
+  quanta, cancellation and worker drain before releasing handoff ownership.
+  Idle/no-members state allocates no executor and sends no traffic. Archive
+  maintenance defers while catch-up is working. Desktop's existing OS monitor
+  wakes it; the headless Agent now has the same recovery transition monitor.
+- No periodic membership/settings polling was added. A failed transfer remains
+  pending until an explicit recovery/readiness event. Reconnect during a transfer
+  is retained; replacing or removing a session cancels its remaining work.
+  Zero-progress budget exhaustion stops rather than spinning. Transport timeout
+  bounds remain the transport adapter's responsibility.
+- Runtime/session/Agent/polling/archive tests: **35 passed in 15.89 seconds**.
+  Expanded runtime/session/tray/setup/startup/manual/handoff tests, including
+  recovery during a transfer: **53 passed in 23.73 seconds** (overlapping sets).
+- Production has no verified session provider yet and therefore attaches no
+  sessions. Actual member verification/HTTPS delivery, remote setup adoption,
+  shared reader election and financial projection remain open. This is a wired
+  lifecycle with isolated database simulations, not a claim that live LAN Sync
+  works. No installer/release build, publication or production change occurred.
+
 ### 2026-09-18 — bounded authenticated-transport catch-up session
 
 - Added `PeerHistorySession` to orchestrate the repositories: validate a received

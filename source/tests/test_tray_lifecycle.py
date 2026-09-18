@@ -68,6 +68,7 @@ class _WindowDouble:
         self._quitting = False
         self._background_started = False
         self.polling = _Polling()
+        self.polling.peer_history = _Registration()
         self.registration = _Registration()
         self.web_service = _WebService()
         self.tray = _Tray()
@@ -237,6 +238,7 @@ def test_os_network_recovery_only_wakes_runtime_on_disconnected_to_connected_tra
     )
 
     assert window.registration.network_recoveries == 2
+    assert window.polling.peer_history.network_recoveries == 2
 
 
 def test_macos_27_uses_click_only_tray_to_avoid_status_menu_crash(monkeypatch):

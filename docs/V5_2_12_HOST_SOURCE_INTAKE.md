@@ -62,6 +62,16 @@ new one. Browser administrator credentials are not Desktop peer credentials.
 No private keys, customer database dump, or additional login is needed for this
 source review.
 
+Read-only repository lookup on 18 September also found no PHP backend in the
+local Desktop tree. The connected account lists seven repositories; none is
+named for DMSKM or the Host. The complete, non-truncated Git trees of the two
+plausible generic web repositories (`Projects` at
+`6f70bda56c0cf02e60b59f45eeb2773c94da3f89` and `km-it-promotion` at
+`261a5a520c2148c29629d652dcfab9d24f7d77bd`) have no PHP, `register-api`,
+`screens-license` or DMSKM paths. Several repositories are not search-indexed:
+an empty code-search result is not evidence that the backend does not exist.
+No repository or Host data was changed during this lookup.
+
 ## Findings to check with the Host implementation
 
 - The environment helper adds `env=staging` to `komiApi` calls (749–755), but
