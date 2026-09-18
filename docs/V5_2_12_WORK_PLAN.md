@@ -190,6 +190,17 @@ bf453738b934dcf5bea59dd8c70e191b52ba6b89 และ merge เข้า local main
   docs/archive/pre-v5.2.12. EVIDENCE_INDEX.md separates current evidence from old
   results and records verification. Existing delivery-guide inputs stay in place
   until the new manual is finalized; no unverified historical evidence deleted.
+- Active source benchmark completed three fresh Desktop and three Agent runs,
+  each 3 synthetic printers x 100 users x 2 user counters x 10 rounds. All 180
+  expected Web observations and outgoing rows were persisted; all six child
+  processes shut down cleanly. Median peak working set: Desktop **114.43 MiB**,
+  Agent **76.18 MiB** (**33.42% lower**); private bytes 73.45 vs 46.02 MiB.
+  Median CPU time per three-printer round: 1.14 vs 0.92 seconds. Accelerated
+  one-second requests used 72.74% vs 65.43% of one CPU core; these are NOT normal
+  idle or 15-minute schedule CPU percentages. Child launches were prohibited,
+  so each measured process tree had one process. Real printer transport, Host,
+  Web/Node service, packaged tray and long-term leaks remain unmeasured.
+  Raw samples/limits: docs/V5_2_12_ACTIVE_FOOTPRINT.json (source 4fb0812/schema 27).
 
 ### 2026-09-18 — epoch-aware evidence reports
 

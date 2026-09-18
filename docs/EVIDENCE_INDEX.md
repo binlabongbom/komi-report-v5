@@ -7,6 +7,7 @@
 - [คู่มือ source และภาพหน้าจอข้อมูลจำลอง](CUSTOMER_GUIDE_V5_2_12_DRAFT.md)
 - [การทดลองข้อมูลห้าปี](qa/v5.2.12/FIVE_YEAR_BENCHMARK.md)
 - [ผลหลัง Archive](qa/v5.2.12/five-year-archive.json)
+- [ผลวัด Agent ขณะอ่านข้อมูลจำลอง](V5_2_12_ACTIVE_FOOTPRINT.json)
 
 จำนวนทดสอบในบันทึกแต่ละชุดอาจซ้อนกัน ต้องดูขอบเขตและ commit ที่เกี่ยวข้อง
 การผ่าน source tests ไม่ใช่ผลทดสอบตัวติดตั้ง เครื่องพิมพ์จริง หรือการอนุมัติ release

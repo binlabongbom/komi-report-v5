@@ -75,6 +75,7 @@ def test_report_jobs_shutdown_only_on_actual_exit(monkeypatch, quitting):
         web_service=SimpleNamespace(stop=lambda: None),
         hide=lambda: events.append("hidden"),
     )
+    window._stop_ui_work = lambda: app.MainWindow._stop_ui_work(window)
     event = SimpleNamespace(
         accept=lambda: events.append("accepted"),
         ignore=lambda: events.append("ignored"),
@@ -189,6 +190,7 @@ def test_visible_reports_reuses_prefetched_generation(monkeypatch):
         stack=SimpleNamespace(currentIndex=lambda: 0),
         _dirty_pages={0},
         _page_widgets=[report],
+        _quitting=False,
     )
     monkeypatch.setattr(app, "apply_language", lambda _page: None)
     monkeypatch.setattr(app.QTimer, "singleShot", lambda _delay, callback: callback())
@@ -204,6 +206,7 @@ def test_data_updates_invalidate_reports_before_visible_refresh(monkeypatch):
     events = []
     window = SimpleNamespace(
         _data=[None, None, None],
+        _quitting=False,
         _background_started=False,
         _page_widgets=[object(), object(), object()],
         _dirty_pages=set(),
