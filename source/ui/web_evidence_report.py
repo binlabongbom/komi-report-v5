@@ -9,7 +9,7 @@ from PyQt6.QtCore import QDate, QDateTime, QTimer, Qt
 from PyQt6.QtGui import QColor, QPen, QTextDocument, QPdfWriter
 from PyQt6.QtCharts import QChart, QChartView, QBarSeries, QBarSet, QBarCategoryAxis, QValueAxis, QLineSeries, QScatterSeries
 from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QComboBox, QDateEdit,
-    QPushButton, QTabWidget, QTableWidget, QTableWidgetItem, QAbstractItemView, QFileDialog)
+    QPushButton, QTabWidget, QTableWidget, QTableWidgetItem, QAbstractItemView, QFileDialog, QHeaderView)
 
 from database import get_db_path
 from services.web_evidence_report import load_evidence, inspect_counter, export_evidence_xlsx, review_labels
@@ -96,9 +96,13 @@ class WebEvidenceDialog(QDialog):
         self.table = QTableWidget(0, 6)
         self.table.setHorizontalHeaderLabels(["ช่วงอ่านจริง", "ผลต่าง", "วันลงยอด", "วันขาด Web", "รอตรวจ", "หมายเหตุ"])
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.table.setWordWrap(True)
+        self.table.verticalHeader().setVisible(False)
+        self.table.horizontalHeader().setSectionResizeMode(5, QHeaderView.ResizeMode.Stretch)
         self.tabs.addTab(self.chart, "กราฟรายวัน")
         self.tabs.addTab(self.cumulative, "มิเตอร์สะสมจริง")
         self.tabs.addTab(self.table, "รายละเอียดและหมายเหตุ")
+        self.tabs.currentChanged.connect(lambda index: self.table.resizeRowsToContents() if index == 2 else None)
         actions = QHBoxLayout()
         self.xlsx_button = QPushButton("ส่งออก Excel")
         self.pdf_button = QPushButton("ส่งออก PDF")
@@ -287,9 +291,10 @@ class WebEvidenceDialog(QDialog):
                 item.allocation_day.isoformat(), ", ".join(day.isoformat() for day in item.empty_days), review_labels(item.holds), item.remark)):
                 cell = QTableWidgetItem(value)
                 cell.setToolTip(value)
+                cell.setTextAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
                 self.table.setItem(row, col, cell)
-        self.table.resizeColumnsToContents()
-        self.table.setColumnWidth(5, 360)
+        for column, width in enumerate((195, 70, 120, 140, 120)):
+            self.table.setColumnWidth(column, width)
         self.table.resizeRowsToContents()
 
     def export(self, kind):

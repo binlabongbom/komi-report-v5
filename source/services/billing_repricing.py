@@ -54,38 +54,42 @@ class BillingRepricingService:
             return preview
 
     def confirm(self, ledger_id, *, expected_revision, actor, reason):
-        if not actor.strip() or not reason.strip():
-            raise ValueError("Actor and reason are required")
-        key = f"reprice:{ledger_id}:{expected_revision}:{REPRICE_VERSION}"
-        now = datetime.now().astimezone().isoformat(timespec="seconds")
         with _open() as conn:
             conn.execute("BEGIN IMMEDIATE")
-            existing = conn.execute("SELECT id,attestation_json FROM billing_ledger WHERE idempotency_key=?", (key,)).fetchone()
-            if existing:
-                audit = json.loads(existing[1])["repricing"]
-                if (audit["actor"], audit["reason"]) != (actor.strip(), reason.strip()):
-                    raise ValueError("Repricing retry differs from the confirmed request")
-                return existing[0]
-            preview, source = _preview(conn, ledger_id)
-            if preview["revision"] != expected_revision:
-                raise ValueError("Prices or posting changed after preview")
-            if not preview["changed"]:
-                raise ValueError("No price change to apply")
-            reversal = _ensure_reversal(conn, ledger_id, source, reason=reason.strip(), now=now)
-            attestation = {"billing_safe": True, "calculation_mode": "dated_price_recalculation",
-                "original_attestation": json.loads(source[18]),
-                "repricing": {"actor": actor.strip(), "reason": reason.strip(), "target_ledger_id": ledger_id,
-                    "price_effective_date": preview["price_effective_date"], "preview_revision": expected_revision,
-                    "created_at": now, "source_delta_used_for_amounts": True,
-                    "preserved_discount_and_period": True}}
-            cursor = conn.execute("""INSERT INTO billing_ledger
-                (entry_kind,device_slot,device_identity,device_name_snapshot,device_serial_snapshot,
-                 record_date,period_start,period_end,source_daily_record_id,source_hash,idempotency_key,
-                 replaces_ledger_id,delta_json,category_json,price_cents_json,gross_cents,waste_basis_points,
-                 net_cents,billing_day,currency,formula_version,hold_reason,attestation_json,created_at)
-                 VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-                ("replacement", *source[1:10], key, reversal, source[10], source[11],
-                 json.dumps(preview["price_cents"], sort_keys=True), preview["gross_cents"], source[14],
-                 preview["net_cents"], source[16], source[17], REPRICE_VERSION, reason.strip(),
-                 json.dumps(attestation, sort_keys=True, ensure_ascii=False), now))
-            return int(cursor.lastrowid)
+            return confirm_in_transaction(conn, ledger_id, expected_revision=expected_revision, actor=actor, reason=reason)
+
+
+def confirm_in_transaction(conn, ledger_id, *, expected_revision, actor, reason):
+    if not actor.strip() or not reason.strip():
+        raise ValueError("Actor and reason are required")
+    key = f"reprice:{ledger_id}:{expected_revision}:{REPRICE_VERSION}"
+    now = datetime.now().astimezone().isoformat(timespec="seconds")
+    existing = conn.execute("SELECT id,attestation_json FROM billing_ledger WHERE idempotency_key=?", (key,)).fetchone()
+    if existing:
+        audit = json.loads(existing[1])["repricing"]
+        if (audit["actor"], audit["reason"]) != (actor.strip(), reason.strip()):
+            raise ValueError("Repricing retry differs from the confirmed request")
+        return existing[0]
+    preview, source = _preview(conn, ledger_id)
+    if preview["revision"] != expected_revision:
+        raise ValueError("Prices or posting changed after preview")
+    if not preview["changed"]:
+        raise ValueError("No price change to apply")
+    reversal = _ensure_reversal(conn, ledger_id, source, reason=reason.strip(), now=now)
+    attestation = {"billing_safe": True, "calculation_mode": "dated_price_recalculation",
+        "original_attestation": json.loads(source[18]),
+        "repricing": {"actor": actor.strip(), "reason": reason.strip(), "target_ledger_id": ledger_id,
+            "price_effective_date": preview["price_effective_date"], "preview_revision": expected_revision,
+            "created_at": now, "source_delta_used_for_amounts": True,
+            "preserved_discount_and_period": True}}
+    cursor = conn.execute("""INSERT INTO billing_ledger
+        (entry_kind,device_slot,device_identity,device_name_snapshot,device_serial_snapshot,
+         record_date,period_start,period_end,source_daily_record_id,source_hash,idempotency_key,
+         replaces_ledger_id,delta_json,category_json,price_cents_json,gross_cents,waste_basis_points,
+         net_cents,billing_day,currency,formula_version,hold_reason,attestation_json,created_at)
+         VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+        ("replacement", *source[1:10], key, reversal, source[10], source[11],
+         json.dumps(preview["price_cents"], sort_keys=True), preview["gross_cents"], source[14],
+         preview["net_cents"], source[16], source[17], REPRICE_VERSION, reason.strip(),
+         json.dumps(attestation, sort_keys=True, ensure_ascii=False), now))
+    return int(cursor.lastrowid)

@@ -177,19 +177,19 @@ bf453738b934dcf5bea59dd8c70e191b52ba6b89 และ merge เข้า local main
 
 ## สถานะสิ่งที่มีอยู่จริง
 
-| ส่วน | สถานะจากหลักฐานเดิม |
+| ส่วน | สถานะ source ล่าสุด (ไม่ใช่การอนุมัติ release) |
 |---|---|
 | แผนเดิมและ merge เข้า local main | ทำแล้ว; รอบนี้ปรับแผนตามข้อสรุปใหม่ |
 | Web refresh/ข้อมูลค้าง/initial failure | มีโค้ดและ source tests แล้ว ต้อง regression กับระบบใหม่ |
 | หน้าตั้งค่าเครือข่าย | แยกโมดูล/ปรับโครงแล้ว ยังไม่ครบสมาชิกและ Sync ใหม่ |
-| Wizard ค้นหาซ้ำ | ปุ่มและ tests มีแล้ว แต่ยังใช้ IP scan; UDP discovery ยังไม่มี |
-| ประวัติการตั้งค่า | รอบบิล/ส่วนลดและตารางอ่านมี popup, atomic save พร้อม revision และตรวจ stale แล้ว; มี service รับค่าที่เลือก/undo แต่ยังไม่ครบ Setup/ราคา/หน้าจอ conflict/ส่งต่อเนื่อง |
+| Wizard ค้นหาซ้ำ | มี UDP discovery และ HTTPS probe พร้อมค้นซ้ำ/manual IP; ผ่าน fixture/loopback ยังรอ Firewall/สองคอมจริง |
+| ประวัติการตั้งค่า | Setup/ราคา save พร้อม revision แบบ atomic; มีหน้าประวัติ/เลือกค่าขัดแย้ง/undo ราคา รอบบิล ส่วนลด ตาราง; การส่งอัตโนมัติและ apply การเปลี่ยนเครื่องร่วมยังไม่ครบ |
 | Agent/handoff/tray | มี source implementation/tests บางส่วน ยังต้องรวมการเป็นผู้อ่านและวัดงานจริงทั้ง process tree |
-| เปลี่ยนเครื่อง/มิเตอร์ลด | มี engine/หน้าตรวจบางส่วน ยังไม่ครบข้ามวัน รายผู้ใช้ และ peer |
-| ผู้อ่านร่วม/อ่านด้วยมือ/ส่งผล Web | ข้อสรุปใหม่ ยังไม่ได้พัฒนาครบ; การตรวจโค้ดรอบล่าสุดไม่ได้เพิ่ม election |
-| ยอดลงวันก่อนหน้า/remark/กราฟเฉลี่ย | ข้อสรุปใหม่ ยังไม่ได้พัฒนา |
+| เปลี่ยนเครื่อง/มิเตอร์ลด | มี review มิเตอร์เครื่อง/รายผู้ใช้/Raw และป้องกันบวก absolute หลังลด; การเปลี่ยนเครื่องมี engine เฉพาะ local ยังไม่ครบ epoch ข้ามวันและ peer |
+| ผู้อ่านร่วม/อ่านด้วยมือ/ส่งผล Web | มี journal/คิว/ACK Web และ manual local ไม่เลื่อนตาราง/รวมคำขอซ้อน; peer election/grants/delivery ยังไม่ครบ |
+| ยอดลงวันก่อนหน้า/remark/กราฟเฉลี่ย | มี engine และหน้าตรวจหลักฐานพร้อมกราฟทศนิยม/Excel/PDF; ยังไม่เชื่อมการแก้ ledger/ฉบับเรียกเก็บเดิม |
 | Hotfix ลงทะเบียน | มี foundation ที่ยังปิดใช้งาน ไม่ใช่ Hotfix ลูกค้าที่พร้อมติดตั้ง |
-| Archive/benchmark/คู่มือใหม่ | ยังต้องทำตามเกณฑ์ด้านล่าง |
+| Archive/benchmark/คู่มือใหม่ | Archive ผล Web รายรอบอัตโนมัติ/ตามคำขอ พร้อม backup/restore; วัด 5 ปี/100 user แล้วและแก้ query รายงานจริง; ยังเหลือ archive daily subject/raw รายเดือน และคู่มือฉบับส่งมอบ |
 
 ห้ามนำจำนวน tests ในบันทึกเก่ามาอ้างว่าฟีเจอร์ที่เพิ่งตกลงผ่านแล้ว
 ผลวัด Agent เดิมเป็น fixture งานว่าง ไม่ใช่ผลรวมภายใต้ workload จริง
@@ -261,6 +261,25 @@ P9/H1 ที่ตรวจ source/fixture ได้อาจทำสลับ�
 - ผู้ใช้สั่งเริ่มพัฒนาแล้ว ไม่รอคำยืนยันซ้ำ; build/เผยแพร่ยังต้องอนุมัติแยกภายหลัง
 
 ## Existing evidence (not release approval)
+
+### 2026-09-18 — atomic range repricing and source manual draft
+
+- Added a date/slot-range repricing review with before/after totals and explicit
+  skipped held/manual/unpriced entries. Confirmation recalculates the preview,
+  rejects stale data, and appends all reversals/replacements plus a batch receipt
+  in one transaction. Repeated identical confirmations return the same result;
+  a failure on the second replacement rolls back the complete batch.
+- The single-entry and batch paths now use the same transaction-owned posting
+  function. Original postings, discount, meter evidence and billing periods stay
+  immutable. This does not yet recalculate historical discount/period changes or
+  distribute shared corrections to peers.
+- Service tests: **23 passed in 13.07s**. Combined audit/dialog/exports/responsive/
+  layout regression: **51 passed in 46.12s** before the final remarks-column
+  width adjustment. Synthetic offscreen images generated with the application's
+  stylesheet and inspected; source manual draft documents actual limitations.
+- Draft: `docs/CUSTOMER_GUIDE_V5_2_12_DRAFT.md`, with four source screenshots in
+  `docs/customer-guide/assets-v5.2.12-source`. Not final installer documentation;
+  keep updating it as the remaining workflows are completed.
 
 ### 2026-09-18 — dated-price choices, manual read cadence and canonical report performance
 

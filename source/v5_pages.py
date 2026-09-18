@@ -12562,10 +12562,12 @@ class PageBillingAudit(QWidget):
         self.detail_button.setEnabled(False)
         self.reprice_button = btn("คำนวณใหม่จากประวัติราคา", "outline")
         self.reprice_button.setEnabled(False)
+        self.reprice_range_button = btn("คำนวณใหม่ตามวันที่", "outline")
         self.export_button = btn("Export CSV", "outline")
         actions.addWidget(self.load_more_button)
         actions.addWidget(self.detail_button)
         actions.addWidget(self.reprice_button)
+        actions.addWidget(self.reprice_range_button)
         actions.addWidget(self.export_button)
         layout.addLayout(actions)
 
@@ -12575,6 +12577,7 @@ class PageBillingAudit(QWidget):
         self.load_more_button.clicked.connect(self._load_more)
         self.detail_button.clicked.connect(self._show_selected_detail)
         self.reprice_button.clicked.connect(self._reprice_selected)
+        self.reprice_range_button.clicked.connect(self._reprice_range)
         self.export_button.clicked.connect(self._export)
         self.table.itemSelectionChanged.connect(self._selection_changed)
         self.table.cellDoubleClicked.connect(self._show_detail)
@@ -12670,6 +12673,13 @@ class PageBillingAudit(QWidget):
             return
         from ui.billing_repricing import BillingRepricingDialog
         dialog = BillingRepricingDialog(ledger_id, self)
+        dialog.finished.connect(lambda _result: self.refresh())
+        dialog.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        dialog.open()
+
+    def _reprice_range(self) -> None:
+        from ui.billing_repricing_batch import BatchRepricingDialog
+        dialog = BatchRepricingDialog(self)
         dialog.finished.connect(lambda _result: self.refresh())
         dialog.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
         dialog.open()
