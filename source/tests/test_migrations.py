@@ -165,6 +165,9 @@ def test_raw_history_identity_migration_preserves_rows_and_allows_slot_replaceme
             row,
         )
 
+        # Later archive migrations protect both daily tables. Real v17
+        # databases contain the subject table too, even with no subject rows.
+        connection.execute("CREATE TABLE daily_subject_records(device_slot INTEGER, record_date TEXT)")
         assert apply_migrations(connection) == list(range(18, CURRENT_SCHEMA_VERSION + 1))
         connection.execute(
             """INSERT INTO daily_raw_counter_records(

@@ -608,10 +608,12 @@ def load_subject_history(
     frozen_periods = {} if period_start is not None and period_end is not None else _latest_device_ledger_periods(
         slots, period_start=source_start, period_end=source_end)
     daily: list[tuple[SubjectDailyRecord, tuple[date, date] | None]] = []
+    archived_buckets = {}
     if slots:
         placeholders = ",".join("?" for _ in slots)
         filters, parameters = _date_filter(source_start, source_end)
         with _open(commit=False) as conn:
+            conn.execute("BEGIN")
             rows = conn.execute(
                 f"""SELECT device_slot,record_date,subject_type,subject_id,subject_name,
                            opening_total,closing_total,delta_total,reset_count,missing_baseline,
@@ -620,31 +622,17 @@ def load_subject_history(
                     ORDER BY record_date,device_slot,subject_type,subject_id""",
                 [*slots, *parameters],
             ).fetchall()
+            from services.report_detail_archive import ReportDetailArchive
+            archive = ReportDetailArchive()
+            if period_start is None and period_end is None:
+                archived_buckets = archive.subject_summaries(conn, slots, only_period=only_period)
+            else:
+                for item in archive.details(conn, "subject", slots, start=source_start, end=source_end):
+                    record = subject_record_from_row([item["row"][key] for key in SUBJECT_COLUMNS])
+                    daily.append((record, tuple(date.fromisoformat(value) for value in item["period"])))
         for row in rows:
-            device_identity, device_name, device_serial = _source_identity(row[15], int(row[0]))
-            record = SubjectDailyRecord(
-                device_slot=int(row[0]),
-                record_date=date.fromisoformat(row[1]),
-                subject_type=row[2],
-                subject_id=row[3],
-                subject_name=row[4],
-                opening_total=float(row[5]),
-                closing_total=float(row[6]),
-                delta_total=float(row[7]),
-                reset_count=int(row[8]),
-                missing_baseline=bool(row[9]),
-                sample_count=int(row[10]),
-                first_success=row[11],
-                last_success=row[12],
-                incomplete=bool(row[13]),
-                warnings=tuple(json.loads(row[14] or "[]")),
-                device_identity=device_identity,
-                device_name_snapshot=device_name,
-                device_serial_snapshot=device_serial,
-            )
-            daily.append(
-                (record, frozen_periods.get((record.device_slot, record.record_date)))
-            )
+            record = subject_record_from_row(row)
+            daily.append((record, frozen_periods.get((record.device_slot, record.record_date))))
 
     cache_store = cache or SubjectDailyCacheStore()
     for slot in slots:
@@ -667,7 +655,42 @@ def load_subject_history(
             for item in state.get("subjects", {}).values()
         )
 
-    buckets: dict[tuple[date, date, int, str, str, str], dict] = {}
+    buckets = aggregate_subject_days(daily, billing_day, period_start=period_start,
+        period_end=period_end, only_period=only_period, buckets=archived_buckets)
+    return subject_period_results(buckets)
+
+
+SUBJECT_COLUMNS = ("device_slot", "record_date", "subject_type", "subject_id", "subject_name",
+    "opening_total", "closing_total", "delta_total", "reset_count", "missing_baseline",
+    "sample_count", "first_success", "last_success", "incomplete", "warnings_json", "source_json")
+
+
+def subject_record_from_row(row):
+    device_identity, device_name, device_serial = _source_identity(row[15], int(row[0]))
+    return SubjectDailyRecord(
+        device_slot=int(row[0]),
+        record_date=date.fromisoformat(row[1]),
+        subject_type=row[2],
+        subject_id=row[3],
+        subject_name=row[4],
+        opening_total=float(row[5]),
+        closing_total=float(row[6]),
+        delta_total=float(row[7]),
+        reset_count=int(row[8]),
+        missing_baseline=bool(row[9]),
+        sample_count=int(row[10]),
+        first_success=row[11],
+        last_success=row[12],
+        incomplete=bool(row[13]),
+        warnings=tuple(json.loads(row[14] or "[]")),
+        device_identity=device_identity,
+        device_name_snapshot=device_name,
+        device_serial_snapshot=device_serial,
+    )
+
+
+def aggregate_subject_days(daily, billing_day, *, period_start=None, period_end=None, only_period=None, buckets=None):
+    buckets = {} if buckets is None else buckets
     for record, frozen_period in daily:
         if period_start is not None and record.record_date < period_start:
             continue
@@ -719,6 +742,10 @@ def load_subject_history(
             bucket["device_name_snapshot"] = record.device_name_snapshot
             bucket["device_serial_snapshot"] = record.device_serial_snapshot
 
+    return buckets
+
+
+def subject_period_results(buckets):
     result = [
         SubjectPeriodUsage(
             device_slot=slot,

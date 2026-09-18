@@ -175,6 +175,36 @@ bf453738b934dcf5bea59dd8c70e191b52ba6b89 และ merge เข้า local main
   หลักฐานทดสอบเก่าตรวจว่ามีบน GitHub/commit/tag/release จริงก่อนเก็บกวาด
 - ปรับคู่มือ ภาพหน้าจอ และขั้นตอนทดสอบสองเครื่องให้ตรง ก่อนขออนุญาต build
 
+### 2026-09-18 — verified daily detail archives and hot monthly summaries
+
+- Schema 25 stores immutable compressed yearly chunks for old daily subject/raw
+  evidence. Before pruning, every row is decoded/compared, the file is hashed and
+  published, then source rows are rechecked in the same transaction as catalog,
+  billing-period summaries and pruning. Failure leaves original evidence intact.
+- First raw counter baselines, latest subject/raw anchors and unresolved review
+  evidence remain hot. Collection needs no archive IO. Existing daily device
+  evidence and financial ledger are not pruned; dated-price correction still
+  uses the original evidence.
+- Monthly subject reports read hot summaries plus recent daily rows. Explicit
+  custom ranges and Raw detail requests restore only matching date chunks.
+  Summary grouping preserves each day's frozen ledger period, and legacy rows
+  use the same billing-day fallback as current reports. Missing/corrupt detail
+  files raise errors when requested, never successful empty reports.
+- Hot day guards reject silent re-creation/updates of archived history. A future
+  evidence amendment workflow must explicitly account for both archived and
+  current rows; this does not claim cross-peer backfill/amendments are complete.
+- Idle runtime alternates Web and daily chunks, retaining bounded worker drain.
+  Advanced settings and the source manual/screenshots now describe both archives.
+  Backup/restore copies and verifies both referenced archive families before DB
+  publication; resets clear catalogs/rollups but retain immutable disk copies.
+- Combined archive/report/source/UI regression: **57 passed (36.33s)**; expanded
+  corruption/stale-source/frozen-period/snapshot/exports/layout/batch-repricing
+  regression: **58 passed (65.87s)**. Runtime/Agent/manual collection lifecycle:
+  **46 passed (22.58s)**. Counts overlap; not a whole-suite claim.
+- Five-year archival benchmark is running against a new COPY of the synthetic
+  100-user/three-printer fixture. Result and timings will be recorded when done.
+  No customer DB, Host writes, installer/release build or publication.
+
 ## สถานะสิ่งที่มีอยู่จริง
 
 | ส่วน | สถานะ source ล่าสุด (ไม่ใช่การอนุมัติ release) |
@@ -189,7 +219,7 @@ bf453738b934dcf5bea59dd8c70e191b52ba6b89 และ merge เข้า local main
 | ผู้อ่านร่วม/อ่านด้วยมือ/ส่งผล Web | มี journal/คิว/ACK Web และ manual local ไม่เลื่อนตาราง/รวมคำขอซ้อน; peer election/grants/delivery ยังไม่ครบ |
 | ยอดลงวันก่อนหน้า/remark/กราฟเฉลี่ย | มี engine และหน้าตรวจหลักฐานพร้อมกราฟทศนิยม/Excel/PDF; ยังไม่เชื่อมการแก้ ledger/ฉบับเรียกเก็บเดิม |
 | Hotfix ลงทะเบียน | มี foundation ที่ยังปิดใช้งาน ไม่ใช่ Hotfix ลูกค้าที่พร้อมติดตั้ง |
-| Archive/benchmark/คู่มือใหม่ | Archive ผล Web รายรอบอัตโนมัติ/ตามคำขอ พร้อม backup/restore; วัด 5 ปี/100 user แล้วและแก้ query รายงานจริง; ยังเหลือ archive daily subject/raw รายเดือน และคู่มือฉบับส่งมอบ |
+| Archive/benchmark/คู่มือใหม่ | Archive ผล Web และ daily subject/raw แยกปี พร้อมสรุปรายเดือน/backup/restore; ผ่าน source regressions; กำลังวัดหลัง archive บนสำเนา 5 ปี/100 user; คู่มือ source มีแล้ว ยังเหลือฉบับส่งมอบ |
 
 ห้ามนำจำนวน tests ในบันทึกเก่ามาอ้างว่าฟีเจอร์ที่เพิ่งตกลงผ่านแล้ว
 ผลวัด Agent เดิมเป็น fixture งานว่าง ไม่ใช่ผลรวมภายใต้ workload จริง

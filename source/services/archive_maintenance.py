@@ -5,7 +5,7 @@ import logging
 from threading import Event
 
 from PyQt6.QtCore import QObject, QTimer
-from services.web_observation_archive import WebObservationArchive
+from services.history_archive import HistoryArchive
 
 log = logging.getLogger(__name__)
 
@@ -13,7 +13,7 @@ log = logging.getLogger(__name__)
 class ArchiveMaintenance(QObject):
     def __init__(self, parent=None, *, archive=None, busy=lambda: False, today=date.today):
         super().__init__(parent)
-        self.archive = archive or WebObservationArchive()
+        self.archive = archive or HistoryArchive()
         self.busy = busy
         self.today = today
         self.future = None
@@ -51,10 +51,10 @@ class ArchiveMaintenance(QObject):
                 result = future.result()
             except Exception:
                 # Avoid a repeated failure loop (disk full/corrupt media).
-                log.exception("Automatic Web archive failed; retry next day or manually")
+                log.exception("Automatic history archive failed; retry next day or manually")
                 self.completed_day = today
                 from services.pipeline_log import pipeline_log
-                pipeline_log.append(stage="DB", action="Web archive failed", target="archives",
+                pipeline_log.append(stage="DB", action="History archive failed", target="archives",
                     value="ข้อมูลชุดที่ไม่ผ่านยังอยู่ในฐานข้อมูล", detail="ตรวจพื้นที่และสิทธิ์โฟลเดอร์ก่อนลองใหม่ในหน้าตั้งค่า", status="error")
             else:
                 if not result.get("deferred") and result.get("batch") is None:

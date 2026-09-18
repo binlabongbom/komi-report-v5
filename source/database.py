@@ -57,6 +57,9 @@ def _clear_read_caches(slot: int | None = None):
 
 
 _USAGE_RESET_TABLES = (
+    "archived_subject_periods",
+    "report_archive_days",
+    "report_detail_archives",
     "web_observation_receipts",
     "web_observation_outbox",
     "web_observations",
@@ -85,6 +88,9 @@ _USAGE_RESET_SEQUENCES = (
 )
 
 _FACTORY_RESET_TABLES = (
+    "archived_subject_periods",
+    "report_archive_days",
+    "report_detail_archives",
     "web_observation_receipts",
     "web_observation_outbox",
     "web_observations",

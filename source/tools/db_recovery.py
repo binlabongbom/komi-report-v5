@@ -19,10 +19,15 @@ CRITICAL_TABLES = (
     "price_history",
     "readings",
     "daily_meter_records",
+    "daily_subject_records",
+    "daily_raw_counter_records",
     "billing_ledger",
     "legacy_history_items",
     "web_observations",
     "web_observation_archives",
+    "report_detail_archives",
+    "archived_subject_periods",
+    "report_archive_days",
     "web_observation_outbox",
     "web_observation_receipts",
 )
@@ -38,13 +43,17 @@ def _sha256(path: Path) -> str:
 
 def _archive_entries(snapshot: Path):
     with closing(sqlite3.connect(snapshot.as_uri() + "?mode=ro", uri=True)) as conn:
-        if not conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='web_observation_archives'").fetchone():
-            return []
-        return conn.execute("SELECT relative_path,sha256 FROM web_observation_archives").fetchall()
+        entries = []
+        for table, folder in (("web_observation_archives", "web-observations"), ("report_detail_archives", "report-details")):
+            if conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (table,)).fetchone():
+                entries.extend((folder, *row) for row in conn.execute("SELECT relative_path,sha256 FROM " + table))
+        return entries
 
 
-def _archive_path(data_root: Path, relative: str) -> Path:
-    root = (data_root / "archives" / "web-observations").resolve()
+def _archive_path(data_root: Path, relative: str, folder="web-observations") -> Path:
+    if folder not in {"web-observations", "report-details"}:
+        raise ValueError("Unknown archive folder")
+    root = (data_root / "archives" / folder).resolve()
     target = (root / relative).resolve()
     if Path(relative).is_absolute() or not target.is_relative_to(root) or target == root:
         raise ValueError("Archive path is outside its data directory")
@@ -59,9 +68,9 @@ def copy_referenced_archives(snapshot: Path, source_root: Path, destination_root
     Kept dependency-free so the offline recovery CLI works without the app.
     """
     entries = _archive_entries(snapshot.resolve())
-    for relative, digest in entries:
-        source = _archive_path(source_root, relative)
-        target = _archive_path(destination_root, relative)
+    for folder, relative, digest in entries:
+        source = _archive_path(source_root, relative, folder)
+        target = _archive_path(destination_root, relative, folder)
         if not isinstance(digest, str) or len(digest) != 64 or _sha256(source) != digest:
             raise ValueError("Source archive checksum mismatch")
         if target.exists():

@@ -6,23 +6,24 @@ import logging
 from PyQt6.QtCore import QTimer
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QPushButton
 from i18n import tr
-from services.web_observation_archive import WebObservationArchive, run_archive_batches
+from services.web_observation_archive import run_archive_batches
+from services.history_archive import HistoryArchive
 from ui.counter_review import plain
 
 
 class ArchiveSettingsPanel(QWidget):
     def __init__(self, parent=None, *, archive=None, today=None):
         super().__init__(parent)
-        self.archive = archive or WebObservationArchive()
+        self.archive = archive or HistoryArchive()
         self.today = today
         self.future = None
         self.cancelled = Event()
         self.pool = None
         layout = QVBoxLayout(self)
-        layout.addWidget(plain(tr("จัดเก็บประวัติ Web รายรอบ", "Archive individual Web readings")))
+        layout.addWidget(plain(tr("จัดเก็บรายละเอียดประวัติเก่า", "Archive older history details")))
         layout.addWidget(plain(tr(
-            "ระบบจัดเก็บผลอ่านเกิน 12 เดือนอัตโนมัติเมื่อว่าง หรือกดจัดเก็บได้ที่นี่ ข้อมูลบีบอัดแยกตามปีและเปิดเมื่อเรียกประวัติ สำรองโฟลเดอร์ archives ควบคู่กับฐานข้อมูล",
-            "Readings older than 12 months are archived automatically when idle, or on request here. Compressed yearly files load on demand. Keep the archives folder with database backups.")))
+            "ระบบเก็บรายละเอียดเกิน 12 เดือนแยกตามปีเมื่อว่าง รายเดือนอ่านจากสรุป รายละเอียดเก่าเปิดเมื่อเรียกดู ค่าตั้งต้นและค่าล่าสุดยังอยู่ให้อ่านต่อได้ สำรองโฟลเดอร์ archives ควบคู่กับฐานข้อมูล",
+            "Details older than 12 months are archived by year when idle. Monthly summaries stay available; old details load on request. First and latest baselines remain ready for collection. Keep the archives folder with database backups.")))
         self.status = plain("")
         layout.addWidget(self.status)
         self.message = plain("")
@@ -51,8 +52,8 @@ class ArchiveSettingsPanel(QWidget):
             self.start_button.setEnabled(False)
             return
         self.status.setText(tr(
-            f"รอจัดเก็บ {state['eligible']:,} รอบ · จัดเก็บแล้ว {state['archived']:,} รอบ ใน {state['files']:,} ไฟล์",
-            f"Pending: {state['eligible']:,} readings · Archived: {state['archived']:,} readings in {state['files']:,} files"))
+            f"รอจัดเก็บ {state['eligible']:,} รายการ · จัดเก็บแล้ว {state['archived']:,} รายการ ใน {state['files']:,} ไฟล์",
+            f"Pending: {state['eligible']:,} records · Archived: {state['archived']:,} records in {state['files']:,} files"))
         self.start_button.setEnabled(bool(state["eligible"]) and self.future is None)
 
     def start(self):
@@ -80,7 +81,7 @@ class ArchiveSettingsPanel(QWidget):
             self.message.setText(tr("จัดเก็บไม่สำเร็จ ข้อมูลชุดที่ไม่ผ่านยังอยู่ในฐานข้อมูล กรุณาตรวจพื้นที่และสิทธิ์โฟลเดอร์",
                 "Archiving failed. The failed batch remains in the database. Check storage and folder permissions."))
         else:
-            self.message.setText(tr(f"จัดเก็บแล้ว {result['events']:,} รอบในครั้งนี้", f"Archived {result['events']:,} readings in this run"))
+            self.message.setText(tr(f"จัดเก็บแล้ว {result['events']:,} รายการในครั้งนี้", f"Archived {result['events']:,} records in this run"))
         self.future = None
         self.cancel_button.setEnabled(False)
         self.refresh()

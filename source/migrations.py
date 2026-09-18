@@ -12,7 +12,7 @@ from contextlib import closing
 from datetime import datetime
 from pathlib import Path
 
-CURRENT_SCHEMA_VERSION = 24
+CURRENT_SCHEMA_VERSION = 25
 
 
 class UnsupportedSchemaVersionError(RuntimeError):
@@ -28,6 +28,9 @@ _REQUIRED_SCHEMA: dict[str, frozenset[str]] = {
     "web_observation_state": frozenset({"key", "value"}),
     "web_observation_outbox": frozenset({"event_id"}),
     "web_observation_receipts": frozenset({"peer_id", "event_id", "acknowledged_at"}),
+    "report_detail_archives": frozenset({"id", "kind", "relative_path", "sha256", "row_count"}),
+    "report_archive_days": frozenset({"kind", "device_slot", "record_date"}),
+    "archived_subject_periods": frozenset({"archive_id", "device_slot", "summary_json"}),
     "web_observation_archives": frozenset({"id", "relative_path", "sha256", "event_count", "year"}),
     "peer_settings_revisions": frozenset({"revision", "document_json"}),
     "peer_settings_state": frozenset({"key", "value"}),
@@ -675,6 +678,34 @@ def _migration_024_web_observation_archives(connection: sqlite3.Connection) -> N
     connection.execute("CREATE INDEX idx_web_observation_archive_time ON web_observations(archive_id,observed_at,sequence)")
 
 
+def _migration_025_report_detail_archives(connection: sqlite3.Connection) -> None:
+    connection.execute("""CREATE TABLE report_detail_archives(
+        id TEXT PRIMARY KEY,kind TEXT NOT NULL,relative_path TEXT NOT NULL UNIQUE,
+        sha256 TEXT NOT NULL,row_count INTEGER NOT NULL,year INTEGER NOT NULL,
+        first_day TEXT NOT NULL,last_day TEXT NOT NULL,created_at TEXT NOT NULL)""")
+    connection.execute("""CREATE TABLE archived_subject_periods(
+        archive_id TEXT NOT NULL REFERENCES report_detail_archives(id),
+        device_slot INTEGER NOT NULL,period_start TEXT NOT NULL,period_end TEXT NOT NULL,
+        device_identity TEXT NOT NULL,subject_type TEXT NOT NULL,subject_id TEXT NOT NULL,
+        summary_json TEXT NOT NULL,
+        PRIMARY KEY(archive_id,device_slot,period_start,period_end,device_identity,subject_type,subject_id))""")
+    connection.execute("CREATE INDEX idx_archived_subject_period ON archived_subject_periods(device_slot,period_start,period_end)")
+    connection.execute("""CREATE TABLE report_archive_days(
+        kind TEXT NOT NULL,device_slot INTEGER NOT NULL,record_date TEXT NOT NULL,
+        PRIMARY KEY(kind,device_slot,record_date))""")
+    connection.execute("""CREATE INDEX idx_raw_counter_anchor ON daily_raw_counter_records(
+        device_slot,device_serial_snapshot,canonical_field,source_path,subject_type,subject_id,record_date)""")
+    # Never silently re-create an archived day and double-count its summary.
+    # Changes to archived history require an explicit amendment workflow.
+    for kind, table in (("subject", "daily_subject_records"), ("raw", "daily_raw_counter_records")):
+        for action in ("INSERT", "UPDATE"):
+            connection.execute(f"""CREATE TRIGGER guard_archived_{kind}_{action.lower()}
+                BEFORE {action} ON {table}
+                WHEN EXISTS(SELECT 1 FROM report_archive_days
+                    WHERE kind='{kind}' AND device_slot=NEW.device_slot AND record_date=NEW.record_date)
+                BEGIN SELECT RAISE(ABORT,'Archived day requires an explicit history amendment'); END""")
+
+
 MIGRATIONS: tuple[tuple[int, str, object], ...] = (
     (8, "record_schema_history_and_reporting_indexes", _migration_008_record_schema_history),
     (9, "add_legacy_usage_history_import_provenance", _migration_009_legacy_history_import),
@@ -693,6 +724,7 @@ MIGRATIONS: tuple[tuple[int, str, object], ...] = (
     (22, "add_raw_counter_baseline_review", _migration_022_raw_counter_reviews),
     (23, "add_durable_web_observation_journal", _migration_023_web_observations),
     (24, "add_on_demand_web_observation_archives", _migration_024_web_observation_archives),
+    (25, "add_verified_report_details_and_monthly_summaries", _migration_025_report_detail_archives),
 )
 
 

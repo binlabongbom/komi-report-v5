@@ -389,18 +389,18 @@ def load_raw_counter_history(
         clauses.append("record_date<=?")
         parameters.append(period_end.isoformat())
     where = " WHERE " + " AND ".join(clauses) if clauses else ""
+    columns = ("device_slot", "record_date", "canonical_field", "label", "source_path",
+        "subject_type", "subject_id", "subject_name", "opening_value", "closing_value", "delta_value",
+        "reset_count", "sample_count", "first_success", "last_success", "source_name", "device_name_snapshot",
+        "device_serial_snapshot", "incomplete", "counter_review_json", "counter_resolutions_json")
     with _open(commit=False) as connection:
-        rows = connection.execute(
-            """SELECT device_slot,record_date,canonical_field,label,source_path,
-                      subject_type,subject_id,subject_name,opening_value,
-                      closing_value,delta_value,reset_count,sample_count,
-                      first_success,last_success,source_name,device_name_snapshot,
-                      device_serial_snapshot,incomplete,counter_review_json,counter_resolutions_json
-               FROM daily_raw_counter_records"""
-            + where
-            + " ORDER BY record_date,device_slot,subject_type,subject_name,canonical_field",
-            tuple(parameters),
-        ).fetchall()
+        connection.execute("BEGIN")
+        rows = connection.execute("SELECT " + ",".join(columns) + " FROM daily_raw_counter_records" + where,
+            tuple(parameters)).fetchall()
+        from services.report_detail_archive import ReportDetailArchive
+        rows.extend(tuple(item["row"][key] for key in columns) for item in ReportDetailArchive().details(
+            connection, "raw", slots, start=period_start, end=period_end))
+    rows.sort(key=lambda row: (row[1], row[0], row[5], row[7], row[2]))
     return tuple(
         RawCounterDailyRecord(
             device_slot=int(row[0]),
