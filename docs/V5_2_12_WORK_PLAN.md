@@ -20,8 +20,11 @@ disabled foundation, not a working customer Hotfix. UI preview is a prototype.
 
 1. Equal peers, no permanent Primary/Secondary. Every member collects printer
    readings, exchanges missing observations without double counting, and shares
-   backups/settings. Sync at startup and every five minutes. Offline peers catch
-   up. Automatic LAN joining/rejoining. Unlimited computers, one company with
+   backups/settings. Fill missing observations after computer startup when the
+   Agent is ready. Settings exchange is triggered by a committed change notice,
+   not a recurring five- or thirty-minute poll. Retain undelivered changes for
+   offline peers and deliver them when they reconnect. Automatic LAN
+   joining/rejoining. Unlimited computers, one company with
    three shared printer slots. Member list with connectivity and last sync.
 2. Settings changes shared across members; confirmation popup lists old/new
    values and warns all members are affected, offline members later. No new admin
@@ -125,11 +128,19 @@ disabled foundation, not a working customer Hotfix. UI preview is a prototype.
 - แยก discovery ออกจากการอนุญาตรับข้อมูล
   เก็บสมาชิก/การเชื่อมต่อที่ยืนยันแล้ว เพื่อกลับมาเชื่อมใหม่โดยไม่ตั้งค่าใหม่ทุกครั้ง
   ไม่ใช้ชื่อบริษัทหรือชื่อ LAN เป็นหลักฐานสิทธิ์ และไม่เพิ่มบทบาทผู้ดูแลใหม่
-- ทุกคอมเป็น peer เท่าเทียม ไม่มี primary ถาวร แลกค่าตอนเริ่มและทุก 5 นาที
+- ทุกคอมเป็น peer เท่าเทียม ไม่มี primary ถาวร ผู้ใช้แก้แนวทางล่าสุด:
+  sync การตั้งค่าเมื่อมีคนส่งค่าใหม่ ไม่ตั้งรอบตรวจทุก 5 หรือ 30 นาที
+  หลังบันทึกค่าและ revision สำเร็จ ให้แจ้งสมาชิกที่ยืนยันแล้วเพื่อดึงค่าผ่าน HTTPS
+  ไม่แจ้ง draft/การบันทึกที่ล้มเหลว และไม่ส่งการตั้งค่าทั้งชุดแบบ broadcast
+- เก็บรายการส่งที่ยังไม่ยืนยันรับไว้ เมื่อ peer กลับมาเชื่อมต่อให้ส่งการเปลี่ยนแปลง
+  ที่ค้างอยู่ การส่งซ้ำต้องไม่สร้างการแก้ไขใหม่หรือวนแจ้งกันไม่สิ้นสุด
+  retry เฉพาะงานที่ค้างแบบหน่วงเวลา ไม่กลายเป็นรอบ polling ขณะไม่มีงาน
   แบ่งหน้าประวัติให้พ้นข้อจำกัด 256 revisions/128 KiB ได้โดยไม่ตัดข้อมูลทิ้ง
-- retry เมื่อหลุดโดยไม่ทำงานซ้อน เครื่องกลับมาออนไลน์รับส่วนที่ขาด ข้อขัดแย้ง
+- retry เมื่อหลุดโดยไม่ทำงานซ้อน เครื่องกลับมาออนไลน์รับการตั้งค่าที่ค้าง ข้อขัดแย้ง
   ใช้ขั้นตอน P1 การค้นพบ peer อย่างเดียวไม่ทำให้ค่าถูกนำมาใช้ทันที
 - ผ่านเมื่อ: จำลองสอง process ฐานข้อมูลแยก ปิดสลับ/หลุด/เปิดกลับแล้วค่าตรงกัน;
+  บันทึกสำเร็จทำให้ส่งค่าใหม่ ยกเลิก/บันทึกล้มเหลวไม่ส่ง; ไม่มีการตรวจการตั้งค่า
+  ทุก 5/30 นาทีขณะว่าง; พลาดการแจ้งเตือนแล้วส่งงานค้างต่อได้โดยไม่เกิดรายการซ้ำ;
   ไม่มี Agent หรือ collector ซ้ำ; Web ยังให้บริการหลังปิดหน้าต่าง;
   วัดทั้ง process tree ขณะว่าง อ่านข้อมูล sync และเปิด Web พร้อมระบุสภาพทดสอบ
 
@@ -157,6 +168,10 @@ disabled foundation, not a working customer Hotfix. UI preview is a prototype.
 
 ### P5 — เติมข้อมูลที่ขาดและสำรองระหว่างเครื่อง
 
+- เริ่มเติมข้อมูลที่ขาดหลังเปิดเครื่อง เมื่อ Agent และการเชื่อมต่อพร้อม
+  หากตอนเริ่มยังเชื่อมไม่ได้ ให้คงงานเริ่มต้นไว้แล้วทำต่อเมื่อเชื่อมได้
+  ไม่ตั้งรอบเติมข้อมูลทุก 5/30 นาที และไม่เริ่มงานซ้ำเพียงเพราะเปิดหน้าต่าง UI ใหม่
+  รอบอ่านมิเตอร์ปกติเป็นคนละงานกับการเติมข้อมูลย้อนหลังระหว่าง peer
 - ออกแบบข้อมูลการอ่านให้มีที่มา Serial/ช่วงที่อยู่ใน slot และเวลาสังเกตจริง
   เก็บข้อมูลต้นทางแยกจากยอดที่คำนวณ ห้ามบวก delta ของแต่ละคอมเข้าด้วยกันตรง ๆ
 - แลกเฉพาะข้อมูลที่ขาดด้วย cursor/checkpoint ป้องกันการรับซ้ำและการอ่านช่วงทับกัน
@@ -223,6 +238,20 @@ disabled foundation, not a working customer Hotfix. UI preview is a prototype.
 การ build, ติดตั้ง/อัปเกรดจาก installer และเผยแพร่เป็น R1 ที่ยังไม่อนุญาต
 
 ## Existing evidence (not release approval)
+
+### 2026-09-18 — user revised sync triggers
+
+- Missing-data catch-up runs after computer startup / Agent readiness. Shared
+  settings propagate when a member sends a newly committed settings revision.
+  This supersedes the original five-minute cadence and the suggested thirty-minute
+  fallback. Undelivered work persists across offline/restart and retries without
+  adding an idle settings poll; ordinary printer collection is separate.
+- Updated approved requirements, P2/P5 implementation steps and acceptance checks.
+  Source inspection found the settings-history/one-time setup foundation, but no
+  continuous settings replication timer to disable yet. The existing five-minute
+  pairing approval window is an authorization lifetime, not a sync interval.
+- Documentation-only change; event delivery and startup catch-up remain pending
+  implementation. No runtime tests or builds were run for this plan revision.
 
 ### 2026-09-18 — approved discovery design and Wizard retry
 
@@ -292,8 +321,9 @@ disabled foundation, not a working customer Hotfix. UI preview is a prototype.
   diverging edits, clock skew, stale resolution, malformed history rollback,
   restart persistence and endpoint token replay rejection. No printer/Host calls.
 - Still unfinished: capture each settings save transaction, atomic application
-  of chosen values together with journal head, conflict preview/choice UI, startup
-  and five-minute exchange, durable peer membership, history paging beyond
+  of chosen values together with journal head, conflict preview/choice UI,
+  automatic exchange (cadence superseded by the revised sync triggers above),
+  durable peer membership, history paging beyond
   256 revisions/128 KiB, and data/backup sync. `resolve` currently changes journal
   state only and must not be wired as an app-setting apply action on its own.
   Export observes current settings, not every intermediate save. This is a tested
