@@ -21,8 +21,8 @@ class ArchiveSettingsPanel(QWidget):
         layout = QVBoxLayout(self)
         layout.addWidget(plain(tr("จัดเก็บประวัติ Web รายรอบ", "Archive individual Web readings")))
         layout.addWidget(plain(tr(
-            "ผลอ่านเกิน 12 เดือนจะเก็บแบบบีบอัดแยกตามปี และเปิดอ่านเมื่อเรียกประวัติ กรุณาสำรองโฟลเดอร์ archives ควบคู่กับฐานข้อมูล",
-            "Readings older than 12 months are compressed by year and loaded when history is requested. Back up the archives folder with the database.")))
+            "ระบบจัดเก็บผลอ่านเกิน 12 เดือนอัตโนมัติเมื่อว่าง หรือกดจัดเก็บได้ที่นี่ ข้อมูลบีบอัดแยกตามปีและเปิดเมื่อเรียกประวัติ สำรองโฟลเดอร์ archives ควบคู่กับฐานข้อมูล",
+            "Readings older than 12 months are archived automatically when idle, or on request here. Compressed yearly files load on demand. Keep the archives folder with database backups.")))
         self.status = plain("")
         layout.addWidget(self.status)
         self.message = plain("")

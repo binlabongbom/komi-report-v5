@@ -114,10 +114,27 @@ class CounterReviewPanel(QWidget):
         refresh = QPushButton(tr("รีเฟรช", "Refresh"))
         refresh.clicked.connect(self.refresh)
         layout.addWidget(refresh)
+        self.evidence_button = QPushButton(tr("ประวัติ Web และช่วงขาดการอ่าน", "Web history and missing intervals"))
+        self.evidence_button.clicked.connect(self.open_evidence)
+        layout.addWidget(self.evidence_button)
+        self._evidence_dialog = None
         self.message = plain("")
         layout.addWidget(self.message)
         layout.addStretch()
         self.refresh()
+
+    def open_evidence(self):
+        if self._evidence_dialog is not None:
+            self._evidence_dialog.raise_()
+            return
+        from ui.web_evidence_report import WebEvidenceDialog
+        dialog = WebEvidenceDialog(self.repository.list(enabled_only=False), self)
+        self._evidence_dialog = dialog
+        def finished(_result):
+            self._evidence_dialog = None
+            dialog.deleteLater()
+        dialog.finished.connect(finished)
+        dialog.open()
 
     def refresh(self):
         selected = self.items.currentData()

@@ -75,6 +75,12 @@ class BackgroundPollingCoordinator(QObject):
         self.timer = QTimer(self)
         self.timer.setInterval(30_000)
         self.timer.timeout.connect(self.tick)
+        from services.archive_maintenance import ArchiveMaintenance
+        self.archive_maintenance = ArchiveMaintenance(self, busy=self._archive_busy)
+
+    def _archive_busy(self):
+        with self._lock:
+            return bool(self.active) or self._stopped
 
     def start(self) -> None:
         if self._stopped:
@@ -82,6 +88,7 @@ class BackgroundPollingCoordinator(QObject):
         if self._started:
             return
         self._started = True
+        self.archive_maintenance.start()
         if self.is_paused:
             log.info("background polling start deferred while paused: %s", self._paused_reason)
             return
@@ -177,6 +184,7 @@ class BackgroundPollingCoordinator(QObject):
                 for future in list(self._futures.values()):
                     future.cancel()
         self.executor.shutdown(wait=wait, cancel_futures=True)
+        remaining += self.archive_maintenance.stop(wait=wait)
         log.info(
             "background polling stopped",
             extra={"event": "polling_stopped", "operation": "shutdown", "remaining_polls": remaining},

@@ -262,6 +262,35 @@ P9/H1 ที่ตรวจ source/fixture ได้อาจทำสลับ�
 
 ## Existing evidence (not release approval)
 
+### 2026-09-18 — evidence-based gap inspection and idle archival
+
+- Added deterministic single-serial/counter/epoch interval projection using
+  maximum cumulative values, never sums of peer counters. Duplicate/reordered
+  deliveries converge. Lower values and ambiguous clock/schema evidence require
+  review; no reset is inferred. Price/billing boundary intervals are flagged.
+- Friday 1,000 to Monday 1,301 allocates 301 to Sunday; daily chart replaces
+  that allocation with two clearly estimated bars of 150.5. Exact fractions
+  remain unrounded internally. Late Saturday evidence replaces estimates without
+  adding usage; days with any Web evidence are excluded from whole-day gaps.
+- Meter review now opens an on-demand Web evidence dialog: bounded date/data
+  reads including archived details, daily estimates, actual cumulative points
+  with dashed gaps, interval remarks, and Excel/PDF evidence exports. Loading is
+  in a worker; empty/error results cannot masquerade as a fresh zero report.
+- This is a usable evidence inspection/report, NOT integration into the main
+  billing ledger/issued reports or proof of cross-PC synchronization. Reviewed
+  shared epochs, corrections to existing daily allocations and monetary report
+  amendment integration remain. The dialog explicitly states that boundary.
+- Inspection/projection/export/meter-review/Web-journal tests: **42 passed in
+  13.29s**. Actual offscreen Qt dialog rendered and inspected using synthetic
+  Friday/Monday data; no printer/Host access. Excel includes decimal values and
+  remarks; PDF generated via Qt. No release build.
+- Runtime now archives one bounded verified chunk at a time after startup when
+  no printer work is active, continuing on later idle turns. It stops checking
+  once complete for the day, backs off after errors, logs failure visibly, and
+  drains with runtime shutdown before releasing handoff ownership. No network
+  polling or eager reading of old archive files is introduced.
+- Maintenance/polling/Agent/tray/handoff source tests: **31 passed in 17.93s**.
+
 ### 2026-09-18 — verified individual Web archives and portable recovery
 
 - Schema 24 adds immutable compressed yearly Web observation chunks and their
