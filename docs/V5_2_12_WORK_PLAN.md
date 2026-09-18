@@ -262,6 +262,21 @@ P9/H1 ที่ตรวจ source/fixture ได้อาจทำสลับ�
 
 ## Existing evidence (not release approval)
 
+### 2026-09-18 — reviewed dated-price recalculation
+
+- Billing Audit can preview a selected verified posting against the price
+  effective on its usage date, then confirm a correction with a reason. The
+  service preserves original meter/category/discount/period evidence and appends
+  an exact reversal plus recalculated replacement in one transaction.
+- Preview detects changed prices or superseded entries. Repeated confirmation
+  is idempotent; manual adjustments/holds cannot be relabelled as verified
+  automatic usage. Original issued evidence is never updated or deleted.
+- Targeted billing/audit/monthly source tests: **31 passed** in 10.57 seconds,
+  including actual page/dialog flow, cancellation, stale preview, failing insert
+  rollback, successive corrections and future-price exclusion.
+- This handles local price correction. Shared corrections, retrospective
+  billing-period/discount changes and archive-backed recalculation remain open.
+
 ### 2026-09-18 — five-year benchmark and bounded subject queries
 
 - Wrote an isolated 5-year fixture: 100 users on 3 printers, 547,800 subject

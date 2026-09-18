@@ -1,0 +1,10 @@
+{
+  "runs_ms": [
+    477.52,
+    523.41,
+    542.8
+  ],
+  "median_ms": 523.41,
+  "returned_rows": 300,
+  "total_pages": 108000.0
+}

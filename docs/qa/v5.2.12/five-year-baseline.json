@@ -1,0 +1,63 @@
+{
+  "synthetic": true,
+  "database": "C:\\Users\\User\\AppData\\Local\\Temp\\komi-five-year-299c6c6c88b44a69bb0503e207bacd20\\synthetic-history.sqlite3",
+  "start": "2021-09-18",
+  "end_exclusive": "2026-09-18",
+  "years": 5,
+  "users": 100,
+  "printers": 3,
+  "assumptions": [
+    "Same 100 users available on each printer",
+    "Daily rows for every calendar day",
+    "One user total counter, not every model-specific counter",
+    "No attachments or OS-vault data",
+    "Web-round storage below is an extrapolation, not five years of written rounds"
+  ],
+  "write_seconds": 81.841,
+  "rows": {
+    "daily_meter_records": 5478,
+    "daily_subject_records": 547800,
+    "daily_raw_counter_records": 547800,
+    "billing_ledger": 5478
+  },
+  "expected_total_pages": 6573600,
+  "daily_history_bytes": 435470336,
+  "queries": {
+    "monthly_devices_all_years": {
+      "runs_ms": [
+        490.81,
+        406.83,
+        463.76
+      ],
+      "median_ms": 463.76,
+      "returned_rows": 183
+    },
+    "subjects_last_month": {
+      "runs_ms": [
+        40300.3,
+        37726.54,
+        44043.13
+      ],
+      "median_ms": 40300.3,
+      "returned_rows": 300
+    },
+    "raw_last_month": {
+      "runs_ms": [
+        499.15,
+        738.1,
+        949.51
+      ],
+      "median_ms": 738.1,
+      "returned_rows": 9000
+    }
+  },
+  "measured_one_web_round_bytes": 22976,
+  "measured_one_web_round_zlib_bytes": 1644,
+  "estimated_five_year_web_payload_bytes": {
+    "5": 12082802688,
+    "15": 4027600896,
+    "30": 2013800448,
+    "60": 1006900224
+  },
+  "web_estimate_notes": "8 hours/day, every calendar day; excludes indexes, receipts, devices' extra counters, backups and file-system overhead. Compression size is one payload only; production compression/archive is not enabled."
+}

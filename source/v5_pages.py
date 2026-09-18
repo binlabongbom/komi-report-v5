@@ -12560,9 +12560,12 @@ class PageBillingAudit(QWidget):
         self.load_more_button = btn("โหลดเพิ่ม", "outline")
         self.detail_button = btn("ดูรายละเอียด", "outline")
         self.detail_button.setEnabled(False)
+        self.reprice_button = btn("คำนวณใหม่จากประวัติราคา", "outline")
+        self.reprice_button.setEnabled(False)
         self.export_button = btn("Export CSV", "outline")
         actions.addWidget(self.load_more_button)
         actions.addWidget(self.detail_button)
+        actions.addWidget(self.reprice_button)
         actions.addWidget(self.export_button)
         layout.addLayout(actions)
 
@@ -12571,6 +12574,7 @@ class PageBillingAudit(QWidget):
         self.refresh_button.clicked.connect(self._reset_and_refresh)
         self.load_more_button.clicked.connect(self._load_more)
         self.detail_button.clicked.connect(self._show_selected_detail)
+        self.reprice_button.clicked.connect(self._reprice_selected)
         self.export_button.clicked.connect(self._export)
         self.table.itemSelectionChanged.connect(self._selection_changed)
         self.table.cellDoubleClicked.connect(self._show_detail)
@@ -12648,6 +12652,7 @@ class PageBillingAudit(QWidget):
         self.load_more_button.setVisible(remaining > 0)
         self.load_more_button.setText(f"โหลดเพิ่ม ({remaining:,})" if remaining else "โหลดเพิ่ม")
         self.detail_button.setEnabled(False)
+        self.reprice_button.setEnabled(False)
         apply_language(self)
 
     def _selected_ledger_id(self) -> int | None:
@@ -12657,6 +12662,17 @@ class PageBillingAudit(QWidget):
 
     def _selection_changed(self) -> None:
         self.detail_button.setEnabled(self._selected_ledger_id() is not None)
+        self.reprice_button.setEnabled(self._selected_ledger_id() is not None)
+
+    def _reprice_selected(self) -> None:
+        ledger_id = self._selected_ledger_id()
+        if ledger_id is None:
+            return
+        from ui.billing_repricing import BillingRepricingDialog
+        dialog = BillingRepricingDialog(ledger_id, self)
+        dialog.finished.connect(lambda _result: self.refresh())
+        dialog.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        dialog.open()
 
     def _show_detail(self, row_no: int, _column: int = 0) -> None:
         item = self.table.item(row_no, 0)
