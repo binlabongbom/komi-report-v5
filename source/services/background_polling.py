@@ -26,6 +26,7 @@ from services.runtime_snapshots import runtime_snapshots
 from services.snmp_probe import SnmpTotalProbe
 from services.subject_history import SubjectDailyCacheStore
 from services.sync_schedule import load_schedule_windows
+from services.web_observations import WebObservationStore
 
 log = logging.getLogger(__name__)
 
@@ -43,6 +44,7 @@ class BackgroundPollingCoordinator(QObject):
         cache: DailyCacheStore | None = None,
         subject_cache: SubjectDailyCacheStore | None = None,
         raw_counter_history: RawCounterHistoryStore | None = None,
+        observations: WebObservationStore | None = None,
         parent=None,
     ) -> None:
         super().__init__(parent)
@@ -55,6 +57,7 @@ class BackgroundPollingCoordinator(QObject):
         self.cache = cache or DailyCacheStore()
         self.subject_cache = subject_cache or SubjectDailyCacheStore()
         self.raw_counter_history = raw_counter_history or RawCounterHistoryStore()
+        self.observations = observations or WebObservationStore()
         self.machine = PollingStateMachine()
         self.snmp_interval = timedelta(minutes=5)
         self.executor = ThreadPoolExecutor(max_workers=3, thread_name_prefix="komi-meter")
@@ -633,6 +636,16 @@ class BackgroundPollingCoordinator(QObject):
                     status="ok",
                     at=now,
                 )
+            observed_serial = (probe_result.serial if probe_result is not None else "") or device.serial
+            if observed_serial:
+                self.observations.record(device.slot, reading, serial=observed_serial,
+                    printer_name=device.name,
+                    at=datetime.fromisoformat(reading.collected_at.replace("Z", "+00:00")))
+            else:
+                pipeline_log.append(stage="DB", action="Web observation identity unavailable",
+                    device_slot=device.slot, device_name=device.name, host=device.host,
+                    target="web_observations", value="Missing printer Serial",
+                    detail="Local report only; no shareable Web observation queued", status="warning", at=now)
             ram_snapshot = runtime_snapshots.update(device.slot, reading)
             subject_state = self.subject_cache.update_reading(device.slot, reading, at=now)
             try:

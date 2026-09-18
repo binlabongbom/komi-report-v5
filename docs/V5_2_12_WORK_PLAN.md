@@ -262,6 +262,27 @@ P9/H1 ที่ตรวจ source/fixture ได้อาจทำสลับ�
 
 ## Existing evidence (not release approval)
 
+### 2026-09-18 — durable individual Web observations
+
+- Schema 23 stores immutable parsed Web rounds, local provenance/read IDs,
+  outgoing work and per-member ACKs. The collector commits the observation and
+  queue together before updating live Web snapshots. SNMP-only or failed Web
+  does not create an event; a journal failure cannot publish a fresh snapshot.
+  Missing Serial remains local-only with a visible diagnostic; no anonymous
+  observation is offered for sharing.
+- Every actual round is retained, including manual rounds between scheduled
+  readings. Exact replay deduplicates; conflicting payloads for one read ID
+  reject. Bounded, high-water-pinned pages support replay and arrivals during
+  transfer without skipping records. Incoming authorized batches commit
+  atomically, reject a wrong slot/Serial or altered hash, and create no echo
+  queue. Receipts survive restart and are independent per recipient.
+- Source regression: **63 passed** in 19.99 seconds, clean exit, including
+  collector persistence failure, two independent databases, reversed/duplicate
+  imports, byte limits, reset, migration, device and daily-cache checks.
+- This is the evidence/outbox layer. Actual authenticated transport, baseline
+  epoch reconciliation, catch-up projection into reports and reader arbitration
+  remain open. Incoming history does not yet modify usage or live Web status.
+
 ### 2026-09-18 — reviewed subject and exact-counter baselines
 
 - Fixed User/Account and Raw Counter accumulation after a falling counter:

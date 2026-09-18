@@ -12,7 +12,7 @@ from contextlib import closing
 from datetime import datetime
 from pathlib import Path
 
-CURRENT_SCHEMA_VERSION = 22
+CURRENT_SCHEMA_VERSION = 23
 
 
 class UnsupportedSchemaVersionError(RuntimeError):
@@ -24,6 +24,10 @@ class SchemaDriftError(RuntimeError):
 
 
 _REQUIRED_SCHEMA: dict[str, frozenset[str]] = {
+    "web_observations": frozenset({"sequence", "event_id", "document_json", "recorded_at"}),
+    "web_observation_state": frozenset({"key", "value"}),
+    "web_observation_outbox": frozenset({"event_id"}),
+    "web_observation_receipts": frozenset({"peer_id", "event_id", "acknowledged_at"}),
     "peer_settings_revisions": frozenset({"revision", "document_json"}),
     "peer_settings_state": frozenset({"key", "value"}),
     "peer_settings_events": frozenset({"revision", "created_at"}),
@@ -648,6 +652,20 @@ def _migration_022_raw_counter_reviews(connection: sqlite3.Connection) -> None:
         WHERE reset_count>0""")
 
 
+def _migration_023_web_observations(connection: sqlite3.Connection) -> None:
+    connection.execute("""CREATE TABLE web_observations(
+        sequence INTEGER PRIMARY KEY AUTOINCREMENT, event_id TEXT NOT NULL UNIQUE,
+        origin_id TEXT NOT NULL,read_id TEXT NOT NULL,
+        device_slot INTEGER NOT NULL, device_serial TEXT NOT NULL, observed_at TEXT NOT NULL,
+        document_json TEXT NOT NULL, recorded_at TEXT NOT NULL,UNIQUE(origin_id,read_id))""")
+    connection.execute("CREATE INDEX idx_web_observation_printer_time ON web_observations(device_serial,observed_at,sequence)")
+    connection.execute("CREATE TABLE web_observation_state(key TEXT PRIMARY KEY,value TEXT NOT NULL)")
+    connection.execute("CREATE TABLE web_observation_outbox(event_id TEXT PRIMARY KEY REFERENCES web_observations(event_id))")
+    connection.execute("""CREATE TABLE web_observation_receipts(
+        peer_id TEXT NOT NULL,event_id TEXT NOT NULL REFERENCES web_observations(event_id),
+        acknowledged_at TEXT NOT NULL,PRIMARY KEY(peer_id,event_id))""")
+
+
 MIGRATIONS: tuple[tuple[int, str, object], ...] = (
     (8, "record_schema_history_and_reporting_indexes", _migration_008_record_schema_history),
     (9, "add_legacy_usage_history_import_provenance", _migration_009_legacy_history_import),
@@ -664,6 +682,7 @@ MIGRATIONS: tuple[tuple[int, str, object], ...] = (
     (20, "add_peer_settings_revision_history", _migration_020_peer_settings_history),
     (21, "add_atomic_peer_settings_outbox", _migration_021_peer_settings_outbox),
     (22, "add_raw_counter_baseline_review", _migration_022_raw_counter_reviews),
+    (23, "add_durable_web_observation_journal", _migration_023_web_observations),
 )
 
 

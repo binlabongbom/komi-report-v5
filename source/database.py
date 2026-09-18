@@ -56,6 +56,9 @@ def _clear_read_caches(slot: int | None = None):
 
 
 _USAGE_RESET_TABLES = (
+    "web_observation_receipts",
+    "web_observation_outbox",
+    "web_observations",
     "legacy_history_items",
     "billing_ledger",
     "daily_subject_records",
@@ -80,6 +83,10 @@ _USAGE_RESET_SEQUENCES = (
 )
 
 _FACTORY_RESET_TABLES = (
+    "web_observation_receipts",
+    "web_observation_outbox",
+    "web_observations",
+    "web_observation_state",
     "peer_settings_deliveries",
     "peer_settings_events",
     "peer_settings_state",
