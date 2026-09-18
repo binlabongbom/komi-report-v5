@@ -12,7 +12,7 @@ from contextlib import closing
 from datetime import datetime
 from pathlib import Path
 
-CURRENT_SCHEMA_VERSION = 23
+CURRENT_SCHEMA_VERSION = 24
 
 
 class UnsupportedSchemaVersionError(RuntimeError):
@@ -24,10 +24,11 @@ class SchemaDriftError(RuntimeError):
 
 
 _REQUIRED_SCHEMA: dict[str, frozenset[str]] = {
-    "web_observations": frozenset({"sequence", "event_id", "document_json", "recorded_at"}),
+    "web_observations": frozenset({"sequence", "event_id", "document_json", "recorded_at", "archive_id"}),
     "web_observation_state": frozenset({"key", "value"}),
     "web_observation_outbox": frozenset({"event_id"}),
     "web_observation_receipts": frozenset({"peer_id", "event_id", "acknowledged_at"}),
+    "web_observation_archives": frozenset({"id", "relative_path", "sha256", "event_count", "year"}),
     "peer_settings_revisions": frozenset({"revision", "document_json"}),
     "peer_settings_state": frozenset({"key", "value"}),
     "peer_settings_events": frozenset({"revision", "created_at"}),
@@ -666,6 +667,14 @@ def _migration_023_web_observations(connection: sqlite3.Connection) -> None:
         acknowledged_at TEXT NOT NULL,PRIMARY KEY(peer_id,event_id))""")
 
 
+def _migration_024_web_observation_archives(connection: sqlite3.Connection) -> None:
+    connection.execute("""CREATE TABLE web_observation_archives(
+        id TEXT PRIMARY KEY,relative_path TEXT NOT NULL UNIQUE,sha256 TEXT NOT NULL,
+        event_count INTEGER NOT NULL,year INTEGER NOT NULL,created_at TEXT NOT NULL)""")
+    connection.execute("ALTER TABLE web_observations ADD COLUMN archive_id TEXT REFERENCES web_observation_archives(id)")
+    connection.execute("CREATE INDEX idx_web_observation_archive_time ON web_observations(archive_id,observed_at,sequence)")
+
+
 MIGRATIONS: tuple[tuple[int, str, object], ...] = (
     (8, "record_schema_history_and_reporting_indexes", _migration_008_record_schema_history),
     (9, "add_legacy_usage_history_import_provenance", _migration_009_legacy_history_import),
@@ -683,6 +692,7 @@ MIGRATIONS: tuple[tuple[int, str, object], ...] = (
     (21, "add_atomic_peer_settings_outbox", _migration_021_peer_settings_outbox),
     (22, "add_raw_counter_baseline_review", _migration_022_raw_counter_reviews),
     (23, "add_durable_web_observation_journal", _migration_023_web_observations),
+    (24, "add_on_demand_web_observation_archives", _migration_024_web_observation_archives),
 )
 
 

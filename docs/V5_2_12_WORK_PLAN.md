@@ -262,6 +262,26 @@ P9/H1 ที่ตรวจ source/fixture ได้อาจทำสลับ�
 
 ## Existing evidence (not release approval)
 
+### 2026-09-18 — verified individual Web archives and portable recovery
+
+- Schema 24 adds immutable compressed yearly Web observation chunks and their
+  catalog. Bounded maintenance verifies every payload and file before atomically
+  replacing hot payloads with references. IDs, sequence cursors and pending
+  deliveries stay intact; old details load only when requested. Recent queries
+  and startup metadata do not open old files. Missing/corrupt files fail visibly.
+- Advanced settings can start/cancel maintenance between atomic batches (20s
+  job budget). This is manual maintenance, not yet automatic Agent maintenance.
+- Backup, staged restore and first-run DB copy now copy and checksum exactly
+  the catalog-referenced immutable files before publishing the destination DB.
+  Conflicting/missing/corrupt archives abort without replacing either original.
+  A portable backup consists of the DB and its adjacent archives folder.
+- Usage/factory reset clears catalog references; physical archive files remain
+  like old backups. Failed transactions may leave unreferenced verified files.
+  No automatic deletion or VACUUM; free DB pages are reusable, not guaranteed
+  immediate filesystem shrinkage. Full daily subject/raw monthly rollups remain.
+- Archive/service/UI/backup/restore/migrations/reset/layout source tests:
+  **68 passed in 18.41s**, synthetic temporary databases only. No build/publish.
+
 ### 2026-09-18 — broad regression triage and source fixes
 
 - A monolithic Qt test run stalled after roughly a quarter of the suite; stopped

@@ -5806,7 +5806,9 @@ class PageSettings(QWidget):
         QMessageBox.information(
             self,
             "สำรอง Database แล้ว",
-            f"Integrity: {str(result.get('integrity', '')).upper()}\n{destination}",
+            f"Integrity: {str(result.get('integrity', '')).upper()}\n{destination}\n"
+            f"Archive: {result.get('archive_files', 0):,} ไฟล์\n"
+            "เก็บโฟลเดอร์ archives ข้างไฟล์สำรองไว้ด้วยเมื่อต้องย้ายหรือกู้คืน",
         )
 
     def _stage_database_restore(self) -> None:

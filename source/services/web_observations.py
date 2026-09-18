@@ -90,6 +90,12 @@ class WebObservationStore:
     def __init__(self, path=None):
         self.path = path or get_db_path()
 
+    def _document(self, event_id, document, archive_id):
+        if archive_id is None:
+            return document
+        from services.web_observation_archive import WebObservationArchive
+        return WebObservationArchive(self.path).read_document(archive_id, event_id)
+
     def record(self, slot, reading, *, serial, printer_name, at=None, read_id=None):
         """Durably capture a completed Web result before updating presentations."""
         stamp = at or datetime.now().astimezone()
@@ -156,10 +162,11 @@ class WebObservationStore:
             through = high if through is None else through
             if type(through) is not int or not after <= through <= high:
                 raise ValueError("Invalid observation high-water mark")
-            rows = conn.execute("""SELECT sequence,document_json FROM web_observations
+            rows = conn.execute("""SELECT sequence,event_id,document_json,archive_id FROM web_observations
                 WHERE sequence>? AND sequence<=? ORDER BY sequence LIMIT ?""", (after, through, limit))
             events, size, cursor = [], 0, after
-            for sequence, document in rows:
+            for sequence, event_id, document, archive_id in rows:
+                document = self._document(event_id, document, archive_id)
                 length = len(document.encode("utf-8"))
                 if events and size + length > MAX_PAGE_BYTES:
                     break
@@ -173,12 +180,13 @@ class WebObservationStore:
         if type(limit) is not int or not 1 <= limit <= 128:
             raise ValueError("Invalid delivery limit")
         with closing(sqlite3.connect(self.path)) as conn:
-            rows = conn.execute("""SELECT o.document_json FROM web_observations o
+            rows = conn.execute("""SELECT o.event_id,o.document_json,o.archive_id FROM web_observations o
                 JOIN web_observation_outbox q ON q.event_id=o.event_id
                 LEFT JOIN web_observation_receipts r ON r.event_id=o.event_id AND r.peer_id=?
                 WHERE r.event_id IS NULL ORDER BY o.sequence LIMIT ?""", (peer_id, limit))
             events, size = [], 0
-            for (document,) in rows:
+            for event_id, document, archive_id in rows:
+                document = self._document(event_id, document, archive_id)
                 length = len(document.encode("utf-8"))
                 if events and size + length > MAX_PAGE_BYTES:
                     break

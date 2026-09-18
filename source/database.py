@@ -7,6 +7,7 @@ import hashlib
 import hmac
 import json
 import logging
+import os
 import shutil
 import sqlite3
 import tempfile
@@ -59,6 +60,7 @@ _USAGE_RESET_TABLES = (
     "web_observation_receipts",
     "web_observation_outbox",
     "web_observations",
+    "web_observation_archives",
     "legacy_history_items",
     "billing_ledger",
     "daily_subject_records",
@@ -86,6 +88,7 @@ _FACTORY_RESET_TABLES = (
     "web_observation_receipts",
     "web_observation_outbox",
     "web_observations",
+    "web_observation_archives",
     "web_observation_state",
     "peer_settings_deliveries",
     "peer_settings_events",
@@ -200,7 +203,10 @@ def copy_database_for_first_run(destination: Path) -> Path:
             result = target_conn.execute("PRAGMA integrity_check").fetchone()
             if not result or str(result[0]).casefold() != "ok":
                 raise sqlite3.DatabaseError("Database copy failed integrity check")
-        temporary_path.replace(target)
+        from tools.db_recovery import copy_referenced_archives
+        copy_referenced_archives(temporary_path, source.parent, target.parent)
+        os.link(temporary_path, target)
+        temporary_path.unlink()
     except Exception:
         if temporary_path is not None:
             temporary_path.unlink(missing_ok=True)

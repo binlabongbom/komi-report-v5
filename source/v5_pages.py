@@ -12834,6 +12834,9 @@ class PageSettingsV5(QWidget):
         support_card = content.support_task_editor.parentWidget()
         self.schedule_page = section(schedule_card)
         self.advanced_page = section(support_card)
+        from ui.archive_settings import ArchiveSettingsPanel
+        self.archive_settings = ArchiveSettingsPanel()
+        self.advanced_page.widget().layout().insertWidget(1, self.archive_settings)
         self._legacy_host = self.advanced_page
         for key in ("billing", "schedule", "support"):
             content._task_buttons[key].hide()
