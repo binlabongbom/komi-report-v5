@@ -90,6 +90,32 @@ disabled foundation, not a working customer Hotfix. UI preview is a prototype.
 
 ## Existing evidence (not release approval)
 
+### 2026-09-18 continuation — same-day slot replacement foundation
+
+- Daily cache now quarantines newer Web observations from a conflicting serial
+  without adding their absolute counters to the old printer's usage. Candidate
+  host must match the current device; negative/nonfinite or older values cannot
+  replace the candidate. Finalization preserves unconfirmed candidate evidence.
+- Extracted `services/slot_replacement.py` with explicit preview/confirm APIs.
+  Requires different known serials, matching host/counter mapping/schema, an
+  unchanged preview revision, actor/reason and valid confirmation time. Closed
+  days reject changes. No UI or automatic caller invokes confirmation yet.
+- Confirmation retains old segment evidence and accumulated daily usage, uses
+  the observed replacement meter as the next baseline, and audits the decision.
+  Mixed-printer days remain held for billing even if later reconciliation passes.
+  No finalized history is rewritten or company authorization inferred.
+- **44 source tests passed**: slot replacement, daily cache, counter review and
+  billing ledger. Synthetic example: old usage 20, used meter 9000 then 9015
+  yields 35, not 9035; a second replacement 500 then 503 yields 38. Next-day
+  increments resume from the latest baseline. Stale/changed identity, mapping,
+  finalized-day rejection and preserved unconfirmed evidence covered.
+- Still unfinished: bind serial/meter to one verified live probe, subject/user
+  counter transitions, cross-day pending replacement, UI confirmation, shared
+  peer decisions and amended reports. Current APIs use repository identity and
+  are a local same-day foundation, not a completed replacement workflow.
+- User requested morning status during this chunk. No build, publish, real
+  printer/Host calls or customer database writes were performed.
+
 ### 2026-09-18 continuation — counter review UI
 
 - Added Meter review under Settings / Status and history, in an extracted

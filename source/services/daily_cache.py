@@ -332,6 +332,8 @@ class DailyCacheStore:
         }
         captured_identity = state.get("device_identity")
         if isinstance(captured_identity, dict) and _identity_conflicts(captured_identity, identity):
+            from services.slot_replacement import capture_candidate
+            capture_candidate(state, identity, reading, stamp, current)
             state["identity_conflict"] = {
                 "captured": captured_identity,
                 "current": identity,
@@ -656,6 +658,9 @@ class DailyCacheStore:
             "device_identity": state.get("device_identity", {}),
             "identity_conflict": state.get("identity_conflict"),
             "identity_baseline_mismatch": state.get("identity_baseline_mismatch"),
+            "replacement_candidate": state.get("replacement_candidate"),
+            "device_segments": state.get("device_segments", []),
+            "slot_replacements": state.get("slot_replacements", []),
             "reset_detected": bool(state.get("resets") or state.get("counter_review") or state.get("counter_resolutions")),
             "counter_review": state.get("counter_review", {}),
             "counter_resolutions": state.get("counter_resolutions", []),
