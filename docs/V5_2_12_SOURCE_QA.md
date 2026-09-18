@@ -3,6 +3,48 @@
 เอกสารนี้เป็นหลักฐานและขั้นตอนทดสอบระหว่างพัฒนา ไม่ใช่อนุมัติ build
 ใช้ฐานข้อมูลจำลองและเครื่องทดสอบ ไม่ใช้เครื่องพิมพ์หรือข้อมูลลูกค้าจริง
 
+## จุดตรวจล่าสุด — schema 28
+
+ผลต่อไปนี้เป็นชุดย่อยที่รันจริงและมีรายการซ้อนกัน ห้ามรวมจำนวนเป็นผล full suite:
+
+| ส่วน | หลักฐานล่าสุด | ข้อจำกัด |
+|---|---|---|
+| ฐาน Slot, Web v2, ประวัติจาก peer | epoch/store/exchange tests; จำลองสาม DB แยก | ยังไม่มี verified Host adapter หรือ HTTPS worker |
+| งานอ่านร่วม | reader/store/exchange 30 passed | grant ต้องตรง active epoch; ยังไม่เปิด election ใน runtime |
+| เติมประวัติหลังเปิดเครื่อง | catch-up/Web/epoch/recovery/reset/migrations 50 passed | durable page/cursor พร้อม; ยังไม่ผูก Agent network startup |
+| ประวัติและกราฟหลังรีเซ็ต | evidence/projection/billing-day 22 passed | แยก epoch; ไม่แก้ ledger จากหน้าดูหลักฐาน |
+| ปิด UI และ Agent | tray/agent 29 passed; refresh/tray 27 passed หลังปรับ test doubles | ต้องทดสอบ tray/ตัวติดตั้งจริงอีกครั้ง |
+| งานอ่านจำลอง 3 เครื่อง × 100 ผู้ใช้ | Desktop/Agent อย่างละ 3 รอบทดลอง; บันทึกครบ 180 Web events; exit 0 ทุก process | ไม่รวม Host, Web/Node หรือเครื่องพิมพ์จริง |
+| Archive รายวัน | รายละเอียดและผลวัดอยู่ใน WORK_PLAN และ five-year-archive.json | ไม่ใช่การแก้ไข archived day/ฉบับเรียกเก็บอัตโนมัติ |
+
+ใช้ Python environment ของโปรเจกต์ ตั้ง `QT_QPA_PLATFORM=offscreen` แล้วรัน pytest
+จากโฟลเดอร์ `source` ทุก test ใช้ฐานชั่วคราวและปิด discovery ไป LAN จริง ตัวอย่าง:
+
+```powershell
+$env:QT_QPA_PLATFORM='offscreen'
+python -m pytest tests/test_reader_jobs.py tests/test_slot_epoch_store.py tests/test_slot_epoch_exchange.py -q
+python -m pytest tests/test_web_catchup.py tests/test_web_observations.py tests/test_archive_recovery.py tests/test_database_reset_v5.py tests/test_migrations.py -q
+python -m pytest tests/test_web_evidence_report.py tests/test_web_usage_projection.py tests/test_billing_day_consistency.py -q
+```
+
+### จำลอง A/B/C แยกฐานข้อมูล
+
+1. A ยืนยันฐาน Slot 2,000 จากเครื่องเก่า แล้วยืนยันเครื่องมือสองที่เริ่ม 50,000
+2. B/C รับบรรพบุรุษและหลักฐานตรงกันก่อนเลือกฐานใหม่; รับผล 50,100 แล้วได้ Slot 2,100
+3. ส่งซ้ำ/สลับลำดับ/ขาด parent/ข้อมูลผู้ส่งขัดกับค่าที่สูงกว่าใน B: ไม่เพิ่มยอดซ้ำ
+   ไม่เปลี่ยน active head จากเวลารับ และพักข้อขัดแย้งไว้ตรวจ
+4. B ขออ่านก่อน C: ใช้งานเดียว ผลต้องบันทึกและผูก epoch ที่ได้รับสิทธิ์ก่อนแจ้งสำเร็จ
+   รีเซ็ต Slot ระหว่างอ่านต้องไม่ยอมรับผลเก่าเป็นงานของฐานใหม่
+5. รับประวัติหน้าหนึ่งแล้วหยุด B เปิดต่อด้วย cursor ที่ commit แล้ว
+   ข้อมูลและ cursor ต้องย้อนคืนพร้อมกันเมื่อจำลอง storage failure
+6. A คืน backup เก่าหรือล้างข้อมูล: เปรียบเทียบ stream/anchor แล้วเริ่มตรวจใหม่
+   สำเนาที่ B มีอยู่ยังอยู่ครบ ไม่ลบตามเครื่องต้นทาง ไม่สร้าง outbox วนกลับ
+7. ไฟล์ Archive หาย หรือยังไม่มี epoch ของผล v2: ไม่เลื่อน cursor/ไม่แจ้งรับสำเร็จ
+
+นี่เป็นการทดสอบ service ด้วย authorization ของ fixture ไม่ใช่หลักฐานว่าลงทะเบียน
+บริษัทกับ Host จริงแล้วหรือทดสอบการติดตั้งสำเร็จ การทดสอบสองคอมจริงและ Firewall
+ด้านล่างยังเป็นขั้นตอนรอเชื่อมระบบครบ ส่วน installer QA เป็น **WAIT BUILD**
+
 ## Archive ของผล Web รายรอบ
 
 - ตรวจงานอัตโนมัติ: เริ่มหลัง runtime พร้อม ไม่แย่งงานอ่านเครื่องพิมพ์ หยุดหลังจบ
@@ -16,8 +58,9 @@
 - Backup/ย้าย DB/กู้คืนไปคนละโฟลเดอร์ต้องได้ไฟล์ Archive ที่อ้างอิงครบและ hash ตรง
   ปลายทางชื่อชนแต่เนื้อหาต่างต้องหยุดและรักษาไฟล์เดิม
 - หน้าขั้นสูงเริ่มงานเบื้องหลัง หยุดระหว่างชุดได้ งานซ้ำไม่เปิด worker เพิ่ม
-- ผ่าน 68 tests รวม migration/reset/layout ใน 18.41 วินาที; ยังไม่ใช่การทดสอบ
-  archive รายเดือนของ daily subject/raw ทั้งหมด และยังไม่มีการลบไฟล์สำรองเก่าอัตโนมัติ
+- ชุดแรกผ่าน 68 tests รวม migration/reset/layout ใน 18.41 วินาที ต่อมาเพิ่ม archive
+  daily subject/raw กับสรุปรายเดือนและการวัดห้าปีแล้ว ดูหลักฐานใหม่ใน WORK_PLAN
+  ยังไม่มีการลบไฟล์สำรองเก่าอัตโนมัติ
 
 ## ตรวจช่วงขาดการอ่านจากหลักฐาน Web
 
@@ -67,8 +110,8 @@
    เลือกค่าที่รับมาหรือคงค่าปัจจุบัน ยกเลิกต้องไม่เปลี่ยนค่า
    ยืนยันแล้วต้องเก็บที่มาทั้งสองฝั่ง ไม่เลือกเพราะนาฬิกาเครื่องใดใหม่กว่า
 
-ตอนนี้หน้าประวัติย้อนค่า/ใช้ค่าจาก peer ได้เฉพาะรอบบิล ส่วนลด และตารางอ่าน
-การเปลี่ยนเครื่อง ราคา และบริษัทใช้ workflow ของส่วนนั้นตามแผน
+หน้าประวัติรองรับรอบบิล ส่วนลด ตารางอ่าน และประวัติราคาแบบมีวันบังคับใช้
+การเปลี่ยนเครื่อง/ฐานมิเตอร์และบริษัทต้องเชื่อม workflow ของส่วนนั้นให้ครบตามแผน
 การมีหน้าประวัติไม่ได้หมายความว่าคิวส่งตั้งค่าอัตโนมัติระหว่างคอมเสร็จแล้ว
 
 ## ราคาและการบันทึก Wizard
