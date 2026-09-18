@@ -118,10 +118,28 @@ class CounterReviewPanel(QWidget):
         self.evidence_button.clicked.connect(self.open_evidence)
         layout.addWidget(self.evidence_button)
         self._evidence_dialog = None
+        self.slot_baseline_button = QPushButton(tr("ตรวจฐานมิเตอร์ของ Slot", "Review slot meter baseline"))
+        self.slot_baseline_button.clicked.connect(self.open_slot_baseline)
+        layout.addWidget(self.slot_baseline_button)
+        self._slot_baseline_dialog = None
         self.message = plain("")
         layout.addWidget(self.message)
         layout.addStretch()
         self.refresh()
+
+    def open_slot_baseline(self):
+        if self._slot_baseline_dialog is not None:
+            self._slot_baseline_dialog.raise_()
+            return
+        from ui.slot_baseline_review import SlotBaselineDialog
+        dialog = SlotBaselineDialog(self.repository.list(enabled_only=True), self)
+        self._slot_baseline_dialog = dialog
+        def finished(_result):
+            self._slot_baseline_dialog = None
+            self.refresh()
+            dialog.deleteLater()
+        dialog.finished.connect(finished)
+        dialog.open()
 
     def open_evidence(self):
         if self._evidence_dialog is not None:

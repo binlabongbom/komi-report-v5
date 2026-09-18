@@ -27,6 +27,7 @@ def _state(conn):
         "prices": list(conn.execute("SELECT device_slot,effective_date,a3_color,a3_bw,a4_color,a4_bw "
                                     "FROM price_history ORDER BY device_slot,effective_date")),
         "head": SettingsHistory._state(conn, "head"),
+        "slot_epochs": list(conn.execute("SELECT device_slot,epoch_id FROM slot_meter_heads ORDER BY device_slot")),
     }
 
 
@@ -100,6 +101,9 @@ class SetupSettingsService:
         after = {"format_version": 2, "organization": snapshot["organization"],
                  "settings": snapshot["settings"], "devices": snapshot["devices"],
                  "price_history": [history[key] for key in sorted(history)]}
+        if expected["slot_epochs"]:
+            after.update(format_version=3, slot_epochs=[{"slot": slot, "epoch_id": epoch}
+                for slot, epoch in expected["slot_epochs"]])
         validate(after)
         for row in after["price_history"]:
             for key in PRICE_KEYS:

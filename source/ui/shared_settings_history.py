@@ -15,6 +15,7 @@ from ui.shared_settings_confirmation import _display, confirm_shared_settings, s
 def _reason(value):
     known = {
         "setup_settings_saved": tr("บันทึกเครื่องพิมพ์และการตั้งค่า", "Printer and setup settings saved"),
+        "slot_baseline_reviewed": tr("ยืนยันฐานมิเตอร์ของ Slot", "Slot meter baseline reviewed"),
         "billing_settings_saved": tr("เปลี่ยนรอบบิลหรือส่วนลด", "Billing or discount changed"),
         "schedule_settings_saved": tr("เปลี่ยนตารางอ่านข้อมูล", "Reading schedule changed"),
         "local_settings_baseline": tr("ค่าก่อนเริ่มบันทึกประวัติ", "Settings before audit history"),
@@ -118,7 +119,7 @@ class SharedSettingsHistoryDialog(QDialog):
         payload = doc["payload"]
         previous = row["previous"]
         labels = setting_labels()
-        for key in ("organization", "devices", "price_history"):
+        for key in ("organization", "devices", "price_history", "slot_epochs"):
             if key in payload:
                 old = previous.get(key) if previous else None
                 if old != payload[key]:

@@ -56,16 +56,33 @@ def from_connection(conn):
     payload = {"format_version": 2, "organization": organization,
                "settings": snapshot["settings"], "devices": snapshot["devices"],
                "price_history": prices}
+    epochs = [{"slot": slot, "epoch_id": epoch_id} for slot, epoch_id in conn.execute(
+        "SELECT device_slot,epoch_id FROM slot_meter_heads ORDER BY device_slot")]
+    if epochs:
+        payload.update(format_version=3, slot_epochs=epochs)
     validate(payload)
     return payload
 
 
 def validate(payload):
-    if not isinstance(payload, dict) or set(payload) != {
-        "format_version", "organization", "settings", "devices", "price_history"
-    } or type(payload["format_version"]) is not int or payload["format_version"] != 2:
+    keys = {"format_version", "organization", "settings", "devices", "price_history"}
+    if not isinstance(payload, dict) or type(payload.get("format_version")) is not int:
+        raise ValueError("Invalid shared settings document")
+    version = payload["format_version"]
+    if version == 3:
+        keys.add("slot_epochs")
+        epochs = payload.get("slot_epochs")
+        if (not isinstance(epochs, list) or not 1 <= len(epochs) <= 3
+                or any(not isinstance(row, dict) or set(row) != {"slot", "epoch_id"}
+                    or type(row["slot"]) is not int or row["slot"] not in range(3)
+                    or not isinstance(row["epoch_id"], str) or len(row["epoch_id"]) != 64
+                    or any(char not in "0123456789abcdef" for char in row["epoch_id"]) for row in epochs)
+                or [row["slot"] for row in epochs] != sorted({row["slot"] for row in epochs})):
+            raise ValueError("Invalid reviewed slot references")
+    if version not in (2, 3) or set(payload) != keys:
         raise ValueError("Invalid shared settings document")
     legacy = deepcopy(payload)
+    legacy.pop("slot_epochs", None)
     if (not isinstance(legacy["organization"], dict)
             or set(legacy["organization"]) != {"company_name", "first_started_at"}
             or not isinstance(legacy["devices"], list)

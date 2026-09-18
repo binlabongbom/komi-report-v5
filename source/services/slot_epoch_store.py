@@ -100,18 +100,21 @@ class SlotEpochStore:
     def review_latest(self, slot, *, actor, reason):
         """Prepare the current physical printer's latest committed Web baseline."""
         with self._connection() as conn:
-            device = conn.execute("SELECT serial FROM devices WHERE slot=? AND enabled=1", (slot,)).fetchone()
-            if not device or not device[0]:
-                raise ValueError("Read the configured printer and confirm its Serial first")
-            latest = conn.execute("SELECT event_id FROM web_observations WHERE device_slot=? AND device_serial=? ORDER BY sequence DESC LIMIT 1",
-                (slot, device[0])).fetchone()
-            if latest is None:
-                raise ValueError("No committed Web reading is available for this printer")
-            head = self._head(conn, slot)
-            previous = self._epoch(conn, head) if head else None
-            operation = ("initial" if previous is None else
-                "reset" if previous["document"]["baseline_event"]["payload"]["serial"] == device[0] else "replacement")
-            return self._preview(conn, slot, latest[0], operation, actor, reason)
+            return self._review_latest(conn, slot, actor=actor, reason=reason)
+
+    def _review_latest(self, conn, slot, *, actor, reason):
+        device = conn.execute("SELECT serial FROM devices WHERE slot=? AND enabled=1", (slot,)).fetchone()
+        if not device or not device[0]:
+            raise ValueError("Read the configured printer and confirm its Serial first")
+        latest = conn.execute("SELECT event_id FROM web_observations WHERE device_slot=? AND device_serial=? ORDER BY sequence DESC LIMIT 1",
+            (slot, device[0])).fetchone()
+        if latest is None:
+            raise ValueError("No committed Web reading is available for this printer")
+        head = self._head(conn, slot)
+        previous = self._epoch(conn, head) if head else None
+        operation = ("initial" if previous is None else
+            "reset" if previous["document"]["baseline_event"]["payload"]["serial"] == device[0] else "replacement")
+        return self._preview(conn, slot, latest[0], operation, actor, reason)
 
     def _preview(self, conn, slot, baseline_event_id, operation, actor, reason):
         if type(slot) is not int or slot not in range(3):
@@ -153,26 +156,30 @@ class SlotEpochStore:
         """Recheck the full preview then commit definition, active head and outbox."""
         validate_epoch(preview["epoch"])
         with self._connection(write=True) as conn:
-            existing = conn.execute("SELECT document_json FROM slot_meter_epochs WHERE id=?", (preview["epoch"]["id"],)).fetchone()
-            if existing and self._head(conn, preview["slot"]) == preview["epoch"]["id"]:
-                if json.loads(existing[0]) != preview["epoch"]:
-                    raise ValueError("Epoch confirmation retry differs")
-                return preview["epoch"]["id"]
-            fresh = self._preview(conn, preview["slot"], preview["baseline_event_id"], preview["operation"], preview["actor"], preview["reason"])
-            if fresh != preview:
-                raise ValueError("Slot evidence or settings changed after preview")
-            epoch = preview["epoch"]
-            if preview["operation"] == "reset":
-                self._assign(conn, self._epoch(conn, epoch["document"]["parent"]),
-                    self._event(conn, preview["baseline_event_id"]))
-            conn.execute("INSERT INTO slot_meter_epochs VALUES(?,?,?,?)",
-                (epoch["id"], preview["slot"], epoch["document"]["parent"], _json(epoch)))
-            conn.execute("INSERT INTO slot_meter_epoch_state(epoch_id) VALUES(?)", (epoch["id"],))
-            self._assign(conn, epoch, self._event(conn, preview["baseline_event_id"]))
-            conn.execute("INSERT INTO slot_meter_heads VALUES(?,?) ON CONFLICT(device_slot) DO UPDATE SET epoch_id=excluded.epoch_id",
-                (preview["slot"], epoch["id"]))
-            conn.execute("INSERT INTO slot_meter_epoch_outbox VALUES(?)", (epoch["id"],))
-            return epoch["id"]
+            return self._confirm(conn, preview)
+
+    def _confirm(self, conn, preview):
+        validate_epoch(preview["epoch"])
+        existing = conn.execute("SELECT document_json FROM slot_meter_epochs WHERE id=?", (preview["epoch"]["id"],)).fetchone()
+        if existing and self._head(conn, preview["slot"]) == preview["epoch"]["id"]:
+            if json.loads(existing[0]) != preview["epoch"]:
+                raise ValueError("Epoch confirmation retry differs")
+            return preview["epoch"]["id"]
+        fresh = self._preview(conn, preview["slot"], preview["baseline_event_id"], preview["operation"], preview["actor"], preview["reason"])
+        if fresh != preview:
+            raise ValueError("Slot evidence or settings changed after preview")
+        epoch = preview["epoch"]
+        if preview["operation"] == "reset":
+            self._assign(conn, self._epoch(conn, epoch["document"]["parent"]),
+                self._event(conn, preview["baseline_event_id"]))
+        conn.execute("INSERT INTO slot_meter_epochs VALUES(?,?,?,?)",
+            (epoch["id"], preview["slot"], epoch["document"]["parent"], _json(epoch)))
+        conn.execute("INSERT INTO slot_meter_epoch_state(epoch_id) VALUES(?)", (epoch["id"],))
+        self._assign(conn, epoch, self._event(conn, preview["baseline_event_id"]))
+        conn.execute("INSERT INTO slot_meter_heads VALUES(?,?) ON CONFLICT(device_slot) DO UPDATE SET epoch_id=excluded.epoch_id",
+            (preview["slot"], epoch["id"]))
+        conn.execute("INSERT INTO slot_meter_epoch_outbox VALUES(?)", (epoch["id"],))
+        return epoch["id"]
 
     def assign(self, event_id, epoch_id):
         """Bind an already-committed event using its verified read/epoch context."""

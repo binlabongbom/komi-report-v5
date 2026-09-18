@@ -175,6 +175,50 @@ bf453738b934dcf5bea59dd8c70e191b52ba6b89 และ merge เข้า local main
   หลักฐานทดสอบเก่าตรวจว่ามีบน GitHub/commit/tag/release จริงก่อนเก็บกวาด
 - ปรับคู่มือ ภาพหน้าจอ และขั้นตอนทดสอบสองเครื่องให้ตรง ก่อนขออนุญาต build
 
+### 2026-09-18 — bounded authenticated-transport catch-up session
+
+- Added `PeerHistorySession` to orchestrate the repositories: validate a received
+  page, fetch/validate missing epoch ancestry parent-first, persist it, then
+  atomically receive the Web page and resume cursor. Import never chooses the
+  active Slot head or changes printer settings/invoices.
+- Session authorization is checked before and after transport calls, so a
+  revocation while receiving a page prevents its commit. Required injected
+  callbacks independently authorize session, events and epoch definitions;
+  there is no permissive/default production membership provider.
+- Work is bounded by pages/bytes/epochs and can cancel between calls/commits.
+  Page-budget exhaustion resumes after restart; transport failure retains only
+  durably received progress. Dependency imports can survive an interrupted page
+  and are safely reused. Excessively deep/large ancestry fails explicitly and
+  requires a larger bounded transfer or a future paged ancestry protocol.
+- Six source scenarios passed: A→B→C history recovery including replacement
+  ancestry and 2,100 Slot total; pinned snapshot/restart; revocation; cancellation
+  and transport loss; wrong-epoch response; database rollback/idempotent retry.
+- The transport interface still needs the real authenticated HTTPS adapter and
+  Agent startup/reconnect wake integration. These tests use local adapters over
+  three independent DBs, not live Host credentials or physical computers.
+
+### 2026-09-18 — slot baseline UI and atomic shared-settings reference
+
+- Added a real counter-review dialog for initial/replacement/reset Web baselines.
+  It shows old/new Serial, physical baseline and carried Slot totals; requires
+  a reason and explicit verification. Preview/confirmation run off the GUI
+  thread; new evidence or changed settings rejects a stale review.
+- `SharedSlotReviewService` commits epoch/head/maxima/outbox, shared-settings
+  revision/event and receipt in one transaction. Failure injection at journal,
+  event or receipt leaves all unchanged. Same confirmation is idempotent.
+- Shared settings document v3 carries bounded Slot-to-epoch references. Existing
+  v2 documents remain readable. Wizard and ordinary price/billing edits preserve
+  these references. History displays the baseline change; generic peer/undo
+  paths cannot silently apply a different epoch. Host registration schema and
+  SQLite schema are unchanged (this is the settings document version only).
+- Slot/settings/setup/store/exchange/counter/history UI regression: **74 passed**.
+  Expanded shared prices/history/pages/outbox/settings/Wizard/reader/manual read
+  regression: **159 passed in 115.36 seconds**, one dependency deprecation warning.
+  Updated the guide and inspected the actual synthetic replacement dialog image.
+- This adds the local reviewed workflow and its shared causal reference. Remote
+  full-setup/epoch adoption, authenticated delivery and legacy financial hold
+  reconciliation remain distinct open work; no claim of multi-PC completion.
+
 ### 2026-09-18 — reviewed historical discounts and billing periods
 
 - Completed the previously unstarted local recalculation option: the date-range
@@ -453,10 +497,11 @@ bf453738b934dcf5bea59dd8c70e191b52ba6b89 และ merge เข้า local main
 | หน้าตั้งค่าเครือข่าย | แยกโมดูล/ปรับโครงแล้ว ยังไม่ครบสมาชิกและ Sync ใหม่ |
 | Wizard ค้นหาซ้ำ | มี UDP discovery และ HTTPS probe พร้อมค้นซ้ำ/manual IP; ผ่าน fixture/loopback ยังรอ Firewall/สองคอมจริง |
 | ประวัติการตั้งค่า | Setup/ราคา save พร้อม revision แบบ atomic; มีหน้าประวัติ/เลือกค่าขัดแย้ง/undo ราคา รอบบิล ส่วนลด ตาราง; การส่งอัตโนมัติและ apply การเปลี่ยนเครื่องร่วมยังไม่ครบ |
-| Agent/handoff/tray | มี source implementation/tests บางส่วน ยังต้องรวมการเป็นผู้อ่านและวัดงานจริงทั้ง process tree |
-| เปลี่ยนเครื่อง/มิเตอร์ลด | มี review มิเตอร์เครื่อง/รายผู้ใช้/Raw และป้องกันบวก absolute หลังลด; การเปลี่ยนเครื่องมี engine เฉพาะ local ยังไม่ครบ epoch ข้ามวันและ peer |
+| Agent/handoff/tray | มี source lifecycle/tests และวัดงานจำลอง 3 เครื่อง 100 ผู้ใช้แล้ว ยังต้องรวมผู้อ่านร่วมและตรวจเครื่องจริง/บริการ Web ทั้ง process tree |
+| เปลี่ยนเครื่อง/มิเตอร์ลด | มี epoch ข้ามวัน/store/exchange จำลอง 3 DB และหน้าตรวจฐานที่บันทึกพร้อมประวัติร่วมแล้ว; เหลือ remote adoption และเชื่อม legacy cache/ยอดรอตรวจ |
 | ผู้อ่านร่วม/อ่านด้วยมือ/ส่งผล Web | มี journal/คิว/ACK Web, manual local ไม่เลื่อนตาราง และ durable grants/join จำลอง A/B/C แยกฐาน; authority election/สมาชิก/HTTPS delivery และ runtime ร่วมยังไม่ครบ |
 | ยอดลงวันก่อนหน้า/remark/กราฟเฉลี่ย | มี engine และหน้าตรวจหลักฐานพร้อมกราฟทศนิยม/Excel/PDF; ยังไม่เชื่อมการแก้ ledger/ฉบับเรียกเก็บเดิม |
+| คำนวณราคา/ส่วนลด/รอบบิลย้อนหลัง | มี preview และการแก้ไขแบบ atomic บนคอมเดียว รวมปรับสรุปรายเดือน Archive; เหลือการกระจายฉบับแก้ไขให้สมาชิก |
 | Hotfix ลงทะเบียน | มี foundation ที่ยังปิดใช้งาน ไม่ใช่ Hotfix ลูกค้าที่พร้อมติดตั้ง |
 | Archive/benchmark/คู่มือใหม่ | Archive ผล Web และ daily subject/raw แยกปี พร้อมสรุปรายเดือน/backup/restore; ผ่าน source regressions และวัดหลัง archive 876,300 แถว/24.37 MiB ยอดตรง; คู่มือ source มีแล้ว ยังเหลือฉบับส่งมอบ |
 

@@ -12,6 +12,8 @@ from services.sync_schedule import load_schedule_windows
 def _display(key, value):
     if value is None:
         return tr("ยังไม่ได้ตั้งค่า", "Not configured")
+    if key == "slot_epochs":
+        return "\n".join(f"Slot {row['slot'] + 1}: {row['epoch_id'][:12]}…" for row in value)
     if key == "organization":
         return value["company_name"] + "\n" + value["first_started_at"]
     if key == "devices":
@@ -55,6 +57,7 @@ def setting_labels():
         "sync_schedule_windows": tr("ตารางอ่านข้อมูล", "Reading schedule"),
         "organization": tr("บริษัท", "Company"),
         "devices": tr("เครื่องพิมพ์และ Slot", "Printers and slots"),
+        "slot_epochs": tr("ฐานมิเตอร์ของ Slot", "Slot meter baselines"),
         "price_history": tr("ราคาตามวันบังคับใช้", "Prices by effective date"),
         "pricing_mode": tr("รูปแบบราคา", "Pricing mode"),
         "work_start": tr("เริ่มเวลาทำงาน", "Work starts"),

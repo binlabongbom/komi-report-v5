@@ -148,7 +148,7 @@ class SharedSettingsService:
 
     @staticmethod
     def _check_scope(before, after):
-        if after.get("format_version") != 2 or "price_history" not in after:
+        if after.get("format_version") not in (2, 3) or "price_history" not in after:
             raise ValueError("Legacy snapshots require the setup workflow")
         allowed = deepcopy(before)
         changes = {key: after["settings"][key] for key in EDITABLE_KEYS
