@@ -1,4 +1,5 @@
 import json
+import pytest
 from datetime import UTC, date, datetime
 
 import database
@@ -8,6 +9,35 @@ from services.device_config import DeviceConfig, DeviceConfigRepository
 from services.pricing import PriceList, PricingRepository
 from services.report_scope import report_slots
 from services.subject_history import SubjectDailyCacheStore, extract_subject_totals, load_subject_history
+
+
+@pytest.mark.parametrize("bounds", ["start", "end", "both"])
+def test_requested_range_does_not_parse_unrelated_old_or_future_rows(tmp_path, bounds):
+    original = database.get_db_path()
+    try:
+        _setup_database(tmp_path)
+        cache = SubjectDailyCacheStore(tmp_path / "subjects")
+        at = datetime(2026, 7, 16, 8, tzinfo=UTC)
+        cache.update_reading(0, _reading(100, collected_at=at), at=at)
+        later = at.replace(hour=9)
+        cache.update_reading(0, _reading(110, collected_at=later), at=later)
+        cache.finalize(0, at.date())
+        # A damaged row outside the requested window must not be decoded.
+        excluded = "2020-01-01" if bounds != "end" else "2030-01-01"
+        with database._open() as conn:
+            conn.execute("""INSERT INTO daily_subject_records
+                (device_slot,record_date,subject_type,subject_id,subject_name,opening_total,closing_total,
+                 delta_total,warnings_json,created_at) VALUES(0,?,'user','old','old',0,0,0,'invalid-json',?)""",
+                (excluded, at.isoformat()))
+        kwargs = {}
+        if bounds != "end":
+            kwargs["period_start"] = at.date()
+        if bounds != "start":
+            kwargs["period_end"] = at.date()
+        rows = load_subject_history([0], today=at.date(), cache=cache, **kwargs)
+        assert len(rows) == 1 and rows[0].period_usage == 10
+    finally:
+        database.set_db_path(original)
 
 
 def _reading(total: int, *, collected_at: datetime, subject_id: str = "u-1") -> MeterReading:

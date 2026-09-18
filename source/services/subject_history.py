@@ -553,19 +553,21 @@ def _daily_record_from_cache(
     )
 
 
-def _latest_device_ledger_periods(slots: list[int]) -> dict[tuple[int, date], tuple[date, date]]:
+def _latest_device_ledger_periods(slots: list[int], *, period_start: date | None = None,
+                                  period_end: date | None = None) -> dict[tuple[int, date], tuple[date, date]]:
     """Return each device day's immutable period without changing legacy rows."""
 
     if not slots:
         return {}
     placeholders = ",".join("?" for _ in slots)
+    filters, parameters = _date_filter(period_start, period_end)
     with _open(commit=False) as conn:
         rows = conn.execute(
             f"""SELECT device_slot,record_date,period_start,period_end
                 FROM billing_ledger
-                WHERE device_slot IN ({placeholders})
+                WHERE device_slot IN ({placeholders}) {filters}
                 ORDER BY id""",
-            slots,
+            [*slots, *parameters],
         ).fetchall()
 
     periods: dict[tuple[int, date], tuple[date, date]] = {}
@@ -578,6 +580,17 @@ def _latest_device_ledger_periods(slots: list[int]) -> dict[tuple[int, date], tu
     return periods
 
 
+def _date_filter(start: date | None, end: date | None) -> tuple[str, list[str]]:
+    clauses, parameters = [], []
+    if start is not None:
+        clauses.append("AND record_date>=?")
+        parameters.append(start.isoformat())
+    if end is not None:
+        clauses.append("AND record_date<=?")
+        parameters.append(end.isoformat())
+    return " ".join(clauses), parameters
+
+
 def load_subject_history(
     slots: list[int],
     *,
@@ -588,18 +601,20 @@ def load_subject_history(
 ) -> tuple[SubjectPeriodUsage, ...]:
     current = today or date.today()
     billing_day = get_billing_day()
-    frozen_periods = _latest_device_ledger_periods(slots)
+    frozen_periods = {} if period_start is not None and period_end is not None else _latest_device_ledger_periods(
+        slots, period_start=period_start, period_end=period_end)
     daily: list[tuple[SubjectDailyRecord, tuple[date, date] | None]] = []
     if slots:
         placeholders = ",".join("?" for _ in slots)
+        filters, parameters = _date_filter(period_start, period_end)
         with _open(commit=False) as conn:
             rows = conn.execute(
                 f"""SELECT device_slot,record_date,subject_type,subject_id,subject_name,
                            opening_total,closing_total,delta_total,reset_count,missing_baseline,
                            sample_count,first_success,last_success,incomplete,warnings_json,source_json
-                    FROM daily_subject_records WHERE device_slot IN ({placeholders})
+                    FROM daily_subject_records WHERE device_slot IN ({placeholders}) {filters}
                     ORDER BY record_date,device_slot,subject_type,subject_id""",
-                slots,
+                [*slots, *parameters],
             ).fetchall()
         for row in rows:
             device_identity, device_name, device_serial = _source_identity(row[15], int(row[0]))
@@ -629,6 +644,8 @@ def load_subject_history(
 
     cache_store = cache or SubjectDailyCacheStore()
     for slot in slots:
+        if (period_start is not None and current < period_start) or (period_end is not None and current > period_end):
+            continue
         state = cache_store.load(slot, current)
         if not state:
             continue

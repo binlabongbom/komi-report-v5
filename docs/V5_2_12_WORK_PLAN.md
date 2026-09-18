@@ -262,6 +262,20 @@ P9/H1 ที่ตรวจ source/fixture ได้อาจทำสลับ�
 
 ## Existing evidence (not release approval)
 
+### 2026-09-18 — five-year benchmark and bounded subject queries
+
+- Wrote an isolated 5-year fixture: 100 users on 3 printers, 547,800 subject
+  and 547,800 raw rows, plus 5,478 daily/ledger rows each. Daily database is
+  435,470,336 bytes. No customer database or printer/Host access.
+- A selected 30-day subject report previously decoded all five years before
+  filtering: median 40,300 ms. Pushing date bounds into SQL reduced this to
+  523 ms on the same database; 300 groups and 108,000 pages remain correct.
+  Affected history/report regressions: **39 passed** in 14.85 seconds.
+- Measured one 100-user Web payload and separately estimated retained rounds
+  at 5/15/30/60-minute intervals; this is not five years of physically written
+  Web events. Full assumptions and measurements: `docs/qa/v5.2.12/FIVE_YEAR_BENCHMARK.md`.
+  Archive itself and post-archive validation remain open.
+
 ### 2026-09-18 — durable individual Web observations
 
 - Schema 23 stores immutable parsed Web rounds, local provenance/read IDs,
