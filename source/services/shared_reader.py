@@ -26,14 +26,17 @@ class ReaderAuthority:
             raise ValueError("Durable reader jobs require an elected-authority fence")
         self.election, self.jobs = election, jobs
 
-    def request(self, requester, request_id, scope, *, cancelled=lambda: False):
+    def request(self, requester, request_id, scope, *, cancelled=lambda: False, probe_only=False):
         # Authenticate before discovery; an unauthorized caller must not trigger
         # network work or learn which other members are available.
         self.election._authorize(requester, scope)
         selected = self.election.select(scope, cancelled=cancelled)
         if selected.member_id != self.election.member_id:
             raise ReaderRedirect("Reader authority changed; resolve again")
-        return self.jobs.request(requester, request_id, scope)
+        return self.jobs.request(requester, request_id, scope, probe_only=probe_only)
+
+    def finish_probe(self, requester, job_id, scope, *, request_web):
+        return self.jobs.finish_probe(requester, job_id, scope, request_web=request_web)
 
     def status(self, requester, job_id, scope):
         return self.jobs.status(requester, job_id, scope)
@@ -51,7 +54,7 @@ class SharedReaderCoordinator:
             raise TypeError("Authenticated reader endpoint provider is required")
         self.election, self.endpoint = election, endpoint
 
-    def request(self, scope, request_id, *, manual, cancelled=lambda: False):
+    def request(self, scope, request_id, *, manual, cancelled=lambda: False, probe_only=False):
         if type(manual) is not bool:
             raise ValueError("Read request kind must be explicit")
         # Reuse the request ID on a lost reply; never turn it into a new job.
@@ -64,7 +67,7 @@ class SharedReaderCoordinator:
             self.election._authorize(selected.member_id, scope)
             try:
                 result = self.endpoint(selected.member_id).request(
-                    self.election.member_id, request_id, scope, cancelled=cancelled)
+                    self.election.member_id, request_id, scope, cancelled=cancelled, probe_only=probe_only)
             except ReaderRedirect:
                 if attempt:
                     raise
@@ -73,7 +76,7 @@ class SharedReaderCoordinator:
                 # An ambiguous reply must be retried against the SAME authority.
                 # Re-electing here could create another read while the first runs.
                 result = self.endpoint(selected.member_id).request(
-                    self.election.member_id, request_id, scope, cancelled=cancelled)
+                    self.election.member_id, request_id, scope, cancelled=cancelled, probe_only=probe_only)
             self.election._authorize(selected.member_id, scope)
             return RoutedRead(selected.member_id, scope, result)
         raise ReaderRedirect("Reader selection did not stabilize")

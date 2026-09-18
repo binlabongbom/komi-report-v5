@@ -90,10 +90,16 @@ def test_panel_uses_actual_state_keeps_failed_transfer_and_empty_state_honest():
         assert "รอเชื่อมต่อ" in panel.table.item(0, 1).text()
         assert panel.table.item(0, 2).text() == "ยังไม่มี"
         assert "Slot 1" in panel.local_read.text()
+        assert "ยังไม่ได้เชื่อมต่อ" in panel.shared_read.text()
+        class Shared:
+            def snapshot(self):
+                return [{"slot": 0, "authority": "A", "reader": "B", "phase": "complete", "observed_at": "2026-09-18T10:10:00+07:00"}]
+        runtime.shared_reads = Shared()
         runtime.rows = []
         runtime.changed.emit()
         until(lambda: panel.table.rowCount() == 0)
         assert "ไม่ได้หมายความว่าไม่มีคอมอื่น" in panel.summary.text()
+        assert "ผู้ประสาน A · ผู้อ่าน B · บันทึกผลแล้ว" in panel.shared_read.text()
     finally:
         panel.close()
         panel._pool.shutdown(wait=True)

@@ -1,4 +1,4 @@
-"""On-demand Web history inspection; never changes issued reports or billing."""
+"""On-demand Web inspection, with a separate explicit billing amendment review."""
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 import html
@@ -113,6 +113,10 @@ class WebEvidenceDialog(QDialog):
         for button in (self.xlsx_button, self.pdf_button):
             button.setEnabled(False)
             actions.addWidget(button)
+        self.amend_button = QPushButton("ตรวจแก้การแบ่งยอด")
+        self.amend_button.setEnabled(False)
+        self.amend_button.clicked.connect(self.amend)
+        actions.addWidget(self.amend_button)
         actions.addStretch()
         close = QPushButton("ปิด")
         close.clicked.connect(self.reject)
@@ -134,6 +138,7 @@ class WebEvidenceDialog(QDialog):
         self.evidence = self.projection = None
         self.xlsx_button.setEnabled(False)
         self.pdf_button.setEnabled(False)
+        self.amend_button.setEnabled(False)
         self.counters.clear()
         self.epochs.clear()
         self.table.setRowCount(0)
@@ -147,6 +152,18 @@ class WebEvidenceDialog(QDialog):
         self.load_button.setEnabled(not value and self.devices.count() > 0)
         self.xlsx_button.setEnabled(not value and self.projection is not None)
         self.pdf_button.setEnabled(not value and self.projection is not None)
+        self.amend_button.setEnabled(not value and self.projection is not None
+                                     and self.epochs.currentData() not in (None, "legacy"))
+
+    def amend(self):
+        if not self.amend_button.isEnabled() or not self.request:
+            return
+        from ui.billing_web_amendment import BillingWebAmendmentDialog
+        request = self.request
+        scope = (request["slot"], self.epochs.currentData(), request["start"], request["end"], self.zone)
+        dialog = BillingWebAmendmentDialog(scope, self, database_path=self.path)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            self.status.setText("บันทึกฉบับแก้ไขบนคอมนี้แล้ว · รายงานยอดใช้ฉบับล่าสุด หลักฐานอ่านจริงยังคงเดิม")
 
     def load(self):
         if self.future is not None or self.devices.currentData() is None:

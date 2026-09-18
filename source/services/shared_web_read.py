@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from datetime import datetime
 import math
 import json
+import hashlib
 import sqlite3
 from threading import Lock
 from time import monotonic, sleep
@@ -25,6 +26,18 @@ class SharedWebResult:
     local: bool
 
 
+class SharedReadExpired(TimeoutError):
+    def __init__(self, job_id):
+        super().__init__("Shared reader grant expired")
+        self.job_id = job_id
+
+
+class SharedAuthorityUnavailable(ConnectionError):
+    def __init__(self, job_id):
+        super().__init__("Shared reader authority is unavailable")
+        self.job_id = job_id
+
+
 class SharedWebRead:
     def __init__(self, *, router, current_scope, observations, publish, fetch,
                  wait_seconds=125, clock=monotonic, pause=sleep):
@@ -36,20 +49,59 @@ class SharedWebRead:
         self.publish, self.fetch = publish, fetch
         self.wait_seconds, self.clock, self.pause = wait_seconds, clock, pause
         self._locks = [Lock() for _ in range(3)]
+        self._status_lock = Lock()
+        self._status = {}
+
+    def _remember(self, routed, job):
+        self._job(job, routed.scope)
+        now = self.clock()
+        with self._status_lock:
+            self._status[routed.scope.slot] = {"slot": routed.scope.slot, "authority": routed.authority,
+                "reader": job["reader_id"], "job_id": job["job_id"], "phase": job["phase"],
+                "observed_at": datetime.now().astimezone().isoformat(),
+                "deadline": now + job["remaining_seconds"], "event_id": job["event_id"]}
+
+    def snapshot(self):
+        """Last observed job state only; no peer probe, election or DB scan."""
+        now = self.clock()
+        with self._status_lock:
+            rows = [dict(row) for _, row in sorted(self._status.items())]
+        for row in rows:
+            if row["phase"] == "reading" and row.pop("deadline") <= now:
+                row["phase"] = "expired"
+            row.pop("deadline", None)
+        return rows
 
     def scheduled_owner(self, slot, *, cancelled=lambda: False):
         scope = self.current_scope(slot)
         chosen = self.router.election.select(scope, cancelled=cancelled)
         return chosen.member_id == self.router.election.member_id
 
-    def prepare(self, slot, *, manual, request_id, cancelled=lambda: False):
+    def prepare(self, slot, *, manual, request_id, cancelled=lambda: False, probe_only=False):
         scope = self.current_scope(slot)
         self._check(scope, cancelled)
-        routed = self.router.request(scope, request_id, manual=manual, cancelled=cancelled)
+        routed = self.router.request(scope, request_id, manual=manual, cancelled=cancelled, probe_only=probe_only)
         if routed is not None:
             self._job(routed.job, scope)
+            self._remember(routed, routed.job)
         self._check(scope, cancelled)
         return routed
+
+    def finish_probe(self, routed, *, request_web, cancelled=lambda: False):
+        from dataclasses import replace
+        self._check(routed.scope, cancelled)
+        self.router.election._authorize(routed.authority, routed.scope)
+        job = self.router.endpoint(routed.authority).finish_probe(self.router.election.member_id,
+            routed.job["job_id"], routed.scope, request_web=request_web)
+        self._check(routed.scope, cancelled)
+        if job is None:
+            with self._status_lock:
+                row = self._status.get(routed.scope.slot)
+                if row and row["job_id"] == routed.job["job_id"]:
+                    row["phase"] = "probe_complete"
+            return None
+        self._remember(routed, job)
+        return replace(routed, job=job)
 
     def _check(self, scope, cancelled):
         if cancelled():
@@ -94,7 +146,32 @@ class SharedWebRead:
             auth_state=WebAuthState(p["auth_state"]), warnings=tuple(p["warnings"]), schema_version=p["schema_version"],
             counters=tuple(WebCounterValue(**{**c, "confidence": Confidence(c["confidence"])}) for c in p["counters"]))
 
+    def _read_status(self, routed):
+        for attempt in range(2):
+            try:
+                return self.router.status(routed)
+            except (TimeoutError, ConnectionError) as error:
+                if attempt:
+                    raise SharedAuthorityUnavailable(routed.job["job_id"]) from error
+
     def collect(self, slot, *, manual, request_id, read, printer_name, cancelled=lambda: False, prepared=None):
+        original_scope = self.current_scope(slot)
+        self._check(original_scope, cancelled)
+        try:
+            return self._collect_once(slot, manual=manual, request_id=request_id, read=read,
+                printer_name=printer_name, cancelled=cancelled, prepared=prepared)
+        except (SharedReadExpired, SharedAuthorityUnavailable) as error:
+            # One bounded recovery in the active request, never a new polling
+            # timer. Stable recovery IDs keep a retried original request from
+            # generating yet another read after recovery already succeeded.
+            self._check(original_scope, cancelled)
+            if isinstance(error, SharedAuthorityUnavailable):
+                self.router.election.invalidate(slot)
+            recovery = hashlib.sha256(f"komi.read.recovery:{request_id}:{error.job_id}".encode()).hexdigest()
+            return self._collect_once(slot, manual=manual, request_id=recovery, read=read,
+                printer_name=printer_name, cancelled=cancelled)
+
+    def _collect_once(self, slot, *, manual, request_id, read, printer_name, cancelled=lambda: False, prepared=None):
         if type(slot) is not int or slot not in range(3):
             raise ValueError("Invalid shared Slot")
         # The outer polling coordinator already joins local requests. Reject
@@ -111,11 +188,12 @@ class SharedWebRead:
                 raise PermissionError("Prepared read scope changed")
             # Revalidate a prepared grant after SNMP; the lease may have elapsed
             # or another process may have taken over while the probe ran.
-            job = self.router.status(routed) if prepared is not None else routed.job
+            job = self._read_status(routed) if prepared is not None else routed.job
             self._job(job, scope)
+            self._remember(routed, job)
             self._check(scope, cancelled)
             if job["phase"] == "reading" and job["remaining_seconds"] <= 0:
-                raise TimeoutError("Reader grant expired before collection")
+                raise SharedReadExpired(job["job_id"])
             if job["can_read"]:
                 try:
                     member = self._job(job, scope)
@@ -161,6 +239,7 @@ class SharedWebRead:
                 if done["phase"] != "complete" or done["job_id"] != job["job_id"]:
                     raise ValueError("Authority did not confirm the requested read")
                 self._event(event, done, scope)
+                self._remember(routed, done)
                 return SharedWebResult(reading, event, True)
             deadline = self.clock() + min(self.wait_seconds, job["remaining_seconds"] or self.wait_seconds)
             while job["phase"] == "reading":
@@ -168,12 +247,15 @@ class SharedWebRead:
                 if self.clock() >= deadline:
                     raise TimeoutError("Timed out waiting for the shared Web result")
                 self.pause(min(.25, max(0, deadline - self.clock())))
-                updated = self.router.status(routed)
+                updated = self._read_status(routed)
                 self._job(updated, scope)
                 if updated["job_id"] != job["job_id"] or updated["reader_id"] != job["reader_id"]:
                     raise ValueError("Authority changed the joined read")
                 job = updated
+                self._remember(routed, job)
             self._check(scope, cancelled)
+            if job["phase"] == "expired":
+                raise SharedReadExpired(job["job_id"])
             if job["phase"] != "complete":
                 raise RuntimeError("Shared Web read failed or expired")
             event = self.fetch(routed.authority, job["event_id"], scope)

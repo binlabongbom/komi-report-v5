@@ -1,4 +1,4 @@
-# KOMI Report V5.2.11 — Support, Recovery and Rollback
+# KOMI Report V5.2.12 — Support, Recovery and Rollback
 
 เอกสารนี้ใช้กับ V5.2 release candidate. ต้องบันทึกผลจริงแยกเป็น Automated, VM,
 Native x64, Real-device และ Signed; ห้ามใช้ VM/ภาพ offscreen แทน native acceptance.
@@ -34,8 +34,8 @@ material หรือ OS-vault entry ต้องเป็น support action แ
 
 ```bat
 runtime\python.exe source\tools\db_recovery.py inspect --database "%USERPROFILE%\KOMI Report V5\KOMI_Report_V5.db"
-runtime\python.exe source\tools\db_recovery.py backup --database "%USERPROFILE%\KOMI Report V5\KOMI_Report_V5.db" --output "D:\KOMI-Backup\KOMI_Report_V5-before-5.2.11.db"
-runtime\python.exe source\tools\db_recovery.py inspect --database "D:\KOMI-Backup\KOMI_Report_V5-before-5.2.11.db"
+runtime\python.exe source\tools\db_recovery.py backup --database "%USERPROFILE%\KOMI Report V5\KOMI_Report_V5.db" --output "D:\KOMI-Backup\KOMI_Report_V5-before-5.2.12.db"
+runtime\python.exe source\tools\db_recovery.py inspect --database "D:\KOMI-Backup\KOMI_Report_V5-before-5.2.12.db"
 ```
 
 เก็บ SHA256, `user_version`, `integrity=ok` และ `critical_counts` ของ `devices`, price tables, history,
@@ -69,7 +69,7 @@ runtime\python.exe source\tools\db_recovery.py inspect --database "D:\KOMI-Backu
 replace และตรวจ integrity หลัง restore:
 
 ```bat
-runtime\python.exe source\tools\db_recovery.py restore --backup "D:\KOMI-Backup\KOMI_Report_V5-before-5.2.11.db" --database "%USERPROFILE%\KOMI Report V5\KOMI_Report_V5.db" --confirm-offline-restore
+runtime\python.exe source\tools\db_recovery.py restore --backup "D:\KOMI-Backup\KOMI_Report_V5-before-5.2.12.db" --database "%USERPROFILE%\KOMI Report V5\KOMI_Report_V5.db" --confirm-offline-restore
 ```
 
 ผ่านเมื่อ `critical_counts_match_backup=true`, `integrity=ok`, app เปิดได้ และ Devices/Prices/History/Billing Ledger

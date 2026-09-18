@@ -21,6 +21,7 @@ test_peer_history_session test_peer_history_runtime test_network_activity test_p
 test_web_observations test_web_catchup test_web_usage_projection test_web_evidence_report
 test_web_observation_archive test_archive_maintenance test_archive_recovery test_report_detail_archive
 test_archive_settings_ui test_billing_period_amendment test_billing_repricing test_billing_repricing_batch
+test_billing_web_amendment
 test_billing_ledger test_billing_audit_ui test_billing_day_consistency test_billing_v5
 test_subject_history test_subject_counter_review test_raw_counter_history test_raw_counter_review
 test_daily_cache test_counter_review test_counter_review_ui test_report_snapshot
@@ -33,6 +34,7 @@ test_registration_worker test_v5_2_runtime test_runtime_snapshots test_web_api
 """.split()
 parser = argparse.ArgumentParser()
 parser.add_argument("--remaining", action="store_true", help="Other source tests, excluding release/build suites")
+parser.add_argument("--files", nargs="+", help="Rerun named source test files after a focused fix")
 args = parser.parse_args()
 excluded = {"test_phase4_release_candidate", "test_phase5_pilot_release", "test_phase6_customer_release",
             "test_release_builder", "test_prepare_web_runtime", "test_mac_v528_validation"}
@@ -41,8 +43,18 @@ if args.remaining:
     names = sorted(str(path.relative_to(source / "tests").with_suffix("")).replace("\\", "/")
                    for path in (source / "tests").rglob("test_*.py")
                    if path.stem not in covered | excluded)
+if args.files:
+    if args.remaining:
+        parser.error("Choose --files or --remaining")
+    available = {str(path.relative_to(source / "tests").with_suffix("")).replace("\\", "/")
+                 for path in (source / "tests").rglob("test_*.py") if path.stem not in excluded}
+    if any(name not in available for name in args.files) or len(set(args.files)) != len(args.files):
+        parser.error("Use unique known source test names without .py, excluding build/release suites")
+    names = args.files
 report = root / ("docs/qa/v5.2.12/additional-source-regression.json" if args.remaining else
                  "docs/qa/v5.2.12/source-regression.json")
+if args.files:
+    report = root / "docs/qa/v5.2.12/source-followup-regression.json"
 report.parent.mkdir(parents=True, exist_ok=True)
 bootstrap = '''
 import ipaddress, sys

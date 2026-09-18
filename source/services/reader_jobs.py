@@ -124,7 +124,7 @@ class ReaderJobs:
             "remaining_seconds": max(0.0, row["deadline"] - now) if row["phase"] == "reading" else 0,
             "joined": row["reader_id"] != member_id}
 
-    def request(self, member_id, request_id, scope, *, lease_seconds=120):
+    def request(self, member_id, request_id, scope, *, lease_seconds=120, probe_only=False):
         """First accepted request gets one job; later requests join it.
 
         A repeated request ID returns its original job even after completion or
@@ -132,6 +132,8 @@ class ReaderJobs:
         timestamps to decide who was first. Schedule anchors live in the caller.
         """
         _text(request_id)
+        if type(probe_only) is not bool:
+            raise ValueError("Probe request kind must be boolean")
         if type(lease_seconds) not in (float, int) or not math.isfinite(lease_seconds) or not 5 <= lease_seconds <= 300:
             raise ValueError("Reader lease must be between 5 and 300 seconds")
         with self._write(scope) as conn:
@@ -155,8 +157,33 @@ class ReaderJobs:
                     (job_id, self.boot_id, encoded, scope.slot, member_id, member.observation_origin,
                      datetime.now(UTC).isoformat(), now + lease_seconds))
                 row = conn.execute("SELECT * FROM reader_jobs WHERE id=?", (job_id,)).fetchone()
+                if probe_only:
+                    conn.execute("UPDATE reader_jobs SET reason='snmp_probe' WHERE id=?", (job_id,))
+            elif not probe_only and row["reason"] == "snmp_probe":
+                # A manual request during SNMP joins the earlier job and asks
+                # its reader to finish Web, even if the SNMP total is unchanged.
+                conn.execute("UPDATE reader_jobs SET reason='web_requested' WHERE id=?", (row["id"],))
             conn.execute("INSERT INTO reader_job_requests VALUES(?,?,?,?)", (member_id, request_id, encoded, row["id"]))
             return self._result(row, member_id, now, granted=granted)
+
+    def finish_probe(self, member_id, job_id, scope, *, request_web):
+        """Atomically release a quiet probe or promote it to Web for a joiner."""
+        if type(request_web) is not bool:
+            raise ValueError("Web request decision must be boolean")
+        with self._write(scope) as conn:
+            _, encoded = self._member(member_id, scope)
+            now = self._now()
+            self._expire(conn, scope.slot, encoded, now)
+            row = conn.execute("SELECT * FROM reader_jobs WHERE id=? AND scope_json=?", (job_id, encoded)).fetchone()
+            if row is None or row["reader_id"] != member_id:
+                raise PermissionError("Only the granted reader can finish its probe")
+            if row["phase"] != "reading":
+                raise TimeoutError("SNMP grant expired before the Web decision")
+            if not request_web and row["reason"] == "snmp_probe":
+                conn.execute("UPDATE reader_jobs SET phase='expired',reason='probe_no_web' WHERE id=?", (job_id,))
+                return None
+            conn.execute("UPDATE reader_jobs SET reason='web_requested' WHERE id=?", (job_id,))
+            return self._result(row, member_id, now)
 
     def status(self, member_id, job_id, scope):
         _text(job_id)

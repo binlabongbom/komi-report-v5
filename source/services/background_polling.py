@@ -604,14 +604,13 @@ class BackgroundPollingCoordinator(QObject):
         # with ThreadPoolExecutor. Do not let it issue its first SNMP/Web read.
         if self.is_paused:
             return False
-        if self.shared_reads is not None and not force_web:
-            if not self.shared_reads.scheduled_owner(device.slot, cancelled=lambda: self._stopped or self.is_paused):
-                return False
         prepared = None
-        if self.shared_reads is not None and force_web:
+        if self.shared_reads is not None:
             import uuid
-            prepared = self.shared_reads.prepare(device.slot, manual=True, request_id=uuid.uuid4().hex,
+            prepared = self.shared_reads.prepare(device.slot, manual=force_web, probe_only=not force_web, request_id=uuid.uuid4().hex,
                 cancelled=lambda: self._stopped or self.is_paused)
+            if prepared is None:
+                return False
         now = self.clock()
         manual_round = force_web
         round_started_at = now
@@ -627,8 +626,19 @@ class BackgroundPollingCoordinator(QObject):
             decision, snmp_error, probe_result = self._snmp_round(device, state, now, preferred_oid)
 
         scheduled_read = not manual_round and (decision.request_web or calibration_needed)
+        if prepared is not None and not prepared.job["can_read"]:
+            scheduled_read = scheduled_read and self.machine.scheduled_web_due(state, now)
         with self._lock:
             force_web = force_web or device.slot in self._manual_requested
+        if prepared is not None and prepared.job["can_read"] and not manual_round:
+            prepared = self.shared_reads.finish_probe(prepared,
+                request_web=bool(force_web or decision.request_web or calibration_needed),
+                cancelled=lambda: self._stopped or self.is_paused)
+            if prepared is not None:
+                # A peer may have joined the SNMP grant while the probe ran.
+                # Its manual request requires Web without moving this PC's
+                # original scheduled Web anchor when Web was not due.
+                force_web = True
         pipeline_log.append(
             stage="POLICY",
             action="เรียก Web Connection" if force_web or decision.request_web or calibration_needed else "ข้าม Web Connection",

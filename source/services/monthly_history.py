@@ -76,6 +76,7 @@ class MonthlyUsage:
     provisional_copy_other: float = 0.0
     print_available: bool = False
     copy_available: bool = False
+    remarks: tuple[str, ...] = ()
 
 
 HistoryGranularity = Literal["daily", "weekly", "monthly", "quarterly", "yearly"]
@@ -97,6 +98,23 @@ class _LedgerDay:
     device_name_snapshot: str
     device_serial_snapshot: str
     hold_reason: str | None
+    remarks: tuple[str, ...] = ()
+
+
+def _ledger_remarks(raw):
+    try:
+        proof = json.loads(raw)
+    except (TypeError, ValueError):
+        return ()
+    while isinstance(proof, dict):
+        amendment = proof.get("web_allocation")
+        if isinstance(amendment, dict):
+            remarks = ["ฉบับแก้ไขการแบ่งยอดตามหลักฐาน Web · เก็บรายการเดิมไว้ในประวัติบัญชี"]
+            remarks.extend(item["remark"] for item in amendment.get("intervals", [])
+                           if isinstance(item, dict) and isinstance(item.get("remark"), str) and item["remark"])
+            return tuple(dict.fromkeys(remarks))
+        proof = proof.get("original_attestation")
+    return ()
 
 
 def _billing_period_ending_in(year: int, month: int, billing_day: int) -> tuple[date, date]:
@@ -228,7 +246,7 @@ def _load_ledger_days(slots: list[int]) -> dict[int, _LedgerDay]:
             f"""SELECT id,entry_kind,source_daily_record_id,device_slot,record_date,
                        period_start,period_end,billing_day,
                        delta_json,gross_cents,net_cents,device_identity,device_name_snapshot,
-                       device_serial_snapshot,hold_reason
+                       device_serial_snapshot,hold_reason,attestation_json
                 FROM billing_ledger
                 WHERE device_slot IN ({placeholders}) AND source_daily_record_id IS NOT NULL
                 ORDER BY id""",
@@ -251,6 +269,7 @@ def _load_ledger_days(slots: list[int]) -> dict[int, _LedgerDay]:
         device_name,
         device_serial,
         hold_reason,
+        attestation_json,
     ) in rows:
         item = accumulated.setdefault(source_id, {"gross": 0, "net": 0})
         if kind in {"posting", "replacement", "reversal"}:
@@ -270,6 +289,7 @@ def _load_ledger_days(slots: list[int]) -> dict[int, _LedgerDay]:
                 "device_name_snapshot": str(device_name or ""),
                 "device_serial_snapshot": str(device_serial or ""),
                 "hold_reason": hold_reason,
+                "remarks": _ledger_remarks(attestation_json),
             }
         )
     return {
@@ -288,6 +308,7 @@ def _load_ledger_days(slots: list[int]) -> dict[int, _LedgerDay]:
             device_name_snapshot=item["device_name_snapshot"],
             device_serial_snapshot=item["device_serial_snapshot"],
             hold_reason=item["hold_reason"],
+            remarks=item["remarks"],
         )
         for source_id, item in accumulated.items()
     }
@@ -340,6 +361,7 @@ def load_usage_history(
                 "days": 0,
                 "incomplete": 0,
                 "held": 0,
+                "remarks": set(),
                 "device_name_snapshot": device_name,
                 "device_serial_snapshot": device_serial,
             },
@@ -363,6 +385,7 @@ def load_usage_history(
         bucket["net_cents"] += ledger.net_cents
         bucket["days"] += 1
         bucket["incomplete"] += int(incomplete)
+        bucket["remarks"].update(ledger.remarks)
 
     def add_provisional(
         slot: int,
@@ -548,6 +571,7 @@ def load_usage_history(
                 day_count=bucket["days"],
                 incomplete_days=bucket["incomplete"],
                 held_days=bucket["held"],
+                remarks=tuple(sorted(bucket["remarks"])),
                 device_identity=device_identity,
                 device_name_snapshot=bucket["device_name_snapshot"],
                 device_serial_snapshot=bucket["device_serial_snapshot"],

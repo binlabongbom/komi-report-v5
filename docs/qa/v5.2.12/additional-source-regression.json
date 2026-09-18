@@ -1,7 +1,7 @@
 {
   "scope": "79 selected operational source files; each in a fresh pytest process",
-  "source_head": "b09108b10dab4387d206ab681fd365d63e65cf54",
-  "working_tree_status": " M docs/CUSTOMER_GUIDE_V5_2_12_DRAFT.md\n M docs/V5_2_12_WORK_PLAN.md\n M docs/customer-guide/assets-v5.2.12-source/slot-baseline-preview.png\n M source/app.py\n M source/services/background_polling.py\n M source/ui/network_settings.py\n M tools/run_source_regression.py\n?? docs/customer-guide/assets-v5.2.12-source/network-activity.png\n?? source/services/network_activity.py\n?? source/tests/test_network_activity.py\n?? source/ui/network_activity.py\n",
+  "source_head": "bd62b4b481e9f025e190c75b7fc0419f08d678e4",
+  "working_tree_status": " M docs/qa/v5.2.12/source-regression.json\n M source/services/billing_repricing.py\n M source/services/monthly_history.py\n M source/services/report_excel_export.py\n M source/services/shared_web_read.py\n M source/tests/test_network_activity.py\n M source/tests/test_shared_web_read.py\n M source/ui/network_activity.py\n M source/ui/web_evidence_report.py\n M source/v5_pages.py\n M tools/run_source_regression.py\n?? source/services/billing_web_amendment.py\n?? source/tests/test_billing_web_amendment.py\n?? source/ui/billing_web_amendment.py\n",
   "excluded_release_build_files": [
     "test_mac_v528_validation",
     "test_phase4_release_candidate",
@@ -17,491 +17,478 @@
     {
       "file": "profiler/test_calibration.py",
       "exit_code": 0,
-      "seconds": 2.5,
-      "output": "...                                                                      [100%]\n3 passed in 0.63s\n"
+      "seconds": 2.8,
+      "output": "...                                                                      [100%]\n3 passed in 0.70s\n"
     },
     {
       "file": "profiler/test_counter_analyzer.py",
       "exit_code": 0,
-      "seconds": 2.43,
-      "output": "....                                                                     [100%]\n4 passed in 0.67s\n"
+      "seconds": 3.12,
+      "output": "....                                                                     [100%]\n4 passed in 0.79s\n"
     },
     {
       "file": "profiler/test_credential_store.py",
       "exit_code": 0,
-      "seconds": 2.79,
-      "output": "....                                                                     [100%]\n4 passed in 0.74s\n"
+      "seconds": 2.75,
+      "output": "....                                                                     [100%]\n4 passed in 0.66s\n"
     },
     {
       "file": "profiler/test_device_meter_profiles.py",
       "exit_code": 0,
-      "seconds": 2.54,
-      "output": "........                                                                 [100%]\n8 passed in 0.84s\n"
+      "seconds": 3.1,
+      "output": "........                                                                 [100%]\n8 passed in 1.12s\n"
     },
     {
       "file": "profiler/test_meter_reader.py",
       "exit_code": 0,
-      "seconds": 5.7,
-      "output": ".................................                                        [100%]\n33 passed in 3.98s\n"
+      "seconds": 5.12,
+      "output": ".................................                                        [100%]\n33 passed in 3.04s\n"
     },
     {
       "file": "profiler/test_meter_reader_public_name_enrichment.py",
       "exit_code": 0,
-      "seconds": 2.6,
-      "output": "..                                                                       [100%]\n2 passed in 0.49s\n"
+      "seconds": 2.98,
+      "output": "..                                                                       [100%]\n2 passed in 0.45s\n"
     },
     {
       "file": "profiler/test_models.py",
       "exit_code": 0,
-      "seconds": 3.59,
-      "output": "......                                                                   [100%]\n6 passed in 0.98s\n"
+      "seconds": 3.2,
+      "output": "......                                                                   [100%]\n6 passed in 1.14s\n"
     },
     {
       "file": "profiler/test_oid_dictionary.py",
       "exit_code": 0,
-      "seconds": 2.68,
-      "output": ".....                                                                    [100%]\n5 passed in 0.69s\n"
+      "seconds": 2.96,
+      "output": ".....                                                                    [100%]\n5 passed in 0.84s\n"
     },
     {
       "file": "profiler/test_print_calibration.py",
       "exit_code": 0,
-      "seconds": 2.63,
-      "output": ".                                                                        [100%]\n1 passed in 0.48s\n"
+      "seconds": 2.41,
+      "output": ".                                                                        [100%]\n1 passed in 0.37s\n"
     },
     {
       "file": "profiler/test_service_and_export.py",
       "exit_code": 0,
       "seconds": 2.84,
-      "output": "..                                                                       [100%]\n2 passed in 0.73s\n"
+      "output": "..                                                                       [100%]\n2 passed in 0.68s\n"
     },
     {
       "file": "profiler/test_snmp_client.py",
       "exit_code": 0,
-      "seconds": 4.3,
-      "output": "...                                                                      [100%]\n3 passed in 2.26s\n"
+      "seconds": 3.51,
+      "output": "...                                                                      [100%]\n3 passed in 1.40s\n"
     },
     {
       "file": "profiler/test_system_print.py",
       "exit_code": 0,
-      "seconds": 3.8,
-      "output": "........                                                                 [100%]\n8 passed in 1.15s\n"
+      "seconds": 2.93,
+      "output": "........                                                                 [100%]\n8 passed in 1.08s\n"
     },
     {
       "file": "profiler/test_table_decoder.py",
       "exit_code": 0,
-      "seconds": 2.47,
-      "output": "..                                                                       [100%]\n2 passed in 0.44s\n"
+      "seconds": 2.41,
+      "output": "..                                                                       [100%]\n2 passed in 0.42s\n"
     },
     {
       "file": "profiler/test_web_connection_connector.py",
       "exit_code": 0,
-      "seconds": 4.03,
-      "output": "..............                                                           [100%]\n14 passed in 1.53s\n"
+      "seconds": 3.2,
+      "output": "..............                                                           [100%]\n14 passed in 1.38s\n"
     },
     {
       "file": "test_adaptive_window_layout.py",
       "exit_code": 0,
-      "seconds": 12.77,
-      "output": "..........                                                               [100%]\n10 passed in 10.11s\n"
+      "seconds": 11.27,
+      "output": "..........                                                               [100%]\n10 passed in 9.22s\n"
     },
     {
       "file": "test_application_identity.py",
       "exit_code": 0,
-      "seconds": 2.92,
-      "output": "........                                                                 [100%]\n8 passed in 0.85s\n"
+      "seconds": 3.18,
+      "output": "........                                                                 [100%]\n8 passed in 0.98s\n"
     },
     {
       "file": "test_autostart.py",
       "exit_code": 0,
-      "seconds": 2.17,
-      "output": ".                                                                        [100%]\n1 passed in 0.39s\n"
+      "seconds": 3.08,
+      "output": ".                                                                        [100%]\n1 passed in 0.61s\n"
     },
     {
       "file": "test_cloud_reports_staged.py",
       "exit_code": 0,
-      "seconds": 10.57,
-      "output": "...............                                                          [100%]\n15 passed in 8.05s\n"
+      "seconds": 9.71,
+      "output": "...............                                                          [100%]\n15 passed in 7.11s\n"
     },
     {
       "file": "test_cloud_reports_ui.py",
       "exit_code": 0,
-      "seconds": 22.98,
-      "output": ".................                                                        [100%]\n17 passed in 20.86s\n"
+      "seconds": 30.13,
+      "output": ".................                                                        [100%]\n17 passed in 27.64s\n"
     },
     {
       "file": "test_common_dialogs.py",
       "exit_code": 0,
-      "seconds": 2.78,
-      "output": ".                                                                        [100%]\n1 passed in 0.39s\n"
+      "seconds": 3.2,
+      "output": ".                                                                        [100%]\n1 passed in 0.66s\n"
     },
     {
       "file": "test_connection_inspector.py",
       "exit_code": 0,
-      "seconds": 2.83,
-      "output": ".                                                                        [100%]\n1 passed in 0.64s\n"
+      "seconds": 2.9,
+      "output": ".                                                                        [100%]\n1 passed in 0.85s\n"
     },
     {
       "file": "test_device_config.py",
       "exit_code": 0,
-      "seconds": 5.28,
-      "output": "............                                                             [100%]\n12 passed in 3.42s\n"
+      "seconds": 6.59,
+      "output": "............                                                             [100%]\n12 passed in 4.16s\n"
     },
     {
       "file": "test_device_overview_identity_warning.py",
       "exit_code": 0,
-      "seconds": 2.97,
-      "output": ".                                                                        [100%]\n1 passed in 0.84s\n"
+      "seconds": 3.26,
+      "output": ".                                                                        [100%]\n1 passed in 1.08s\n"
     },
     {
       "file": "test_history_v5_current.py",
       "exit_code": 0,
-      "seconds": 35.22,
-      "output": "...................                                                      [100%]\n19 passed in 32.23s\n"
+      "seconds": 37.58,
+      "output": "...................                                                      [100%]\n19 passed in 35.13s\n"
     },
     {
       "file": "test_history_v5_users.py",
       "exit_code": 0,
-      "seconds": 12.37,
-      "output": ".....                                                                    [100%]\n5 passed in 9.77s\n"
+      "seconds": 14.89,
+      "output": ".....                                                                    [100%]\n5 passed in 12.33s\n"
     },
     {
       "file": "test_i18n.py",
       "exit_code": 0,
-      "seconds": 2.95,
-      "output": "...                                                                      [100%]\n3 passed in 0.57s\n"
+      "seconds": 3.04,
+      "output": "...                                                                      [100%]\n3 passed in 0.69s\n"
     },
     {
       "file": "test_import_service.py",
       "exit_code": 0,
-      "seconds": 2.86,
-      "output": "...                                                                      [100%]\n3 passed in 0.77s\n"
+      "seconds": 3.3,
+      "output": "...                                                                      [100%]\n3 passed in 1.11s\n"
     },
     {
       "file": "test_import_v5_layout.py",
       "exit_code": 0,
-      "seconds": 6.42,
-      "output": "...................                                                      [100%]\n19 passed in 4.45s\n"
+      "seconds": 7.66,
+      "output": "...................                                                      [100%]\n19 passed in 4.88s\n"
     },
     {
       "file": "test_import_worker.py",
       "exit_code": 0,
-      "seconds": 2.62,
-      "output": ".                                                                        [100%]\n1 passed in 0.46s\n"
+      "seconds": 2.82,
+      "output": ".                                                                        [100%]\n1 passed in 0.59s\n"
     },
     {
       "file": "test_init_web_access.py",
       "exit_code": 0,
-      "seconds": 16.25,
-      "output": "..........                                                               [100%]\n10 passed in 13.63s\n"
+      "seconds": 19.55,
+      "output": "..........                                                               [100%]\n10 passed in 17.36s\n"
     },
     {
       "file": "test_installation_identity_v52.py",
       "exit_code": 0,
-      "seconds": 2.28,
-      "output": "..                                                                       [100%]\n2 passed in 0.50s\n"
+      "seconds": 3.15,
+      "output": "..                                                                       [100%]\n2 passed in 0.58s\n"
     },
     {
       "file": "test_instance_guard.py",
       "exit_code": 0,
-      "seconds": 2.8,
-      "output": "...                                                                      [100%]\n3 passed in 0.90s\n"
+      "seconds": 3.0,
+      "output": "...                                                                      [100%]\n3 passed in 0.70s\n"
     },
     {
       "file": "test_legacy_history_import.py",
       "exit_code": 0,
-      "seconds": 8.5,
-      "output": "........                                                                 [100%]\n8 passed in 6.60s\n"
+      "seconds": 9.55,
+      "output": "........                                                                 [100%]\n8 passed in 7.25s\n"
     },
     {
       "file": "test_live_meter_service.py",
       "exit_code": 0,
-      "seconds": 3.35,
-      "output": "..                                                                       [100%]\n2 passed in 0.81s\n"
+      "seconds": 3.02,
+      "output": "..                                                                       [100%]\n2 passed in 0.61s\n"
     },
     {
       "file": "test_manual_diagrams.py",
       "exit_code": 0,
-      "seconds": 10.8,
-      "output": "...                                                                      [100%]\n3 passed in 7.67s\n"
+      "seconds": 10.97,
+      "output": "...                                                                      [100%]\n3 passed in 8.71s\n"
     },
     {
       "file": "test_meter_telemetry_v52.py",
       "exit_code": 0,
-      "seconds": 3.05,
-      "output": "..                                                                       [100%]\n2 passed in 0.65s\n"
+      "seconds": 2.65,
+      "output": "..                                                                       [100%]\n2 passed in 0.50s\n"
     },
     {
       "file": "test_monitoring_tls.py",
       "exit_code": 0,
-      "seconds": 7.61,
-      "output": "........                                                                 [100%]\n8 passed in 5.37s\n"
+      "seconds": 7.37,
+      "output": "........                                                                 [100%]\n8 passed in 5.26s\n"
     },
     {
       "file": "test_monthly_history.py",
       "exit_code": 0,
-      "seconds": 6.79,
-      "output": ".............                                                            [100%]\n13 passed in 4.35s\n"
+      "seconds": 7.5,
+      "output": ".............                                                            [100%]\n13 passed in 5.26s\n"
     },
     {
       "file": "test_numeric_inputs.py",
       "exit_code": 0,
-      "seconds": 3.61,
-      "output": "...                                                              [100%]\n3 passed, 8 subtests passed in 0.96s\n"
+      "seconds": 3.37,
+      "output": "...                                                              [100%]\n3 passed, 8 subtests passed in 1.15s\n"
     },
     {
       "file": "test_observability.py",
       "exit_code": 0,
-      "seconds": 3.26,
-      "output": ".                                                                        [100%]\n1 passed in 0.61s\n"
+      "seconds": 3.33,
+      "output": ".                                                                        [100%]\n1 passed in 1.23s\n"
     },
     {
       "file": "test_offline_license_keys.py",
       "exit_code": 0,
-      "seconds": 3.99,
-      "output": "............                                                             [100%]\n12 passed in 1.25s\n"
+      "seconds": 5.67,
+      "output": "............                                                             [100%]\n12 passed in 2.76s\n"
     },
     {
       "file": "test_offline_license_v52.py",
       "exit_code": 0,
-      "seconds": 3.01,
-      "output": "....                                                                     [100%]\n4 passed in 0.71s\n"
+      "seconds": 3.55,
+      "output": "....                                                                     [100%]\n4 passed in 0.91s\n"
     },
     {
       "file": "test_packaged_manual_assets.py",
       "exit_code": 0,
-      "seconds": 2.16,
-      "output": "...                                                                      [100%]\n3 passed in 0.45s\n"
+      "seconds": 3.05,
+      "output": "...                                                                      [100%]\n3 passed in 0.72s\n"
     },
     {
       "file": "test_paper_size_billing.py",
       "exit_code": 0,
-      "seconds": 3.58,
-      "output": "....................                                                     [100%]\n20 passed in 1.87s\n"
+      "seconds": 4.54,
+      "output": "....................                                                     [100%]\n20 passed in 2.22s\n"
     },
     {
       "file": "test_parser_mapping.py",
       "exit_code": 0,
-      "seconds": 2.68,
-      "output": "...                                                                      [100%]\n3 passed in 0.87s\n"
+      "seconds": 3.12,
+      "output": "...                                                                      [100%]\n3 passed in 0.83s\n"
     },
     {
       "file": "test_parser_profiles.py",
       "exit_code": 0,
-      "seconds": 2.4,
-      "output": ".....                                                                    [100%]\n5 passed in 0.60s\n"
+      "seconds": 3.6,
+      "output": ".....                                                                    [100%]\n5 passed in 0.98s\n"
     },
     {
       "file": "test_pipeline_log.py",
       "exit_code": 0,
-      "seconds": 2.13,
-      "output": "..                                                                       [100%]\n2 passed in 0.41s\n"
+      "seconds": 2.61,
+      "output": "..                                                                       [100%]\n2 passed in 0.43s\n"
     },
     {
       "file": "test_polling.py",
       "exit_code": 0,
-      "seconds": 2.27,
-      "output": ".....                                                                    [100%]\n5 passed in 0.59s\n"
+      "seconds": 2.79,
+      "output": ".....                                                                    [100%]\n5 passed in 0.65s\n"
     },
     {
       "file": "test_pricing.py",
       "exit_code": 0,
-      "seconds": 2.96,
-      "output": "....                                                                     [100%]\n4 passed in 0.90s\n"
+      "seconds": 3.22,
+      "output": "....                                                                     [100%]\n4 passed in 1.13s\n"
     },
     {
       "file": "test_qt_runtime_floor.py",
       "exit_code": 0,
-      "seconds": 2.07,
-      "output": ".                                                                        [100%]\n1 passed in 0.38s\n"
+      "seconds": 2.54,
+      "output": ".                                                                        [100%]\n1 passed in 0.47s\n"
     },
     {
       "file": "test_reconciliation.py",
       "exit_code": 0,
-      "seconds": 2.23,
-      "output": ".....                                                                    [100%]\n5 passed in 0.56s\n"
+      "seconds": 3.07,
+      "output": ".....                                                                    [100%]\n5 passed in 0.75s\n"
     },
     {
       "file": "test_registration_bootstrap.py",
       "exit_code": 0,
-      "seconds": 2.24,
-      "output": "....                                                                     [100%]\n4 passed in 0.58s\n"
+      "seconds": 2.7,
+      "output": "....                                                                     [100%]\n4 passed in 0.72s\n"
     },
     {
       "file": "test_registration_data_notice.py",
       "exit_code": 0,
-      "seconds": 2.13,
-      "output": "..                                                                       [100%]\n2 passed in 0.36s\n"
+      "seconds": 2.93,
+      "output": "..                                                                       [100%]\n2 passed in 0.50s\n"
     },
     {
       "file": "test_registration_envelope.py",
       "exit_code": 0,
-      "seconds": 4.11,
-      "output": "......................                                                   [100%]\n22 passed in 2.12s\n"
+      "seconds": 5.22,
+      "output": "......................                                                   [100%]\n22 passed in 2.80s\n"
     },
     {
       "file": "test_registration_policy.py",
       "exit_code": 0,
-      "seconds": 4.16,
-      "output": "........................                                                 [100%]\n24 passed in 2.44s\n"
+      "seconds": 5.07,
+      "output": "........................                                                 [100%]\n24 passed in 2.50s\n"
     },
     {
       "file": "test_registration_repository.py",
       "exit_code": 0,
-      "seconds": 6.07,
-      "output": "..........                                                               [100%]\n10 passed in 4.29s\n"
+      "seconds": 5.15,
+      "output": "..........                                                               [100%]\n10 passed in 2.96s\n"
     },
     {
       "file": "test_run_web_servers.py",
       "exit_code": 0,
-      "seconds": 2.74,
-      "output": "......                                                                   [100%]\n6 passed in 0.85s\n"
+      "seconds": 3.58,
+      "output": "......                                                                   [100%]\n6 passed in 0.98s\n"
     },
     {
       "file": "test_runtime_config.py",
       "exit_code": 0,
-      "seconds": 3.68,
-      "output": "....                                                                     [100%]\n4 passed in 0.92s\n"
+      "seconds": 2.9,
+      "output": "....                                                                     [100%]\n4 passed in 0.72s\n"
     },
     {
       "file": "test_secondary_setup.py",
       "exit_code": 0,
-      "seconds": 4.9,
-      "output": ".....................                                                    [100%]\n21 passed in 2.00s\n"
+      "seconds": 4.36,
+      "output": ".....................                                                    [100%]\n21 passed in 2.14s\n"
     },
     {
       "file": "test_shared_source_launchers.py",
       "exit_code": 0,
-      "seconds": 4.95,
-      "output": "....                                                                     [100%]\n4 passed in 2.42s\n"
+      "seconds": 3.98,
+      "output": "....                                                                     [100%]\n4 passed in 1.80s\n"
     },
     {
       "file": "test_snmp_probe_v5.py",
       "exit_code": 0,
-      "seconds": 3.11,
-      "output": "............                                                             [100%]\n12 passed in 1.06s\n"
+      "seconds": 3.49,
+      "output": "............                                                             [100%]\n12 passed in 1.45s\n"
     },
     {
       "file": "test_sync_log_page.py",
       "exit_code": 0,
-      "seconds": 3.91,
-      "output": "....                                                                     [100%]\n4 passed in 1.54s\n"
+      "seconds": 3.76,
+      "output": "....                                                                     [100%]\n4 passed in 1.41s\n"
     },
     {
       "file": "test_sync_schedule.py",
       "exit_code": 0,
-      "seconds": 3.25,
-      "output": "......                                                                   [100%]\n6 passed in 1.09s\n"
+      "seconds": 3.18,
+      "output": "......                                                                   [100%]\n6 passed in 1.23s\n"
     },
     {
       "file": "test_ui_consistency.py",
       "exit_code": 0,
-      "seconds": 17.7,
-      "output": ".....                                                                    [100%]\n5 passed in 14.74s\n"
+      "seconds": 18.12,
+      "output": ".....                                                                    [100%]\n5 passed in 15.38s\n"
     },
     {
       "file": "test_usage.py",
       "exit_code": 0,
-      "seconds": 4.52,
-      "output": "......                                                                   [100%]\n6 passed in 1.61s\n"
+      "seconds": 3.88,
+      "output": "......                                                                   [100%]\n6 passed in 1.70s\n"
     },
     {
       "file": "test_v5211_hardening.py",
       "exit_code": 0,
-      "seconds": 6.95,
-      "output": "............................................                             [100%]\n44 passed in 4.69s\n"
+      "seconds": 7.09,
+      "output": "............................................                             [100%]\n44 passed in 4.91s\n"
     },
     {
       "file": "test_v526_performance_contract.py",
       "exit_code": 0,
-      "seconds": 3.4,
+      "seconds": 2.77,
       "output": "...                                                                      [100%]\n3 passed in 0.55s\n"
     },
     {
       "file": "test_v528_customer_navigation.py",
-      "exit_code": 1,
-      "seconds": 3.92,
-      "output": "..F                                                                      [100%]\n================================== FAILURES ===================================\n_____________ test_collector_replaces_numeric_subject_placeholder _____________\n\n    def test_collector_replaces_numeric_subject_placeholder():\n        text = Path(__file__).resolve().parents[1].joinpath(\"komi_snmp_profiler\", \"meter.py\").read_text(encoding=\"utf-8\")\n>       assert \"def _subject_name_is_placeholder\" in text\nE       assert 'def _subject_name_is_placeholder' in 'from __future__ import annotations\\n\\nfrom collections.abc import Callable\\nfrom dataclasses import replace\\nfrom ipa... not in host or \"/\" in host:\\n                raise ValueError(\"hostname ไม่ถูกต้อง\") from None\\n        return host\\n'\n\ntests\\test_v528_customer_navigation.py:20: AssertionError\n=========================== short test summary info ===========================\nFAILED tests/test_v528_customer_navigation.py::test_collector_replaces_numeric_subject_placeholder\n1 failed, 2 passed in 1.14s\n"
+      "exit_code": 0,
+      "seconds": 2.59,
+      "output": "..                                                                       [100%]\n2 passed in 0.44s\n"
     },
     {
       "file": "test_v528_numeric_subject_names.py",
       "exit_code": 0,
-      "seconds": 2.69,
+      "seconds": 2.73,
       "output": "...                                                                      [100%]\n3 passed in 0.60s\n"
     },
     {
       "file": "test_v529_cleanup.py",
       "exit_code": 0,
-      "seconds": 5.19,
-      "output": "..                                                                       [100%]\n2 passed in 2.84s\n"
+      "seconds": 6.15,
+      "output": "..                                                                       [100%]\n2 passed in 3.78s\n"
     },
     {
       "file": "test_v5_2_contract.py",
       "exit_code": 0,
-      "seconds": 2.97,
-      "output": "....                                                                     [100%]\n4 passed in 0.75s\n"
+      "seconds": 2.83,
+      "output": "....                                                                     [100%]\n4 passed in 0.73s\n"
     },
     {
       "file": "test_v5_2_legacy_transport_gate.py",
       "exit_code": 0,
-      "seconds": 2.53,
-      "output": ".                                                                        [100%]\n1 passed in 0.42s\n"
+      "seconds": 2.77,
+      "output": ".                                                                        [100%]\n1 passed in 0.55s\n"
     },
     {
       "file": "test_v5_2_local_contract_e2e.py",
       "exit_code": 0,
-      "seconds": 3.19,
-      "output": "...                                                                      [100%]\n3 passed in 1.01s\n"
+      "seconds": 2.64,
+      "output": "...                                                                      [100%]\n3 passed in 0.82s\n"
     },
     {
       "file": "test_v5_2_outbox.py",
       "exit_code": 0,
-      "seconds": 2.58,
-      "output": "....                                                                     [100%]\n4 passed in 0.83s\n"
+      "seconds": 3.12,
+      "output": "....                                                                     [100%]\n4 passed in 1.06s\n"
     },
     {
       "file": "test_v5_2_shared_contract_r2.py",
       "exit_code": 0,
-      "seconds": 2.32,
-      "output": "...                                                                      [100%]\n3 passed in 0.57s\n"
+      "seconds": 2.72,
+      "output": "...                                                                      [100%]\n3 passed in 0.68s\n"
     },
     {
       "file": "test_v5_2_version_authority.py",
       "exit_code": 0,
-      "seconds": 3.5,
-      "output": "......                                                                   [100%]\n6 passed in 1.78s\n"
+      "seconds": 3.99,
+      "output": "......                                                                   [100%]\n6 passed in 1.91s\n"
     },
     {
       "file": "test_virtual_printer.py",
       "exit_code": 0,
-      "seconds": 9.17,
-      "output": "..                                                                       [100%]\n============================== warnings summary ===============================\ntests/test_virtual_printer.py::test_virtual_printer_answers_real_snmp_and_web_connection_clients\n  C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\komi_snmp_profiler\\connectors.py:468: RuntimeWarning: Web Connection TLS verification disabled by explicit compatibility setting\n    session = self.session_factory(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n2 passed, 1 warning in 6.99s\n"
+      "seconds": 10.26,
+      "output": "..                                                                       [100%]\n============================== warnings summary ===============================\ntests/test_virtual_printer.py::test_virtual_printer_answers_real_snmp_and_web_connection_clients\n  C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\komi_snmp_profiler\\connectors.py:468: RuntimeWarning: Web Connection TLS verification disabled by explicit compatibility setting\n    session = self.session_factory(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n2 passed, 1 warning in 7.98s\n"
     },
     {
       "file": "test_web_port.py",
       "exit_code": 0,
-      "seconds": 4.24,
-      "output": "...........                                                              [100%]\n11 passed in 1.49s\n"
+      "seconds": 3.61,
+      "output": "...........                                                              [100%]\n11 passed in 1.23s\n"
     },
     {
       "file": "test_web_service.py",
       "exit_code": 0,
-      "seconds": 4.36,
-      "output": "............                                                             [100%]\n12 passed in 2.24s\n"
+      "seconds": 4.74,
+      "output": "............                                                             [100%]\n12 passed in 2.42s\n"
     }
   ],
   "file_count": 79,
-  "failed_files": [
-    "test_v528_customer_navigation.py"
-  ],
-  "follow_up": {
-    "original_result": "560 passed and one obsolete source-location assertion failed in 79 files",
-    "resolution": "Removed the duplicate test that required the extracted subject-name helper definition to remain in meter.py. Existing real MeterReader replacement tests retained.",
-    "files": [
-      "tests/test_v528_customer_navigation.py",
-      "tests/test_v528_numeric_subject_names.py",
-      "tests/profiler/test_meter_reader_public_name_enrichment.py"
-    ],
-    "result": "7 passed in 0.83s",
-    "unresolved_failures": []
-  }
+  "failed_files": []
 }

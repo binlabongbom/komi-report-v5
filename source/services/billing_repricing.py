@@ -7,6 +7,7 @@ from config import DEFAULT_WASTE_PCT
 from services.billing_ledger import FORMULA_VERSION, _basis_points, _cents, _source_hash, _load_correction_source, _ensure_reversal
 from services.pricing import CostCategory
 from services.billing_periods import billing_month_range, effective_billing_day
+from services.billing_web_amendment import WEB_AMENDMENT_VERSION
 
 REPRICE_VERSION = "komi.billing.reprice.v1"
 
@@ -35,7 +36,7 @@ def _preview(conn, ledger_id, *, apply_current_discount=False, apply_current_per
     source = _load_correction_source(conn, ledger_id)
     formula = conn.execute("SELECT formula_version FROM billing_ledger WHERE id=?", (ledger_id,)).fetchone()[0]
     attestation = json.loads(source[18])
-    if (source[0] not in {"posting", "replacement"} or formula not in {FORMULA_VERSION, REPRICE_VERSION}
+    if (source[0] not in {"posting", "replacement"} or formula not in {FORMULA_VERSION, REPRICE_VERSION, WEB_AMENDMENT_VERSION}
             or not isinstance(attestation, dict) or attestation.get("billing_safe") is not True):
         raise ValueError("Only a verified automatic posting can be repriced")
     latest = conn.execute("SELECT MAX(id) FROM billing_ledger WHERE source_daily_record_id=?", (source[8],)).fetchone()[0]

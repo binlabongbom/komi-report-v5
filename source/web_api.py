@@ -18,7 +18,7 @@ from typing import Literal
 from uuid import uuid4
 
 from fastapi import FastAPI, HTTPException, Query, Request
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from config import PACKAGE_VERSION
 from database import get_cfg, init_db
@@ -206,6 +206,7 @@ class PeriodListResponse(ApiModel):
 
 
 class UsageOut(ApiModel):
+    remarks: list[str] = Field(default_factory=list)
     device_slot: int
     period_start: str
     period_end: str
@@ -326,6 +327,7 @@ class OverviewResponse(ApiModel):
 
 
 class HistoryItemOut(ApiModel):
+    remarks: list[str] = Field(default_factory=list)
     period_start: str
     period_end: str
     usage: float
@@ -966,6 +968,7 @@ def report_history(
             "provisional_cost_available": True,
             "device_identities": set(),
             "identities_by_slot": defaultdict(set),
+            "remarks": set(),
         }
     )
     for record in records:
@@ -995,6 +998,7 @@ def report_history(
             and record.provisional_cost_available
         )
         item["device_identities"].add(record.device_identity)
+        item["remarks"].update(record.remarks)
         item["identities_by_slot"][record.device_slot].add(record.device_identity)
     items = [
             {
@@ -1016,6 +1020,7 @@ def report_history(
                     values["provisional_cost_available"]
                 ),
                 "device_identities": sorted(values["device_identities"]),
+                "remarks": sorted(values["remarks"]),
                 "mixed_identity_slots": sorted(
                     slot
                     for slot, identities in values["identities_by_slot"].items()

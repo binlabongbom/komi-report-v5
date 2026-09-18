@@ -51,6 +51,10 @@ class NetworkActivityPanel(QWidget):
         self.local_read = QLabel("การอ่านบนคอมนี้: ยังไม่มีสถานะ")
         self.local_read.setTextFormat(Qt.TextFormat.PlainText)
         layout.addWidget(self.local_read)
+        self.shared_read = QLabel("ผู้อ่านร่วม: ยังไม่ได้เชื่อมต่อบริการสมาชิก")
+        self.shared_read.setTextFormat(Qt.TextFormat.PlainText)
+        self.shared_read.setWordWrap(True)
+        layout.addWidget(self.shared_read)
         self.table = QTableWidget(0, 5)
         self.table.setHorizontalHeaderLabels(["คอมพิวเตอร์", "รับประวัติ", "รับครบล่าสุด", "Web รอยืนยันรับ", "การตั้งค่า"])
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
@@ -150,6 +154,17 @@ class NetworkActivityPanel(QWidget):
             else:
                 active = self.polling.active_slots() if self.polling is not None else ()
                 self.local_read.setText("การอ่านบนคอมนี้: " + (", ".join(f"Slot {slot + 1}" for slot in active) if active else "ไม่มีงานอ่านอยู่"))
+                shared = getattr(self.polling, "shared_reads", None)
+                if shared is None:
+                    self.shared_read.setText("ผู้อ่านร่วม: ยังไม่ได้เชื่อมต่อบริการสมาชิก")
+                else:
+                    jobs = shared.snapshot()
+                    phases = {"reading": "กำลังอ่าน", "complete": "บันทึกผลแล้ว", "failed": "อ่านไม่สำเร็จ", "expired": "งานหมดเวลา",
+                              "probe_complete": "จบ SNMP · ไม่มีผล Web ใหม่"}
+                    self.shared_read.setText("ผู้อ่านร่วม · สถานะที่รับล่าสุด ไม่ใช่การตรวจออนไลน์:\n" + (
+                        "\n".join(f"Slot {job['slot'] + 1} · ผู้ประสาน {job['authority']} · ผู้อ่าน {job['reader']} · "
+                                  f"{phases.get(job['phase'], 'รอตรวจ')} · {_date(job['observed_at'])}" for job in jobs)
+                        or "ยังไม่มีคำขออ่านร่วม"))
                 message = (f"สมาชิกในรายการ {total} คอม" if total else
                            "ยังไม่มีการเชื่อมต่อสมาชิกที่ยืนยันแล้ว · ไม่ได้หมายความว่าไม่มีคอมอื่นในเครือข่าย")
                 if total > 100:

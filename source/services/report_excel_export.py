@@ -208,6 +208,19 @@ def export_cloud_reports_xlsx(
     workbook = Workbook()
     machine_sheet = workbook.active
     machine_sheet.title = "การใช้งานรายเครื่อง"
+    amended = [record for record in records if record.remarks]
+    if amended:
+        notes = workbook.create_sheet("หมายเหตุฉบับแก้ไข")
+        notes.append(["Slot", "Serial", "เริ่มช่วง", "สิ้นสุดช่วง", "หมายเหตุ"])
+        for record in amended:
+            notes.append([record.device_slot + 1,
+                _neutralize_untrusted_cell_string(record.device_serial_snapshot)[0],
+                record.period_start.isoformat(), record.period_end.isoformat(),
+                _neutralize_untrusted_cell_string("\n".join(record.remarks))[0]])
+        notes.freeze_panes = "A2"
+        notes.column_dimensions["B"].width = 24
+        notes.column_dimensions["C"].width = notes.column_dimensions["D"].width = 16
+        notes.column_dimensions["E"].width = 100
     _write_machine_sheet(
         machine_sheet,
         records,

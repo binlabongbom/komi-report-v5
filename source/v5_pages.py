@@ -9110,6 +9110,12 @@ class PageHistoryV5(PageHistory):
                     if record.provisional_cost_available
                     else "ข้อมูลวันนี้มาจาก Daily Cache · แสดง Usage ได้ แต่ยังไม่มี Pricelist สำหรับประมาณค่าใช้จ่าย"
                 )
+            if record.remarks:
+                status += " · ฉบับแก้ไข"
+                status_tooltip += "\n" + "\n".join(record.remarks)
+                self._report_printer_status_details[row] = (
+                    self._report_printer_status_details.get(row, device_name) + "\n\n" + "\n".join(record.remarks)
+                )
             record_combined_gross = record.gross_cost + record.provisional_gross_cost
             record_combined_net = record.net_cost + record.provisional_net_cost
             record_discount = max(0.0, record_combined_gross - record_combined_net)
@@ -10153,6 +10159,10 @@ class PageHistoryV5(PageHistory):
             quality_parts.append(f"Hold {held_days:,} device-day ไม่รวมในยอด")
         if incomplete_days:
             quality_parts.append(f"ข้อมูลไม่สมบูรณ์ {incomplete_days:,} device-day")
+        amendment_remarks = tuple(dict.fromkeys(note for record in records for note in record.remarks))
+        self.monthly_summary.setToolTip("\n".join(amendment_remarks))
+        if amendment_remarks:
+            quality_parts.append("มีฉบับแก้ไขตามหลักฐาน Web · ดูหมายเหตุและประวัติบัญชี")
         if any_provisional:
             quality_parts.append("วันนี้เป็นข้อมูลระหว่างวัน ยังไม่ลง Billing Ledger")
         if not periods:

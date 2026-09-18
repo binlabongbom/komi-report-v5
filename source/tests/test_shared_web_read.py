@@ -98,6 +98,21 @@ def test_completed_retry_fetches_same_result_without_new_read(tmp_path):
     assert len(stores["B"].page()["events"]) == 2
 
 
+def test_status_snapshot_never_probes_and_does_not_claim_expired_job_is_live(tmp_path):
+    runtimes, stores, authorities, scope, _ = network(tmp_path)
+    runtime = runtimes["B"]
+    clock = [0.0]
+    runtime.clock = lambda: clock[0]
+    prepared = runtime.prepare(0, manual=True, request_id="status")
+    runtime.router.election.probe = lambda *args: pytest.fail("Status must not probe peers")
+    first = runtime.snapshot()[0]
+    assert first["authority"] == "A" and first["reader"] == "B" and first["phase"] == "reading"
+    first["reader"] = "mutated"
+    assert runtime.snapshot()[0]["reader"] == "B"
+    clock[0] = 301
+    assert runtime.snapshot()[0]["phase"] == "expired"
+
+
 def test_scope_change_during_web_rejects_commit(tmp_path):
     runtimes, stores, _, scope, _ = network(tmp_path)
     def changed():
@@ -233,13 +248,111 @@ def test_invalid_can_read_response_cannot_trigger_printer_access(tmp_path):
     assert len(stores["B"].page()["events"]) == 1
 
 
-def test_expired_job_never_returns_old_web_as_new_success(tmp_path):
+def test_expired_job_recovers_once_and_retry_returns_same_new_result(tmp_path):
     runtimes, stores, _, scope, now = network(tmp_path)
     runtimes["B"].router.request(scope[0], "in-flight", manual=True)
     runtimes["C"].pause = lambda seconds: now.__setitem__(0, now[0] + 120)
-    with pytest.raises(RuntimeError, match="failed or expired"):
-        collect(runtimes["C"], read=lambda: pytest.fail("Joined job cannot start a read"))
+    result = collect(runtimes["C"])
+    assert result.local and result.reading == reading()
+    assert len(stores["C"].page()["events"]) == 2
+    retry = collect(runtimes["C"], read=lambda: pytest.fail("Recovery retry must reuse the committed result"))
+    assert retry.event == result.event
+
+
+def test_waiting_request_recovers_when_authority_becomes_unreachable(tmp_path):
+    runtimes, stores, authorities, scope, _ = network(tmp_path)
+    runtimes["B"].router.request(scope[0], "reader-lost", manual=True)
+    runtime = runtimes["C"]
+    old_status = runtime.router.status
+    calls = []
+    def disconnected_probe(original):
+        def probe(member, requested):
+            if member == "A":
+                raise ConnectionError("authority offline")
+            return original(member, requested)
+        return probe
+    def status(routed):
+        if routed.authority != "A":
+            return old_status(routed)
+        calls.append("A")
+        for other in runtimes.values():
+            other.router.election.probe = disconnected_probe(other.router.election.probe)
+        raise ConnectionError("authority offline")
+    runtime.router.status = status
+    result = collect(runtime)
+    assert result.local and calls == ["A", "A"]
+    assert runtime.snapshot()[0]["authority"] == "B"
+    assert result.event in stores["B"].page()["events"]
+
+
+def test_recovery_does_not_cross_a_changed_slot_scope(tmp_path):
+    runtimes, stores, authorities, scope, _ = network(tmp_path)
+    runtimes["B"].router.request(scope[0], "reader-lost", manual=True)
+    runtime = runtimes["C"]
+    def changed(routed):
+        from services.shared_web_read import SharedAuthorityUnavailable
+        scope[0] = replace(scope[0], settings_revision="changed")
+        raise SharedAuthorityUnavailable(routed.job["job_id"])
+    runtime._read_status = changed
+    with pytest.raises(PermissionError):
+        collect(runtime, read=lambda: pytest.fail("Cannot recover into different shared settings"))
     assert len(stores["C"].page()["events"]) == 1
+
+
+@pytest.mark.parametrize("manual_joins", [False, True])
+def test_scheduled_snmp_reservation_prevents_manual_overlap_without_forcing_quiet_web(tmp_path, manual_joins):
+    from services.background_polling import BackgroundPollingCoordinator
+    from services.device_config import DeviceConfigRepository
+    from services.polling import DevicePollState
+    from test_background_polling import FakeProbe
+    runtimes, stores, _, scope, _ = network(tmp_path)
+    original_path = database.get_db_path()
+    entered, release, joined = Event(), Event(), Event()
+    now = datetime(2026, 9, 18, 10, 10, tzinfo=UTC)
+    anchor = now.replace(minute=0)
+    class Probe(FakeProbe):
+        def read(self, host):
+            entered.set()
+            assert release.wait(5)
+            return replace(super().read(host), serial="SER-A")
+    class Printer:
+        calls = 0
+        def read(self, host):
+            self.calls += 1
+            return reading()
+    database.set_db_path(stores["A"].path)
+    worker = BackgroundPollingCoordinator(probe=Probe(), reader=Printer(), observations=stores["A"],
+        shared_reads=runtimes["A"], clock=lambda: now)
+    worker._preferred_total_oid = lambda device: "fixture-precalibrated"
+    worker.states[0] = DevicePollState(last_snmp_total=101, last_web_at=anchor,
+        last_scheduled_web_at=anchor, scheduled_clock_initialized=True)
+    router = runtimes["B"].router
+    original_request = router.request
+    def request(*args, **kwargs):
+        result = original_request(*args, **kwargs)
+        assert result.job["reader_id"] == "A" and not result.job["can_read"]
+        joined.set()
+        return result
+    router.request = request
+    try:
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            scheduled = pool.submit(worker._poll_device, DeviceConfigRepository().get(0), False)
+            try:
+                assert entered.wait(5)
+                if manual_joins:
+                    manual = pool.submit(collect, runtimes["B"], read=lambda: pytest.fail("SNMP was already in flight on A"))
+                    assert joined.wait(5)
+            finally:
+                release.set()
+            assert scheduled.result(timeout=10) == manual_joins
+            if manual_joins:
+                assert not manual.result(timeout=10).local
+        assert worker.reader.calls == int(manual_joins)
+        assert worker.states[0].last_scheduled_web_at == anchor
+        assert runtimes["A"].snapshot()[0]["phase"] == ("complete" if manual_joins else "probe_complete")
+    finally:
+        worker.stop(wait=True)
+        database.set_db_path(original_path)
 
 
 def test_joined_manual_polling_worker_skips_both_snmp_and_web(tmp_path):
