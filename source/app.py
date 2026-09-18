@@ -127,14 +127,13 @@ def validate_parser_json(path: str) -> list:
 #   QFrame         — กล่องที่ใส่ border หรือ background ได้
 #   QStackedWidget — ซ้อนหลาย Widget ไว้แต่แสดงทีละอัน (ใช้สลับหน้า)
 #   QScrollArea    — ห่อ Widget ให้เลื่อน scroll ได้ถ้าเนื้อหายาวเกิน
-from PyQt6.QtCore import Qt, QTimer  # ค่าคงที่ของ Qt เช่น alignment, cursor shape
-from PyQt6.QtGui import QAction, QCloseEvent, QFont, QIcon, QPixmap  # QFont = ฟอนต์, QPixmap = รูปภาพ
+from PyQt6.QtCore import QSize, Qt, QTimer  # ค่าคงที่ของ Qt เช่น alignment, cursor shape
+from PyQt6.QtGui import QAction, QCloseEvent, QFont, QPixmap  # QFont = ฟอนต์, QPixmap = รูปภาพ
 from PyQt6.QtNetwork import QNetworkInformation
 from PyQt6.QtWidgets import (
     QApplication,
     QComboBox,
     QDialog,
-    QDoubleSpinBox,
     QFileDialog,
     QFrame,
     QGridLayout,
@@ -145,15 +144,18 @@ from PyQt6.QtWidgets import (
     QMenu,
     QMessageBox,
     QPushButton,
+    QProgressBar,
     QScrollArea,
     QSizePolicy,
-    QSpinBox,
     QStackedWidget,
+    QStyle,
     QSystemTrayIcon,
     QVBoxLayout,
     QWidget,
 )
 
+from ui.numeric_inputs import NumericDoubleSpinBox as QDoubleSpinBox, NumericSpinBox as QSpinBox
+from ui.numeric_inputs import configure_numeric_locale
 from config import *  # สี, ฟอนต์, ขนาด, ค่าคงที่ทั้งหมด — ปรับแก้ที่ config.py
 from database import (  # ฟังก์ชันฐานข้อมูลที่ใช้ที่นี่
     compute_diff,
@@ -177,9 +179,12 @@ from pages import (
 from services.application_identity import (
     configure_qt_application_identity,
     configure_windows_process_identity,
+    configure_windows_window_identity,
+    load_application_icon,
 )
-from services.autostart import configure_autostart
+from services.autostart import configure_autostart, refresh_existing_autostart
 from services.background_polling import BackgroundPollingCoordinator
+from services.background_agent import stop_running_background_agent
 from services.desktop_shortcuts import create_desktop_shortcuts
 from services.device_config import DeviceConfigRepository
 from services.instance_guard import SingleInstanceGuard
@@ -187,6 +192,8 @@ from services.offline_license_keys import (
     OfflineLicensePublicKeyConfigurationError,
     load_offline_license_public_keys,
 )
+from services.build_edition import is_offline_edition
+from services.peer_sync_authorization import ensure_pairing_default, PeerSyncAuthorizationError
 from services.v5_2_client import V52ContractClient, V52RuntimeConfig
 from services.v5_2_runtime import V52RuntimeCoordinator
 from services.web_service import web_service_manager
@@ -292,6 +299,17 @@ class SplashScreen(QWidget):
         self._msg_lbl.setStyleSheet("color: rgba(255,255,255,0.70);")
         cl.addWidget(self._msg_lbl)
 
+        self._activity = QProgressBar()
+        self._activity.setRange(0, 0)
+        self._activity.setTextVisible(False)
+        self._activity.setFixedHeight(5)
+        self._activity.setAccessibleName("กำลังเตรียมโปรแกรม")
+        self._activity.setStyleSheet(
+            "QProgressBar { background: #334155; border: none; border-radius: 2px; }"
+            "QProgressBar::chunk { background: #38BDF8; border-radius: 2px; }"
+        )
+        cl.addWidget(self._activity)
+
         root.addWidget(card)
 
     def set_message(self, text: str):
@@ -323,7 +341,6 @@ class NavButton(QPushButton):
         self.setProperty("active", "true" if active else "false")
         self.style().unpolish(self)
         self.style().polish(self)
-
 
 
 # ══════════════════════════════════════════════════════════
@@ -363,9 +380,13 @@ class MainWindow(QMainWindow):
     def __init__(self, splash: "SplashScreen | None" = None):
         super().__init__()
         install_button_system(QApplication.instance())
+        self.setWindowIcon(load_application_icon())
         self.setWindowTitle(f"{APP_TITLE} V{APP_VER}")  # ชื่อโปรแกรมบน titlebar
-        self.setMinimumSize(WINDOW_MIN_WIDTH, WINDOW_MIN_HEIGHT)  # ขนาดเล็กสุดที่ resize ได้
-        self.resize(WINDOW_DEFAULT_WIDTH, WINDOW_DEFAULT_HEIGHT)   # ขนาดเริ่มต้นเมื่อเปิด
+        configure_windows_window_identity(self)
+        self._layout_screen = None
+        self._screen_signal_connected = False
+        self._compact_sidebar = None
+        self._fit_to_available_screen(initial=True)
 
         # โหลด QSS (คือ CSS สำหรับ Qt) เพื่อกำหนดหน้าตาทุก widget ในโปรแกรม
         # ถ้าต้องการเปลี่ยนสี/ฟอนต์/ขอบ → แก้ที่ config.py ฟังก์ชัน build_qss()
@@ -396,7 +417,7 @@ class MainWindow(QMainWindow):
                     base_url="https://www.dmskm.com",
                     environment="production",
                 )
-            ),
+            ) if not is_offline_edition() else None,
             parent=self,
         )
         try:
@@ -407,12 +428,17 @@ class MainWindow(QMainWindow):
 
         if splash: splash.set_message("กำลังสร้างหน้าจอ...")
         self._build_ui()  # สร้าง UI ทั้งหมด: sidebar + stack ของหน้าต่างๆ
+        self._update_sidebar_layout()
         self._ui_ready = True
 
         if splash: splash.set_message("กำลังโหลดข้อมูล...")
         self._quitting = False
         self._background_started = False
         self._registration_collection_ready = False
+        self._startup_poll_pending = True
+        self._startup_poll_timer = QTimer(self)
+        self._startup_poll_timer.setSingleShot(True)
+        self._startup_poll_timer.timeout.connect(self._run_startup_poll)
         # V5.2.6 performance: do not block first paint on database aggregation.
         # The same refresh still runs immediately after the event loop gets a
         # chance to present the workspace, preserving data and UI semantics.
@@ -432,6 +458,89 @@ class MainWindow(QMainWindow):
         self.registration.status_changed.connect(self._registration_status_changed)
         self._install_network_recovery_monitor()
         apply_language(self)
+        if splash is not None:
+            self._prepare_reports_overview(splash)
+
+    def _fit_to_available_screen(self, *, initial: bool = False) -> None:
+        """Keep the decorated window inside the current display's work area."""
+        screen = self._layout_screen or self.screen() or QApplication.primaryScreen()
+        if screen is None:
+            return
+        available = screen.availableGeometry()
+        frame = self.frameGeometry().size() - self.size()
+        # Before the first native show, Qt has not measured the title bar yet.
+        if not self.isVisible():
+            title_height = self.style().pixelMetric(QStyle.PixelMetric.PM_TitleBarHeight)
+            frame.setHeight(max(frame.height(), title_height))
+        usable = QSize(
+            max(1, available.width() - max(0, frame.width())),
+            max(1, available.height() - max(0, frame.height())),
+        )
+        self.setMinimumSize(min(WINDOW_MIN_WIDTH, usable.width()), min(560, usable.height()))
+        if self.isMaximized() or self.isFullScreen():
+            return
+        requested = QSize(WINDOW_DEFAULT_WIDTH, WINDOW_DEFAULT_HEIGHT) if initial else self.size()
+        self.resize(requested.boundedTo(usable))
+        if self.isVisible():
+            decorated = self.frameGeometry()
+            self.move(
+                max(available.left(), min(decorated.left(), available.right() - decorated.width() + 1)),
+                max(available.top(), min(decorated.top(), available.bottom() - decorated.height() + 1)),
+            )
+
+    def _watch_layout_screen(self, screen) -> None:
+        if screen is not self._layout_screen:
+            if self._layout_screen is not None:
+                try:
+                    self._layout_screen.availableGeometryChanged.disconnect(self._screen_workarea_changed)
+                except (TypeError, RuntimeError):
+                    pass  # The previous screen may already have been disconnected.
+            self._layout_screen = screen
+            if screen is not None:
+                screen.availableGeometryChanged.connect(self._screen_workarea_changed)
+        self._fit_to_available_screen()
+        if hasattr(self, "sidebar"):
+            self._update_sidebar_layout()
+
+    def _screen_workarea_changed(self, _geometry) -> None:
+        self._fit_to_available_screen()
+
+    def showEvent(self, event) -> None:
+        super().showEvent(event)
+        handle = self.windowHandle()
+        if handle is not None and not self._screen_signal_connected:
+            handle.screenChanged.connect(self._watch_layout_screen)
+            self._screen_signal_connected = True
+        self._watch_layout_screen(self.screen())
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        if hasattr(self, "sidebar"):
+            self._update_sidebar_layout()
+
+    def _update_sidebar_layout(self) -> None:
+        compact = self.width() <= 1280
+        pixel_ratio = self.devicePixelRatioF()
+        if compact == self._compact_sidebar and pixel_ratio == getattr(self, "_logo_pixel_ratio", None):
+            return
+        self._compact_sidebar = compact
+        self._logo_pixel_ratio = pixel_ratio
+        self.sidebar.setFixedWidth(200 if compact else SIDEBAR_WIDTH)
+        icon_width = 44 if compact else LOGO_SCALED_WIDTH
+        if not self._sidebar_logo_pixmap.isNull():
+            pixels = round(icon_width * pixel_ratio)
+            logo = self._sidebar_logo_pixmap.scaled(
+                pixels, pixels, Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation,
+            )
+            logo.setDevicePixelRatio(pixel_ratio)
+            self._sidebar_logo_image.setPixmap(logo)
+        self._sidebar_logo_image.setFixedSize(icon_width, icon_width)
+        self._sidebar_logo_layout.setSpacing(6 if compact else 10)
+        self._sidebar_logo_title.setStyleSheet(
+            "color:#FFFFFF;background:transparent;border:none;letter-spacing:0.4px;"
+            f"font-size:{F_MD if compact else F_LG}pt;font-weight:bold;"
+        )
 
     # ──────────────────────────────────────────────────────
     # BUILD UI — สร้างโครงสร้างหน้าตาทั้งหมด
@@ -452,8 +561,9 @@ class MainWindow(QMainWindow):
         main_lay.setSpacing(0)                    # ไม่มีช่องว่างระหว่าง sidebar กับ content
 
         # ─ SIDEBAR ────────────────────────────────────────
-        # Widget แถบซ้าย มีความกว้างคงที่ (SIDEBAR_WIDTH จาก config.py)
+        # Use a compact sidebar on smaller workspaces without shrinking navigation text.
         sidebar = QWidget()
+        self.sidebar = sidebar
         sidebar.setObjectName("sidebar")  # QSS ใน config.py ใช้ #sidebar เพื่อกำหนดสีพื้นหลัง
         sidebar.setFixedWidth(SIDEBAR_WIDTH)
         sb_lay = QVBoxLayout(sidebar)  # layout แนวตั้งภายใน sidebar
@@ -472,6 +582,9 @@ class MainWindow(QMainWindow):
         # หา path ของไฟล์รูปโลโก้ โดยเริ่มจากโฟลเดอร์เดียวกับไฟล์ app.py นี้
         logo_path = os.path.join(os.path.dirname(__file__), LOGO_FILENAME)
         logo_pixmap = QPixmap(logo_path)
+        self._sidebar_logo_pixmap = logo_pixmap
+        self._sidebar_logo_image = logo_img
+        self._sidebar_logo_layout = ll
         if not logo_pixmap.isNull():  # โหลดรูปสำเร็จ
             logo_pixmap = logo_pixmap.scaledToWidth(
                 LOGO_SCALED_WIDTH, Qt.TransformationMode.SmoothTransformation
@@ -486,6 +599,7 @@ class MainWindow(QMainWindow):
 
         ll.addWidget(logo_img)
         logo_title = QLabel("KOMI REPORT")
+        self._sidebar_logo_title = logo_title
         logo_title.setFont(fnt(F_LG, bold=True))
         logo_title.setStyleSheet(
             "color:#FFFFFF;background:transparent;border:none;letter-spacing:0.4px;"
@@ -547,9 +661,9 @@ class MainWindow(QMainWindow):
         # ใช้โครง Overview เดิมจาก V4.6 เป็นหน้ารายงานหลักของ V5
         self.pg_overview = PageOverview(lambda: self._data)
         self.pg_import   = PageImportV5(PageImport())
-        # These hidden pages dominate window construction. Build them only
-        # when the user first navigates to them.
-        self.pg_history  = _DeferredPage(PageHistoryV5)
+        # Reports prepares Overview during Splash, then stages the other tabs.
+        # Settings and Manual remain first-navigation only.
+        self.pg_history  = _DeferredPage(lambda: PageHistoryV5(staged=True))
         self.pg_settings = _DeferredPage(
             lambda: PageSettingsV5(
                 PageSettings(),
@@ -644,10 +758,45 @@ class MainWindow(QMainWindow):
             self._apply_registration_collection_gate()
         return page
 
+    def _prepare_reports_overview(self, splash=None) -> None:
+        """Prepare the report shell and start its asynchronous Overview read."""
+        if splash is not None:
+            if getattr(self, "_startup_refresh_pending", False):
+                splash.set_message("กำลังโหลดข้อมูลภาพรวม...")
+                self._refresh_all()
+                self._startup_refresh_pending = False
+            splash.set_message("กำลังเตรียม Reports Overview...")
+        page = self._load_deferred_page(self._reports_index)
+        prepare = getattr(page, "prepare_overview", None)
+        if callable(prepare):
+            prepare()
+
+    def _schedule_reports_prewarm(self) -> None:
+        """Yield to the shown window before preparing each remaining tab."""
+        if getattr(self, "_reports_prewarm_scheduled", False):
+            return
+        self._reports_prewarm_scheduled = True
+        self._reports_prewarm_timers = []
+        for delay, index in ((750, 1), (1500, 2)):
+            timer = QTimer(self)
+            timer.setSingleShot(True)
+            timer.timeout.connect(lambda tab=index: self._prewarm_reports_tab(tab))
+            self._reports_prewarm_timers.append(timer)
+            timer.start(delay)
+
+    def _prewarm_reports_tab(self, index: int) -> None:
+        if getattr(self, "_quitting", False):
+            return
+        page = getattr(self, "pg_history", None)
+        if isinstance(page, _DeferredPage):
+            page = self._load_deferred_page(self._reports_index)
+        prewarm = getattr(page, "prewarm_tab", None)
+        if callable(prewarm):
+            prewarm(index)
+
     def _build_tray(self):
         self.tray = QSystemTrayIcon(self)
-        icon_path = os.path.join(os.path.dirname(__file__), LOGO_FILENAME)
-        self.tray.setIcon(QIcon(icon_path))
+        self.tray.setIcon(self.windowIcon())
         if _disable_tray_context_menu_for_current_macos():
             # macOS 27 can abort inside AppKit while presenting a Qt status
             # menu (NSStatusItem -> NSCalendarDate).  Do not create a QMenu
@@ -682,6 +831,19 @@ class MainWindow(QMainWindow):
         if reason in open_reasons:
             self._show_from_tray()
 
+    def _open_web_report(self) -> None:
+        from ui.web_report_launcher import WebReportLauncher
+
+        if not hasattr(self, "_web_report_launcher"):
+            self._web_report_launcher = WebReportLauncher(self.web_service, self)
+            self._web_report_launcher.failed.connect(self._web_report_open_failed)
+        set_cfg("web_service_enabled", "1")
+        self._web_report_launcher.open()
+
+    def _web_report_open_failed(self, detail: str) -> None:
+        self._show_from_tray()
+        QMessageBox.warning(self, "เปิด KOMI Report Web ไม่สำเร็จ", detail)
+
     def start_background_services(self):
         if self._background_started:
             return
@@ -695,6 +857,11 @@ class MainWindow(QMainWindow):
         self.registration.configuration_changed()
         self.polling.start()
         if get_cfg("web_service_enabled", "1") != "0":
+            try:
+                ensure_pairing_default(get_cfg("installation_id", ""),
+                                       primary=get_cfg("desktop_role", "primary") != "secondary")
+            except PeerSyncAuthorizationError:
+                log.warning("Peer Sync authorization requires local administrator review")
             status = self.web_service.start()
             log.info("web service start requested: %s (%s)", status.state, status.detail)
 
@@ -722,6 +889,34 @@ class MainWindow(QMainWindow):
             return
         self.polling.poll_now(slot)
 
+    def _schedule_startup_poll(self) -> None:
+        """Queue one full read after the configured app passes its fresh status gate."""
+        if (
+            self._background_started
+            and self._startup_poll_pending
+            and not self._quitting
+            and not self._startup_poll_timer.isActive()
+        ):
+            self._startup_poll_timer.start(0)
+
+    def _run_startup_poll(self) -> None:
+        if not self._startup_poll_pending or not self._background_started or self._quitting:
+            return
+        eligible, _reason = self._registration_usage_eligibility()
+        if not eligible:
+            # Status can change between queueing and dispatch; retain the
+            # one-shot until eligibility returns instead of reading while paused.
+            self._apply_registration_collection_gate()
+            return
+        self._startup_poll_pending = False
+        log.info("startup_sync_requested", extra={"event": "startup_sync_requested"})
+        try:
+            # The coordinator submits work to its executor and skips slots
+            # already being read by a manual or scheduled poll.
+            self.polling.poll_now()
+        except Exception:
+            log.exception("startup_sync_request_failed")
+
     def _set_collection_actions_enabled(self, enabled: bool) -> None:
         targets = [
             getattr(self, "_tray_read_action", None),
@@ -738,6 +933,8 @@ class MainWindow(QMainWindow):
                 target.setEnabled(enabled)
 
     def _apply_registration_collection_gate(self) -> None:
+        if getattr(self, "_quitting", False):
+            return
         """Keep local history open while fail-closing every new device read."""
         eligible, reason = self._registration_usage_eligibility()
         if eligible:
@@ -747,6 +944,8 @@ class MainWindow(QMainWindow):
             )
             self.status_lbl.setText("เปิดใช้งาน · ดูประวัติและอ่านข้อมูลใหม่ได้")
             self.status_lbl.setToolTip(f"Registration: {reason}")
+            if getattr(self, "_startup_poll_pending", False):
+                self._schedule_startup_poll()
             return
         self.polling.pause(reason)
         self._set_collection_actions_enabled(False)
@@ -803,8 +1002,16 @@ class MainWindow(QMainWindow):
         self.showMaximized()
         self.raise_()
         self.activateWindow()
+        schedule = getattr(self, "_schedule_reports_prewarm", None)
+        if callable(schedule):
+            schedule()
 
     def _show_from_tray(self):
+        pending = getattr(self, "_agent_handoff", None)
+        if pending is not None and not pending.committed:
+            pending.cancel()
+            self._agent_handoff = None
+            pending.deleteLater()
         self._show_main_window()
 
     def _language_changed(self, _index: int) -> None:
@@ -839,7 +1046,7 @@ class MainWindow(QMainWindow):
         )
         return reply == QMessageBox.StandardButton.Yes
 
-    def _confirm_discard_settings_on_exit(self) -> bool:
+    def _confirm_discard_settings_on_exit(self, *, discard: bool = True) -> bool:
         page = self._settings_page_with_draft()
         if page is None:
             return True
@@ -855,12 +1062,31 @@ class MainWindow(QMainWindow):
         )
         if reply != QMessageBox.StandardButton.Discard:
             return False
-        discard = getattr(page, "discard_unsaved_changes", None)
-        if callable(discard):
-            discard()
+        discard_action = getattr(page, "discard_unsaved_changes", None)
+        if discard and callable(discard_action):
+            discard_action()
         return True
 
     def _exit_application(self):
+        if self._quitting:
+            return
+        pending = getattr(self, "_agent_handoff", None)
+        if pending is not None and not pending.committed:
+            pending.cancel()
+            self._agent_handoff = None
+            pending.deleteLater()
+        reply = QMessageBox.question(
+            self,
+            tr("หยุดโปรแกรมทั้งหมด", "Stop the application"),
+            tr(
+                "การอ่านมิเตอร์และรายงานผ่านเว็บบนคอมพิวเตอร์เครื่องนี้จะหยุดจนกว่าจะเปิดโปรแกรมอีกครั้ง ต้องการหยุดทั้งหมดหรือไม่?",
+                "Meter collection and web reports on this computer will stop until the application is opened again. Stop everything?",
+            ),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Cancel,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
         if not self._confirm_discard_settings_on_exit():
             return
         self._quitting = True
@@ -872,6 +1098,38 @@ class MainWindow(QMainWindow):
         self.web_service.stop()
         QApplication.instance().quit()
 
+    def _begin_agent_handoff(self):
+        if getattr(self, "_agent_handoff", None) is not None:
+            return
+        from services.agent_handoff import AgentHandoff
+        handoff = AgentHandoff(self)
+        self._agent_handoff = handoff
+
+        def failed(_reason):
+            self._agent_handoff = None
+            handoff.deleteLater()
+            QMessageBox.warning(self, "KOMI Report V5", tr(
+                "Agent ยังไม่พร้อม หน้าต่างและการอ่านข้อมูลเดิมยังทำงานอยู่ กรุณาลองปิดอีกครั้ง",
+                "The agent is not ready. This window and its collection services are still running. Please try closing again.",
+            ))
+
+        def ready():
+            if self._quitting or not self._confirm_discard_settings_on_exit(discard=False):
+                handoff.cancel()
+                self._agent_handoff = None
+                handoff.deleteLater()
+                return
+            if not handoff.commit():
+                failed("commit_failed")
+                return
+            self._quitting = True
+            self.close()
+            QApplication.instance().quit()
+
+        handoff.failed.connect(failed)
+        handoff.ready.connect(ready)
+        handoff.start()
+
     def closeEvent(self, event: QCloseEvent):
         close_to_tray = get_cfg("close_to_tray", "1") != "0"
         if self._quitting or not close_to_tray or not QSystemTrayIcon.isSystemTrayAvailable():
@@ -879,6 +1137,9 @@ class MainWindow(QMainWindow):
                 event.ignore()
                 return
             self._quitting = True
+            shutdown_reports = getattr(getattr(self, "pg_history", None), "shutdown_report_loading", None)
+            if callable(shutdown_reports):
+                shutdown_reports()
             hide_tray = getattr(self.tray, "hide", None)
             if callable(hide_tray):
                 hide_tray()
@@ -886,6 +1147,11 @@ class MainWindow(QMainWindow):
             self.registration.stop()
             self.web_service.stop()
             event.accept()
+            return
+        # Keep packaged routing unchanged until packaging verification.
+        if self._background_started and not getattr(sys, "frozen", False):
+            self._begin_agent_handoff()
+            event.ignore()
             return
         self.hide()
         self.tray.showMessage(
@@ -925,11 +1191,19 @@ class MainWindow(QMainWindow):
             return
         if self._ui_ready:
             self._refresh_visible_page()
+        if idx == self._reports_index:
+            opened = getattr(self.pg_history, "on_reports_opened", None)
+            if callable(opened):
+                opened()
 
     def _finish_deferred_navigation(self, index: int) -> None:
         self._load_deferred_page(index)
         if self.stack.currentIndex() == index and self._ui_ready:
             self._refresh_visible_page()
+            if index == self._reports_index:
+                opened = getattr(self.pg_history, "on_reports_opened", None)
+                if callable(opened):
+                    opened()
 
     def _schedule_refresh_all(self) -> None:
         """Debounce bursts of polling signals before querying and redrawing."""
@@ -941,7 +1215,10 @@ class MainWindow(QMainWindow):
         if index not in self._dirty_pages:
             return
         page = self._page_widgets[index]
-        refresh_visible = getattr(page, "refresh_visible", None)
+        refresh_visible = (
+            getattr(page, "refresh_visible_cached", None)
+            or getattr(page, "refresh_visible", None)
+        )
         if callable(refresh_visible):
             apply_language(page)
             self._dirty_pages.discard(index)
@@ -974,6 +1251,9 @@ class MainWindow(QMainWindow):
         # painting. Mark data-driven pages stale, then update only the page the
         # user can currently see. Navigation refreshes the others on demand.
         self._dirty_pages.update(range(len(self._page_widgets)))
+        invalidate = getattr(getattr(self, "pg_history", None), "invalidate_data", None)
+        if callable(invalidate):
+            invalidate()
         self._refresh_visible_page()
         # อัปเดตข้อความด้านล่าง sidebar ให้แสดงวันที่ล่าสุดของข้อมูลในฐานข้อมูล
         _latest = get_latest_read_date()
@@ -1671,41 +1951,6 @@ class SetupWizard(QDialog):
         self.accept()
 
 
-def _check_parser_setup(parent_win, splash=None):
-    """
-    [V4.5] ตรวจสอบและบังคับให้ผ่าน setup wizard ก่อนใช้งานได้
-    - DB ถูกสร้างใหม่ในรอบนี้ (fresh install)  OR
-    - ยังไม่มี Parser Profile ที่ตั้งค่าแล้ว
-    คืน True ถ้าพร้อมใช้งาน, False ถ้าผู้ใช้ปิด wizard โดยไม่ตั้งค่า
-    """
-    from tools.check_parser import load_profiles
-    profiles = load_profiles()
-    has_parser = any(p.get("column_map") for p in profiles)
-    fresh_db = getattr(parent_win, "_is_fresh_db", False)
-
-    if fresh_db or not has_parser:
-        # ปิด splash ก่อนเปิด wizard — splash ตั้ง WindowStaysOnTopHint ไว้ จะบัง wizard ถ้ายังเปิดอยู่
-        if splash is not None:
-            splash.close()
-        dlg = SetupWizard(parent_win)
-        dlg.show()
-        dlg.raise_()
-        dlg.activateWindow()
-        result = dlg.exec()
-        # หลัง wizard ปิด ตรวจอีกครั้งว่ามี parser หรือยัง
-        profiles = load_profiles()
-        has_parser = any(p.get("column_map") for p in profiles)
-        if not has_parser:
-            QMessageBox.warning(
-                parent_win,
-                "ยังไม่ได้ตั้งค่า Parser",
-                "โปรแกรมจะใช้งาน import ไฟล์ไม่ได้จนกว่าจะมีการตั้งค่า Parser\n"
-                "ท่านสามารถตั้งค่าได้ที่หน้า Settings ภายหลัง"
-            )
-            return False
-    return True
-
-
 _active_v5_setup_dialog: SetupWizardV5 | None = None
 
 
@@ -1846,13 +2091,30 @@ if __name__ == "__main__":
     configure_windows_process_identity()
 
     # QApplication ต้องสร้างก่อนสิ่งอื่นใดทั้งหมด
+    configure_numeric_locale()
     app = QApplication(sys.argv)
     configure_qt_application_identity(app, version=APP_VER)
+    app.setWindowIcon(load_application_icon())
     install_button_system(app)
+    try:
+        refresh_existing_autostart()
+    except OSError:
+        log.exception("cannot refresh existing background-agent registration")
     instance_guard = SingleInstanceGuard(Path(get_db_path()).with_suffix(".instance.lock"))
-    if not instance_guard.acquire():
+    if not instance_guard.acquire(command="open-web" if "--open-web" in sys.argv else "activate"):
         log.warning("another KOMI Report V5 instance is already running")
         sys.exit(0)
+    # Hold desktop ownership before stopping the agent, and never start a second
+    # set of collectors while its current transactions are still completing.
+    if not stop_running_background_agent(Path(get_db_path())):
+        QMessageBox.information(
+            None,
+            "KOMI Report V5",
+            tr("Agent กำลังบันทึกข้อมูล กรุณาเปิดโปรแกรมอีกครั้งเมื่อเสร็จ",
+               "The agent is finishing its current work. Please reopen the application shortly."),
+        )
+        instance_guard.release()
+        sys.exit(1)
     _install_excepthook()
 
     # กำหนดฟอนต์ default ให้ทุก widget ที่ไม่ได้ set font เอง
@@ -1871,6 +2133,7 @@ if __name__ == "__main__":
 
     win = MainWindow(splash=splash)
     instance_guard.activation_requested.connect(win._show_from_tray)
+    instance_guard.web_open_requested.connect(win._open_web_report)
 
     # Packaging smoke test: construct the complete startup shell against an
     # isolated KOMI_DB_PATH, then exit before setup dialogs or network services.
@@ -1887,7 +2150,7 @@ if __name__ == "__main__":
         # synchronous local refresh and service orchestration compete for the
         # UI thread. Background launches remain hidden as before.
         splash.close()
-        if "--background" in sys.argv:
+        if "--background" in sys.argv or "--open-web" in sys.argv:
             win.hide()
         else:
             win._show_main_window()
@@ -1897,6 +2160,8 @@ if __name__ == "__main__":
                 win._startup_refresh_pending = False
                 win._refresh_all()
             win.start_background_services()
+            if "--open-web" in sys.argv:
+                win._open_web_report()
 
         QTimer.singleShot(0, finish_startup)
 
@@ -1925,5 +2190,9 @@ if __name__ == "__main__":
     try:
         exit_code = app.exec()
     finally:
+        # Keep desktop ownership while worker transactions finish. Otherwise a
+        # new agent/desktop can collect concurrently during Python shutdown.
+        win.polling.stop(wait=True)
+        win.registration.stop(wait=True)
         instance_guard.release()
     sys.exit(exit_code)

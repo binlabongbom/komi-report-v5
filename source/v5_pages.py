@@ -8,7 +8,7 @@ import socket
 import traceback
 import webbrowser
 from collections.abc import Callable
-from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor
+from concurrent.futures import FIRST_COMPLETED, CancelledError, ThreadPoolExecutor
 from concurrent.futures import wait as wait_futures
 from dataclasses import dataclass, replace
 from datetime import date, datetime, time, timedelta
@@ -29,10 +29,8 @@ from PyQt6.QtWidgets import (
     QCalendarWidget,
     QCheckBox,
     QComboBox,
-    QDateEdit,
     QDialog,
     QDialogButtonBox,
-    QDoubleSpinBox,
     QFileDialog,
     QFormLayout,
     QFrame,
@@ -48,18 +46,20 @@ from PyQt6.QtWidgets import (
     QRadioButton,
     QScrollArea,
     QSizePolicy,
-    QSpinBox,
     QStackedWidget,
     QStyle,
     QStyledItemDelegate,
     QStyleOptionViewItem,
     QTableWidget,
     QTableWidgetItem,
-    QTabWidget,
-    QTimeEdit,
     QVBoxLayout,
     QWidget,
 )
+
+from ui.numeric_inputs import NumericDoubleSpinBox as QDoubleSpinBox, NumericSpinBox as QSpinBox
+from ui.numeric_inputs import NumericDateEdit as QDateEdit, NumericTimeEdit as QTimeEdit
+from ui.page_tabs import PageTabs as QTabWidget
+from ui.page_tabs import PageHeading
 
 import pages as legacy_pages
 from config import (
@@ -146,6 +146,7 @@ from services.monthly_history import (
 from services.peer_sync_authorization import (
     PeerSyncAuthorizationError,
     open_pairing_window,
+    close_pairing_window,
     pairing_window_status,
 )
 from services.pipeline_log import PipelineEvent, pipeline_log
@@ -165,6 +166,7 @@ from services.registration_envelope import (
     runtime_platform,
 )
 from services.report_scope import report_slots
+from services.report_snapshot import load_report_snapshot
 from services.runtime_snapshots import RuntimeCounterRow, runtime_snapshots
 from services.secondary_setup import (
     SecondaryPeerCandidate,
@@ -172,6 +174,11 @@ from services.secondary_setup import (
     SecondarySetupError,
     local_ipv4_hosts,
     normalize_primary_ipv4,
+)
+from services.setup_connectivity import (
+    SetupConnectivityCheck,
+    SetupConnectivityReport,
+    check_setup_connectivity,
 )
 from services.snmp_probe import PaperTrayStatus, SnmpTotalProbe
 from services.subject_history import SubjectDailyCacheStore, SubjectPeriodUsage, load_subject_history
@@ -192,6 +199,8 @@ from services.usage import (
     default_usage_groups,
     latest_counters,
 )
+from services.build_edition import is_offline_edition
+from services.registration_errors import error_message, safe_support_code
 from services.v5_2_runtime_state import V52RuntimeStateRepository
 from services.web_access import (
     MIN_ACCESS_CODE_LENGTH,
@@ -199,8 +208,10 @@ from services.web_access import (
     set_web_report_passwordless,
     validate_web_access_code,
     web_access_status,
+    update_web_runtime_values,
 )
 from services.web_service import WebServiceStatus, web_service_manager
+from services.web_port import read_web_port, validate_web_port
 from ui.cloud_reports import CloudReportsWidget
 from ui.common_dialogs import AllCountersDialog, PinnedCountersDialog
 from ui_consistency import install_button_system
@@ -208,6 +219,9 @@ from widgets import FrozenLeftTable, VisibleCheckBox, btn, fnt
 
 # Temporarily hide every customer entry point for Offline Activation while
 # retaining the implementation for a later release.
+# File-based Offline License activation belongs to the former single-build
+# flow.  Customer packages are now separate immutable Online and Offline
+# editions, so no mode switch or license exchange is shown in either build.
 OFFLINE_ACTIVATION_ENABLED = False
 
 
@@ -652,18 +666,38 @@ class SecondaryPeerDiscoveryWorker(QObject):
 
     finished = pyqtSignal(object, str)
 
-    def __init__(self, hosts: list[str] | None = None) -> None:
+    def __init__(self, hosts: list[str] | None = None, *, port: int = 3000) -> None:
         super().__init__()
         self.hosts = hosts
+        self.port = port
 
     @pyqtSlot()
     def run(self) -> None:
         try:
             hosts = list(self.hosts) if self.hosts is not None else local_ipv4_hosts()
-            candidates = SecondaryPeerClient().discover(hosts)
+            candidates = SecondaryPeerClient(port=self.port).discover(hosts)
             self.finished.emit(candidates, "")
         except Exception as exc:
             self.finished.emit([], str(exc))
+
+
+class SetupConnectivityWorker(QObject):
+    """Run first-page Host checks without blocking the Wizard UI."""
+
+    finished = pyqtSignal(object, str)
+
+    def __init__(self, probe: Callable[[], SetupConnectivityReport] | None = None) -> None:
+        super().__init__()
+        self.probe = probe or check_setup_connectivity
+
+    @pyqtSlot()
+    def run(self) -> None:
+        try:
+            self.finished.emit(self.probe(), "")
+        except Exception as exc:
+            # Keep diagnostics free of arbitrary exception text, which could
+            # contain a proxy URL or another environment-specific secret.
+            self.finished.emit(None, type(exc).__name__)
 
 
 class SecondarySnapshotWorker(QObject):
@@ -1074,11 +1108,14 @@ class SetupWizardV5(QDialog):
         self._secondary_discovery_thread: QThread | None = None
         self._secondary_discovery_worker: SecondaryPeerDiscoveryWorker | None = None
         self._secondary_discovery_manual_host = ""
+        self._secondary_manual_revealed = False
         self._secondary_sync_thread: QThread | None = None
         self._secondary_sync_worker: SecondarySnapshotWorker | None = None
         self._secondary_sync_dialog: QDialog | None = None
         self._secondary_sync_cancelled = False
         self._secondary_auto_review = False
+        self._setup_connectivity_thread: QThread | None = None
+        self._setup_connectivity_worker: SetupConnectivityWorker | None = None
         self.pricing = PricingRepository()
         self.edit_mode = edit_mode
         self.lab_mode = lab_mode
@@ -1456,7 +1493,9 @@ class SetupWizardV5(QDialog):
         self.secondary_join_button.clicked.connect(self._secondary_join_clicked)
         secondary_top.addWidget(self.secondary_join_button)
         secondary_layout.addLayout(secondary_top)
-        manual_primary_row = QHBoxLayout()
+        self.secondary_manual_row = QWidget()
+        manual_primary_row = QHBoxLayout(self.secondary_manual_row)
+        manual_primary_row.setContentsMargins(0, 0, 0, 0)
         manual_primary_label = QLabel(tr("หรือระบุ Primary IP", "Or enter Primary IP"))
         manual_primary_label.setStyleSheet("color:#52677D;font-weight:650;")
         manual_primary_row.addWidget(manual_primary_label)
@@ -1471,6 +1510,14 @@ class SetupWizardV5(QDialog):
             self._secondary_manual_join_clicked
         )
         manual_primary_row.addWidget(self.secondary_manual_ip)
+        manual_primary_row.addWidget(QLabel("Port"))
+        self.secondary_primary_port = QSpinBox()
+        self.secondary_primary_port.setRange(1024, 65535)
+        self.secondary_primary_port.setValue(3000)
+        self.secondary_primary_port.setMaximumWidth(100)
+        self.secondary_primary_port.setAccessibleName("Port ของเครื่อง Primary")
+        self.secondary_primary_port.valueChanged.connect(self._secondary_port_changed)
+        manual_primary_row.addWidget(self.secondary_primary_port)
         self.secondary_manual_button = btn(tr("เชื่อมต่อ", "Connect"), "outline")
         self.secondary_manual_button.setAccessibleName(
             tr("ค้นหาเครื่องหลักตาม Primary IP", "Find Primary at this IP")
@@ -1480,8 +1527,9 @@ class SetupWizardV5(QDialog):
         )
         manual_primary_row.addWidget(self.secondary_manual_button)
         manual_primary_row.addStretch()
-        secondary_layout.addLayout(manual_primary_row)
+        secondary_layout.addWidget(self.secondary_manual_row)
         layout.addWidget(self.secondary_join_card, 0, Qt.AlignmentFlag.AlignHCenter)
+        self.secondary_join_card.setVisible(False)
 
         self.company_card = QFrame()
         self.company_card.setObjectName("company_setup_card")
@@ -1529,6 +1577,31 @@ class SetupWizardV5(QDialog):
         company_name_layout.setContentsMargins(0, 0, 0, 0)
         company_name_layout.setSpacing(6)
         company_name_layout.addWidget(self.company_name_input)
+        self.secondary_existing_button = QPushButton(
+            tr("มีเครื่องหลักอยู่แล้ว", "Already have a Primary")
+        )
+        self.secondary_existing_button.setObjectName("secondary_existing_button")
+        self.secondary_existing_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.secondary_existing_button.setAccessibleName(
+            tr(
+                "เชื่อมต่อ KOMI Report เครื่องหลักที่มีอยู่",
+                "Connect to an existing KOMI Report Primary",
+            )
+        )
+        self.secondary_existing_button.setStyleSheet(
+            "QPushButton{background:transparent;color:#1769AA;border:none;"
+            "padding:2px 0;text-align:left;font-weight:650;}"
+            "QPushButton:hover{color:#075B98;}"
+            "QPushButton:focus{border:1px solid #0879C9;border-radius:4px;}"
+        )
+        self.secondary_existing_button.clicked.connect(
+            self._show_secondary_manual_options
+        )
+        company_name_layout.addWidget(
+            self.secondary_existing_button,
+            0,
+            Qt.AlignmentFlag.AlignLeft,
+        )
         company_name_layout.addWidget(self.company_name_error)
         self.company_name_input.textChanged.connect(self._clear_company_name_error)
         self.first_started_input = QLineEdit()
@@ -1750,6 +1823,31 @@ class SetupWizardV5(QDialog):
         for button in (self.thai_language_button, self.english_language_button):
             button.blockSignals(False)
 
+    def _show_secondary_manual_options(self) -> None:
+        """Reveal the compact opt-in controls for an existing Primary."""
+
+        self._secondary_manual_revealed = True
+        self.secondary_candidates = []
+        self.secondary_join_title.setText(
+            tr("เชื่อมต่อ KOMI Report เครื่องหลัก", "Connect to a KOMI Report Primary")
+        )
+        self.secondary_join_status.setText(
+            tr(
+                "ระบุ Primary IP หรือค้นหาเครื่องหลักในเครือข่าย LAN",
+                "Enter the Primary IP or search for it on the LAN.",
+            )
+        )
+        self.secondary_join_status.setStyleSheet("color:#52677D;")
+        self.secondary_join_button.setText(tr("ค้นหาอัตโนมัติ", "Search automatically"))
+        self.secondary_manual_row.setVisible(True)
+        self.secondary_join_card.setVisible(True)
+        self.secondary_existing_button.setVisible(False)
+        self.secondary_manual_ip.setFocus()
+        QTimer.singleShot(
+            0,
+            lambda: self.company_scroll.ensureWidgetVisible(self.secondary_join_card),
+        )
+
     def _start_secondary_discovery(
         self,
         hosts: list[str] | None = None,
@@ -1765,6 +1863,7 @@ class SetupWizardV5(QDialog):
         self.secondary_join_button.setText(tr("กำลังค้นหา…", "Searching…"))
         self.secondary_manual_button.setEnabled(False)
         self.secondary_manual_ip.setEnabled(False)
+        self.secondary_primary_port.setEnabled(False)
         self.secondary_join_status.setText(
             tr(
                 "กำลังค้นหา KOMI Report เครื่องหลักในเครือข่าย LAN…",
@@ -1773,7 +1872,8 @@ class SetupWizardV5(QDialog):
         )
         thread = QThread(self)
         worker = SecondaryPeerDiscoveryWorker(
-            hosts if hosts is not None else self.secondary_peer_hosts
+            hosts if hosts is not None else self.secondary_peer_hosts,
+            port=self.secondary_primary_port.value(),
         )
         worker.moveToThread(thread)
         thread.started.connect(worker.run)
@@ -1784,6 +1884,10 @@ class SetupWizardV5(QDialog):
         self._secondary_discovery_thread = thread
         self._secondary_discovery_worker = worker
         thread.start()
+
+    def _secondary_port_changed(self, _value: int) -> None:
+        self.secondary_candidates = []
+        self.secondary_join_button.setText(tr("ค้นหาเครื่องหลัก", "Find Primary"))
 
     def _secondary_join_clicked(self) -> None:
         if self.secondary_candidates:
@@ -1809,6 +1913,7 @@ class SetupWizardV5(QDialog):
         self.secondary_join_button.setEnabled(True)
         self.secondary_manual_button.setEnabled(True)
         self.secondary_manual_ip.setEnabled(True)
+        self.secondary_primary_port.setEnabled(True)
         self.secondary_join_button.setText(tr("ค้นหาเครื่องหลัก", "Find Primary"))
         self.secondary_candidates = [
             item for item in (candidates if isinstance(candidates, list) else [])
@@ -1816,19 +1921,34 @@ class SetupWizardV5(QDialog):
         ]
         if self.secondary_candidates:
             self._secondary_discovery_manual_host = ""
-            self.secondary_join_button.setText(tr("ดูและ Sync", "Review & sync"))
+            self.secondary_join_card.setVisible(True)
+            self.secondary_existing_button.setVisible(False)
+            self.secondary_manual_row.setVisible(False)
+            self.secondary_join_title.setText(
+                tr(
+                    "พบ KOMI Report เครื่องหลักในระบบ",
+                    "KOMI Report Primary found",
+                )
+            )
+            self.secondary_join_button.setText(
+                tr("ดึงการตั้งค่า", "Import settings")
+            )
             self.secondary_join_status.setStyleSheet("color:#52677D;")
             self.secondary_join_status.setText(
                 tr(
-                    f"พบเครื่องหลัก {len(self.secondary_candidates)} เครื่อง · เลือกเพื่อ Sync การตั้งค่า",
-                    f"Found {len(self.secondary_candidates)} Primary Desktop(s) · choose one to sync setup",
+                    f"พบเครื่องหลัก {len(self.secondary_candidates)} เครื่อง · "
+                    "ต้องการดึงข้อมูลบริษัท เครื่องพิมพ์ ราคา และรอบบิลหรือไม่",
+                    f"Found {len(self.secondary_candidates)} Primary Desktop(s). "
+                    "Import its company, printer, pricing and billing settings?",
                 )
             )
-            self._show_secondary_candidate_dialog(self.secondary_candidates)
             return
         manual_host = self._secondary_discovery_manual_host
         self._secondary_discovery_manual_host = ""
         if manual_host:
+            self.secondary_join_card.setVisible(True)
+            self.secondary_existing_button.setVisible(False)
+            self.secondary_manual_row.setVisible(True)
             self.secondary_join_status.setText(
                 tr(
                     f"ไม่พบ KOMI Report Primary ที่ {manual_host} · ตรวจ IP และ LAN แล้วลองใหม่",
@@ -1841,6 +1961,13 @@ class SetupWizardV5(QDialog):
             if error:
                 self.secondary_join_status.setToolTip(error)
             return
+        if not self._secondary_manual_revealed:
+            self.secondary_join_card.setVisible(False)
+            self.secondary_existing_button.setVisible(True)
+            return
+        self.secondary_join_card.setVisible(True)
+        self.secondary_existing_button.setVisible(False)
+        self.secondary_manual_row.setVisible(True)
         self.secondary_join_status.setStyleSheet("color:#52677D;")
         self.secondary_join_status.setText(
             tr(
@@ -2059,10 +2186,11 @@ class SetupWizardV5(QDialog):
                 "Setup copied · verifying printers from this Secondary Desktop",
             )
         )
+        self._secondary_auto_review = True
         if self.stack.currentIndex() == 0:
             self._next()
-        self._secondary_auto_review = True
-        QTimer.singleShot(0, self._test_all)
+        else:
+            QTimer.singleShot(0, self._test_all)
 
     def _choose_database_destination(self) -> None:
         start = str(self.selected_database_path)
@@ -3394,6 +3522,7 @@ class SetupWizardV5(QDialog):
                 self._thread,
                 self._secondary_discovery_thread,
                 self._secondary_sync_thread,
+                self._setup_connectivity_thread,
             )
             if thread is not None and thread.isRunning()
         ]
@@ -3677,27 +3806,15 @@ class SetupWizardV5(QDialog):
                 self._show_company_name_error()
                 return
             self.company_name_input.setText(company_name)
-            self.stack.setCurrentIndex(1)
-            self.title.setText("นำเครื่องพิมพ์เข้าระบบ")
-            self.step_label.setText("2 / 4")
-            self.language_switch.setVisible(False)
-            self.note.setText("ขั้นที่ 2: ค้นหา เลือก และตรวจสอบเครื่องพิมพ์ก่อนนำเข้าระบบ")
-            self._update_progress(1)
-            self.back_button.setVisible(True)
-            self.test_button.setVisible(True)
-            self.next_button.setText("ถัดไป →")
-            self._update_device_actions()
-            apply_language(self)
-            self._sync_language_switch()
             if (
-                not self.discovered_devices
-                and self._scan_thread is None
-                and QApplication.platformName() != "offscreen"
+                self.edit_mode
+                or self.lab_mode
+                or is_offline_edition()
+                or QApplication.platformName() == "offscreen"
             ):
-                QTimer.singleShot(
-                    0,
-                    lambda: self._scan_network(self.lab_hosts if self.lab_mode else None),
-                )
+                self._enter_device_step()
+            else:
+                self._start_setup_connectivity()
             return
         if index == 1:
             try:
@@ -3738,6 +3855,144 @@ class SetupWizardV5(QDialog):
             return
         if index == 3:
             self._save()
+
+    def _start_setup_connectivity(self) -> None:
+        """Verify every required Host API before leaving the first page."""
+
+        if self._setup_connectivity_thread is not None:
+            return
+        self.next_button.setEnabled(False)
+        self.next_button.setText(
+            tr("กำลังตรวจสอบการเชื่อมต่อ…", "Checking connectivity…")
+        )
+        thread = QThread(self)
+        worker = SetupConnectivityWorker()
+        worker.moveToThread(thread)
+        thread.started.connect(worker.run)
+        worker.finished.connect(self._setup_connectivity_finished)
+        worker.finished.connect(thread.quit)
+        worker.finished.connect(worker.deleteLater)
+        thread.finished.connect(thread.deleteLater)
+        self._setup_connectivity_thread = thread
+        self._setup_connectivity_worker = worker
+        thread.start()
+
+    def _setup_connectivity_finished(self, report: object, internal_error: str) -> None:
+        self._setup_connectivity_thread = None
+        self._setup_connectivity_worker = None
+        self.next_button.setEnabled(True)
+        self.next_button.setText(tr("ค้นหาเครื่องพิมพ์ →", "Find printers →"))
+
+        if not isinstance(report, SetupConnectivityReport):
+            report = SetupConnectivityReport(
+                started_at=datetime.now().astimezone().isoformat(timespec="seconds"),
+                base_url="https://www.dmskm.com",
+                checks=(
+                    SetupConnectivityCheck(
+                        name="Connectivity check",
+                        target="KOMI Host",
+                        ok=False,
+                        detail=f"Diagnostic could not start ({internal_error or 'unknown error'})",
+                        support_code="diagnostic_error",
+                    ),
+                ),
+            )
+        if report.ok:
+            self._enter_device_step()
+            return
+        self._show_setup_connectivity_problem(report)
+
+    def _show_setup_connectivity_problem(
+        self,
+        report: SetupConnectivityReport,
+    ) -> QDialog:
+        dialog = QDialog(self)
+        dialog.setWindowTitle(
+            tr("ตรวจสอบการเชื่อมต่อไม่ผ่าน", "Connectivity check failed")
+        )
+        dialog.resize(780, 520)
+        dialog.setMinimumSize(680, 460)
+        layout = QVBoxLayout(dialog)
+        layout.setContentsMargins(22, 20, 22, 18)
+        layout.setSpacing(12)
+
+        title = QLabel(
+            tr(
+                "ยังเชื่อมต่อบริการที่จำเป็นได้ไม่ครบ",
+                "Some required services could not be reached",
+            )
+        )
+        title.setFont(fnt(F_XL, True))
+        layout.addWidget(title)
+        explanation = QLabel(
+            tr(
+                "กดคัดลอกรายละเอียดแล้วส่งให้ทีม KOMI Support เพื่อวิเคราะห์ปัญหา "
+                "ข้อมูลนี้ไม่มีชื่อบริษัท IP เครื่องพิมพ์ รหัสผ่าน Counter เอกสาร หรือ Log",
+                "Copy these details and send them to KOMI Support for analysis. "
+                "They contain no company name, printer IP, password, counter, document or log.",
+            )
+        )
+        explanation.setWordWrap(True)
+        explanation.setStyleSheet("color:#52677D;")
+        layout.addWidget(explanation)
+
+        details = QPlainTextEdit()
+        details.setObjectName("setup_connectivity_details")
+        details.setReadOnly(True)
+        details.setPlainText(report.support_text())
+        details.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
+        layout.addWidget(details, 1)
+
+        actions = QHBoxLayout()
+        copy_button = btn(tr("คัดลอกรายละเอียด", "Copy details"), "outline")
+        retry_button = btn(tr("ทดสอบอีกครั้ง", "Test again"), "primary")
+        close_button = btn(tr("ปิด", "Close"), "outline")
+
+        def copy_details() -> None:
+            QApplication.clipboard().setText(details.toPlainText())
+            copy_button.setText(tr("คัดลอกแล้ว", "Copied"))
+
+        def retry() -> None:
+            dialog.accept()
+            QTimer.singleShot(0, self._start_setup_connectivity)
+
+        copy_button.clicked.connect(copy_details)
+        retry_button.clicked.connect(retry)
+        close_button.clicked.connect(dialog.reject)
+        actions.addWidget(copy_button)
+        actions.addStretch()
+        actions.addWidget(close_button)
+        actions.addWidget(retry_button)
+        layout.addLayout(actions)
+        self._prepare_wizard_dialog(dialog)
+        return self._open_wizard_child(dialog)
+
+    def _enter_device_step(self) -> None:
+        """Enter step 2 after the silent Host connectivity gate passes."""
+
+        self.stack.setCurrentIndex(1)
+        self.title.setText("นำเครื่องพิมพ์เข้าระบบ")
+        self.step_label.setText("2 / 4")
+        self.language_switch.setVisible(False)
+        self.note.setText("ขั้นที่ 2: ค้นหา เลือก และตรวจสอบเครื่องพิมพ์ก่อนนำเข้าระบบ")
+        self._update_progress(1)
+        self.back_button.setVisible(True)
+        self.test_button.setVisible(True)
+        self.next_button.setText("ถัดไป →")
+        self._update_device_actions()
+        apply_language(self)
+        self._sync_language_switch()
+        if self._secondary_auto_review:
+            QTimer.singleShot(0, self._test_all)
+        if (
+            not self.discovered_devices
+            and self._scan_thread is None
+            and QApplication.platformName() != "offscreen"
+        ):
+            QTimer.singleShot(
+                0,
+                lambda: self._scan_network(self.lab_hosts if self.lab_mode else None),
+            )
 
     def _enter_price_step(self) -> None:
         self.stack.setCurrentIndex(2)
@@ -3867,23 +4122,44 @@ class SetupWizardV5(QDialog):
         model_text = ", ".join(
             f"{escape(str(row['model']))} × {row['quantity']}" for row in model_rows
         ) or "—"
-        delivery_copy = (
-            f"<b>{tr('Online Registration:', 'Online Registration:')}</b> "
-            f"{tr('ระบบจะลงทะเบียนก่อนเปิดโปรแกรม และส่ง Status กับ Aggregate Total Meter ทุก 6 ชั่วโมงโดยประมาณ', 'the app registers before opening and sends Status and aggregate Total Meter about every 6 hours')}<br>"
+        if is_offline_edition():
+            delivery_copy = (
+                f"<b>{tr('Offline Installation:', 'Offline Installation:')}</b> "
+                f"{tr('ใช้งานได้หลังตั้งค่าเสร็จโดยไม่ติดต่อ Host และไม่ต้องใช้ไฟล์ License', 'works after local setup without contacting the Host or importing a license file')}<br>"
+            )
+        else:
+            delivery_copy = (
+                f"<b>{tr('Online Registration:', 'Online Registration:')}</b> "
+                f"{tr('ระบบจะลงทะเบียนก่อนเปิดโปรแกรม และส่ง Status กับ Aggregate Total Meter ทุก 6 ชั่วโมงโดยประมาณ', 'the app registers before opening and sends Status and aggregate Total Meter about every 6 hours')}<br>"
+            )
+        data_heading = (
+            f"<b>{tr('ข้อมูลอยู่ภายในเครื่อง:', 'Data stays on this computer:')}</b> "
+            if is_offline_edition()
+            else f"<b>{tr('ข้อมูลที่อนุญาตเมื่อใช้ Online:', 'Allowed data in Online mode:')}</b> "
+        )
+        closing_copy = (
+            f"<b>{tr('การทำงาน:', 'Operation:')}</b> "
+            f"{tr('อ่าน SNMP, Web Connection, สร้างรายงาน และเปิด Web Report ใน LAN ได้ตามปกติ', 'SNMP, Web Connection, reports, and LAN Web Report remain available normally')}"
+            if is_offline_edition()
+            else f"<b>{tr('การแจ้งเตือน:', 'Alerts:')}</b> "
+            f"{tr('Host อาจแจ้งว่า Desktop ขาดการเชื่อมต่อหลัง 3 วัน; ข้อความนี้ไม่ใช่หลักฐานว่าเครื่องพิมพ์เสีย', 'the Host may report Desktop connectivity loss after 3 days; this is not proof of a printer fault')}"
         )
         self.review_sections["registration"].setText(
             delivery_copy
-            + f"<b>{tr('ข้อมูลที่อนุญาตเมื่อใช้ Online:', 'Allowed data in Online mode:')}</b> "
-            f"{tr('ชื่อบริษัท:', 'Company:')} {company} · Version {escape(PACKAGE_VERSION)} · "
-            f"{escape(platform_name)} / {escape(architecture)} · "
-            f"{tr('Serial Number + รุ่นเครื่อง + สถานะเลือกใช้ + Aggregate Total Meter', 'serial number + printer model + selected state + aggregate Total Meter')} "
-            f"({model_text})<br>"
-            f"<b>{tr('ไม่ส่ง:', 'Never sent:')}</b> "
-            f"{tr('IP, MAC, hostname, Credential, Counter รายละเอียด, ผู้ใช้, เอกสาร, Print Job, Raw SNMP/XML/Error หรือ Log', 'IP, MAC, hostname, credentials, detailed counters, users, documents, print jobs, raw SNMP/XML/errors, or logs')}<br>"
-            f"<b>{tr('การแจ้งเตือน:', 'Alerts:')}</b> "
-            f"{tr('Host อาจแจ้งว่า Desktop ขาดการเชื่อมต่อหลัง 3 วัน; ข้อความนี้ไม่ใช่หลักฐานว่าเครื่องพิมพ์เสีย', 'the Host may report Desktop connectivity loss after 3 days; this is not proof of a printer fault')}"
+            + data_heading
+            + f"{tr('ชื่อบริษัท:', 'Company:')} {company} · Version {escape(PACKAGE_VERSION)} · "
+            + f"{escape(platform_name)} / {escape(architecture)} · "
+            + f"{tr('Serial Number + รุ่นเครื่อง + สถานะเลือกใช้ + Aggregate Total Meter', 'serial number + printer model + selected state + aggregate Total Meter')} "
+            + f"({model_text})<br>"
+            + f"<b>{tr('ไม่ส่ง:', 'Never sent:')}</b> "
+            + f"{tr('IP, MAC, hostname, Credential, Counter รายละเอียด, ผู้ใช้, เอกสาร, Print Job, Raw SNMP/XML/Error หรือ Log', 'IP, MAC, hostname, credentials, detailed counters, users, documents, print jobs, raw SNMP/XML/errors, or logs')}<br>"
+            + closing_copy
         )
-        self.registration_status_label.setText(tr("รอลงทะเบียน", "Pending"))
+        self.registration_status_label.setText(
+            tr("พร้อมใช้แบบ Offline", "Offline ready")
+            if is_offline_edition()
+            else tr("รอลงทะเบียน", "Pending")
+        )
         apply_language(self)
         self._sync_language_switch()
 
@@ -3926,7 +4202,7 @@ class SetupWizardV5(QDialog):
             registration_mode = (
                 str(existing_registration_state["mode"])
                 if existing_registration_state is not None
-                else "online"
+                else ("offline" if is_offline_edition() else "online")
             )
             if registration_mode not in {"online", "offline"}:
                 raise ValueError("สถานะ Registration เดิมไม่ถูกต้อง")
@@ -4034,7 +4310,24 @@ class SetupWizardV5(QDialog):
                 dialog.open()
             self._show_registration_failure("contract_invalid")
             return
-        self._start_online_registration()
+        if is_offline_edition():
+            # Edition is fixed by the signed/staged installer.  There is no
+            # online call and no request/license exchange in this package.
+            if self.registration_runtime is not None:
+                try:
+                    self.registration_runtime.set_mode("offline")
+                except (OSError, RuntimeError, ValueError):
+                    self._show_wizard_message(
+                        tr("เปิดใช้งาน Offline ไม่สำเร็จ", "Could not enable Offline mode"),
+                        tr("บันทึกการตั้งค่าแล้ว แต่สถานะภายในไม่พร้อม กรุณาเปิดโปรแกรมใหม่", "Setup was saved, but local state is not ready. Restart the app."),
+                    )
+                    return
+            self.registration_status_label.setText(
+                tr("พร้อมใช้แบบ Offline", "Offline ready")
+            )
+            self.accept()
+        else:
+            self._start_online_registration()
 
     def _registration_dialog_ui(self) -> QDialog:
         if self._registration_dialog is not None:
@@ -4078,6 +4371,9 @@ class SetupWizardV5(QDialog):
         return dialog
 
     def _start_online_registration(self) -> None:
+        if is_offline_edition():
+            self._open_offline_registration()
+            return
         if self._registration_in_progress:
             return
         self._registration_in_progress = True
@@ -4099,7 +4395,10 @@ class SetupWizardV5(QDialog):
             self._show_registration_failure("client_not_configured")
             return
         try:
-            runtime.set_mode("online")
+            # Do not acquire the send lock or reset lifecycle while an Online
+            # request is already running; observe its eventual result instead.
+            if runtime.snapshot().get("mode") != "online":
+                runtime.set_mode("online")
             runtime.configuration_changed()
         except Exception:
             self._show_registration_failure("contract_invalid")
@@ -4115,11 +4414,18 @@ class SetupWizardV5(QDialog):
         self._poll_registration_result()
 
     def _poll_registration_result(self) -> None:
+        if not self._registration_in_progress:
+            return
         runtime = self.registration_runtime
         if runtime is None:
             self._show_registration_failure("client_not_configured")
             return
         snapshot = runtime.snapshot()
+        # Wait for the active attempt, not stale status left by a previous one.
+        if snapshot.get("request_in_progress"):
+            if self._registration_deadline and datetime.now().astimezone() >= self._registration_deadline:
+                self.registration_result_copy.setText(tr(*error_message("registration_pending")))
+            return
         status = str(snapshot.get("status") or "")
         if status == "registered":
             self._registration_succeeded()
@@ -4128,7 +4434,9 @@ class SetupWizardV5(QDialog):
             self._show_registration_failure(str(snapshot.get("support_code") or status))
             return
         if self._registration_deadline and datetime.now().astimezone() >= self._registration_deadline:
-            self._show_registration_failure(str(snapshot.get("support_code") or "offline"))
+            # The UI deadline is not a network diagnosis. Keep observing so a
+            # late success updates this same dialog; Cancel remains available.
+            self.registration_result_copy.setText(tr(*error_message("registration_pending")))
 
     def _registration_succeeded(self) -> None:
         if self._registration_poll_timer is not None:
@@ -4158,22 +4466,11 @@ class SetupWizardV5(QDialog):
         self._registration_in_progress = False
         self.next_button.setEnabled(True)
         self.registration_progress.setVisible(False)
-        messages = {
-            "offline": tr("ไม่สามารถเชื่อมต่ออินเทอร์เน็ตหรือ Host ได้", "Internet or Host connection is unavailable."),
-            "client_not_configured": tr("ยังไม่ได้ตั้งค่าการเชื่อมต่อ Host", "The Host connection is not configured."),
-            "validation_error": tr("Host ไม่รับข้อมูลการลงทะเบียนชุดนี้", "The Host rejected this registration data."),
-            "contract_invalid": tr("รูปแบบข้อมูลตอบกลับจาก Host ไม่ถูกต้อง", "The Host response contract is invalid."),
-            "vault_unavailable": tr("ไม่สามารถเก็บข้อมูลลงทะเบียนอย่างปลอดภัยได้", "Secure registration storage is unavailable."),
-        }
-        message = messages.get(code, tr("ลงทะเบียนออนไลน์ไม่สำเร็จ", "Online Registration failed."))
+        safe = safe_support_code(code)
         self.registration_result_copy.setStyleSheet(f"color:{C_RED};font-weight:700;")
         self.registration_result_copy.setText(
-            message
-            + "\n"
-            + tr(
-                "ตรวจสอบอินเทอร์เน็ตแล้วกดลองอีกครั้ง หรือกดยกเลิกเพื่อกลับไปตรวจสอบการตั้งค่า",
-                "Check the internet connection and retry, or cancel to review the setup.",
-            )
+            tr(*error_message(safe)) + "\nSupport Code: " + safe
+            + "\n" + tr("การตั้งค่าถูกเก็บไว้แล้ว กดยกเลิกเพื่อกลับไปตรวจสอบ", "Your setup is saved. Cancel to review it.")
         )
         self.registration_retry_button.setVisible(True)
         self.registration_offline_button.setVisible(OFFLINE_ACTIVATION_ENABLED)
@@ -4201,6 +4498,7 @@ class SetupWizardV5(QDialog):
         if not OFFLINE_ACTIVATION_ENABLED:
             return
         runtime = self._registration_service()
+        runtime.set_mode("offline")
         dialog = QDialog(self)
         dialog.setWindowTitle(tr("ลงทะเบียน Offline", "Offline Registration"))
         dialog.setMinimumWidth(560)
@@ -4485,7 +4783,11 @@ class PagePipelineLog(QWidget):
         self.tabs.addTab(self._status_tab(), "สถานะการอ่าน")
         self.tabs.addTab(self._live_tab(), "ประวัติการอ่าน")
         self.tabs.addTab(self._cache_tab(), "ข้อมูลวันนี้")
-        self.tabs.addTab(self._timeline_tab(), "การทำงานอัตโนมัติ")
+        self.timeline_scroll = self._timeline_tab()
+        self.tabs.addTab(self.timeline_scroll, "การทำงานอัตโนมัติ")
+        from ui.counter_review import CounterReviewPanel
+        self.counter_reviews = CounterReviewPanel(self.repository, self.cache)
+        self.tabs.addTab(self.counter_reviews, tr("ตรวจสอบมิเตอร์", "Meter review"))
         self.tabs.currentChanged.connect(lambda _index: self.refresh())
         root.addWidget(self.tabs, 1)
 
@@ -4527,6 +4829,7 @@ class PagePipelineLog(QWidget):
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
         page = QWidget()
+        self.timeline_page = page
         scroll.setWidget(page)
         layout = QVBoxLayout(page)
         layout.setContentsMargins(14, 12, 14, 14)
@@ -4537,7 +4840,7 @@ class PagePipelineLog(QWidget):
         self.timeline_status.setWordWrap(True)
         self.timeline_status.setStyleSheet("background:#EEF6F9;color:#245268;padding:10px;font-weight:700;")
         top.addWidget(self.timeline_status, 1)
-        refresh_button = btn("Refresh timeline", "outline")
+        refresh_button = btn(tr("รีเฟรช", "Refresh"), "outline")
         refresh_button.clicked.connect(self.refresh_timeline)
         top.addWidget(refresh_button)
         layout.addLayout(top)
@@ -4598,7 +4901,9 @@ class PagePipelineLog(QWidget):
             self.timeline_table.setColumnWidth(column, width)
         layout.addWidget(self.timeline_table)
         self.timeline_table.setVisible(False)
-        layout.addWidget(self._technical_rules_section())
+        self.timeline_technical = self._technical_rules_section()
+        layout.addWidget(self.timeline_technical)
+        self.timeline_technical.hide()
         layout.addStretch()
         return scroll
 
@@ -4754,9 +5059,13 @@ class PagePipelineLog(QWidget):
     def _refresh_if_visible(self) -> None:
         if self.isVisible():
             self.refresh()
+        elif self.timeline_page.isVisible():
+            self.refresh_timeline()
 
     def refresh(self) -> None:
-        if self.tabs.currentIndex() == 0:
+        if self.tabs.currentWidget() is self.counter_reviews:
+            self.counter_reviews.refresh()
+        elif self.tabs.currentIndex() == 0:
             self.refresh_status()
         elif self.tabs.currentIndex() == 1:
             self.refresh_live()
@@ -5036,6 +5345,7 @@ class PagePipelineLog(QWidget):
 
     def _toggle_timeline_detail(self, visible: bool) -> None:
         self.timeline_table.setVisible(visible)
+        self.timeline_technical.setVisible(visible)
 
     @staticmethod
     def _timeline_duration(label: str) -> int:
@@ -6602,10 +6912,20 @@ class PageHistoryV5(PageHistory):
         cache: DailyCacheStore | None = None,
         subject_cache: SubjectDailyCacheStore | None = None,
         parent=None,
+        *,
+        staged: bool = False,
     ) -> None:
+        self._staged = staged
         self.repository = repository or DeviceConfigRepository()
         self.cache = cache or DailyCacheStore()
         self.subject_cache = subject_cache or SubjectDailyCacheStore()
+        if staged:
+            QWidget.__init__(self, parent)
+            layout = QVBoxLayout(self)
+            layout.setContentsMargins(0, 0, 0, 0)
+            self._build_report_center()
+            self._init_background_reports()
+            return
         super().__init__(parent)
         if hasattr(self, "chk_show_values"):
             self.chk_show_values.blockSignals(True)
@@ -6633,47 +6953,190 @@ class PageHistoryV5(PageHistory):
         and Billing Audit still depend on them. The normal user path has one
         period selector and three understandable destinations only.
         """
-        title_item = self.layout().itemAt(0)
-        if title_item is not None and title_item.widget() is not None:
-            title_item.widget().setVisible(False)
-        self.machine_selector_container.setVisible(False)
-        self.report_profile_combo.parentWidget().setVisible(False)
-        self.report_advanced_panel.setVisible(False)
-        self.tabs.setVisible(False)
-        self.report_center = CloudReportsWidget()
+        if not self._staged:
+            title_item = self.layout().itemAt(0)
+            if title_item is not None and title_item.widget() is not None:
+                title_item.widget().setVisible(False)
+            self.machine_selector_container.setVisible(False)
+            self.report_profile_combo.parentWidget().setVisible(False)
+            self.report_advanced_panel.setVisible(False)
+            self.tabs.setVisible(False)
+        self.report_center = CloudReportsWidget(staged=self._staged)
         self.report_center.refresh_requested.connect(self.refresh_visible)
         self.report_center.export_requested.connect(self._export_report_center_excel)
-        self.report_center.period_changed.connect(self._refresh_report_center)
+        self.report_center.period_changed.connect(self._staged_period_changed if self._staged else self._refresh_report_center)
         self.report_center.reading_status_requested.connect(self.reading_status_requested)
-        self.report_center.tabs.currentChanged.connect(
-            lambda _index: QTimer.singleShot(0, self.refresh_visible)
-        )
+        self._report_refresh_busy = False
+        self._report_refresh_pending = False
+        self._report_refresh_timer = QTimer(self)
+        self._report_refresh_timer.setSingleShot(True)
+        self._report_refresh_timer.setInterval(120)
+        self._report_refresh_timer.timeout.connect(self.refresh_visible_cached if self._staged else self.refresh_visible)
+        self.report_center.tabs.currentChanged.connect(self._schedule_report_refresh)
         self.report_center_tabs = self.report_center.tabs
-        self.report_center_scroll = QScrollArea()
-        self.report_center_scroll.setObjectName("cloud_reports_scroll")
-        self.report_center_scroll.setWidget(self.report_center)
-        self.report_center_scroll.setWidgetResizable(True)
-        self.report_center_scroll.setFrameShape(QFrame.Shape.NoFrame)
-        self.report_center_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self.report_center_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        self.layout().addWidget(self.report_center_scroll, 1)
+        # Cloud Reports owns scrolling within each tab so its header, tab bar
+        # and period controls remain visible and hidden pages cannot expand it.
+        self.layout().addWidget(self.report_center, 1)
 
-    @staticmethod
-    def _report_panel() -> tuple[QFrame, QVBoxLayout]:
-        panel = QFrame()
-        panel.setObjectName("report_content_panel")
-        layout = QVBoxLayout(panel)
-        layout.setContentsMargins(16, 14, 16, 14)
-        layout.setSpacing(10)
-        return panel, layout
+    def _init_background_reports(self) -> None:
+        self._snapshot_pool = ThreadPoolExecutor(max_workers=2, thread_name_prefix="komi-report")
+        self._snapshot_jobs = {}
+        self._snapshot_cache = {}
+        self._snapshot_display_periods = {}
+        self._snapshot_display_db = {}
+        self._snapshot_generation = 0
+        self._snapshot_db = str(get_db_path())
+        self._snapshot_closed = False
+        self._usage_warm_scheduled = False
+        self._snapshot_poll = QTimer(self)
+        self._snapshot_poll.setInterval(25)
+        self._snapshot_poll.timeout.connect(self._collect_report_snapshots)
+        self._snapshot_poll.start()
+        app = QApplication.instance()
+        if app is not None:
+            app.aboutToQuit.connect(self.shutdown_report_loading)
 
-    @staticmethod
-    def _report_date_edit(value: QDate) -> QDateEdit:
-        editor = QDateEdit(value)
-        editor.setCalendarPopup(True)
-        editor.setDisplayFormat("dd/MM/yyyy")
-        editor.setMinimumWidth(128)
-        return editor
+    def shutdown_report_loading(self) -> None:
+        if not self._staged or self._snapshot_closed:
+            return
+        self._snapshot_closed = True
+        self._snapshot_poll.stop()
+        for future, cancelled in self._snapshot_jobs.values():
+            cancelled.set()
+            future.cancel()
+        self._snapshot_pool.shutdown(wait=False, cancel_futures=True)
+
+    def invalidate_data(self) -> None:
+        if not self._staged:
+            return
+        self._snapshot_generation += 1
+        self._snapshot_cache.clear()
+        for future, cancelled in self._snapshot_jobs.values():
+            cancelled.set()
+            future.cancel()
+        path = str(get_db_path())
+        if path != self._snapshot_db:
+            self.cache = DailyCacheStore()
+            self.subject_cache = SubjectDailyCacheStore()
+        self._snapshot_db = path
+
+    def prepare_overview(self) -> None:
+        if self._staged:
+            self._request_snapshot(0, background=True)
+
+    def prewarm_tab(self, index: int) -> None:
+        if not self._staged or self._snapshot_closed:
+            return
+        # Do not let speculative construction compete with a selected tab.
+        if self._snapshot_jobs and any(key[1] == self.report_center.tabs.currentIndex() for key in self._snapshot_jobs):
+            QTimer.singleShot(350, lambda: self.prewarm_tab(index) if not self._snapshot_closed else None)
+            return
+        self.report_center.prewarm_tab(index)
+        self._request_snapshot(index, background=True)
+
+    def on_reports_opened(self) -> None:
+        if not self._staged:
+            return
+        self.refresh_visible_cached()
+        if not self._usage_warm_scheduled:
+            self._usage_warm_scheduled = True
+            QTimer.singleShot(500, lambda: self.prewarm_tab(3) if not self._snapshot_closed else None)
+
+    def _staged_period_changed(self, _selection) -> None:
+        self.invalidate_data()
+        self.refresh_visible_cached()
+
+    def refresh_visible_cached(self) -> None:
+        if not self._staged:
+            self.refresh_visible()
+            return
+        self._request_snapshot(self.report_center.tabs.currentIndex())
+
+    def _request_snapshot(self, index: int, *, background: bool = False) -> None:
+        if self._snapshot_closed:
+            return
+        if str(get_db_path()) != self._snapshot_db:
+            self.invalidate_data()
+        period = self.report_center.current_period()
+        cache_key = (index, period)
+        cached = self._snapshot_cache.get(cache_key)
+        if cached is not None:
+            if not background or index == self.report_center.tabs.currentIndex():
+                self._apply_report_snapshot(index, cached)
+            return
+        key = (self._snapshot_generation, index, period)
+        if not background:
+            # Cancel speculative jobs at their next read boundary, prioritizing clicks.
+            for other, (future, cancelled) in self._snapshot_jobs.items():
+                if other != key:
+                    cancelled.set()
+                    future.cancel()
+        if index == self.report_center.tabs.currentIndex():
+            self.report_center.set_loading(True)
+            displayed = self._snapshot_display_periods.get(index)
+            if displayed is not None and self._snapshot_display_db.get(index) != self._snapshot_db:
+                self.report_center.error_label.setText("กำลังโหลดฐานข้อมูลใหม่ · ตัวเลขเดิมยังเป็นข้อมูลจากฐานก่อนหน้า")
+                self.report_center.error_label.show()
+            elif displayed is not None and displayed != period:
+                self.report_center.error_label.setText(
+                    f"กำลังโหลดช่วงใหม่ · ตัวเลขเดิมยังเป็นช่วง {displayed[0]} ถึง {displayed[1]}"
+                )
+                self.report_center.error_label.show()
+        existing = self._snapshot_jobs.get(key)
+        if existing is not None and not existing[1].is_set():
+            return
+        # A cancelled job may still finish; keep its identity separate from replacements.
+        if existing is not None:
+            self._snapshot_jobs.pop(key)
+        cancelled = Event()
+        future = self._snapshot_pool.submit(
+            load_report_snapshot, index, period, cache=self.cache, subject_cache=self.subject_cache,
+            repository=self.repository, cancelled=cancelled,
+        )
+        self._snapshot_jobs[key] = (future, cancelled)
+
+    def _collect_report_snapshots(self) -> None:
+        if self._snapshot_closed:
+            return
+        if str(get_db_path()) != self._snapshot_db:
+            self.invalidate_data()
+            self.refresh_visible_cached()
+            return
+        for key, (future, cancelled) in tuple(self._snapshot_jobs.items()):
+            if not future.done():
+                continue
+            self._snapshot_jobs.pop(key, None)
+            if cancelled.is_set() or key[0] != self._snapshot_generation:
+                continue
+            index, requested_period = key[1:]
+            selected = index == self.report_center.tabs.currentIndex()
+            try:
+                snapshot = future.result()
+            except CancelledError:
+                continue
+            except Exception as error:
+                if selected:
+                    self.report_center.set_loading(False)
+                    self.report_center.show_error(f"โหลดรายงานไม่สำเร็จ · {type(error).__name__}: {error} · ลองใหม่ได้")
+                continue
+            self._snapshot_cache[(index, requested_period)] = snapshot
+            self._snapshot_cache[(index, snapshot.data["period"])] = snapshot
+            if selected:
+                self._apply_report_snapshot(index, snapshot)
+
+    def _apply_report_snapshot(self, index: int, snapshot) -> None:
+        self._report_records = snapshot.data["monthly_records"]
+        self._snapshot_display_periods[index] = snapshot.data["period"]
+        self._snapshot_display_db[index] = self._snapshot_db
+        self.report_center.set_periods(snapshot.periods, snapshot.data["period"])
+        self.report_center.set_data(**snapshot.data, tab_index=index)
+        self.report_center.set_loading(False)
+        apply_language(self.report_center)
+
+    def _schedule_report_refresh(self, _index: int | None = None) -> None:
+        # Coalesce rapid Legacy -> Main changes before touching SQLite/report aggregation.
+        self._report_refresh_timer.start()
+
 
     @staticmethod
     def _setup_plain_table(table: QTableWidget, headers: tuple[str, ...]) -> None:
@@ -6692,228 +7155,6 @@ class PageHistoryV5(PageHistory):
                 else QHeaderView.ResizeMode.ResizeToContents,
             )
 
-    def _build_usage_report_page(self) -> QWidget:
-        page = QWidget()
-        layout = QVBoxLayout(page)
-        layout.setContentsMargins(18, 14, 18, 14)
-        layout.setSpacing(12)
-
-        filter_panel, filters = self._report_panel()
-        filter_panel.setObjectName("report_filter_panel")
-        row = QHBoxLayout()
-        row.addWidget(QLabel("Report"))
-        self.usage_report_type = QComboBox()
-        self.usage_report_type.addItem("Summary", "summary")
-        self.usage_report_type.addItem("Per device", "device")
-        self.usage_report_type.addItem("Per user", "user")
-        self.usage_report_type.setMinimumWidth(180)
-        row.addWidget(self.usage_report_type)
-        row.addSpacing(18)
-        row.addWidget(QLabel("Report period"))
-        period_start, _period_end = history_period_range(
-            date.today(), get_billing_day(), "monthly"
-        )
-        self.usage_from_date = self._report_date_edit(
-            QDate(period_start.year, period_start.month, period_start.day)
-        )
-        self.usage_to_date = self._report_date_edit(QDate.currentDate())
-        row.addWidget(self.usage_from_date)
-        row.addWidget(QLabel("–"))
-        row.addWidget(self.usage_to_date)
-        row.addSpacing(12)
-        self.usage_search_button = btn("Search", "primary")
-        self.usage_search_button.clicked.connect(self._refresh_usage_report)
-        row.addWidget(self.usage_search_button)
-        self.usage_advanced_button = btn("Advanced", "outline")
-        self.usage_advanced_button.setCheckable(True)
-        self.usage_advanced_button.toggled.connect(
-            lambda visible: self.usage_advanced_panel.setVisible(visible)
-        )
-        row.addWidget(self.usage_advanced_button)
-        row.addStretch()
-        filters.addLayout(row)
-
-        self.usage_advanced_panel = QWidget()
-        advanced = QHBoxLayout(self.usage_advanced_panel)
-        advanced.setContentsMargins(0, 4, 0, 0)
-        advanced.addWidget(QLabel("Device"))
-        self.usage_device_filter = QComboBox()
-        self.usage_device_filter.addItem("All devices", None)
-        advanced.addWidget(self.usage_device_filter)
-        self.usage_include_scan = QCheckBox("Include Scan")
-        self.usage_include_scan.setChecked(True)
-        advanced.addWidget(self.usage_include_scan)
-        advanced.addWidget(QLabel("View"))
-        self.usage_display_mode = QComboBox()
-        self.usage_display_mode.addItem("Table", "table")
-        self.usage_display_mode.addItem("Trend", "trend")
-        self.usage_display_mode.currentIndexChanged.connect(self._set_usage_display_mode)
-        advanced.addWidget(self.usage_display_mode)
-        advanced.addStretch()
-        self.usage_advanced_panel.setVisible(False)
-        filters.addWidget(self.usage_advanced_panel)
-        layout.addWidget(filter_panel)
-
-        self.usage_metric_tabs = QTabWidget()
-        self.usage_metric_tabs.setMaximumHeight(44)
-        for title in ("Total", "Color", "B/W", "A4", "A3", "Scan", "Cost"):
-            self.usage_metric_tabs.addTab(QWidget(), title)
-        self.usage_metric_tabs.currentChanged.connect(self._refresh_usage_report)
-        layout.addWidget(self.usage_metric_tabs)
-
-        summary_panel, summary_layout = self._report_panel()
-        summary_layout.addWidget(QLabel("Summary", font=fnt(F_LG, True)))
-        self.usage_summary_table = QTableWidget()
-        self._setup_plain_table(
-            self.usage_summary_table,
-            ("Counter type", "Pages", "Cost (฿)"),
-        )
-        self.usage_summary_table.setMaximumHeight(285)
-        summary_layout.addWidget(self.usage_summary_table)
-        layout.addWidget(summary_panel)
-
-        details_panel, details_layout = self._report_panel()
-        self.usage_details_title = QLabel("Breakdown by device")
-        self.usage_details_title.setFont(fnt(F_LG, True))
-        details_layout.addWidget(self.usage_details_title)
-        self.usage_details_table = QTableWidget()
-        self._setup_plain_table(
-            self.usage_details_table,
-            ("Device", "Location", "Pages", "Cost (฿)"),
-        )
-        details_layout.addWidget(self.usage_details_table, 1)
-        self.usage_trend_chart = QChartView()
-        self.usage_trend_chart.setMinimumHeight(260)
-        self.usage_trend_chart.setVisible(False)
-        details_layout.addWidget(self.usage_trend_chart, 1)
-        layout.addWidget(details_panel, 1)
-        return page
-
-    def _build_management_report_page(self) -> QWidget:
-        page = QWidget()
-        layout = QVBoxLayout(page)
-        layout.setContentsMargins(18, 14, 18, 14)
-        layout.setSpacing(12)
-
-        filter_panel, filters = self._report_panel()
-        filter_panel.setObjectName("report_filter_panel")
-        row = QHBoxLayout()
-        row.addWidget(QLabel("Year"))
-        self.management_year = QComboBox()
-        self.management_year.setMinimumWidth(120)
-        row.addWidget(self.management_year)
-        row.addSpacing(18)
-        self.management_period_group = QButtonGroup(self)
-        self.management_period_buttons: dict[str, QPushButton] = {}
-        for key, label in (("year", "Year"), ("q1", "Q1"), ("q2", "Q2"), ("q3", "Q3"), ("q4", "Q4")):
-            button = btn(label, "outline")
-            button.setCheckable(True)
-            button.clicked.connect(lambda checked, value=key: self._set_management_period(value))
-            self.management_period_group.addButton(button)
-            self.management_period_buttons[key] = button
-            row.addWidget(button)
-        self.management_period_buttons["year"].setChecked(True)
-        row.addStretch()
-        self.management_search_button = btn("Search", "primary")
-        self.management_search_button.clicked.connect(self._refresh_management_report)
-        row.addWidget(self.management_search_button)
-        filters.addLayout(row)
-        layout.addWidget(filter_panel)
-
-        overview_panel, overview = self._report_panel()
-        self.management_title = QLabel("Company overview")
-        self.management_title.setFont(fnt(F_XL, True))
-        overview.addWidget(self.management_title)
-        charts = QHBoxLayout()
-        self.management_color_chart = QChartView()
-        self.management_size_chart = QChartView()
-        self.management_color_chart.setMinimumHeight(240)
-        self.management_size_chart.setMinimumHeight(240)
-        charts.addWidget(self.management_color_chart, 1)
-        charts.addWidget(self.management_size_chart, 1)
-        overview.addLayout(charts)
-        layout.addWidget(overview_panel)
-
-        printed_panel, printed = self._report_panel()
-        printed.addWidget(QLabel("Printed pages", font=fnt(F_LG, True)))
-        self.management_printed_table = QTableWidget()
-        self._setup_plain_table(
-            self.management_printed_table,
-            ("", "Pages (A4)", "Price (A4)", "Pages (A3)", "Price (A3)", "Total pages", "Total price"),
-        )
-        self.management_printed_table.setMaximumHeight(190)
-        printed.addWidget(self.management_printed_table)
-        layout.addWidget(printed_panel)
-
-        rankings = QHBoxLayout()
-        self.management_top_users = self._management_ranking_panel("Top five users", "User")
-        self.management_top_devices = self._management_ranking_panel("Most used devices", "Device")
-        rankings.addWidget(self.management_top_users, 1)
-        rankings.addWidget(self.management_top_devices, 1)
-        layout.addLayout(rankings, 1)
-        return page
-
-    def _management_ranking_panel(self, title: str, first_column: str) -> QFrame:
-        panel, layout = self._report_panel()
-        layout.addWidget(QLabel(title, font=fnt(F_LG, True)))
-        table = QTableWidget()
-        self._setup_plain_table(table, (first_column, "Pages", "Cost (฿)"))
-        layout.addWidget(table)
-        if first_column == "User":
-            self.management_top_users_table = table
-        else:
-            self.management_top_devices_table = table
-        return panel
-
-    def _build_meter_report_page(self) -> QWidget:
-        page = QWidget()
-        layout = QVBoxLayout(page)
-        layout.setContentsMargins(18, 14, 18, 14)
-        layout.setSpacing(12)
-
-        filter_panel, filters = self._report_panel()
-        filter_panel.setObjectName("report_filter_panel")
-        row = QHBoxLayout()
-        row.addWidget(QLabel("Readout"))
-        self.meter_readout_type = QComboBox()
-        self.meter_readout_type.addItem("First and last readout", "first_last")
-        self.meter_readout_type.addItem("Daily readout", "daily")
-        row.addWidget(self.meter_readout_type)
-        row.addSpacing(18)
-        row.addWidget(QLabel("Device"))
-        self.meter_device_filter = QComboBox()
-        self.meter_device_filter.addItem("All devices", None)
-        row.addWidget(self.meter_device_filter)
-        row.addSpacing(18)
-        row.addWidget(QLabel("Period"))
-        self.meter_period_filter = QComboBox()
-        self.meter_period_filter.addItem("Today", "today")
-        self.meter_period_filter.addItem("Last 7 days", "week")
-        self.meter_period_filter.addItem("Last 30 days", "month")
-        row.addWidget(self.meter_period_filter)
-        self.meter_search_button = btn("Search", "primary")
-        self.meter_search_button.clicked.connect(self._refresh_meter_report)
-        row.addWidget(self.meter_search_button)
-        row.addStretch()
-        filters.addLayout(row)
-        layout.addWidget(filter_panel)
-
-        meter_panel, meter = self._report_panel()
-        meter.addWidget(QLabel("Device counters", font=fnt(F_LG, True)))
-        self.meter_table = QTableWidget()
-        meter.addWidget(self.meter_table, 1)
-        layout.addWidget(meter_panel, 2)
-
-        history_panel, history = self._report_panel()
-        history.addWidget(QLabel("Readout history", font=fnt(F_LG, True)))
-        self.meter_history_table = QTableWidget()
-        self._setup_plain_table(
-            self.meter_history_table,
-            ("Device", "Date", "First readout", "Last readout", "Total meter"),
-        )
-        history.addWidget(self.meter_history_table)
-        layout.addWidget(history_panel, 1)
-        return page
 
     def _refresh_report_center(self, selection: object | None = None) -> None:
         """Refresh the visible Cloud reports from one shared date range."""
@@ -6934,7 +7175,10 @@ class PageHistoryV5(PageHistory):
             selected = periods[0] if periods else None
         self.report_center.set_periods(periods, selected)
         active_tab = self.report_center.tabs.currentIndex()
-        needs_daily_usage = active_tab in {0, 3}
+        is_custom_period = selected is not None and selected not in periods
+        # Printers can use posted monthly records for a billing period, but a
+        # custom range must aggregate only the daily records inside its dates.
+        needs_daily_usage = active_tab in {0, 3} or (active_tab == 2 and is_custom_period)
         needs_subjects = active_tab in {0, 1}
         needs_raw = active_tab in {1, 4}
         needs_legacy = active_tab in {3, 4}
@@ -6960,11 +7204,14 @@ class PageHistoryV5(PageHistory):
             # values. A custom range is built from daily usage so the two
             # date fields change the actual report instead of only the label.
             selected_records = monthly_records or daily_records
+            subject_range = (
+                {"period_start": start, "period_end": end} if is_custom_period else {}
+            )
             subjects = (
                 tuple(
                     record
                     for record in load_subject_history(
-                        report_slots(), cache=self.subject_cache
+                        report_slots(), cache=self.subject_cache, **subject_range
                     )
                     if record.period_start == start and record.period_end == end
                 )
@@ -7010,7 +7257,15 @@ class PageHistoryV5(PageHistory):
         apply_language(self.report_center)
 
     def refresh_visible(self) -> None:
-        """Load only the visible Cloud report, leaving legacy audit UI deferred."""
+        if self._staged:
+            self.invalidate_data()
+            self.refresh_visible_cached()
+            return
+        """Load the visible report once; coalesce tab changes while a refresh is active."""
+        if self._report_refresh_busy:
+            self._report_refresh_pending = True
+            return
+        self._report_refresh_busy = True
         try:
             self.reports_error.setVisible(False)
             self.report_center.updated_label.setText("กำลังโหลดข้อมูลแท็บนี้…")
@@ -7026,11 +7281,29 @@ class PageHistoryV5(PageHistory):
                 f"· {type(error).__name__}: {error}"
             )
             self.reports_error.setVisible(True)
+        finally:
+            self._report_refresh_busy = False
+            if self._report_refresh_pending:
+                self._report_refresh_pending = False
+                self._report_refresh_timer.start()
 
     def _export_report_center_excel(self) -> None:
         """Choose a date range, then export three user-facing report views."""
         cloud = self.report_center
-        available_records = tuple(cloud._usage_daily_records)
+        # Hidden tabs intentionally skip daily data during refresh. Export
+        # needs its own read so it works from any tab without making every
+        # navigation load the complete daily history.
+        try:
+            available_records = tuple(
+                load_usage_history(report_slots(), granularity="daily", cache=self.cache)
+            )
+        except Exception as error:
+            QMessageBox.critical(
+                self,
+                "Export ไม่สำเร็จ",
+                f"ไม่สามารถโหลดข้อมูลรายงานได้:\n{error}",
+            )
+            return
         available_start = min(
             (record.period_start for record in available_records),
             default=None,
@@ -9021,6 +9294,9 @@ class PageHistoryV5(PageHistory):
             self.report_overview_warning.setVisible(False)
 
     def refresh(self) -> None:
+        if self._staged:
+            self.refresh_visible()
+            return
         try:
             self.reports_error.setVisible(False)
             super().refresh()
@@ -10141,18 +10417,19 @@ class WeekdaySelector(QWidget):
 
     def __init__(self, weekdays: frozenset[int], parent=None) -> None:
         super().__init__(parent)
-        layout = QHBoxLayout(self)
+        layout = QGridLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(2)
+        layout.setHorizontalSpacing(3)
+        layout.setVerticalSpacing(2)
         self.boxes: list[QCheckBox] = []
         for index, labels in enumerate(self.LABELS):
             box = QCheckBox(tr(*labels))
             box.setChecked(index in weekdays)
             box.setToolTip(self.ACCESSIBLE_LABELS[index])
             box.setAccessibleName(self.ACCESSIBLE_LABELS[index])
-            box.setStyleSheet("QCheckBox{font-size:10px;spacing:1px;padding:0 1px;}")
+            box.setStyleSheet("QCheckBox{font-size:11px;spacing:2px;padding:0;}")
             box.toggled.connect(self.changed)
-            layout.addWidget(box)
+            layout.addWidget(box, index // 4, index % 4)
             self.boxes.append(box)
 
     def values(self) -> frozenset[int]:
@@ -10528,19 +10805,31 @@ class PageFleetSettings(QWidget):
         self.schedule_windows_table.verticalHeader().setVisible(False)
         self.schedule_windows_table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
         self.schedule_windows_table.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
-        self.schedule_windows_table.setMinimumHeight(250)
-        self.schedule_windows_table.setMaximumHeight(390)
+        self.schedule_windows_table.setMinimumHeight(230)
+        self.schedule_windows_table.setMaximumHeight(330)
+        self.schedule_windows_table.setAlternatingRowColors(True)
+        self.schedule_windows_table.setShowGrid(False)
+        self.schedule_windows_table.setFrameShape(QFrame.Shape.NoFrame)
         header = self.schedule_windows_table.horizontalHeader()
+        header.setMinimumHeight(42)
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
         for column in (3, 4):
             header.setSectionResizeMode(column, QHeaderView.ResizeMode.Fixed)
         header.setSectionResizeMode(5, QHeaderView.ResizeMode.Fixed)
-        self.schedule_windows_table.setColumnWidth(0, 118)
-        self.schedule_windows_table.setColumnWidth(3, 92)
-        self.schedule_windows_table.setColumnWidth(4, 92)
-        self.schedule_windows_table.setColumnWidth(5, 50)
+        self.schedule_windows_table.setColumnWidth(0, 126)
+        self.schedule_windows_table.setColumnWidth(3, 72)
+        self.schedule_windows_table.setColumnWidth(4, 72)
+        self.schedule_windows_table.setColumnWidth(5, 40)
+        self.schedule_windows_table.setStyleSheet(
+            "QTableWidget{background:#FFFFFF;alternate-background-color:#F8FAFC;"
+            "border:1px solid #D6E0EA;border-radius:7px;}"
+            "QHeaderView::section{background:#EAF2F8;color:#123262;border:none;"
+            "border-right:1px solid #D6E0EA;padding:5px 4px;font-weight:700;}"
+            "QTableWidget QLineEdit,QTableWidget QSpinBox,QTableWidget QTimeEdit{"
+            "font-size:12px;padding:2px 4px;min-height:28px;max-height:30px;}"
+        )
         schedule_editor_layout.addWidget(self.schedule_windows_table)
         self.add_schedule_window_button = btn(
             tr("เพิ่มช่วงเวลา", "Add time window"),
@@ -10596,131 +10885,13 @@ class PageFleetSettings(QWidget):
             self.web_toggle,
         ) = self._expandable_task(
             "web",
-            "รายงานจากเครื่องอื่นใน LAN",
+            "การตั้งค่าเครือข่าย",
             "กำลังตรวจสอบสถานะ…",
             closed_action="จัดการ",
         )
         program_body = self.web_task_editor.layout()
-        self.web_service_enabled = QCheckBox("อนุญาตให้เครื่องอื่นใน LAN เปิดดูรายงาน")
-        self.web_service_enabled.setAccessibleName("เปิดรายงานผ่าน Web สำหรับเครื่องอื่นใน LAN")
-        program_body.addWidget(self.web_service_enabled)
-        self.web_report_passwordless = QCheckBox(
-            "อนุญาตให้เปิด Web Report แบบอ่านอย่างเดียวโดยไม่ต้องใช้รหัส"
-        )
-        self.web_report_passwordless.setAccessibleName(
-            "เปิดรายงานแบบอ่านอย่างเดียวใน LAN โดยไม่ต้องใช้รหัส"
-        )
-        self.web_report_passwordless.setToolTip(
-            "ใช้ได้เฉพาะหน้ารายงานและ API แบบอ่านอย่างเดียว "
-            "ข้อมูลระบบ เครื่องมือเจ้าหน้าที่ และการแก้ไขยังต้องเข้าสู่ระบบ"
-        )
-        program_body.addWidget(self.web_report_passwordless)
-        self.web_report_passwordless_warning = QLabel(
-            tr(
-                "คำเตือน: เมื่อเปิดตัวเลือกนี้ ทุกคนในเครือข่าย LAN เดียวกันจะดูรายงาน "
-                "รหัสเครื่องพิมพ์ และชื่อผู้ใช้ในรายงานได้โดยไม่ต้องใส่รหัส · "
-                "ใช้เฉพาะเครือข่ายภายในที่เชื่อถือได้",
-                "Warning: When enabled, anyone on the same LAN can view reports, "
-                "printer identifiers, and report user names without a password. "
-                "Use only on a trusted internal network.",
-            )
-        )
-        self.web_report_passwordless_warning.setWordWrap(True)
-        self.web_report_passwordless_warning.setAccessibleName(
-            tr("คำเตือนการเปิดรายงานโดยไม่ใช้รหัส", "Passwordless report warning")
-        )
-        self.web_report_passwordless_warning.setStyleSheet(
-            "color:#8A4B08;background:#FFF7E8;border:1px solid #F2C879;"
-            "border-radius:7px;padding:8px 10px;"
-        )
-        self.web_report_passwordless_warning.setVisible(
-            self.web_report_passwordless.isChecked()
-        )
-        program_body.addWidget(self.web_report_passwordless_warning)
-        self.web_service_status = QLabel()
-        self.web_service_status.setWordWrap(True)
-        program_body.addWidget(self.web_service_status)
-        self.web_service_url = QLabel()
-        self.web_service_url.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-        self.web_service_url.setWordWrap(True)
-        self.web_service_url.setAccessibleName("ที่อยู่ Web Report สำหรับเครื่องอื่นใน LAN")
-        self.web_service_url.setStyleSheet(
-            "color:#245268;background:#EEF6F9;border:1px solid #C9DFE8;"
-            "border-radius:7px;padding:9px 11px;font-weight:700;"
-        )
-        program_body.addWidget(self.web_service_url)
-        peer_sync = QFrame()
-        peer_sync.setObjectName("peer_sync_authorization")
-        peer_sync.setStyleSheet(
-            "QFrame#peer_sync_authorization{background:#F0F8FF;border:1px solid #B9D7EE;"
-            "border-radius:7px;} QLabel{background:transparent;border:none;}"
-        )
-        peer_sync_layout = QHBoxLayout(peer_sync)
-        peer_sync_layout.setContentsMargins(11, 9, 11, 9)
-        peer_sync_copy = QVBoxLayout()
-        peer_sync_title = QLabel("อนุญาตเครื่อง Secondary ดึงการตั้งค่า")
-        peer_sync_title.setStyleSheet("color:#334155;font-weight:700;")
-        self.peer_sync_status = QLabel()
-        self.peer_sync_status.setWordWrap(True)
-        self.peer_sync_status.setAccessibleName("สถานะการอนุญาต Secondary Sync")
-        peer_sync_copy.addWidget(peer_sync_title)
-        peer_sync_copy.addWidget(self.peer_sync_status)
-        peer_sync_layout.addLayout(peer_sync_copy, 1)
-        self.peer_sync_authorize_button = btn("อนุญาต Secondary Sync 5 นาที", "outline")
-        self.peer_sync_authorize_button.setAccessibleName(
-            "เปิดสิทธิ์ชั่วคราวให้เครื่อง Secondary ดึงการตั้งค่า"
-        )
-        self.peer_sync_authorize_button.clicked.connect(self._authorize_peer_sync)
-        peer_sync_layout.addWidget(self.peer_sync_authorize_button)
-        program_body.addWidget(peer_sync)
-        web_security = QFrame()
-        web_security.setObjectName("web_security")
-        web_security.setStyleSheet(
-            "QFrame#web_security{background:#F8FAFC;border:1px solid #D6E0EA;border-radius:7px;}"
-            "QLabel{background:transparent;border:none;}"
-        )
-        web_security_layout = QHBoxLayout(web_security)
-        web_security_layout.setContentsMargins(11, 9, 11, 9)
-        web_security_copy = QVBoxLayout()
-        web_security_title = QLabel("รหัสเข้า Web Report")
-        web_security_title.setStyleSheet("color:#334155;font-weight:700;")
-        self.web_access_status = QLabel()
-        self.web_access_status.setWordWrap(True)
-        self.web_access_status.setAccessibleName("สถานะรหัสเข้า Web Report")
-        web_security_copy.addWidget(web_security_title)
-        web_security_copy.addWidget(self.web_access_status)
-        web_security_layout.addLayout(web_security_copy, 1)
-        immediate = QLabel("มีผลทันที")
-        immediate.setStyleSheet(
-            "color:#8A4B08;background:#FFF7E8;border:1px solid #F2C879;"
-            "border-radius:10px;padding:4px 8px;font-weight:700;"
-        )
-        immediate.setAccessibleName("การเปลี่ยนรหัสมีผลทันที")
-        web_security_layout.addWidget(immediate)
-        self.change_web_access_button = btn("เปลี่ยนรหัส Web", "outline")
-        self.change_web_access_button.setAccessibleName("ตั้งหรือเปลี่ยนรหัสเข้า Web Report")
-        self.change_web_access_button.clicked.connect(self._change_web_access_code)
-        web_security_layout.addWidget(self.change_web_access_button)
-        program_body.addWidget(web_security)
-        web_actions = QHBoxLayout()
-        self.open_web_button = btn("เปิดหน้า Web", "outline")
-        self.open_web_button.clicked.connect(self._open_web)
-        web_actions.addWidget(self.open_web_button)
-        self.copy_web_button = btn("คัดลอกที่อยู่ LAN", "outline")
-        self.copy_web_button.clicked.connect(self._copy_lan_url)
-        web_actions.addWidget(self.copy_web_button)
-        web_actions.addStretch()
-        program_body.addLayout(web_actions)
-        (
-            self.web_save_status,
-            web_save_actions,
-            self.web_save_button,
-        ) = self._editor_actions(
-            "บันทึกและตรวจสอบ LAN",
-            self._save_web,
-            lambda: self._cancel_section("web"),
-        )
-        program_body.addLayout(web_save_actions)
+        from ui.network_settings import build_network_settings
+        build_network_settings(self, program_body)
         # LAN/Web Report is an operational program setting.  It lives on the
         # Advanced Settings page instead of competing with everyday pricing
         # and schedule tasks on the main Settings page.
@@ -10832,10 +11003,8 @@ class PageFleetSettings(QWidget):
             control.valueChanged.connect(lambda _value, section="billing": self._mark_dirty(section))
         self.autostart.toggled.connect(lambda _checked: self._mark_dirty("autostart"))
         self.web_service_enabled.toggled.connect(lambda _checked: self._mark_dirty("web"))
-        self.web_report_passwordless.toggled.connect(
-            self.web_report_passwordless_warning.setVisible
-        )
-        self.web_report_passwordless.toggled.connect(
+        self.web_port.valueChanged.connect(lambda _value: self._mark_dirty("web"))
+        self.web_report_require_password.toggled.connect(
             lambda _checked: self._mark_dirty("web")
         )
         self._web_status_timer = QTimer(self)
@@ -10974,6 +11143,9 @@ class PageFleetSettings(QWidget):
             self._set_active_editor(None)
 
     def _set_active_editor(self, key: str | None, *, force: bool = False) -> bool:
+        if key is None and getattr(self, "_section_editor", None) is not None:
+            # Tabbed settings retain their form after Save/Cancel.
+            key = self._section_editor
         current = self._active_editor
         if current == key:
             return True
@@ -11035,43 +11207,6 @@ class PageFleetSettings(QWidget):
             else tr("แสดงข้อมูลสำหรับเจ้าหน้าที่", "Show staff information")
         )
 
-    @staticmethod
-    def _group_page() -> tuple[QScrollArea, QVBoxLayout]:
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QFrame.Shape.NoFrame)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        page = QWidget()
-        page.setObjectName("settings_group_page")
-        page.setStyleSheet(
-            "QWidget#settings_group_page{background:transparent;border:none;}"
-        )
-        body = QVBoxLayout(page)
-        body.setContentsMargins(16, 16, 16, 16)
-        body.setSpacing(12)
-        scroll.setWidget(page)
-        return scroll, body
-
-    @staticmethod
-    def _section(title: str, description: str) -> tuple[QFrame, QVBoxLayout]:
-        card = QFrame()
-        card.setObjectName("settings_section")
-        card.setStyleSheet(
-            "QFrame#settings_section{background:#FFFFFF;border:1px solid #D6E0EA;"
-            "border-radius:10px;} QLabel{background:transparent;border:none;}"
-        )
-        body = QVBoxLayout(card)
-        body.setContentsMargins(17, 15, 17, 17)
-        body.setSpacing(10)
-        heading = QLabel(title)
-        heading.setFont(fnt(F_MD, True))
-        heading.setStyleSheet("color:#102A43;background:transparent;border:none;")
-        body.addWidget(heading)
-        detail = QLabel(description)
-        detail.setWordWrap(True)
-        detail.setStyleSheet("color:#64748B;background:transparent;border:none;")
-        body.addWidget(detail)
-        return card, body
 
     @staticmethod
     def _field(label: str, control: QWidget, hint: str = "") -> QWidget:
@@ -11135,7 +11270,8 @@ class PageFleetSettings(QWidget):
             self.waste,
             self.autostart,
             self.web_service_enabled,
-            self.web_report_passwordless,
+            self.web_port,
+            self.web_report_require_password,
         )
         for control in controls:
             control.blockSignals(True)
@@ -11153,8 +11289,11 @@ class PageFleetSettings(QWidget):
         )
         self._refresh_autostart_status(registration)
         self.web_service_enabled.setChecked(get_cfg("web_service_enabled", "1") != "0")
+        self.web_port.setValue(read_web_port(self.web_service.runtime_root / ".env.local"))
+        sync_status = pairing_window_status()
+        self.peer_sync_mode.setCurrentIndex(2 if sync_status.always_open else 1 if sync_status.open else 0)
         web_access = web_access_status(self.web_service.runtime_root / ".env.local")
-        self.web_report_passwordless.setChecked(web_access.report_passwordless)
+        self.web_report_require_password.setChecked(not web_access.report_passwordless)
         for control in controls:
             control.blockSignals(False)
         device_count = self._refresh_device_summary()
@@ -11186,7 +11325,11 @@ class PageFleetSettings(QWidget):
 
     def _authorize_peer_sync(self) -> None:
         try:
-            status = open_pairing_window(get_cfg("installation_id", ""))
+            mode = self.peer_sync_mode.currentData()
+            if mode == "off":
+                close_pairing_window()
+            else:
+                open_pairing_window(get_cfg("installation_id", ""), always_open=mode == "always")
         except PeerSyncAuthorizationError as error:
             QMessageBox.warning(
                 self,
@@ -11195,20 +11338,19 @@ class PageFleetSettings(QWidget):
             )
             self._refresh_peer_sync_status()
             return
-        self.peer_sync_status.setText(
-            tr(
-                f"เปิดสิทธิ์แล้ว {status.seconds_remaining // 60} นาที "
-                "· เครื่องแรกที่ขอ Sync จะใช้สิทธิ์ได้ครั้งเดียว",
-                f"Authorized for {status.seconds_remaining // 60} minutes "
-                "· the first Secondary may use it once",
-            )
-        )
-        self.peer_sync_status.setStyleSheet("color:#16875D;font-weight:700;")
+        self._refresh_peer_sync_status()
 
     def _refresh_peer_sync_status(self) -> None:
         if not hasattr(self, "peer_sync_status"):
             return
         status = pairing_window_status()
+        if status.always_open:
+            self.peer_sync_status.setText(tr(
+                "เปิดตลอด · จำค่าหลังเปิดโปรแกรมใหม่ · กดปิดเพื่อยกเลิกสิทธิ์",
+                "Always open · remembered after restart · switch off to revoke access",
+            ))
+            self.peer_sync_status.setStyleSheet("color:#16875D;font-weight:700;")
+            return
         if status.open:
             claimed = tr(" · มีเครื่องรับสิทธิ์แล้ว", " · claimed") if status.claimed else ""
             self.peer_sync_status.setText(
@@ -11222,8 +11364,8 @@ class PageFleetSettings(QWidget):
             return
         self.peer_sync_status.setText(
             tr(
-                "ปิดอยู่ · ต้องกดอนุญาตจากเครื่อง Primary ก่อน Sync ทุกครั้ง",
-                "Closed · Primary approval is required for every setup sync",
+                "ปิดอยู่ · เปิดสิทธิ์บนเครื่องนี้ก่อนให้คอมพิวเตอร์อื่นรับการตั้งค่า",
+                "Closed · Enable access here before another computer receives settings",
             )
         )
         self.peer_sync_status.setStyleSheet("color:#64748B;")
@@ -11233,6 +11375,29 @@ class PageFleetSettings(QWidget):
         snapshot = runtime.snapshot()
         mode = str(snapshot.get("mode") or "online")
         effective_status = str(snapshot.get("status") or "not_configured")
+        if is_offline_edition():
+            self.registration_summary.setText(
+                tr(
+                    "Offline Installation · พร้อมอ่าน SNMP และใช้งานภายในเครื่องโดยไม่ติดต่อ Host",
+                    "Offline Installation · local SNMP collection is ready without Host access",
+                )
+            )
+            self.registration_summary.setToolTip("")
+            self.registration_retry_button.setVisible(False)
+            self.registration_privacy_button.setVisible(False)
+            self.registration_notice_accept.setVisible(False)
+            for control in (self.registration_online_mode, self.registration_offline_mode):
+                control.setVisible(False)
+            self.offline_request_button.setVisible(False)
+            self.offline_import_button.setVisible(False)
+            self.offline_license_summary.setVisible(False)
+            self.registration_support_detail.setText(
+                tr(
+                    "Edition: Offline Installation · Host traffic: disabled · Local collection: enabled",
+                    "Edition: Offline Installation · Host traffic: disabled · Local collection: enabled",
+                )
+            )
+            return
         labels = {
             "not_configured": tr("ยังไม่ได้ตั้งค่า", "Not configured"),
             "waiting_for_internet": tr("รออินเทอร์เน็ต", "Waiting for internet"),
@@ -11547,8 +11712,8 @@ class PageFleetSettings(QWidget):
         else:
             self.support_summary.setText(
                 tr(
-                    "Database, Backup, Auto-start, Log, Parser Mapping และรายงานผ่าน LAN",
-                    "Database, backup, auto-start, logs, parser mapping, and LAN reports",
+                    "Database, Backup, Log, Parser Mapping และรายงานผ่าน LAN",
+                    "Database, backup, logs, parser mapping, and LAN reports",
                 )
             )
 
@@ -11621,8 +11786,7 @@ class PageFleetSettings(QWidget):
         colour, background, border, label = colours[current.state]
         self.web_service_status.setText(f"{label} · {translate_text(current.detail)}")
         self.web_service_status.setStyleSheet(
-            f"color:{colour};background:{background};border:1px solid {border};"
-            "border-radius:5px;padding:7px 9px;"
+            f"color:{colour};background:transparent;border:none;padding:1px 0;"
         )
         lan_is_local_only = any(
             marker in current.lan_url.lower()
@@ -11634,14 +11798,11 @@ class PageFleetSettings(QWidget):
                 "No LAN address found · Check that this computer is connected to the network",
             )
         elif current.state in {"running", "external"}:
-            address_text = tr(
-                f"พร้อมเปิดจากเครื่องอื่น: {current.lan_url}",
-                f"Ready on other computers: {current.lan_url}",
-            )
+            address_text = current.lan_url
         else:
             address_text = tr(
-                f"เมื่อเปิดใช้งาน เครื่องอื่นจะเข้าได้ที่: {current.lan_url}",
-                f"When enabled, other computers can use: {current.lan_url}",
+                f"ที่อยู่เมื่อเปิดใช้งาน: {current.lan_url}",
+                f"Address when enabled: {current.lan_url}",
             )
         self.web_service_url.setText(address_text)
         self.web_service_url.setToolTip(
@@ -11651,9 +11812,9 @@ class PageFleetSettings(QWidget):
             )
         )
         ready = current.state in {"running", "external"}
-        self.open_web_button.setVisible(ready)
+        self.open_web_button.setVisible(True)
         self.open_web_button.setEnabled(ready)
-        self.copy_web_button.setVisible(ready and not lan_is_local_only)
+        self.copy_web_button.setVisible(True)
         self.copy_web_button.setEnabled(ready and not lan_is_local_only)
         desired_enabled = self.web_service_enabled.isChecked()
         pending = desired_enabled and current.state == "starting"
@@ -11738,7 +11899,7 @@ class PageFleetSettings(QWidget):
             )
 
     def _open_web(self) -> None:
-        webbrowser.open(self.web_service.status().local_url)
+        webbrowser.open(self.web_service.status().lan_url)
 
     def _copy_lan_url(self) -> None:
         current = self.web_service.status()
@@ -11841,6 +12002,12 @@ class PageFleetSettings(QWidget):
         QMessageBox.information(
             self,
             tr("เปลี่ยนรหัส Web แล้ว", "Web access code changed"),
+            tr(
+                "ตั้งรหัสแล้ว · รายงานยังเปิดได้ทันที หากต้องการล็อก ให้เลือก 'ล็อก Web Report ด้วยรหัสผ่าน' แล้วบันทึก",
+                "Password saved. Reports remain open. To protect reports, enable 'Require a password for Web Report' and save.",
+            )
+            if web_access_status(self.web_service.runtime_root / ".env.local").report_passwordless
+            else
             tr(
                 "เครื่องอื่นใน LAN ต้องเข้าสู่ระบบใหม่ด้วยรหัสที่เพิ่งตั้ง",
                 "Other LAN computers must sign in again with the new code.",
@@ -11999,10 +12166,32 @@ class PageFleetSettings(QWidget):
         web_enabled = self.web_service_enabled.isChecked()
         env_path = self.web_service.runtime_root / ".env.local"
         previous_access = web_access_status(env_path)
-        passwordless = self.web_report_passwordless.isChecked()
+        previous_port = read_web_port(env_path)
+        current = self.web_service.status()
+        try:
+            port = validate_web_port(self.web_port.value())
+            if port != previous_port:
+                if current.state == "external":
+                    raise ValueError("Web service เปิดจากโปรแกรมอื่น กรุณาปิดที่โปรแกรมนั้นก่อนเปลี่ยน Port")
+                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+                    probe.bind(("0.0.0.0", port))
+        except (ValueError, OSError) as error:
+            QMessageBox.warning(self, "เปลี่ยน Port ไม่ได้", f"Port ที่เลือกไม่พร้อมใช้งาน: {error}")
+            return
+        passwordless = not self.web_report_require_password.isChecked()
+        if not passwordless and not previous_access.configured:
+            dialog = WebAccessCodeDialog(self)
+            if dialog.exec() != QDialog.DialogCode.Accepted:
+                return
+            try:
+                set_web_access_code(env_path, dialog.value())
+            except (OSError, ValueError) as error:
+                QMessageBox.warning(self, tr("ตั้งรหัสไม่สำเร็จ", "Could not set password"), str(error))
+                return
         try:
             set_web_report_passwordless(env_path, passwordless)
-        except OSError as error:
+            update_web_runtime_values(env_path, {"KOMI_WEB_PORT": str(port)})
+        except (OSError, ValueError) as error:
             QMessageBox.warning(
                 self,
                 tr("บันทึกการเข้าถึง Web ไม่สำเร็จ", "Could not save Web access"),
@@ -12010,8 +12199,7 @@ class PageFleetSettings(QWidget):
             )
             return
         set_cfg("web_service_enabled", "1" if web_enabled else "0")
-        access_changed = previous_access.report_passwordless != passwordless
-        current = self.web_service.status()
+        access_changed = previous_access.report_passwordless != passwordless or port != previous_port
         if web_enabled and access_changed and current.state in {
             "running",
             "starting",
@@ -12088,8 +12276,13 @@ class PageFleetSettings(QWidget):
     def _append_schedule_window(self, window: ScheduleWindow, *, mark_dirty: bool) -> None:
         row = self.schedule_windows_table.rowCount()
         self.schedule_windows_table.insertRow(row)
-        self.schedule_windows_table.setRowHeight(row, 48)
-        name = QLineEdit(window.label)
+        self.schedule_windows_table.setRowHeight(row, 56)
+        display_labels = {
+            "Lazyload": tr("นอกเวลางาน", "Off hours"),
+            "Active": tr("ช่วงเร่งด่วน", "Active"),
+            "Standard": tr("เวลาทำงาน", "Standard"),
+        }
+        name = QLineEdit(display_labels.get(window.label, window.label))
         name.setMinimumWidth(90)
         clock_range = ScheduleTimeRangeEditor(window.start, window.end)
         weekdays = WeekdaySelector(window.weekdays)
@@ -12104,8 +12297,9 @@ class PageFleetSettings(QWidget):
         remove = btn("✕", "outline")
         remove.setAccessibleName(tr("ลบช่วงเวลานี้", "Remove this time window"))
         remove.setToolTip(tr("ลบช่วงเวลานี้", "Remove this time window"))
-        remove.setMinimumWidth(34)
-        remove.setMaximumWidth(38)
+        remove.setMinimumWidth(30)
+        remove.setMaximumWidth(34)
+        remove.setStyleSheet("QPushButton{padding:0;font-size:14px;}")
         snmp_interval.setMaximumWidth(78)
         web_interval.setMaximumWidth(78)
         for control in (name, snmp_interval, web_interval):
@@ -12553,7 +12747,7 @@ class PageSettingsV5(QWidget):
             hide_existing(support_layout.itemAt(item_index))
 
         advanced_notice = QLabel(
-            "จัดการ Database, Backup, Auto-start, Log, Parser Mapping และรายงานผ่าน LAN · "
+            "จัดการ Database, Backup, Log, Parser Mapping และรายงานผ่าน LAN · "
             "รายการที่ลบหรือรีเซ็ตข้อมูลจะสำรองข้อมูลและขอยืนยันก่อนเสมอ"
         )
         advanced_notice.setWordWrap(True)
@@ -12562,10 +12756,13 @@ class PageSettingsV5(QWidget):
             "border-radius:7px;padding:9px 11px;"
         )
         support_layout.addWidget(advanced_notice)
-        self.fleet_content.autostart_program_card.setParent(
-            self.fleet_content.support_task_editor
+        # Auto-start is an everyday program preference, so keep it in General
+        # beside printer/registration/billing settings.  The registered command
+        # starts the lightweight background agent without constructing the GUI.
+        self.fleet_content.autostart_program_card.setParent(self.fleet_content)
+        self.fleet_content.layout().insertWidget(
+            3, self.fleet_content.autostart_program_card
         )
-        support_layout.addWidget(self.fleet_content.autostart_program_card)
         self.fleet_content.web_program_card.setParent(
             self.fleet_content.support_task_editor
         )
@@ -12577,12 +12774,6 @@ class PageSettingsV5(QWidget):
         for page in (self.fleet, self._activity_host, self._audit_host):
             self.stack.addWidget(page)
         self._logical_pages = [self.fleet, self.activity, self.audit, self.legacy]
-        self._host_for_page = {
-            self.fleet: self.fleet,
-            self.activity: self._activity_host,
-            self.audit: self._audit_host,
-            self.legacy: self.fleet,
-        }
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
@@ -12592,11 +12783,116 @@ class PageSettingsV5(QWidget):
         self.fleet_content.billing_audit_requested.connect(self.show_audit)
         self.fleet_content.advanced_tools_requested.connect(self.show_advanced)
         self.activity.sync_requested.connect(self.sync_requested)
-        self.activity.settings_requested.connect(self.show_main)
+        self.activity.settings_requested.connect(self.show_schedule)
         if hasattr(self.legacy_content, "changed"):
             self.legacy_content.changed.connect(self.changed)
         if hasattr(self.legacy_content, "parser_read_requested"):
             self.legacy_content.parser_read_requested.connect(self.parser_read_requested)
+        self._build_section_tabs(layout)
+
+    def _build_section_tabs(self, layout: QVBoxLayout) -> None:
+        """Reuse the existing forms and handlers inside one page-tab shell."""
+        content = self.fleet_content
+        content.layout().itemAt(0).widget().hide()
+        content.layout().setContentsMargins(14, 14, 14, 18)
+        self.section_tabs = QTabWidget()
+        self.section_tabs.setAccessibleName(tr("หมวดการตั้งค่า", "Settings sections"))
+        self._section_index = 0
+
+        def section(card: QWidget) -> QScrollArea:
+            host = QWidget()
+            body = QVBoxLayout(host)
+            body.setContentsMargins(14, 14, 14, 18)
+            body.setSpacing(12)
+            body.addWidget(card)
+            body.addStretch()
+            return self._scroll_page(host)
+
+        # Moving cards removes their old layout items without duplicating state.
+        schedule_card = content.schedule_task_editor.parentWidget()
+        support_card = content.support_task_editor.parentWidget()
+        self.schedule_page = section(schedule_card)
+        self.advanced_page = section(support_card)
+        self._legacy_host = self.advanced_page
+        for key in ("billing", "schedule", "support"):
+            content._task_buttons[key].hide()
+            editor = content._task_editors[key]
+            editor.setStyleSheet("QFrame#" + editor.objectName() + "{background:transparent;border:none;}")
+            editor.layout().setContentsMargins(0, 8, 0, 0)
+
+        # The plan and its editor now share Automation. Keep the other three
+        # activity tabs as status/history views, with no second Automation tab.
+        self.activity.tabs.removeTab(self.activity.tabs.indexOf(self.activity.timeline_scroll))
+        timeline = self.activity.timeline_scroll.takeWidget()
+        timeline.layout().setContentsMargins(0, 0, 0, 0)
+        self.schedule_page.widget().layout().insertWidget(0, timeline)
+        self.activity.layout().setContentsMargins(12, 12, 12, 12)
+
+        old_activity_host = self._activity_host
+        self._activity_host = self.activity
+        for old in (self.fleet, old_activity_host, self._audit_host):
+            self.stack.removeWidget(old)
+        self.section_tabs.addTab(self.fleet, "ทั่วไป")
+        self.section_tabs.addTab(self.schedule_page, "การทำงานอัตโนมัติ")
+        self.section_tabs.addTab(self.activity, "สถานะและประวัติ")
+        self.section_tabs.addTab(self.advanced_page, "ขั้นสูง")
+        old_activity_host.deleteLater()
+        self.activity.timeline_scroll.deleteLater()
+        self.stack.addWidget(self.section_tabs)
+        self.stack.addWidget(self._audit_host)
+        self.stack.setCurrentWidget(self.section_tabs)
+
+        layout.setContentsMargins(22, 18, 22, 18)
+        layout.setSpacing(12)
+        self.heading = PageHeading("ตั้งค่า", "จัดการเครื่องพิมพ์ รอบบิล การอ่านข้อมูล และการทำงานของโปรแกรม")
+        layout.insertWidget(0, self.heading)
+        content._section_editor = "billing"
+        content._set_active_editor("billing", force=True)
+        self.section_tabs.currentChanged.connect(self._section_changed)
+        content.changed.connect(self._refresh_schedule_preview)
+        apply_language(self)
+
+    def _section_changed(self, index: int) -> None:
+        content = self.fleet_content
+        target = {0: "billing", 1: "schedule", 2: None, 3: "support"}[index]
+        # Do not let navigation or a refresh discard edits, including the
+        # Auto-start form nested in Advanced Settings.
+        if index != self._section_index and content.has_unsaved_changes():
+            self.section_tabs.blockSignals(True)
+            self.section_tabs.setCurrentIndex(self._section_index)
+            self.section_tabs.blockSignals(False)
+            show_compact_information(
+                self, tr("ยังไม่ได้บันทึก", "Unsaved changes"),
+                tr("กรุณาบันทึกหรือยกเลิกการแก้ไขก่อนเปลี่ยนแท็บ", "Save or cancel your changes before switching tabs."),
+            )
+            return
+        content._section_editor = target
+        content._set_active_editor(target, force=True)
+        self._section_index = index
+        if index == 1:
+            self.activity.refresh_timeline()
+        elif index == 2:
+            self.activity.refresh()
+        apply_language(self)
+
+    def _select_section(self, index: int) -> bool:
+        self.section_tabs.setCurrentIndex(index)
+        if self.section_tabs.currentIndex() != index:
+            return False
+        self.stack.setCurrentWidget(self.section_tabs)
+        return True
+
+    def _refresh_schedule_preview(self) -> None:
+        if self._section_index == 1:
+            self.activity.refresh_timeline()
+
+    def show_schedule(self) -> None:
+        if not self._select_section(1):
+            return
+        self.fleet_content.advanced_schedule_button.setChecked(True)
+        QTimer.singleShot(0, lambda: self.schedule_page.ensureWidgetVisible(
+            self.fleet_content.schedule_editor, 0, 16,
+        ))
 
     @staticmethod
     def _scroll_page(page: QWidget) -> QScrollArea:
@@ -12654,27 +12950,30 @@ class PageSettingsV5(QWidget):
         self.fleet_content.discard_unsaved_changes()
 
     def show_main(self) -> None:
-        self.stack.setCurrentWidget(self.fleet)
+        if not self._select_section(0):
+            return
         self.fleet_content.refresh_from_config()
-        apply_language(self.fleet_content)
+        self.fleet_content._set_active_editor("billing", force=True)
+        apply_language(self)
 
     def show_activity(self) -> None:
-        self.stack.setCurrentWidget(self._activity_host)
-        self.activity.refresh()
-        apply_language(self._activity_host)
+        self._select_section(2)
 
     def show_audit(self) -> None:
+        if not self._select_section(0):
+            return
         self.stack.setCurrentWidget(self._audit_host)
         self.audit.refresh()
         apply_language(self._audit_host)
 
     def show_advanced(self) -> None:
-        self.stack.setCurrentWidget(self.fleet)
+        if not self._select_section(3):
+            return
         self.fleet_content._set_active_editor("support", force=True)
         refresh = getattr(self.legacy_content, "_refresh_ui", None)
         if callable(refresh):
             refresh()
-        apply_language(self.fleet_content)
+        apply_language(self)
 
     def refresh(self) -> None:
         current = self.currentWidget()
@@ -12701,18 +13000,18 @@ class PageSettingsV5(QWidget):
         if widget is self.legacy:
             self.show_advanced()
             return
-        host = self._host_for_page.get(widget, widget)
-        self.stack.setCurrentWidget(host)
         if widget is self.activity:
-            self.activity.refresh()
+            self.show_activity()
         elif widget is self.audit:
-            self.audit.refresh()
+            self.show_audit()
+        else:
+            self.show_main()
 
     def currentWidget(self) -> QWidget:
-        current = self.stack.currentWidget()
-        for logical, host in self._host_for_page.items():
-            if current is host:
-                return logical
+        if self.stack.currentWidget() is self._audit_host:
+            return self.audit
+        if self.section_tabs.currentIndex() == 2:
+            return self.activity
         return self.fleet
 
     def widget(self, index: int) -> QWidget:

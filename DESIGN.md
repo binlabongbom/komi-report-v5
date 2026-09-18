@@ -84,7 +84,8 @@ The visual system is a light workspace with a stable navy sidebar, white task su
 
 - Five top-level destinations only: Overview, Devices, Reports, Settings, and Manual.
 - Plain-language task grouping; Sync is an implementation detail, not a main navigation concept.
-- Settings defaults to common operational choices, with staff-only detail routes for reading activity, billing audit, and advanced tools.
+- Settings opens on General, with Automation, Status and history, and Advanced in the same left-aligned tab shell. The automation plan and schedule editor share one tab; billing audit remains a drill-down with a Back action.
+- Reports, Settings, reading activity and nested page views use `ui/page_tabs.py` and `config.page_tabs_qss()` for the same north-facing, left-aligned tabs below the page heading. Do not center report tabs or introduce a separate navigation style for a settings category.
 - No Settings password. Potentially destructive actions retain an explicit warning and confirmation.
 - Thai and English are equal product surfaces, not a partial translation layer.
 
@@ -201,6 +202,15 @@ Touch/click targets use 40px standard height, 48px for wizard and high-priority 
 - Hide advanced timing details until requested; recommended defaults remain usable without technical knowledge.
 - Staff-only detail routes must include context, a back action, and a warning where data can change.
 - Never require a password merely to open Settings. Destructive operations must still explain the impact and ask for confirmation.
+
+#### Open UI follow-up — detailed reading schedule
+
+- Replace the oversized schedule table with compact rows or cards that match the rest of Settings.
+- Use Thai labels for the built-in modes (for example ช่วงเร่งด่วน and ช่วงปกติ) and keep English mode fully translated.
+- Reduce control height and border weight for time, status interval and meter interval inputs.
+- Rebalance column widths so weekdays remain readable and the delete action is never clipped by the scrollbar.
+- Show all normal schedule rows without cropping when practical; keep Add period, saved status and Save/Cancel visually attached to the editor.
+- Verify this editor at 1024×768, 1280×800 and 1440×900 in Thai and English before closing the follow-up.
 
 ## Do's and Don'ts
 

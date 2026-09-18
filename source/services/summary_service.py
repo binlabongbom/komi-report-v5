@@ -37,6 +37,18 @@ def _frozen_device_label(record, *, fallback: str) -> str:
     return f"{name} ({identity})" if identity and not identity.startswith("unattributed:") else name
 
 
+def _subject_name_is_placeholder(subject_id: str, subject_name: str) -> bool:
+    sid = str(subject_id or "").strip()
+    name = str(subject_name or "").strip()
+    if not name:
+        return True
+    if name.casefold() == sid.casefold():
+        return True
+    if name.isdigit() and sid.isdigit():
+        return int(name) == int(sid)
+    return False
+
+
 def _runtime_status(device, *, now: datetime) -> str:
     """Normalize the operational status and expose stale online devices."""
     status = str(device.connection_status or "pending").lower()
@@ -445,6 +457,11 @@ def _build_v5_overview_summary(filter_key: str, *, now: datetime) -> dict:
             (subject.device_identity, subject.subject_type, subject.subject_id),
             [subject_name, 0.0],
         )
+        if (
+            _subject_name_is_placeholder(subject.subject_id, item[0])
+            and not _subject_name_is_placeholder(subject.subject_id, subject_name)
+        ):
+            item[0] = subject_name
         item[1] += subject.period_usage
     top_users = [
         (name, 0.0, 0.0, total)

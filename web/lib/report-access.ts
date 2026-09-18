@@ -14,6 +14,9 @@ const READ_ONLY_REPORT_API_PATHS = new Set([
 ]);
 
 export function passwordlessReportsEnabled(): boolean {
+  const configured = Boolean(process.env.KOMI_WEB_ACCESS_CODE) ||
+    (Boolean(process.env.KOMI_WEB_ACCESS_HASH) && process.env.KOMI_WEB_ACCESS_CONFIGURED !== "0");
+  if (!configured) return true;
   return process.env.KOMI_WEB_REPORT_PASSWORDLESS === "1";
 }
 

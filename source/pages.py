@@ -18,16 +18,19 @@ from i18n import ENGLISH, apply_language, get_language, tr
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame, QTableWidget, QTableWidgetItem, QHeaderView,
     QFileDialog, QMessageBox, QLineEdit, QPushButton, QScrollArea,
-    QComboBox, QGridLayout, QDoubleSpinBox, QCheckBox,
-    QSpinBox, QDialog, QDialogButtonBox, QTabWidget, QLayout, QSizePolicy,
-    QBoxLayout, QTextBrowser
+    QComboBox, QGridLayout, QCheckBox,
+    QDialog, QDialogButtonBox, QLayout, QSizePolicy,
+    QBoxLayout
 )
 from PyQt6.QtCore  import Qt, pyqtSignal, pyqtSlot, QRect, QRectF, QPoint, QSize, QMargins, QUrl, QThread
 from PyQt6.QtGui   import QColor, QBrush, QPainter, QPainterPath, QPen, QDesktopServices, QFont, QPixmap
 
+from ui.numeric_inputs import NumericDoubleSpinBox as QDoubleSpinBox, NumericSpinBox as QSpinBox
+from ui.page_tabs import PageTabs as QTabWidget
+
 log = logging.getLogger(__name__)
 
-from parser_profiles import MODE_OPTIONS, PARSER_REGISTRY
+from parser_profiles import PARSER_REGISTRY
 from tools.check_parser import load_profiles
 
 
@@ -240,23 +243,34 @@ from config import *
 from database import (
     get_cfg, set_cfg, get_price, get_billing_day,
     get_last_two, get_all_readings, calc_cost, clear_slot, reset_db,
-    PARSER_REGISTRY, compute_diff, check_duplicate, get_slot_serial, delete_reading,
+    PARSER_REGISTRY, check_duplicate, get_slot_serial, delete_reading,
     calc_billing_month, get_activity_log, get_price_snapshot, get_config_log,
-    get_monthly_summary, get_month_top_users, reset_settings_to_default,
-    get_waste_paper_pct, set_waste_paper_pct, get_settings_password, verify_settings_password,
-    set_settings_password, sanitize_filename, get_db_path,
+    reset_settings_to_default,
+    get_waste_paper_pct, set_waste_paper_pct, verify_settings_password,
+    sanitize_filename, get_db_path,
     copy_database_for_first_run,
 )
 from runtime_config import RUNTIME_SETTINGS, load_runtime_settings, save_runtime_database_path
 from tools.db_recovery import backup_database, inspect_database
 
-# ── PyQtGraph for interactive plotting
-try:
-    from pyqtgraph import PlotWidget
-    import pyqtgraph as pg
+# The legacy report graph is optional and only needed after Reports opens.
+_PQG_OK = False
+_pg_load_attempted = False
+pg = None
+
+
+def _load_pyqtgraph() -> None:
+    global pg, _PQG_OK, _pg_load_attempted
+    if _pg_load_attempted:
+        return
+    _pg_load_attempted = True
+    try:
+        import pyqtgraph
+    except ImportError:
+        return
+    pg = pyqtgraph
     _PQG_OK = True
-except ImportError:
-    _PQG_OK = False
+
 
 from widgets import (
     fnt, fn, fd, fmt_baht, hline, sec_title, sub_title,
@@ -609,35 +623,6 @@ class PageOverview(QWidget):
             b.style().unpolish(b); b.style().polish(b)
         self._redraw_bar()
 
-    def _draw_pie(self, view: QChartView, values: list, labels: list, colors: list):
-        """วาด pie chart ลงใน QChartView ที่กำหนด"""
-        series = QPieSeries()
-        total = sum(v for v in values if v > 0)
-        if total == 0:
-            sl = series.append("ยังไม่มีข้อมูล", 1)
-            sl.setBrush(QColor("#E2E8F0"))
-        else:
-            for v, lbl, clr in zip(values, labels, colors):
-                if v > 0:
-                    pct = v / total * 100
-                    sl = series.append(f"{lbl}  {pct:.1f}%", v)
-                    sl.setBrush(QColor(clr))
-                    sl.setBorderColor(QColor("white"))
-                    sl.setBorderWidth(2)
-        series.setPieSize(0.88)
-        chart = QChart()
-        chart.addSeries(series)
-        chart.setMargins(QMargins(2, 2, 2, 2))
-        chart.setBackgroundBrush(QColor(C_CARD))
-        chart.setDropShadowEnabled(False)
-        chart.legend().setVisible(True)
-        chart.legend().setAlignment(Qt.AlignmentFlag.AlignBottom)
-        chart.legend().setFont(fnt(F_MD))
-        # Keep the summary visible immediately after page navigation and in
-        # offscreen QA captures; animated series briefly rendered as an empty
-        # card on compact desktops.
-        chart.setAnimationOptions(QChart.AnimationOption.NoAnimation)
-        view.setChart(chart)
 
     def _redraw_bar(self):
         """วาด bar chart ย้อนหลัง 12 เดือน"""
@@ -989,24 +974,6 @@ class PageOverviewV2(QWidget):
         self.setAccessibleName("ภาพรวมการใช้งานและสถานะเครื่องพิมพ์")
         self._build()
 
-    def _period_selector(self, target: dict[str, QPushButton]) -> QWidget:
-        holder = QWidget()
-        holder.setObjectName("overview_period_selector")
-        layout = QHBoxLayout(holder)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(0)
-        for position, (label, key) in enumerate(self.PERIODS):
-            button = QPushButton(label)
-            button.setObjectName("overview_period_button")
-            button.setProperty("periodKey", key)
-            button.setProperty("segmentPosition", "first" if position == 0 else "last" if position == 3 else "middle")
-            button.setCheckable(True)
-            button.setChecked(key == self._ov_filter)
-            button.setFixedSize(52 if label == "All" else 42, 34)
-            button.clicked.connect(lambda _checked=False, value=key: self._set_ov_filter(value))
-            target[key] = button
-            layout.addWidget(button)
-        return holder
 
     def _period_combo(self) -> QComboBox:
         combo = QComboBox()
@@ -3049,6 +3016,7 @@ class PageHistory(QWidget):
             self._populate_users_machine(rows)
 
     def _build_graph_tab(self):
+        _load_pyqtgraph()
         """Tab แสดงกราฟประวัติการใช้งาน — Clustered Bar Chart"""
         lay = QVBoxLayout(self.tab_graph)
         lay.setContentsMargins(12, 12, 12, 10)
@@ -3176,7 +3144,7 @@ class PageHistory(QWidget):
 
         # ── PlotWidget สำหรับแสดงกราฟ
         if _PQG_OK:
-            self.plot_widget = PlotWidget()
+            self.plot_widget = pg.PlotWidget()
             self.plot_widget.setBackground(GRAPH_BG_COLOR)
             
             # ปรับขนาด font ของ axis labels
@@ -4376,64 +4344,6 @@ class PageHistory(QWidget):
                 _fill_user(s, [i], color_map, is_large=False)
                 view.setChart(_make_chart(s, f"🖨  {m_names[i]}"))
 
-    def _export_graph_to_excel(self):
-        """ส่งออกข้อมูลกราฟเป็น Excel"""
-        path, _ = QFileDialog.getSaveFileName(
-            self, "บันทึกเป็นไฟล์ Excel",
-            f"Usage_Report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
-            "Excel Files (*.xlsx);;All Files (*)")
-        if not path:
-            return
-
-        try:
-            # Excel is an optional action. Importing openpyxl during every app
-            # launch adds noticeable I/O on synced/shared source folders.
-            import openpyxl
-            from openpyxl.styles import Font
-
-            cache = getattr(self, '_graph_data_cache', {})
-            slot_monthly = cache.get("slot_monthly", [{}, {}, {}])
-            m_names      = cache.get("m_names", SLOT_NAMES[:3])
-            all_months   = cache.get("all_months", [])
-            x_labels     = cache.get("x_labels", all_months)
-
-            wb = openpyxl.Workbook()
-            ws = wb.active
-            ws.title = "Graph Data"
-
-            ws["A1"] = "รายงานประวัติการใช้งาน"
-            ws["A1"].font = Font(bold=True, size=14)
-            ws["A2"] = f"วันที่: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}"
-
-            # Header row
-            row = 4
-            headers = ["เดือน"]
-            for mn in m_names:
-                headers += [f"{mn} ยอดรวม", f"{mn} สี", f"{mn} ขาวดำ"]
-            for ci, h in enumerate(headers, 1):
-                ws.cell(row=row, column=ci, value=h).font = Font(bold=True)
-            row += 1
-
-            for mi, month in enumerate(all_months):
-                ws.cell(row=row, column=1, value=x_labels[mi] if mi < len(x_labels) else month)
-                col = 2
-                for si in range(3):
-                    md = slot_monthly[si].get(month, {})
-                    ws.cell(row=row, column=col,   value=md.get("total", 0))
-                    ws.cell(row=row, column=col+1, value=md.get("total_color", 0))
-                    ws.cell(row=row, column=col+2, value=md.get("total_bw", 0))
-                    col += 3
-                row += 1
-
-            # ปรับความกว้าง
-            ws.column_dimensions["A"].width = 16
-            for c in range(2, 2 + 9):
-                ws.column_dimensions[chr(64 + c)].width = 16
-
-            wb.save(path)
-            QMessageBox.information(self, "สำเร็จ", f"ส่งออกไฟล์ Excel เรียบร้อยแล้ว\n{path}")
-        except Exception as e:
-            QMessageBox.critical(self, "ข้อผิดพลาด", f"ไม่สามารถบันทึกไฟล์ได้:\n{e}")
 
     def _populate_users_overview(self, rows):
         """เติมข้อมูลลงตาราง Users — มุมมองภาพรวม (17 คอลัมน์)"""
@@ -4944,7 +4854,6 @@ class PageHistory(QWidget):
             QMessageBox.critical(self, "ข้อผิดพลาด", f"ไม่สามารถบันทึกไฟล์ได้:\n{e}")
 
 
-
 # ══════════════════════════════════════════════════════════
 # PAGE: INDIVIDUAL — การใช้งานรายบุคคล
 # ══════════════════════════════════════════════════════════
@@ -5408,52 +5317,71 @@ class PageSettings(QWidget):
         l_runtime.addLayout(log_actions)
         lay.addWidget(c_runtime)
 
-        # ── 8. Reset data / first-run setup
-        c4 = mk_card(); c4.setMaximumWidth(700)
-        l4 = QVBoxLayout(c4); l4.setContentsMargins(20,16,20,16); l4.setSpacing(10)
-        l4.addWidget(sub_title("⚠️  ล้างข้อมูล หรือเริ่มตั้งค่าใหม่"))
-        warn = QLabel("เลือกให้ตรงกับสิ่งที่ต้องการ: ล้างเฉพาะประวัติ หรือกลับสู่หน้าตั้งค่าเครื่องพิมพ์ครั้งแรก")
-        warn.setFont(fnt(F_MD)); warn.setStyleSheet(f"color:{C_RED};")
+        # ── 8. Data and reset actions.  Keep all destructive choices in one
+        # clearly-scannable system instead of two similar warning cards.
+        c4 = mk_card()
+        l4 = QVBoxLayout(c4); l4.setContentsMargins(20,16,20,16); l4.setSpacing(8)
+        l4.addWidget(sub_title("⚠️  จัดการข้อมูลและคืนค่าโปรแกรม"))
+        warn = QLabel("ระบบสำรอง Database ก่อนเปลี่ยนหรือลบข้อมูลทุกครั้ง กรุณาเลือกตามผลกระทบที่ต้องการ")
+        warn.setFont(fnt(F_MD)); warn.setStyleSheet(f"color:{C_ORANGE};")
         warn.setWordWrap(True)
         l4.addWidget(warn)
-        rst_btn_row = QGridLayout(); rst_btn_row.setSpacing(10)
-        b_rst = btn("🗑  ล้างข้อมูลการใช้งาน", "danger"); b_rst.setFixedWidth(220)
-        b_rst.clicked.connect(self._reset)
-        b_factory = btn("↺  เริ่มตั้งค่าใหม่", "outline"); b_factory.setFixedWidth(200)
-        b_factory.setStyleSheet("QPushButton { background: white !important; color: #DC2626 !important; border: 1.5px solid #DC2626 !important; border-radius: 8px; padding: 8px 18px; font-weight: 700; } QPushButton:hover { background: #DC2626 !important; color: white !important; }")
-        b_factory.clicked.connect(self._factory_reset)
-        b_rst_parser = btn("🗑  รีเซท Parser ทั้งหมด", "danger"); b_rst_parser.setFixedWidth(200)
-        b_rst_parser.setStyleSheet("QPushButton { background: white !important; color: #DC2626 !important; border: 1.5px solid #DC2626 !important; border-radius: 8px; padding: 8px 18px; font-weight: 600; } QPushButton:hover { background: #DC2626 !important; color: white !important; }")
-        b_rst_parser.clicked.connect(self._reset_parser)
-        rst_btn_row.addWidget(b_rst, 0, 0)
-        rst_btn_row.addWidget(b_factory, 0, 1)
-        rst_btn_row.addWidget(b_rst_parser, 1, 0)
-        rst_btn_row.setColumnStretch(2, 1)
-        l4.addLayout(rst_btn_row)
+
+        def maintenance_row(title: str, detail: str, action: str, callback, *, danger: bool = False):
+            row = QFrame()
+            row.setObjectName("maintenance_action_row")
+            row.setStyleSheet(
+                "QFrame#maintenance_action_row{background:#F8FAFC;border:1px solid #D6E0EA;"
+                "border-radius:7px;} QLabel{background:transparent;border:none;}"
+            )
+            body = QHBoxLayout(row); body.setContentsMargins(12,9,12,9); body.setSpacing(12)
+            copy = QVBoxLayout(); copy.setSpacing(2)
+            heading = QLabel(title); heading.setFont(fnt(F_MD, True))
+            explanation = QLabel(detail); explanation.setWordWrap(True)
+            explanation.setStyleSheet(f"color:{C_TEXT2};")
+            copy.addWidget(heading); copy.addWidget(explanation)
+            body.addLayout(copy, 1)
+            button = btn(action, "danger" if danger else "outline")
+            button.setMinimumWidth(180)
+            button.clicked.connect(callback)
+            body.addWidget(button, 0, Qt.AlignmentFlag.AlignVCenter)
+            l4.addWidget(row)
+            return button
+
+        b_rst = maintenance_row(
+            "ล้างเฉพาะประวัติการใช้งาน",
+            "ลบ Reading, Billing และ Log ใน Database · เก็บเครื่องพิมพ์ ราคา Parser และ Registration",
+            "ล้างประวัติ",
+            self._reset,
+            danger=True,
+        )
+        b_rst_cfg = maintenance_row(
+            "คืนค่าการตั้งค่าทั่วไป",
+            "คืนชื่อเครื่อง ราคา และวันตัดรอบเป็นค่าเริ่มต้น · ไม่ลบประวัติการใช้งาน",
+            "คืนค่า Settings",
+            self._reset_settings,
+        )
+        b_rst_parser = maintenance_row(
+            "คืนค่า Parser Mapping",
+            "สำรองและลบ Parser Profile ที่ปรับแต่งไว้ · ไม่ลบ Database",
+            "คืนค่า Parser",
+            self._reset_parser,
+        )
+        b_factory = maintenance_row(
+            "เริ่มติดตั้งและตั้งค่าใหม่ทั้งหมด",
+            "ลบเครื่องพิมพ์ ราคา ประวัติ Parser override และสถานะ Registration แล้วกลับไป Setup Wizard",
+            "เริ่มตั้งค่าใหม่",
+            self._factory_reset,
+            danger=True,
+        )
         lay.addWidget(c4)
         self._btn_reset_db = b_rst
-
-        # ── 9. Reset Settings
-        c5 = mk_card(); c5.setMaximumWidth(700)
-        l5 = QVBoxLayout(c5); l5.setContentsMargins(20,16,20,16); l5.setSpacing(10)
-        l5.addWidget(sub_title("⚠️  รีเซท การตั้งค่า"))
-        warn2 = QLabel("รีเซทค่าตั้งค่า (ชื่อเครื่อง, ราคา, วันตัดรอบ) เป็นค่าเริ่มต้น")
-        warn2.setFont(fnt(F_MD)); warn2.setStyleSheet(f"color:{C_ORANGE};")
-        l5.addWidget(warn2)
-        cfg_btn_row = QHBoxLayout(); cfg_btn_row.setSpacing(10)
-        b_rst_cfg = btn("🔄  รีเซท การตั้งค่า", "outline"); b_rst_cfg.setFixedWidth(240)
-        b_rst_cfg.setStyleSheet("QPushButton { background: white !important; color: #EA580C !important; border: 1.5px solid #EA580C !important; border-radius: 8px; padding: 8px 18px; font-weight: 600; } QPushButton:hover { background: #EA580C !important; color: white !important; }")
-        b_rst_cfg.clicked.connect(self._reset_settings)
-        cfg_btn_row.addWidget(b_rst_cfg)
-        cfg_btn_row.addStretch()
-        l5.addLayout(cfg_btn_row)
-        lay.addWidget(c5)
         self._btn_reset_settings = b_rst_cfg
         lay.addStretch()
 
         # [V4.5] เปิดใช้ระบบรหัสผ่าน — เนื้อหาถูกซ่อนจนกว่าจะ unlock ผ่าน ensure_unlocked()
         self._protected_widgets = [
-            c1, c2, c_waste, c_day, c_log, c3, c_parser, c_runtime, c4, c5
+            c1, c2, c_waste, c_day, c_log, c3, c_parser, c_runtime, c4
         ]
         # V5 owns devices, PricingRepository, billing day and waste discount in
         # its main Settings page.  Keep the legacy cards for V4 compatibility,
@@ -5521,7 +5449,7 @@ class PageSettings(QWidget):
     def _ask_password(self) -> bool:
         """แสดง dialog ขอรหัสผ่าน"""
         from PyQt6.QtWidgets import QDialog, QVBoxLayout, QLabel, QLineEdit, QPushButton, QHBoxLayout
-        from config import DEFAULT_SETTINGS_PASSWORD, C_ACCENT, C_TEXT, C_TEXT2, C_BORDER, F_MD, F_SM, F_LG
+        from config import C_ACCENT, C_TEXT, C_TEXT2, C_BORDER, F_MD, F_SM
         from widgets import fnt
 
         dlg = QDialog(self)
@@ -7115,7 +7043,7 @@ class PageManual(QWidget):
         lay.addWidget(self._card("ตรวจผลครั้งแรก", [
             self._step(1, "เปิดเมนูอุปกรณ์ แล้วกด [อ่านข้อมูลตอนนี้]"),
             self._step(2, "ตรวจชื่อรุ่น, Serial, Total Meter, หมึก, ถาดกระดาษ และ Counter จากเครื่องจริง"),
-            self._step(3, "ถ้าข้อมูลไม่อัปเดต ให้เปิด Settings → การตั้งค่าขั้นสูง → สถานะและประวัติการอ่าน"),
+            self._step(3, "ถ้าข้อมูลไม่อัปเดต ให้เปิด Settings → สถานะและประวัติ"),
             self._tip("สถานะ Online เพียงอย่างเดียวไม่ยืนยันว่าข้อมูล Meter ครบ ต้องตรวจ Total Meter และเวลาอ่านล่าสุดด้วย"),
         ]))
 
@@ -7125,105 +7053,14 @@ class PageManual(QWidget):
     # ══════════════════════════════════════════════════════
     # TAB 1 — วิธีดาวน์โหลดไฟล์ TXT จากเครื่อง Konica Minolta
     # ══════════════════════════════════════════════════════
-    def _tab_download(self) -> QWidget:
-        page = QWidget()
-        lay = QVBoxLayout(page)
-        lay.setContentsMargins(0, 12, 0, 12)
-        lay.setSpacing(14)
-
-        lay.addWidget(self._sec("วิธีดาวน์โหลดไฟล์ TXT จากเครื่องพิมพ์"))
-
-        lay.addWidget(self._card("ไฟล์ TXT คืออะไร?", [
-            self._txt(
-                "ไฟล์ TXT (Service Call Report / SC Report) คือรายงานค่ามิเตอร์ที่ออกจากเครื่อง Konica Minolta โดยตรง "
-                "บันทึกจำนวนหน้าพิมพ์แยกตามประเภท (A4 สี, A4 ขาวดำ, A3 สี, A3 ขาวดำ) "
-                "พร้อมวันที่และหมายเลขเครื่อง (Serial Number)"
-            ),
-            self._tip("ไฟล์นี้ใช้นำเข้าโปรแกรมเพื่อติดตามยอดการใช้งานและคำนวณค่าใช้จ่าย"),
-        ]))
-
-        lay.addWidget(self._card("ขั้นตอนดาวน์โหลดผ่านเว็บ (Web Connection)", [
-            self._step(1, "เปิด Browser แล้วพิมพ์ IP Address ของเครื่องในช่อง URL\nเช่น  http://192.168.1.100"),
-            self._step(2, "ล็อกอินด้วยบัญชี Administrator และ password ที่ผู้ดูแลเครื่องกำหนดไว้"),
-            self._step(3, "เลือกเมนู  [Maintenance]  ในแถบด้านซ้ายหรือด้านบน"),
-            self._step(4, "เลือก  [Import/Export]"),
-            self._step(5, "เลือกหัวข้อ  [Meter Count]"),
-            self._step(6, "เลือก  [Export]  →  [Export to PC]"),
-            self._step(7, "กด  [OK]  —  Browser จะดาวน์โหลดไฟล์ .txt ลงเครื่อง"),
-            self._tip("IP Address ดูได้จาก Utility > Machine Info > IPv4 Address บนแผงหน้าปัดของเครื่อง"),
-        ]))
-
-        lay.addWidget(self._card("ตรวจสอบไฟล์ก่อนนำเข้า", [
-            self._step(1, "เปิดไฟล์ .txt ด้วย Notepad เพื่อยืนยันว่ามีข้อมูลอยู่"),
-            self._step(2, "ตรวจสอบว่ามีบรรทัด Serial Number เช่น  A7R041000302"),
-            self._step(3, "ตรวจสอบว่ามียอด Total Counter หรือ A4 Color / A4 B&W"),
-            self._tip("ไฟล์ที่รองรับ: SC Report จาก bizhub และ AccurioPress ที่ส่งออกผ่านเว็บเบราว์เซอร์"),
-        ]))
-
-        lay.addStretch()
-        return page
 
     # ══════════════════════════════════════════════════════
     # TAB 2 — วิธีนำเข้าไฟล์ (Import)
     # ══════════════════════════════════════════════════════
-    def _tab_import(self) -> QWidget:
-        page = QWidget()
-        lay = QVBoxLayout(page)
-        lay.setContentsMargins(0, 12, 0, 12)
-        lay.setSpacing(14)
-
-        lay.addWidget(self._sec("หน้า Import — รับข้อมูลสดรายเครื่อง"))
-
-        lay.addWidget(self._card("อ่านข้อมูลตอนนี้", [
-            self._step(1, "คลิกเมนู  Import  ที่แถบซ้ายมือของโปรแกรม"),
-            self._step(2, "ตรวจจุดสถานะของเครื่อง 1–3 เครื่องและชื่อรุ่น/Serial ให้ถูกต้อง"),
-            self._step(3, "กด [อ่านข้อมูลตอนนี้] เพื่อสั่งอ่านทุกเครื่อง หรือรอการอ่านอัตโนมัติ"),
-            self._step(4, "ดู Device Meter และ Counter จาก Web Connection ในแต่ละการ์ด"),
-            self._step(5, "ถ้ามีข้อความผิดพลาด ให้เปิด Settings → สถานะและประวัติการอ่าน"),
-            self._txt("SNMP ใช้ตรวจสถานะ/trigger · Web Connection เป็น Billing source", bold=True),
-            self._tip("ปุ่มเฟืองของแต่ละการ์ดพาไป Settings เพื่อแก้ IP, Credential และ Pricelist"),
-        ]))
-
-        lay.addWidget(self._card("ข้อมูล User / Account", [
-            self._txt("ส่วน User Authentication / Account Track อ่าน snapshot จาก RAM และแสดง Total Counter จริง", bold=True),
-            self._txt("• ใช้ดูการกระจายงานของ User/Account"),
-            self._txt("• ไม่ประมาณ A3/A4 และไม่คำนวณค่าใช้จ่ายจากข้อมูลส่วนนี้"),
-            self._tip("ถ้าไม่เปิด User Authentication หรือ Account Track ระบบจะแสดงว่าไม่พบข้อมูล ซึ่งไม่ใช่ข้อผิดพลาด Billing"),
-        ]))
-
-        lay.addWidget(self._card("หมายเหตุสำคัญ", [
-            self._txt("• แต่ละ Slot รองรับเครื่อง Konica Minolta 1 เครื่อง"),
-            self._txt("• Counter ที่เป็นศูนย์ซ่อนได้โดย checkbox แต่ข้อมูลต้นทางไม่ถูกลบ"),
-            self._txt("• วันที่ Reconciliation ไม่ปลอดภัยจะเป็น Hold และไม่รวมในยอดเรียกเก็บ"),
-            self._txt("• Import แบบไฟล์ .txt เป็นเครื่องมือ Legacy แยกจาก Billing workflow ของ V5"),
-        ]))
-
-        lay.addStretch()
-        return page
 
     # ══════════════════════════════════════════════════════
     # TAB 3 — หน้า Overview
     # ══════════════════════════════════════════════════════
-    def _tab_overview(self) -> QWidget:
-        page = QWidget()
-        lay = QVBoxLayout(page)
-        lay.setContentsMargins(0, 12, 0, 12)
-        lay.setSpacing(14)
-
-        lay.addWidget(self._sec("หน้า Overview — สรุปภาพรวม"))
-
-        lay.addWidget(self._card("ส่วนประกอบของหน้า Overview", [
-            self._txt("หน้า Overview แสดงสถานะที่ต้องใช้ทุกวันในมุมมองเดียว:", bold=True),
-            self._step(1, "เลือกช่วง รายวัน / รายเดือน / รายปี / ทั้งหมด"),
-            self._step(2, "การ์ดสรุป 6 ใบ — พิมพ์สี, พิมพ์ขาวดำ, สำเนาสี, สำเนาขาวดำ, ยอดรวม และค่าใช้จ่าย"),
-            self._step(3, "สถานะเครื่องพิมพ์ — Online/Offline, รุ่น, Serial, IP และระดับหมึก"),
-            self._step(4, "แนวโน้มการใช้งาน — เปรียบเทียบทุกเครื่องตามช่วงที่เลือก"),
-            self._step(5, "ปุ่ม [อ่านข้อมูลล่าสุด] และ [ดูสถานะการอ่าน] ใช้แก้ปัญหาได้จากหน้าเดิม"),
-            self._tip("Overview แยกยอดยืนยันแล้วออกจากยอดระหว่างวัน เพื่อไม่ให้เข้าใจยอดเรียกเก็บผิด"),
-        ]))
-
-        lay.addStretch()
-        return page
 
     # ══════════════════════════════════════════════════════
     # TAB 4 — หน้า History

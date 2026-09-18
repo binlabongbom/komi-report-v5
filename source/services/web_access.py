@@ -40,7 +40,18 @@ _PRIMARY_KEYS = (
 class WebAccessStatus:
     user: str
     configured: bool
-    report_passwordless: bool = False
+    report_passwordless: bool = True
+
+
+def _reports_are_passwordless(values: dict[str, str]) -> bool:
+    # Older installs generated an unknown admin hash and locked reports before
+    # the owner had set a password. Migrate that unusable default to open reports.
+    configured = bool(values.get(LEGACY_ACCESS_CODE_KEY)) or (
+        bool(values.get(ACCESS_HASH_KEY)) and values.get(ACCESS_CONFIGURED_KEY, "1") == "1"
+    )
+    if not configured:
+        return True
+    return values.get(REPORT_PASSWORDLESS_KEY, "0") == "1"
 
 
 def _read_values(path: Path | None) -> dict[str, str]:
@@ -166,11 +177,12 @@ def ensure_web_access(env_path: Path, *, migrate_from: Path | None = None) -> di
     if not values:
         values.update(_read_values(migrate_from))
 
+    passwordless = _reports_are_passwordless(values)
     legacy_code = values.pop(LEGACY_ACCESS_CODE_KEY, "").strip()
     values.setdefault(USER_KEY, "admin")
     values.setdefault(SESSION_SECRET_KEY, secrets.token_hex(32))
     values.setdefault(AUTH_EPOCH_KEY, secrets.token_hex(16))
-    values.setdefault(REPORT_PASSWORDLESS_KEY, "0")
+    values[REPORT_PASSWORDLESS_KEY] = "1" if passwordless else "0"
 
     if not values.get(ACCESS_HASH_KEY):
         if legacy_code:
@@ -179,7 +191,8 @@ def ensure_web_access(env_path: Path, *, migrate_from: Path | None = None) -> di
             values[ACCESS_HASH_KEY] = _encode_web_access_code(legacy_code)
             values[ACCESS_CONFIGURED_KEY] = "1"
         else:
-            # New installs stay locked until the owner sets a code from Desktop Settings.
+            # Reports open immediately; privileged tools keep an unknown admin
+            # credential until the owner sets their own code in Desktop Settings.
             values[ACCESS_HASH_KEY] = hash_web_access_code(secrets.token_urlsafe(24))
             values[ACCESS_CONFIGURED_KEY] = "0"
     values.setdefault(ACCESS_CONFIGURED_KEY, "1")
@@ -197,7 +210,7 @@ def web_access_status(env_path: Path) -> WebAccessStatus:
     return WebAccessStatus(
         user=values.get(USER_KEY, "admin"),
         configured=configured,
-        report_passwordless=values.get(REPORT_PASSWORDLESS_KEY, "0") == "1",
+        report_passwordless=_reports_are_passwordless(values),
     )
 
 
@@ -214,6 +227,8 @@ def set_web_report_passwordless(
     values = _read_values(env_path.expanduser().resolve())
     if not values:
         values.update(ensure_web_access(env_path))
+    if not enabled and not web_access_status(env_path).configured:
+        raise ValueError("กรุณาตั้งรหัสผ่านก่อนเปิดการล็อก Web Report")
     target = "1" if enabled else "0"
     if values.get(REPORT_PASSWORDLESS_KEY, "0") == target:
         return web_access_status(env_path)
@@ -230,6 +245,7 @@ def set_web_access_code(env_path: Path, access_code: str) -> WebAccessStatus:
     values = _read_values(env_path.expanduser().resolve())
     if not values:
         values.update(ensure_web_access(env_path))
+    values.setdefault(REPORT_PASSWORDLESS_KEY, "1" if _reports_are_passwordless(values) else "0")
     values.pop(LEGACY_ACCESS_CODE_KEY, None)
     values.setdefault(USER_KEY, "admin")
     values.setdefault(SESSION_SECRET_KEY, secrets.token_hex(32))
@@ -240,5 +256,5 @@ def set_web_access_code(env_path: Path, access_code: str) -> WebAccessStatus:
     return WebAccessStatus(
         user=values[USER_KEY],
         configured=True,
-        report_passwordless=values.get(REPORT_PASSWORDLESS_KEY, "0") == "1",
+        report_passwordless=_reports_are_passwordless(values),
     )

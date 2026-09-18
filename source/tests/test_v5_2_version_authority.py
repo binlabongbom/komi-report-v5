@@ -27,8 +27,8 @@ from tools.release_evidence import ReleaseContractError, load_joint_e2e_evidence
 from tools.version_gate import assert_v5_2_version_alignment
 
 
-def test_v5_2_version_authority_is_5_2_5_and_all_current_metadata_matches():
-    assert APP_VERSION == "5.2.5"
+def test_v5_2_version_authority_is_5_2_11_and_all_current_metadata_matches():
+    assert APP_VERSION == "5.2.11"
     assert_v5_2_version_alignment()
 
 
@@ -36,10 +36,10 @@ def test_native_build_identity_is_derived_from_current_version_authority():
     assert WINDOWS_VERSION == APP_VERSION
     assert MACOS_VERSION == APP_VERSION
     assert DELIVERY_VERSION == APP_VERSION
-    assert PAYLOAD_NAME == "KOMI Report V5.2.5"
-    assert MACOS_APP_NAME == "KOMI Report V5.2.5"
-    assert INSTALLER_NAME == "KOMI_Report_V5_2_5_Windows_x64_RC.exe"
-    assert CUSTOMER_INSTALLER_NAME == "KOMI_Report_V5_2_5_Windows_x64_Installer.exe"
+    assert PAYLOAD_NAME == "KOMI Report V5.2.11"
+    assert MACOS_APP_NAME == "KOMI Report V5.2.11"
+    assert INSTALLER_NAME == "KOMI_Report_V5_2_11_Windows_x64_RC.exe"
+    assert CUSTOMER_INSTALLER_NAME == "KOMI_Report_V5_2_11_Windows_x64_Installer.exe"
 
 
 def test_v5_2_version_authority_rejects_old_new_build_metadata():
@@ -70,7 +70,7 @@ def test_joint_e2e_evidence_is_missing_hold_or_exact_identity_verified(tmp_path)
         """
 {
   "schema_version": 1,
-  "product_version": "5.2.5",
+  "product_version": "5.2.11",
   "source_commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
   "contract_version": "v5.2-shared-2026-08-25-r2",
   "contract_sha256": "4884a4a6fb798ef0c36c88daca09cf2ae5df66ff609139f812880ab7322413bd",
@@ -116,6 +116,9 @@ def test_windows_builder_metadata_import_does_not_require_runtime_crypto():
     blocker = """
 import sys
 
+# Embedded Windows Python ignores PYTHONPATH; supply the source explicitly.
+sys.path.insert(0, sys.argv[1])
+
 class BlockRuntimeCrypto:
     def find_spec(self, fullname, path=None, target=None):
         if fullname == "cryptography" or fullname.startswith("cryptography."):
@@ -128,7 +131,7 @@ import tools.build_windows_rc
     environment = os.environ.copy()
     environment["PYTHONPATH"] = str(source_root)
     result = subprocess.run(
-        [sys.executable, "-c", blocker],
+        [sys.executable, "-I", "-c", blocker, str(source_root.resolve())],
         cwd=source_root,
         env=environment,
         capture_output=True,

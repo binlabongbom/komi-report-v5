@@ -19,7 +19,7 @@ def test_second_launch_notifies_the_running_instance(tmp_path):
     try:
         assert primary.acquire() is True
         assert secondary.acquire() is False
-        assert spy.wait(500)
+        assert len(spy) or spy.wait(500)
         assert len(spy) == 1
     finally:
         secondary.release()
@@ -39,3 +39,21 @@ def test_lock_can_be_acquired_after_clean_release(tmp_path):
         assert second.acquire() is True
     finally:
         second.release()
+
+
+def test_web_shortcut_notifies_the_same_desktop_with_web_command(tmp_path):
+    app = QApplication.instance() or QApplication([])
+    path = tmp_path / "komi.instance.lock"
+    primary, secondary = SingleInstanceGuard(path), SingleInstanceGuard(path)
+    web_spy = QSignalSpy(primary.web_open_requested)
+    activation_spy = QSignalSpy(primary.activation_requested)
+    try:
+        assert primary.acquire()
+        assert not secondary.acquire(command="open-web")
+        assert len(web_spy) or web_spy.wait(500)
+        assert len(web_spy) == 1
+        assert len(activation_spy) == 0
+    finally:
+        secondary.release()
+        primary.release()
+        app.processEvents()

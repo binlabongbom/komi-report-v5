@@ -214,6 +214,29 @@ GRAPH_COLORS_TYPE = {           # สี bar สำหรับประเภ�
 
 # ─── QSS หลัก (stylesheet ทั้งโปรแกรม) ───────────────────
 # แก้ตรงนี้เพื่อเปลี่ยน style ปุ่ม/ตาราง/input ทั้งหมด
+def page_tabs_qss():
+    """One left-aligned tab pattern for all desktop page containers."""
+    return f"""
+QTabWidget::pane {{
+    border: 1px solid {C_BORDER}; border-radius: 0;
+    background: {C_CARD};
+}}
+QTabWidget::tab-bar {{ alignment: left; }}
+QTabBar::tab {{
+    background: #E5ECF2; color: {C_TEXT2};
+    border: 1px solid {C_BORDER};
+    padding: 7px 18px; font-size: {F_LG}px;
+    border-top-left-radius: 6px; border-top-right-radius: 6px;
+    margin-right: 2px;
+}}
+QTabBar::tab:selected {{
+    background: {C_CARD}; color: {C_ACCENT};
+    font-weight: 700; border-bottom: 2px solid {C_ACCENT};
+}}
+QTabBar::tab:hover {{ background: #DCE7EF; color: {C_TEXT}; }}
+"""
+
+
 def build_qss():
     return f"""
 /* ── พื้นฐาน ── */
@@ -447,22 +470,7 @@ QPushButton#btn_warning:pressed {{ background: #0d1e39 !important; color: #fffff
 QCheckBox {{ font-size: {F_LG}px; spacing: 7px; }}
 
 /* ── Tab Widget ── */
-QTabWidget::pane {{
-    border: 1px solid {C_BORDER}; border-radius: 8px;
-    background: {C_CARD};
-}}
-QTabBar::tab {{
-    background: #E5ECF2; color: {C_TEXT2};
-    border: 1px solid {C_BORDER};
-    padding: 7px 18px; font-size: {F_LG}px;
-    border-top-left-radius: 6px; border-top-right-radius: 6px;
-    margin-right: 2px;
-}}
-QTabBar::tab:selected {{
-    background: {C_CARD}; color: {C_ACCENT};
-    font-weight: 700; border-bottom: 2px solid {C_ACCENT};
-}}
-QTabBar::tab:hover {{ background: #DCE7EF; color: {C_TEXT}; }}
+{page_tabs_qss()}
 
 /* ── SpinBox arrows ── */
 QSpinBox::up-button, QDoubleSpinBox::up-button,

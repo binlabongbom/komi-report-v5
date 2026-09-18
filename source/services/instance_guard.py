@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 from pathlib import Path
 
-from PyQt6.QtCore import QLockFile, QObject, pyqtSignal
+from PyQt6.QtCore import QEventLoop, QLockFile, QObject, QTimer, pyqtSignal
 from PyQt6.QtNetwork import QLocalServer, QLocalSocket
 
 
@@ -11,6 +11,7 @@ class SingleInstanceGuard(QObject):
     """Keep one collector process and raise it when launched a second time."""
 
     activation_requested = pyqtSignal()
+    web_open_requested = pyqtSignal()
 
     def __init__(self, path: Path) -> None:
         super().__init__()
@@ -24,9 +25,11 @@ class SingleInstanceGuard(QObject):
         # bounded startup window, but a concurrent launch is rejected.
         self.lock.setStaleLockTime(30_000)
 
-    def acquire(self) -> bool:
+    def acquire(self, *, command: str = "activate") -> bool:
+        if command not in {"activate", "open-web"}:
+            raise ValueError("Unknown launch command")
         if not self.lock.tryLock(0):
-            self._notify_primary()
+            self._notify_primary(command)
             return False
         self._acquired = True
         QLocalServer.removeServer(self.server_name)
@@ -39,27 +42,52 @@ class SingleInstanceGuard(QObject):
             self.server = None
         return True
 
-    def _notify_primary(self) -> None:
+    def _notify_primary(self, command: str) -> None:
         socket = QLocalSocket()
         socket.connectToServer(self.server_name)
         if socket.waitForConnected(250):
-            socket.write(b"activate")
+            # Windows named pipes can drop data when the client exits before
+            # the primary reads it. Keep the connection until acknowledgement.
+            loop = QEventLoop()
+            deadline = QTimer()
+            deadline.setSingleShot(True)
+            deadline.timeout.connect(loop.quit)
+            socket.readyRead.connect(loop.quit)
+            socket.write(command.encode("ascii"))
             socket.flush()
-            socket.waitForBytesWritten(250)
+            deadline.start(1000)
+            loop.exec()
+            deadline.stop()
             socket.disconnectFromServer()
 
     def _on_new_connection(self) -> None:
         if self.server is None:
             return
-        received = False
         while self.server.hasPendingConnections():
             socket = self.server.nextPendingConnection()
             if socket is None:
                 continue
-            received = True
-            socket.close()
-            socket.deleteLater()
-        if received:
+            # Read asynchronously: a connection can arrive before its command.
+            timer = QTimer(socket)
+            timer.setSingleShot(True)
+            socket.readyRead.connect(lambda client=socket: self._handle_request(client))
+            timer.timeout.connect(lambda client=socket: self._handle_request(client))
+            timer.start(250)
+            if socket.bytesAvailable():
+                self._handle_request(socket)
+
+    def _handle_request(self, socket: QLocalSocket) -> None:
+        if socket.property("handled"):
+            return
+        socket.setProperty("handled", True)
+        command = bytes(socket.read(64) or b"").strip()
+        socket.write(b"ok")
+        socket.flush()
+        socket.disconnectFromServer()
+        socket.deleteLater()
+        if command == b"open-web":
+            self.web_open_requested.emit()
+        else:
             self.activation_requested.emit()
 
     def release(self) -> None:

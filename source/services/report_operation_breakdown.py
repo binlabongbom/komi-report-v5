@@ -27,6 +27,7 @@ class OperationBreakdown:
     copy_a4_bw: float = 0.0
     copy_other: float = 0.0
     scan: float = 0.0
+    available_fields: frozenset[str] = frozenset()
     print_available: bool = False
     copy_available: bool = False
     scan_available: bool = False
@@ -75,6 +76,7 @@ def breakdown_from_counters(counters: dict[str, float]) -> OperationBreakdown:
     }
     return OperationBreakdown(
         **values,
+        available_fields=frozenset(field for field, label in _GROUP_FIELDS if groups.get(label) is not None),
         print_available=any(
             groups.get(label) is not None
             for _field, label in _GROUP_FIELDS

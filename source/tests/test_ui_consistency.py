@@ -14,10 +14,14 @@ def test_button_system_normalizes_geometry_and_radius():
     large.setMinimumHeight(50)
     icon = QPushButton("⚙", root)
     icon.setFixedSize(30, 30)
+    calendar = QPushButton("📅", root)
+    calendar.setProperty("uiButtonRole", "compact-icon")
+    export = QPushButton("Export to Excel", root)
+    export.setProperty("uiButtonRole", "compact")
     link = QPushButton("Settings", root)
     link.setStyleSheet("background:transparent;border:none;text-decoration:underline;")
 
-    for button in (standard, large, icon, link):
+    for button in (standard, large, icon, calendar, export, link):
         button.show()
     root.show()
     app.processEvents()
@@ -25,6 +29,8 @@ def test_button_system_normalizes_geometry_and_radius():
     assert standard.height() == BUTTON_HEIGHT
     assert large.height() == BUTTON_LARGE_HEIGHT
     assert icon.width() == icon.height() == BUTTON_ICON_SIZE
+    assert calendar.width() == calendar.height() == 24
+    assert export.height() == 28
     assert link.height() == BUTTON_LINK_HEIGHT
     # Helper buttons must keep an empty local stylesheet so the application
     # primary and disabled selectors remain effective.

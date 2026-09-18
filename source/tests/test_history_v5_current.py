@@ -1118,9 +1118,22 @@ def test_report_center_replaces_legacy_reports_with_cloud_overview_users_and_pri
             page.report_center_tabs.tabText(index)
             for index in range(page.report_center_tabs.count())
         ] == ["Overview", "Users", "Printers", "Usage", "Legacy"]
-        assert isinstance(page.report_center_scroll, QScrollArea)
-        assert page.report_center_scroll.widget() is page.report_center
-        assert page.report_center_scroll.widgetResizable()
+        report = page.report_center
+        content_pages = (
+            report.overview_page, report.users_page, report.printers_page,
+            report.usage_page, report.legacy_raw_page,
+        )
+        for index, content in enumerate(content_pages):
+            scrolls = report.tabs.widget(index).findChildren(QScrollArea)
+            owners = [scroll for scroll in scrolls if scroll.widget() is content]
+            assert len(owners) == 1
+            scroll = owners[0]
+            assert scroll.widgetResizable()
+            assert not scroll.viewport().isAncestorOf(report.header)
+            assert not scroll.viewport().isAncestorOf(report.tabs.tabBar())
+            for start, end in report.period_edit_pairs:
+                assert not scroll.viewport().isAncestorOf(start)
+                assert not scroll.viewport().isAncestorOf(end)
 
         page._refresh_report_center()
         assert usage_loads == ["monthly", "daily"]
@@ -1131,8 +1144,8 @@ def test_report_center_replaces_legacy_reports_with_cloud_overview_users_and_pri
         # This fixture has only aggregate paper totals.  Print/Copy must stay
         # explicitly unavailable instead of being guessed from Color/B&W.
         cloud.tabs.setCurrentIndex(2)
-        assert cloud.printer_kpis["print"].text() == "—"
-        assert cloud.printer_kpis["copy"].text() == "—"
+        assert cloud.printer_metric_cards["color_print"]._full_value == "—"
+        assert cloud.printer_metric_cards["color_copy"]._full_value == "—"
         assert cloud.printers_table.item(0, 0).text() == "Printer 1"
         assert cloud.printer_detail.item(0, 1).text() == "Printer 1"
         cloud.tabs.setCurrentIndex(3)

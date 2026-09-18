@@ -10,7 +10,7 @@ from pathlib import Path
 def launch_command() -> list[str]:
     if getattr(sys, "frozen", False):
         return [sys.executable, "--background"]
-    return [sys.executable, str(Path(__file__).resolve().parents[1] / "app.py"), "--background"]
+    return [sys.executable, str(Path(__file__).resolve().parent / "background_agent.py")]
 
 
 def configure_autostart(enabled: bool, *, apply: bool = True) -> Path | None:
@@ -65,3 +65,17 @@ def configure_autostart(enabled: bool, *, apply: bool = True) -> Path | None:
         encoding="utf-8",
     )
     return path
+
+
+def refresh_existing_autostart() -> Path | None:
+    """Migrate an already-authorized Auto-start entry to the current agent.
+
+    This never creates a new registration.  It only refreshes an entry the
+    user enabled previously, which upgrades legacy ``app.py --background``
+    commands to the lightweight headless agent.
+    """
+
+    planned = configure_autostart(True, apply=False)
+    if planned is None or not planned.exists():
+        return planned
+    return configure_autostart(True, apply=True)

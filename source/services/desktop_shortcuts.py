@@ -64,11 +64,14 @@ def _powershell_quote(value: Path | str) -> str:
     return str(value).replace("'", "''")
 
 
-def _write_windows_link(link: Path, launcher: Path, icon: Path, working_dir: Path) -> None:
+def _write_windows_link(
+    link: Path, launcher: Path, icon: Path, working_dir: Path, arguments: str = ""
+) -> None:
     command = (
         "$w=New-Object -ComObject WScript.Shell;"
         f"$s=$w.CreateShortcut('{_powershell_quote(link)}');"
         f"$s.TargetPath='{_powershell_quote(launcher)}';"
+        f"$s.Arguments='{_powershell_quote(arguments)}';"
         f"$s.WorkingDirectory='{_powershell_quote(working_dir)}';"
         f"$s.IconLocation='{_powershell_quote(icon)},0';"
         "$s.Save()"
@@ -131,13 +134,27 @@ def create_desktop_shortcuts(
             _write_macos_app(destination, launcher, root / "source" / "Logo.icns")
             created.append(destination)
     elif platform_id.startswith("win"):
+        # Customer installations omit source .cmd launchers. Both shortcuts
+        # use the same runtime and Desktop controller to avoid duplicate ports.
+        candidates = (root / "runtime" / "pythonw.exe", root / ".venv" / "Scripts" / "pythonw.exe")
+        python = next((path for path in candidates if path.is_file()), None)
+        app_script = root / "source" / "app.py"
+        if python is not None and app_script.is_file():
+            launcher = python
+            desktop_args = subprocess.list2cmdline([str(app_script)])
+            web_args = subprocess.list2cmdline([str(app_script), "--open-web"])
+        else:
+            launcher = root / "START_KOMI_REPORT.cmd"
+            if not launcher.is_file():
+                raise FileNotFoundError(f"ไม่พบตัวเปิดโปรแกรม: {launcher}")
+            desktop_args, web_args = "", "web"
         items = (
-            ("KOMI Report V5.lnk", root / "START_KOMI_REPORT.cmd"),
-            ("KOMI Report Web.lnk", root / "START_KOMI_REPORT_WEB.cmd"),
+            ("KOMI Report V5.lnk", desktop_args),
+            ("KOMI Report Web.lnk", web_args),
         )
-        for filename, launcher in items:
+        for filename, arguments in items:
             destination = target_desktop / filename
-            _write_windows_link(destination, launcher, root / "source" / "Logo.ico", root)
+            _write_windows_link(destination, launcher, root / "source" / "Logo.ico", root, arguments)
             created.append(destination)
     else:
         items = (

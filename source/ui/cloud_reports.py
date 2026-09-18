@@ -14,26 +14,30 @@ from PyQt6.QtCharts import (
     QLineSeries,
     QValueAxis,
 )
-from PyQt6.QtCore import QDate, QEvent, QMargins, QPointF, QSignalBlocker, Qt, pyqtSignal
-from PyQt6.QtGui import QColor, QMouseEvent, QPainter
+from PyQt6.QtCore import QDate, QEvent, QMargins, QPointF, QSignalBlocker, Qt, QTimer, pyqtSignal
+from PyQt6.QtGui import QColor, QFont, QFontMetrics, QMouseEvent, QPainter
 from PyQt6.QtWidgets import (
     QAbstractItemView,
-    QDateEdit,
     QFrame,
     QGridLayout,
     QHBoxLayout,
     QHeaderView,
     QLabel,
+    QLayout,
     QPushButton,
+    QProgressBar,
+    QScrollArea,
     QSizePolicy,
     QTableWidget,
     QTableWidgetItem,
-    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
 
-from i18n import apply_language
+from i18n import ENGLISH, apply_language, get_language, translate_text
+from ui.numeric_inputs import NumericDateEdit as QDateEdit
+from ui.page_tabs import PageTabs as QTabWidget
+from ui.page_tabs import PageHeading
 from services.legacy_history_import import build_legacy_usage_intervals
 from services.report_operation_breakdown import (
     breakdown_from_raw_records,
@@ -220,38 +224,110 @@ class _CloudOverviewMetricCard(QFrame):
         self.setObjectName("cloud_overview_metric_card")
         self.setMinimumWidth(0)
         self.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
-        self.setFixedHeight(56)
-
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(12, 5, 12, 5)
-        layout.setSpacing(8)
-
-        content = QWidget()
-        content.setObjectName("cloud_overview_metric_content")
-        content.setMinimumWidth(0)
-        content_layout = QVBoxLayout(content)
-        content_layout.setContentsMargins(0, 0, 0, 0)
-        content_layout.setSpacing(1)
+        self._full_title = title
+        self._full_value = "—"
+        self._full_detail = ""
+        self._compact = None
+        self._accent = accent
+        self._value_pixel_size = None
+        layout = QGridLayout(self)
+        layout.setContentsMargins(10, 8, 10, 8)
+        layout.setHorizontalSpacing(6)
+        layout.setVerticalSpacing(2)
+        layout.setColumnStretch(0, 1)
 
         self.lbl_title = QLabel(title)
         self.lbl_title.setObjectName("cloud_overview_metric_title")
-        self.lbl_detail = QLabel("")
-        self.lbl_detail.setObjectName("cloud_overview_metric_detail")
-        self.lbl_detail.setWordWrap(False)
-        content_layout.addWidget(self.lbl_title)
-        content_layout.addWidget(self.lbl_detail)
-
+        self.lbl_title.setWordWrap(False)
         self.lbl_val = QLabel("—")
         self.lbl_val.setObjectName("cloud_overview_metric_value")
         self.lbl_val.setStyleSheet(f"color:{accent};background:transparent;border:0;")
         self.lbl_val.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        self.lbl_detail = QLabel("")
+        self.lbl_detail.setObjectName("cloud_overview_metric_detail")
+        for label in (self.lbl_title, self.lbl_val, self.lbl_detail):
+            label.setMinimumWidth(0)
+            label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+        self.lbl_val.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        layout.addWidget(self.lbl_title, 0, 0)
+        layout.addWidget(self.lbl_detail, 1, 0)
+        layout.addWidget(self.lbl_val, 0, 1, 2, 1)
+        self.set_compact(False)
 
-        layout.addWidget(content, 1)
-        layout.addWidget(self.lbl_val)
+    def set_compact(self, compact: bool) -> None:
+        if compact == self._compact:
+            return
+        self._compact = compact
+        self.lbl_title.setFixedHeight(self.lbl_title.fontMetrics().height())
+        self.lbl_detail.setFixedHeight(max(14, self.lbl_detail.fontMetrics().height()))
+        value_font = QFont(self.lbl_val.font())
+        value_font.setPixelSize(24 if compact else 32)
+        text_height = (
+            self.lbl_title.height() + self.lbl_detail.height()
+            + self.layout().verticalSpacing()
+        )
+        self.lbl_val.setFixedHeight(max(text_height, QFontMetrics(value_font).height()))
+        margins = self.layout().contentsMargins()
+        self.setFixedHeight(
+            self.lbl_val.height() + margins.top() + margins.bottom() + 2
+        )
+        self.refresh_elision()
 
     def set_metric(self, value: str, detail: str = "", *, available: bool = True) -> None:
-        self.lbl_val.setText(value if available else "—")
-        self._set_detail(detail if available else "ไม่มี Counter แยกประเภท")
+        self._full_value = value if available else "—"
+        self._full_detail = detail if available else "ไม่มี Counter แยกประเภท"
+        self.lbl_val.setToolTip(self._full_value)
+        self.lbl_val.setAccessibleName(self._full_value)
+        self.lbl_detail.setToolTip(self._full_detail)
+        self.refresh_elision()
+
+    def resizeEvent(self, event) -> None:  # noqa: N802 - Qt API
+        super().resizeEvent(event)
+        self.refresh_elision()
+
+    def refresh_elision(self) -> None:
+        # Fit ordinary totals before eliding exceptional values. Full text
+        # remains available without widening the six-card row.
+        margins = self.layout().contentsMargins()
+        available = max(1, self.contentsRect().width() - margins.left() - margins.right()
+                        - self.layout().horizontalSpacing())
+        value_limit = max(1, int(available * 0.6))
+        value_font = QFont(self.lbl_val.font())
+        pixel_size = 24 if self._compact else 32
+        minimum_size = 16 if self._compact else 20
+        while True:
+            value_font.setPixelSize(pixel_size)
+            natural_width = QFontMetrics(value_font).horizontalAdvance(self._full_value) + 2
+            if natural_width <= value_limit or pixel_size == minimum_size:
+                break
+            pixel_size -= 1
+        if self._value_pixel_size != pixel_size:
+            self._value_pixel_size = pixel_size
+            self.lbl_val.setStyleSheet(
+                f"color:{self._accent};background:transparent;border:0;font-size:{pixel_size}px;"
+            )
+        value_width = min(natural_width, value_limit)
+        self.lbl_val.setFixedWidth(value_width)
+        self.layout().activate()
+        full_title = translate_text(self._full_title) if get_language() == ENGLISH else self._full_title
+        self.lbl_title.setToolTip(full_title)
+        self.lbl_title.setAccessibleName(full_title)
+        self.lbl_title.setText(self.lbl_title.fontMetrics().elidedText(
+            full_title, Qt.TextElideMode.ElideRight,
+            max(1, self.lbl_title.contentsRect().width()),
+        ))
+        value = self.lbl_val.fontMetrics().elidedText(
+            self._full_value, Qt.TextElideMode.ElideMiddle,
+            max(1, self.lbl_val.contentsRect().width()),
+        )
+        self.lbl_val.setText(value)
+        full_detail = translate_text(self._full_detail) if get_language() == ENGLISH else self._full_detail
+        self.lbl_detail.setToolTip(full_detail)
+        detail = self.lbl_detail.fontMetrics().elidedText(
+            full_detail, Qt.TextElideMode.ElideRight,
+            max(1, self.lbl_detail.contentsRect().width()),
+        )
+        self._set_detail(detail)
 
     def _set_detail(self, detail: str) -> None:
         """Keep A3/A4 labels muted while preserving their values as readable data."""
@@ -319,21 +395,23 @@ def _panel(title: str, subtitle: str = "") -> tuple[QFrame, QVBoxLayout]:
     frame = QFrame()
     frame.setObjectName("cloud_report_panel")
     layout = QVBoxLayout(frame)
-    layout.setContentsMargins(16, 14, 16, 14)
-    layout.setSpacing(10)
-    head = QHBoxLayout()
-    text = QVBoxLayout()
+    layout.setContentsMargins(16, 16, 16, 16)
+    layout.setSpacing(8)
+    frame.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
+    layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+    heading_layout = QVBoxLayout()
+    heading_layout.setContentsMargins(0, 0, 0, 0)
+    heading_layout.setSpacing(4)
     heading = QLabel(title)
     heading.setObjectName("cloud_panel_title")
-    text.addWidget(heading)
+    heading.setWordWrap(True)
+    heading_layout.addWidget(heading)
     if subtitle:
         detail = QLabel(subtitle)
         detail.setObjectName("cloud_panel_subtitle")
         detail.setWordWrap(True)
-        text.addWidget(detail)
-    head.addLayout(text)
-    head.addStretch()
-    layout.addLayout(head)
+        heading_layout.addWidget(detail)
+    layout.addLayout(heading_layout)
     return frame, layout
 
 
@@ -349,8 +427,29 @@ class CloudReportsWidget(QWidget):
     period_changed = pyqtSignal(object)
     reading_status_requested = pyqtSignal()
 
-    def __init__(self, parent=None) -> None:
+    def __init__(self, parent=None, *, staged: bool = False) -> None:
         super().__init__(parent)
+        self._staged = staged
+        self._has_data = False
+        self._data_tab: int | None = None
+        self._loaded_tabs: set[int] = set()
+        self._data_revision = 0
+        self._render_generation = 0
+        self._pending_render_tail = None
+        self._render_tail_timer = QTimer(self)
+        self._render_tail_timer.setSingleShot(True)
+        self._render_tail_timer.timeout.connect(self._run_render_tail)
+        self._row_revisions = {"users": -1, "printers": -1}
+        self._loading = False
+        self._tab_loading: set[int] = set()
+        self._built_tabs: set[int] = set()
+        self._tab_hosts: dict[int, QWidget] = {}
+        self._tab_placeholders: dict[int, QLabel] = {}
+        self.user_metric_cards = {}
+        self.printer_metric_cards = {}
+        self._usage_meter_baselines: tuple = ()
+        self.users_page = self.printers_page = self.usage_page = None
+        self.legacy_raw_page = self.legacy_history_page = None
         self._records: tuple = ()
         self._daily_records: tuple = ()
         self._usage_daily_records: tuple = ()
@@ -368,31 +467,32 @@ class CloudReportsWidget(QWidget):
         self._printer_rows: list[dict] = []
         self._usage_selected_slots: set[int] = set()
         self.usage_device_filters: dict[int, VisibleCheckBox] = {}
+        self._responsive_grids: list[tuple[QGridLayout, tuple[QWidget, ...], int, int]] = []
+        self._period_toolbars: list[tuple[QGridLayout, tuple[QWidget, ...]]] = []
+        self._layout_timer = QTimer(self)
+        self._layout_timer.setSingleShot(True)
+        self._layout_timer.timeout.connect(self._apply_responsive_layout)
         self._build()
+        self._layout_timer.start(0)
+        if self._staged:
+            self.export_button.setEnabled(False)
 
     def _build(self) -> None:
         self.setObjectName("cloud_reports")
         self.setStyleSheet(
             f"QWidget#cloud_reports{{background:#F3F6F8;color:#243244;}}"
             "QWidget#cloud_reports QLabel{background:transparent;border:none;}"
-            f"QFrame#cloud_report_toolbar,QFrame#cloud_report_panel,QFrame#cloud_kpi{{"
+            f"QFrame#cloud_report_toolbar,QFrame#cloud_report_panel{{"
             f"background:{PANEL};border:1px solid {LINE};border-radius:7px;}}"
-            "QLabel#cloud_title{font-size:25px;font-weight:800;color:#25364A;}"
+            "QLabel#cloud_title{font-weight:700;color:#102A43;}"
             f"QLabel#cloud_subtitle,QLabel#cloud_panel_subtitle{{color:{MUTED};font-size:12px;}}"
             "QLabel#cloud_panel_title{font-size:15px;font-weight:750;color:#25364A;}"
-            f"QLabel#cloud_kpi_caption{{color:{MUTED};font-size:12px;}}"
-            "QLabel#cloud_kpi_value{font-size:24px;font-weight:800;}"
-            f"QLabel#cloud_kpi_note{{color:{MUTED};font-size:10px;}}"
             f"QFrame#cloud_overview_kpi_panel{{background:{PANEL};border:1px solid {LINE};border-radius:12px;}}"
             "QFrame#cloud_overview_metric_card{background:#FFFFFF;border:1px solid #D7E0EA;border-radius:9px;}"
             "QWidget#cloud_overview_metric_content{background:transparent;border:none;}"
             "QLabel#cloud_overview_metric_title{color:#25364A;font-size:15px;font-weight:750;}"
             f"QLabel#cloud_overview_metric_detail{{color:{MUTED};font-size:11px;}}"
             "QLabel#cloud_overview_metric_value{font-size:24px;font-weight:800;}"
-            "QTabWidget#cloud_report_tabs::pane{border:0;background:transparent;}"
-            f"QTabBar::tab{{background:transparent;color:{MUTED};padding:10px 24px;"
-            f"border-bottom:3px solid transparent;font-weight:700;}}"
-            f"QTabBar::tab:selected{{color:{NAVY};border-bottom:3px solid {ORANGE};}}"
             f"QTableWidget{{background:white;border:1px solid {LINE};gridline-color:#E8EDF2;"
             "alternate-background-color:#F7F9FB;selection-background-color:#E8F2FB;"
             "selection-color:#203247;}"
@@ -409,11 +509,19 @@ class CloudReportsWidget(QWidget):
             f"QPushButton#cloud_export{{background:white;color:{NAVY};border:1px solid #B9CBDD;"
             "border-radius:5px;padding:9px 14px;font-weight:700;}"
             f"QPushButton#cloud_export:hover{{background:#EEF5FB;border-color:{BLUE};}}"
+            f"QPushButton#cloud_period_export{{background:#FFFFFF;color:{NAVY};"
+            "border:1px solid #B9CBDD;border-radius:4px;padding:3px 8px;font-size:11px;font-weight:700;}"
+            f"QPushButton#cloud_period_export:hover,QPushButton#cloud_period_export:focus{{"
+            f"background:#EEF5FB;border-color:{BLUE};}}"
             f"QPushButton#cloud_reset{{background:#EEF3F7;color:{NAVY};border:1px solid {LINE};"
             "border-radius:5px;padding:7px 11px;font-weight:700;}"
-            f"QPushButton#cloud_calendar_button{{background:#EEF5FB;color:{NAVY};"
-            f"border:1px solid #B9CBDD;border-radius:6px;min-width:34px;"
-            "padding:7px 5px;font-size:16px;}"
+            "QWidget#cloud_calendar_control{background:transparent;border:0;}"
+            f"QPushButton#cloud_calendar_button{{background:#FFFFFF;color:{NAVY};"
+            "border:1px solid #B9CBDD;border-radius:4px;"
+            "padding:0;margin:0;font-size:16px;}"
+            f"QPushButton#cloud_calendar_button:hover,QPushButton#cloud_calendar_button:focus{{"
+            f"background:#EEF5FB;border-color:{BLUE};}}"
+            "QPushButton#cloud_calendar_button:pressed{background:#DDECF8;}"
             f"QPushButton#cloud_granularity{{background:#EEF3F7;color:{NAVY};border:1px solid {LINE};"
             "border-radius:5px;min-width:30px;padding:6px 8px;font-weight:800;}"
             f"QPushButton#cloud_granularity:checked{{background:{NAVY};color:white;border-color:{NAVY};}}"
@@ -422,61 +530,352 @@ class CloudReportsWidget(QWidget):
             "QLabel#cloud_error{background:#FFF0F1;color:#A61D2D;border:1px solid #F1BBC1;"
             "border-radius:5px;padding:9px 12px;font-weight:700;}"
         )
+        self._base_qss = self.styleSheet()
         root = QVBoxLayout(self)
-        root.setContentsMargins(16, 14, 16, 18)
+        root.setContentsMargins(22, 18, 22, 18)
         root.setSpacing(12)
 
-        heading = QHBoxLayout()
-        title_box = QVBoxLayout()
-        title = QLabel("Reports")
+        self.header = QWidget()
+        self.header.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
+        heading = QGridLayout(self.header)
+        heading.setContentsMargins(0, 0, 0, 0)
+        heading.setSpacing(12)
+        self._header_grid = heading
+        self._header_title = PageHeading("Reports", "ภาพรวมการใช้งานจากเครื่องพิมพ์ทั้งหมด")
+        title = self._header_title.title
         title.setObjectName("cloud_title")
-        title_box.addWidget(title)
-        subtitle = QLabel("ภาพรวมการใช้งานจากเครื่องพิมพ์ทั้งหมด")
-        subtitle.setObjectName("cloud_subtitle")
-        title_box.addWidget(subtitle)
-        heading.addLayout(title_box)
-        heading.addStretch()
+        subtitle = self._header_title.description
+        self._header_subtitle = subtitle
+        heading.addWidget(self._header_title, 0, 0)
+        heading.setColumnStretch(0, 1)
         self.updated_label = QLabel("กำลังอ่านข้อมูลล่าสุด…")
         self.updated_label.setObjectName("cloud_subtitle")
-        self.updated_label.setMinimumWidth(100)
-        self.updated_label.setMaximumWidth(170)
-        self.updated_label.setWordWrap(True)
+        self.updated_label.setMinimumWidth(0)
+        self.updated_label.setMaximumWidth(240)
+        self.updated_label.setWordWrap(False)
         self.updated_label.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
-        heading.addWidget(self.updated_label)
+        heading.addWidget(self.updated_label, 0, 1)
         self.export_button = QPushButton("ส่งออก Excel")
         self.export_button.setObjectName("cloud_export")
         self.export_button.setAccessibleName("ส่งออกรายงานเป็นไฟล์ Excel")
         self.export_button.clicked.connect(self.export_requested.emit)
-        heading.addWidget(self.export_button)
+        heading.addWidget(self.export_button, 0, 2)
         self.refresh_button = QPushButton("รีเฟรช")
         self.refresh_button.setObjectName("cloud_primary")
         self.refresh_button.setAccessibleName("รีเฟรชข้อมูลรายงาน")
         self.refresh_button.clicked.connect(self.refresh_requested.emit)
-        heading.addWidget(self.refresh_button)
-        root.addLayout(heading)
+        heading.addWidget(self.refresh_button, 0, 3)
+        root.addWidget(self.header)
 
         self.error_label = QLabel("")
         self.error_label.setObjectName("cloud_error")
         self.error_label.setWordWrap(True)
         self.error_label.hide()
         root.addWidget(self.error_label)
+        self.loading_panel = QWidget()
+        loading_layout = QHBoxLayout(self.loading_panel)
+        loading_layout.setContentsMargins(0, 0, 0, 0)
+        self.loading_indicator = QProgressBar()
+        self.loading_indicator.setRange(0, 0)
+        self.loading_indicator.setTextVisible(False)
+        self.loading_indicator.setFixedSize(90, 8)
+        self.loading_indicator.setAccessibleName("กำลังโหลดรายงาน")
+        self.loading_label = QLabel("กำลังโหลดรายงาน…")
+        self.loading_label.setWordWrap(True)
+        self.retry_button = QPushButton("ลองอีกครั้ง")
+        self.retry_button.clicked.connect(self.refresh_requested.emit)
+        loading_layout.addWidget(self.loading_indicator)
+        loading_layout.addWidget(self.loading_label, 1)
+        loading_layout.addWidget(self.retry_button)
+        self.loading_panel.hide()
+        root.addWidget(self.loading_panel)
+        self._slow_loading_timer = QTimer(self)
+        self._slow_loading_timer.setSingleShot(True)
+        self._slow_loading_timer.setInterval(5000)
+        self._slow_loading_timer.timeout.connect(self._show_slow_loading)
 
         self.tabs = QTabWidget()
+        self.tabs.setAttribute(Qt.WidgetAttribute.WA_LayoutUsesWidgetRect, True)
         self.tabs.setObjectName("cloud_report_tabs")
+        self.tabs.setDocumentMode(False)
+        self.tabs.tabBar().setObjectName("cloud_report_tabbar")
+        self.tabs.tabBar().setExpanding(False)
+        self.tabs.tabBar().setDrawBase(False)
+        self.tabs.tabBar().setUsesScrollButtons(True)
         self.period_edit_pairs: list[tuple[QDateEdit, QDateEdit]] = []
         self.overview_page = self._build_overview()
-        self.users_page = self._build_users()
-        self.printers_page = self._build_printers()
-        self.usage_page = self._build_usage()
-        self.legacy_raw_page = self._build_legacy_raw()
-        self.legacy_history_page = self._build_legacy_history()
-        self.tabs.addTab(self.overview_page, "Overview")
-        self.tabs.addTab(self.users_page, "Users")
-        self.tabs.addTab(self.printers_page, "Printers")
-        self.tabs.addTab(self.usage_page, "Usage")
-        self.tabs.addTab(self.legacy_raw_page, "Legacy")
+        self.tab_scrolls: list[QScrollArea] = []
+        self._built_tabs.add(0)
+        if self._staged:
+            for index, title in enumerate(("Overview", "Users", "Printers", "Usage", "Legacy")):
+                host = QWidget()
+                layout = QVBoxLayout(host)
+                layout.setContentsMargins(0, 0, 0, 0)
+                self._tab_hosts[index] = host
+                if index == 0:
+                    layout.addWidget(self._scrolling_tab(self.overview_page))
+                else:
+                    placeholder = QLabel("กำลังเตรียมรายงาน…")
+                    placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                    layout.addWidget(placeholder)
+                    self._tab_placeholders[index] = placeholder
+                self.tabs.addTab(host, title)
+        else:
+            self.users_page = self._build_users()
+            self.printers_page = self._build_printers()
+            self.usage_page = self._build_usage()
+            self.legacy_raw_page = self._build_legacy_raw()
+            self.legacy_history_page = self._build_legacy_history()
+            for page, title in (
+                (self.overview_page, "Overview"), (self.users_page, "Users"),
+                (self.printers_page, "Printers"), (self.usage_page, "Usage"),
+                (self.legacy_raw_page, "Legacy"),
+            ):
+                self.tabs.addTab(self._scrolling_tab(page), title)
+            self._built_tabs.update(range(5))
         self.tabs.currentChanged.connect(self._render_selected_tab)
         root.addWidget(self.tabs, 1)
+
+    @property
+    def has_data(self) -> bool:
+        return self._has_data and (self._data_tab is None or self.tabs.currentIndex() in self._loaded_tabs)
+
+    def _can_render_tab(self, index: int) -> bool:
+        return (index in self._built_tabs and self._has_data
+                and (self._data_tab is None or self._data_tab == index))
+
+    @property
+    def built_tabs(self) -> frozenset[int]:
+        return frozenset(self._built_tabs)
+
+    def ensure_tab(self, index: int) -> QWidget:
+        """Construct one public tab once without changing the selected index."""
+        if index not in range(5):
+            raise ValueError("Report tab index must be between 0 and 4")
+        if index not in self._built_tabs:
+            attributes = ("overview_page", "users_page", "printers_page", "usage_page", "legacy_raw_page")
+            builders = (self._build_overview, self._build_users, self._build_printers,
+                        self._build_usage, self._build_legacy_raw)
+            page = builders[index]()
+            setattr(self, attributes[index], page)
+            if index == 4:
+                self.legacy_history_page = self._build_legacy_history()
+            placeholder = self._tab_placeholders.pop(index)
+            host = self._tab_hosts[index]
+            host.layout().removeWidget(placeholder)
+            placeholder.deleteLater()
+            host.layout().addWidget(self._scrolling_tab(page))
+            self._built_tabs.add(index)
+            if self._period is not None:
+                self.set_periods((), self._period)
+            if index == 3 and self._can_render_tab(3):
+                self._sync_usage_device_filters()
+            # New cards must inherit density even when window dimensions did not change.
+            self._compact_density = None
+            self._layout_timer.start(0)
+        return self.tabs.widget(index)
+
+    def prewarm_tab(self, index: int) -> QWidget:
+        return self.ensure_tab(index)
+
+    def set_loading(self, loading: bool) -> None:
+        was_loading = self._loading
+        self._loading = bool(loading)
+        if loading:
+            self._cancel_render_tail()
+            self.error_label.hide()
+            if not was_loading:
+                self._slow_loading_timer.start()
+                self.loading_label.setText("กำลังอัปเดตรายงาน…" if self.has_data else "กำลังโหลดรายงาน…")
+        else:
+            self._slow_loading_timer.stop()
+        self._update_loading_visibility()
+
+    def set_tab_loading(self, index: int, loading: bool) -> None:
+        if index not in range(5):
+            raise ValueError("Report tab index must be between 0 and 4")
+        if loading:
+            if index == self.tabs.currentIndex():
+                self._cancel_render_tail()
+            self._tab_loading.add(index)
+        else:
+            self._tab_loading.discard(index)
+        self._update_loading_visibility()
+
+    def _update_loading_visibility(self) -> None:
+        tail_busy = self._pending_render_tail is not None and self._pending_render_tail[2] == self.tabs.currentIndex()
+        busy = self._loading or self.tabs.currentIndex() in self._tab_loading or tail_busy
+        self.loading_panel.setVisible(busy or self.error_label.isVisible())
+        self.loading_indicator.setVisible(busy)
+        if busy and not self._slow_loading_timer.isActive() and not self._loading:
+            self.loading_label.setText("กำลังโหลดรายงานแท็บนี้…")
+            self._slow_loading_timer.start()
+        if not busy:
+            self._slow_loading_timer.stop()
+        self.retry_button.setVisible(not busy or not self._slow_loading_timer.isActive())
+        self.export_button.setEnabled(self.has_data or not self._staged)
+
+    def _show_slow_loading(self) -> None:
+        if self._loading or self.tabs.currentIndex() in self._tab_loading:
+            self.loading_label.setText("ใช้เวลานานกว่าปกติ · กำลังโหลดข้อมูลต่อ สามารถลองอีกครั้งได้")
+            self.retry_button.show()
+
+    def _scrolling_tab(self, page: QWidget) -> QWidget:
+        wrapper = QWidget()
+        wrapper.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+        layout = QVBoxLayout(wrapper)
+        # Hidden tabs must not retain a minimum width from an earlier toolbar arrangement.
+        layout.setSizeConstraint(QLayout.SizeConstraint.SetNoConstraint)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(12)
+        first = page.layout().itemAt(0)
+        if first is not None and first.widget() is not None:
+            toolbar = first.widget()
+            if toolbar.objectName() == "cloud_report_toolbar":
+                page.layout().removeWidget(toolbar)
+                layout.addWidget(toolbar)
+        page.layout().setContentsMargins(0, 0, 0, 0)
+        if page in (self.overview_page, self.users_page, self.printers_page):
+            page.layout().setAlignment(Qt.AlignmentFlag.AlignTop)
+        scroll = QScrollArea()
+        scroll.setObjectName("cloud_tab_scroll")
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.setMinimumSize(0, 0)
+        scroll.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Ignored)
+        scroll.setWidget(page)
+        scroll.viewport().installEventFilter(self)
+        self.tab_scrolls.append(scroll)
+        layout.addWidget(scroll, 1)
+        return wrapper
+
+    def resizeEvent(self, event) -> None:  # noqa: N802 - Qt API
+        super().resizeEvent(event)
+        if hasattr(self, "_layout_timer"):
+            self._layout_timer.start(0)
+
+    def eventFilter(self, watched, event) -> bool:  # noqa: N802 - Qt API
+        if event.type() == QEvent.Type.Resize:
+            self._layout_timer.start(0)
+        return super().eventFilter(watched, event)
+
+    @staticmethod
+    def _place_grid(grid: QGridLayout, widgets: tuple[QWidget, ...], columns: int) -> None:
+        if getattr(grid, "_report_columns", None) == columns:
+            return
+        for widget in widgets:
+            grid.removeWidget(widget)
+        for column in range(max(grid.columnCount(), columns)):
+            grid.setColumnStretch(column, 1 if column < columns else 0)
+            grid.setColumnMinimumWidth(column, 0)
+        for index, widget in enumerate(widgets):
+            grid.addWidget(widget, index // columns, index % columns)
+        grid._report_columns = columns
+
+    def _set_density(self, compact: bool) -> None:
+        if getattr(self, "_compact_density", None) == compact:
+            return
+        self._compact_density = compact
+        sizes = {
+            "cloud_subtitle": 11 if compact else 12,
+            "cloud_panel_title": 13 if compact else 15,
+            "cloud_panel_subtitle": 11 if compact else 12,
+            "cloud_overview_metric_title": 11 if compact else 13,
+            "cloud_overview_metric_value": 24 if compact else 32,
+            "cloud_overview_metric_detail": 10 if compact else 11,
+        }
+        density_qss = "".join(
+            f"QLabel#{name}{{font-size:{size}px;}}" for name, size in sizes.items()
+        )
+        density_qss += (
+            f"QDateEdit#cloud_period_date{{font-size:{11 if compact else 12}px;padding:4px 7px;min-width:126px;}}"
+            f"QPushButton#cloud_export,QPushButton#cloud_primary{{font-size:{11 if compact else 12}px;padding:6px 10px;}}"
+        )
+        self.setStyleSheet(self._base_qss + density_qss)
+        self._header_subtitle.setVisible(True)
+        for card in (*self.overview_kpis.values(), *self.user_metric_cards.values(), *self.printer_metric_cards.values()):
+            card.set_compact(compact)
+
+    def _apply_responsive_layout(self) -> None:
+        if not hasattr(self, "tab_scrolls"):
+            return
+        margins = self.layout().contentsMargins()
+        width = max(1, self.width() - margins.left() - margins.right())
+        self._set_density(width < 1100 or self.height() < 760)
+        compact_header = width < 520
+        if getattr(self, "_compact_header", None) != compact_header:
+            grid = self._header_grid
+            widgets = (self._header_title, self.updated_label, self.export_button, self.refresh_button)
+            for widget in widgets:
+                grid.removeWidget(widget)
+            if compact_header:
+                grid.addWidget(self._header_title, 0, 0, 1, 4)
+                grid.addWidget(self.updated_label, 1, 0, 1, 2)
+                grid.addWidget(self.export_button, 1, 2)
+                grid.addWidget(self.refresh_button, 1, 3)
+            else:
+                for column, widget in enumerate(widgets):
+                    grid.addWidget(widget, 0, column)
+            self._compact_header = compact_header
+        for grid, widgets in self._period_toolbars:
+            # The two calendar groups remain intact when moved to another row.
+            margins = grid.contentsMargins()
+            wide_minimum = (
+                sum(max(w.minimumWidth(), w.minimumSizeHint().width()) for w in widgets[:6])
+                + 6 * grid.horizontalSpacing() + margins.left() + margins.right()
+            )
+            mode = 0 if width >= max(740, wide_minimum) else (1 if width >= 540 else 2)
+            if getattr(grid, "_report_mode", None) == mode:
+                continue
+            for widget in widgets:
+                grid.removeWidget(widget)
+            for column in range(7):
+                grid.setColumnStretch(column, 0)
+            title, start_label, start, end_label, end, export, note = widgets
+            if mode == 0:
+                for column, widget in enumerate(widgets[:6]):
+                    grid.addWidget(widget, 0, column)
+                grid.addWidget(note, 1, 0, 1, 7)
+                grid.setColumnStretch(6, 1)
+            elif mode == 1:
+                grid.addWidget(title, 0, 0, 2, 1)
+                grid.addWidget(start_label, 0, 1)
+                grid.addWidget(start, 0, 2)
+                grid.addWidget(end_label, 1, 1)
+                grid.addWidget(end, 1, 2)
+                grid.addWidget(export, 1, 3)
+                grid.addWidget(note, 2, 0, 1, 4)
+                grid.setColumnStretch(4, 1)
+            else:
+                grid.addWidget(title, 0, 0, 1, 2)
+                grid.addWidget(start_label, 1, 0)
+                grid.addWidget(start, 1, 1)
+                grid.addWidget(end_label, 2, 0)
+                grid.addWidget(end, 2, 1)
+                grid.addWidget(export, 3, 1, alignment=Qt.AlignmentFlag.AlignLeft)
+                grid.addWidget(note, 4, 0, 1, 2)
+                grid.setColumnStretch(1, 1)
+            grid._report_mode = mode
+            grid.invalidate()
+            grid.activate()
+            toolbar = grid.parentWidget()
+            toolbar.updateGeometry()
+            wrapper = toolbar.parentWidget()
+            if wrapper is not None and wrapper.layout() is not None:
+                wrapper.layout().invalidate()
+                wrapper.layout().activate()
+                wrapper.updateGeometry()
+        for grid, widgets, minimum, maximum in self._responsive_grids:
+            parent = grid.parentWidget()
+            available = max(1, parent.width() - grid.contentsMargins().left() - grid.contentsMargins().right())
+            if widgets and isinstance(widgets[0], _CloudOverviewMetricCard):
+                self._place_grid(grid, widgets, 6)
+                for card in widgets:
+                    card.refresh_elision()
+                continue
+            columns = max(1, min(maximum, (available + 12) // (minimum + 12)))
+            self._place_grid(grid, widgets, columns)
 
     def _build_overview(self) -> QWidget:
         page = QWidget()
@@ -488,8 +887,8 @@ class CloudReportsWidget(QWidget):
         self.overview_kpi_panel.setObjectName("cloud_overview_kpi_panel")
         kpis = QGridLayout(self.overview_kpi_panel)
         kpis.setContentsMargins(12, 12, 12, 12)
-        kpis.setHorizontalSpacing(12)
-        kpis.setVerticalSpacing(10)
+        kpis.setHorizontalSpacing(8)
+        kpis.setVerticalSpacing(8)
         self.overview_kpis = {
             "color_print": _CloudOverviewMetricCard("พิมพ์สี", accent=BLUE),
             "bw_print": _CloudOverviewMetricCard("พิมพ์ขาวดำ", accent="#18202C"),
@@ -500,13 +899,13 @@ class CloudReportsWidget(QWidget):
                 "ค่าใช้จ่ายสุทธิ", accent="#00A651"
             ),
         }
-        for index, key in enumerate(
-            ("color_print", "bw_print", "total_usage", "color_copy", "bw_copy", "total_cost")
-        ):
-            row, column = divmod(index, 3)
-            kpis.addWidget(self.overview_kpis[key], row, column)
-        for column in range(3):
+        cards = tuple(self.overview_kpis[key] for key in (
+            "color_print", "bw_print", "color_copy", "bw_copy", "total_usage", "total_cost",
+        ))
+        for column, card in enumerate(cards):
+            kpis.addWidget(card, 0, column)
             kpis.setColumnStretch(column, 1)
+        self._responsive_grids.append((kpis, cards, 100, 6))
         layout.addWidget(self.overview_kpi_panel)
         grid = QGridLayout()
         grid.setSpacing(12)
@@ -534,6 +933,7 @@ class CloudReportsWidget(QWidget):
         grid.addWidget(printers, 1, 1)
         grid.setColumnStretch(0, 1)
         grid.setColumnStretch(1, 1)
+        self._responsive_grids.append((grid, (trend, mix, users, printers), 410, 2))
         layout.addLayout(grid)
         return page
 
@@ -543,16 +943,29 @@ class CloudReportsWidget(QWidget):
         layout.setContentsMargins(0, 4, 0, 0)
         layout.setSpacing(12)
         self._add_period_toolbar(layout)
-        self.user_kpis, kpis = self._kpi_row(
-            (
-                ("count", "ผู้ใช้ที่มีข้อมูล", "คน", NAVY),
-                ("print", "Print", "หน้า", BLUE),
-                ("copy", "Copy", "หน้า", ORANGE),
-                ("usage", "ยอดใช้งานรวม", "หน้า", SLATE),
-                ("highest", "ผู้ใช้สูงสุด", "หน้า", GREEN),
+        self.user_kpi_panel = QFrame()
+        self.user_kpi_panel.setObjectName("cloud_overview_kpi_panel")
+        kpis = QGridLayout(self.user_kpi_panel)
+        kpis.setContentsMargins(12, 12, 12, 12)
+        kpis.setSpacing(8)
+        self.user_metric_cards = {
+            key: _CloudOverviewMetricCard(title, accent=accent)
+            for key, title, accent in (
+                ("color_print", "พิมพ์สี", BLUE),
+                ("bw_print", "พิมพ์ขาวดำ", "#18202C"),
+                ("color_copy", "สำเนาสี", "#F25C05"),
+                ("bw_copy", "สำเนาขาวดำ", "#56677A"),
+                ("usage", "ยอดใช้งานรวม", BLUE),
+                ("count", "ผู้ใช้ที่มีข้อมูล", NAVY),
             )
-        )
-        layout.addLayout(kpis)
+        }
+        self.user_kpis = {key: card.lbl_val for key, card in self.user_metric_cards.items()}
+        cards = tuple(self.user_metric_cards.values())
+        for column, card in enumerate(cards):
+            kpis.addWidget(card, 0, column)
+            kpis.setColumnStretch(column, 1)
+        self._responsive_grids.append((kpis, cards, 100, 6))
+        layout.addWidget(self.user_kpi_panel)
         filter_row = QHBoxLayout()
         self.user_filter_badge = QLabel("เลือกผู้ใช้จากตารางเพื่อกรองกราฟ")
         self.user_filter_badge.setObjectName("cloud_filter_badge")
@@ -567,15 +980,16 @@ class CloudReportsWidget(QWidget):
         self.user_recovery_button.clicked.connect(self.reading_status_requested)
         filter_row.addWidget(self.user_recovery_button)
         layout.addLayout(filter_row)
-        charts = QHBoxLayout()
+        charts = QGridLayout()
         top, top_layout = _panel("Top users", "เรียงตามยอดใช้งานในช่วงที่เลือก")
         self.users_top_chart = self._chart_view()
         top_layout.addWidget(self.users_top_chart)
-        charts.addWidget(top, 1)
+        charts.addWidget(top, 0, 0)
         printer, printer_layout = _panel("Printers used", "กดผู้ใช้เพื่อดูการกระจายตามเครื่อง")
         self.users_printer_chart = self._chart_view()
         printer_layout.addWidget(self.users_printer_chart)
-        charts.addWidget(printer, 1)
+        charts.addWidget(printer, 0, 1)
+        self._responsive_grids.append((charts, (top, printer), 360, 2))
         layout.addLayout(charts)
         table_panel, table_layout = _panel(
             "Users",
@@ -607,35 +1021,53 @@ class CloudReportsWidget(QWidget):
         layout.setContentsMargins(0, 4, 0, 0)
         layout.setSpacing(12)
         self._add_period_toolbar(layout)
-        self.printer_kpis, kpis = self._kpi_row(
-            (
-                ("count", "เครื่องที่มีการใช้งาน", "เครื่อง", NAVY),
-                ("print", "Print", "หน้า", BLUE),
-                ("copy", "Copy", "หน้า", ORANGE),
-                ("scan", "Scan", "หน้า", SLATE),
-                ("cost", "ค่าใช้จ่ายสุทธิ", "บาท", GREEN),
+        self.printer_kpi_panel = QFrame()
+        self.printer_kpi_panel.setObjectName("cloud_overview_kpi_panel")
+        kpis = QGridLayout(self.printer_kpi_panel)
+        kpis.setContentsMargins(12, 12, 12, 12)
+        kpis.setSpacing(8)
+        self.printer_metric_cards = {
+            key: _CloudOverviewMetricCard(title, accent=accent)
+            for key, title, accent in (
+                ("color_print", "พิมพ์สี", BLUE),
+                ("bw_print", "พิมพ์ขาวดำ", "#18202C"),
+                ("color_copy", "สำเนาสี", "#F25C05"),
+                ("bw_copy", "สำเนาขาวดำ", "#56677A"),
+                ("usage", "ยอดใช้งานรวม", BLUE),
+                ("cost", "ค่าใช้จ่ายสุทธิ", "#00A651"),
             )
-        )
-        layout.addLayout(kpis)
+        }
+        cards = tuple(self.printer_metric_cards.values())
+        self.printer_kpis = {key: card.lbl_val for key, card in self.printer_metric_cards.items()}
+        for column, card in enumerate(cards):
+            kpis.addWidget(card, 0, column)
+            kpis.setColumnStretch(column, 1)
+        self._responsive_grids.append((kpis, cards, 100, 6))
+        layout.addWidget(self.printer_kpi_panel)
+        self.printer_activity_summary = QLabel()
+        self.printer_activity_summary.setObjectName("cloud_subtitle")
+        self.printer_activity_summary.setWordWrap(True)
+        layout.addWidget(self.printer_activity_summary)
         self.printer_compare_note = QLabel(
             "กราฟเปรียบเทียบเครื่องพิมพ์ทุกเครื่องพร้อมกัน · คลิกแถวด้านล่างเพื่อดู Meter detail"
         )
         self.printer_compare_note.setObjectName("cloud_subtitle")
         self.printer_compare_note.setWordWrap(True)
         layout.addWidget(self.printer_compare_note)
-        charts = QHBoxLayout()
+        charts = QGridLayout()
         trend, trend_layout = _panel("Usage timeline", "เปรียบเทียบยอดรายวันของทุกเครื่อง")
         self.printer_trend = self._chart_view()
         trend_layout.addWidget(self.printer_trend)
-        charts.addWidget(trend, 3)
+        charts.addWidget(trend, 0, 0)
         mix, mix_layout = _panel(
             "Print / Copy / Scan", "แยกประเภทงานรายเครื่องตาม Counter ที่เครื่องส่ง"
         )
         self.printer_mix = self._chart_view()
         mix_layout.addWidget(self.printer_mix)
-        charts.addWidget(mix, 2)
+        charts.addWidget(mix, 0, 1)
+        self._responsive_grids.append((charts, (trend, mix), 410, 2))
         layout.addLayout(charts)
-        bottom = QHBoxLayout()
+        bottom = QGridLayout()
         list_panel, list_layout = _panel("Printers", "คลิกชื่อเครื่องเพื่อดูรายละเอียด โดยกราฟยังแสดงทุกเครื่อง")
         self.printers_table = _table(
             ("เครื่องพิมพ์", "สถานะ", "Print", "Copy", "Scan", "รวม", "ค่าใช้จ่าย"),
@@ -649,14 +1081,15 @@ class CloudReportsWidget(QWidget):
             )
         )
         list_layout.addWidget(self.printers_table)
-        bottom.addWidget(list_panel, 3)
+        bottom.addWidget(list_panel, 0, 0)
         detail_panel, detail_layout = _panel("Meter detail", "ค่าล่าสุดสำหรับเครื่องที่เลือก")
         self.printer_detail = _table(("รายการ", "ค่า"), text_columns=(0,))
         self.printer_detail.setMinimumHeight(210)
         self.printer_detail.setMaximumHeight(340)
         self.printer_detail.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
         detail_layout.addWidget(self.printer_detail)
-        bottom.addWidget(detail_panel, 2)
+        bottom.addWidget(detail_panel, 0, 1)
+        self._responsive_grids.append((bottom, (list_panel, detail_panel), 410, 2))
         layout.addLayout(bottom)
         return page
 
@@ -862,7 +1295,7 @@ class CloudReportsWidget(QWidget):
         toolbar = QFrame()
         toolbar.setObjectName("cloud_report_toolbar")
         toolbar_layout = QGridLayout(toolbar)
-        toolbar_layout.setContentsMargins(14, 9, 14, 9)
+        toolbar_layout.setContentsMargins(12, 8, 12, 8)
         toolbar_layout.setSpacing(8)
 
         title = QLabel("ช่วงรายงาน")
@@ -886,11 +1319,21 @@ class CloudReportsWidget(QWidget):
         end_label.setBuddy(end_edit)
         end_control = self._calendar_control(end_edit)
         toolbar_layout.addWidget(end_control, 0, 4)
+        export = QPushButton("Export to Excel")
+        export.setObjectName("cloud_period_export")
+        export.setProperty("uiButtonRole", "compact")
+        export.setFixedHeight(28)
+        export.setAccessibleName("Export report to Excel for the selected dates")
+        export.clicked.connect(self.export_requested.emit)
+        toolbar_layout.addWidget(export, 0, 5)
         freshness = QLabel("ตัวเลขทั้งหมดในแท็บนี้ใช้ช่วงเวลาเดียวกัน")
         freshness.setObjectName("cloud_subtitle")
         freshness.setWordWrap(True)
-        toolbar_layout.addWidget(freshness, 1, 0, 1, 6)
-        toolbar_layout.setColumnStretch(5, 1)
+        # The date range remains visible; the explanatory note is available on hover.
+        toolbar.setToolTip(freshness.text())
+        freshness.hide()
+        toolbar_layout.addWidget(freshness, 1, 0, 1, 7)
+        toolbar_layout.setColumnStretch(6, 1)
 
         start_edit.dateChanged.connect(
             lambda _value, start=start_edit, end=end_edit: self._period_dates_changed(
@@ -906,18 +1349,22 @@ class CloudReportsWidget(QWidget):
         if len(self.period_edit_pairs) == 1:
             self.period_start_edit = start_edit
             self.period_end_edit = end_edit
+        self._period_toolbars.append((toolbar_layout, (title, start_label, start_control, end_label, end_control, export, freshness)))
         layout.addWidget(toolbar)
 
     @staticmethod
     def _calendar_control(editor: CalendarDateEdit) -> QWidget:
         host = QWidget()
+        host.setObjectName("cloud_calendar_control")
         host.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
         row = QHBoxLayout(host)
         row.setContentsMargins(0, 0, 0, 0)
-        row.setSpacing(5)
+        row.setSpacing(4)
         row.addWidget(editor)
         button = QPushButton("📅")
         button.setObjectName("cloud_calendar_button")
+        button.setProperty("uiButtonRole", "compact-icon")
+        button.setFixedSize(24, 24)
         button.setAccessibleName(f"เปิดปฏิทิน {editor.accessibleName()}")
         button.setToolTip("คลิกเพื่อเลือกวันที่จากปฏิทิน")
         button.clicked.connect(editor.open_calendar)
@@ -933,7 +1380,7 @@ class CloudReportsWidget(QWidget):
         control.setDisplayFormat("dd/MM/yyyy")
         control.lineEdit().setReadOnly(True)
         control.setMinimumWidth(142)
-        control.setMaximumWidth(170)
+        control.setMaximumWidth(156)
         calendar = control.calendarWidget()
         calendar.setGridVisible(True)
         calendar.setStyleSheet(
@@ -954,32 +1401,6 @@ class CloudReportsWidget(QWidget):
         view.setStyleSheet("background:white;border:0;")
         return view
 
-    @staticmethod
-    def _kpi_row(specs: tuple[tuple[str, str, str, str], ...]):
-        values: dict[str, QLabel] = {}
-        row = QGridLayout()
-        row.setSpacing(10)
-        for column, (key, caption, unit, color) in enumerate(specs):
-            card = QFrame()
-            card.setObjectName("cloud_kpi")
-            card_layout = QVBoxLayout(card)
-            card_layout.setContentsMargins(14, 11, 14, 11)
-            card_layout.setSpacing(2)
-            label = QLabel(caption)
-            label.setObjectName("cloud_kpi_caption")
-            value = QLabel("—")
-            value.setObjectName("cloud_kpi_value")
-            value.setStyleSheet(f"color:{color};background:transparent;border:0;")
-            note = QLabel(unit)
-            note.setObjectName("cloud_kpi_note")
-            card_layout.addWidget(label)
-            card_layout.addWidget(value)
-            card_layout.addWidget(note)
-            row.addWidget(card, 0, column)
-            row.setColumnStretch(column, 1)
-            value._cloud_caption = label
-            values[key] = value
-        return values, row
 
     def set_periods(
         self,
@@ -992,18 +1413,14 @@ class CloudReportsWidget(QWidget):
         if selected is None:
             return
 
-        available_dates = [value for period in normalized_periods for value in period]
-        available_dates.extend(selected)
-        minimum = QDate.fromString(min(available_dates), "yyyy-MM-dd")
-        maximum = QDate.fromString(max(available_dates), "yyyy-MM-dd")
+        # History suggests the initial period; it must not disable other
+        # calendar dates. A selected range without records is an empty report.
         start_value = QDate.fromString(selected[0], "yyyy-MM-dd")
         end_value = QDate.fromString(selected[1], "yyyy-MM-dd")
         self._period = selected
         for start_edit, end_edit in self.period_edit_pairs:
             start_edit.blockSignals(True)
             end_edit.blockSignals(True)
-            start_edit.setDateRange(minimum, maximum)
-            end_edit.setDateRange(minimum, maximum)
             start_edit.setDate(start_value)
             end_edit.setDate(end_value)
             start_edit.blockSignals(False)
@@ -1048,13 +1465,23 @@ class CloudReportsWidget(QWidget):
         self.period_changed.emit(selected)
 
     def show_error(self, message: str) -> None:
+        self._cancel_render_tail()
+        self._tab_loading.clear()
+        self.set_loading(False)
         self.error_label.setText(message)
         self.error_label.show()
-        for card in self.overview_kpis.values():
+        self.loading_label.setText("โหลดรายงานไม่สำเร็จ · ลองอีกครั้ง")
+        self.loading_panel.show()
+        self.loading_indicator.hide()
+        self.retry_button.show()
+        if self._staged:
+            if self.has_data:
+                self.loading_label.setText("โหลดข้อมูลใหม่ไม่สำเร็จ · กำลังแสดงข้อมูลเดิม · ลองอีกครั้ง")
+            return
+        for card in (*self.overview_kpis.values(), *self.user_metric_cards.values(), *self.printer_metric_cards.values()):
             card.set_metric("—", "")
-        for group in (self.user_kpis, self.printer_kpis):
-            for value in group.values():
-                value.setText("—")
+        if hasattr(self, "printer_activity_summary"):
+            self.printer_activity_summary.setText("เครื่องที่มีการใช้งาน — เครื่อง · Scan — หน้า")
 
     def set_data(
         self,
@@ -1070,8 +1497,17 @@ class CloudReportsWidget(QWidget):
         period: tuple[str, str] | None,
         last_sync_at: str | None,
         usage_meter_baselines: Iterable | None = None,
+        tab_index: int | None = None,
     ) -> None:
+        if tab_index is not None and tab_index not in range(5):
+            raise ValueError("Report tab index must be between 0 and 4")
+        self._data_tab = tab_index
+        loaded_index = self.tabs.currentIndex() if tab_index is None else tab_index
+        self._loaded_tabs.add(loaded_index)
+        self._tab_loading.discard(loaded_index)
         self.error_label.hide()
+        self._has_data = True
+        self.set_loading(False)
         self._records = tuple(records)
         self._daily_records = tuple(daily_records)
         self._usage_daily_records = (
@@ -1090,11 +1526,27 @@ class CloudReportsWidget(QWidget):
         self.updated_label.setText(
             f"ข้อมูลล่าสุด {last_sync_at.replace('T', ' ')[:16]}" if last_sync_at else "ยังไม่มีเวลาซิงก์ล่าสุด"
         )
-        self._build_user_rows()
-        self._build_printer_rows()
+        self._data_revision += 1
+        if not self._staged:
+            self._build_user_rows()
+            self._build_printer_rows()
         self._render_selected_tab(self.tabs.currentIndex())
 
     def _render_selected_tab(self, index: int) -> None:
+        self._cancel_render_tail()
+        if not 0 <= index < 5:
+            return
+        self.ensure_tab(index)
+        self._update_loading_visibility()
+        if self._staged and not self._can_render_tab(index):
+            return
+        if self._staged:
+            if index in (0, 1) and self._row_revisions["users"] != self._data_revision:
+                self._build_user_rows()
+                self._row_revisions["users"] = self._data_revision
+            if index in (0, 2) and self._row_revisions["printers"] != self._data_revision:
+                self._build_printer_rows()
+                self._row_revisions["printers"] = self._data_revision
         renderers = (
             self._render_overview,
             self._render_users,
@@ -1104,8 +1556,55 @@ class CloudReportsWidget(QWidget):
         )
         if 0 <= index < len(renderers):
             renderers[index]()
+            self._layout_timer.start(0)
+
+    def _cancel_render_tail(self) -> None:
+        self._render_generation += 1
+        self._pending_render_tail = None
+        self._render_tail_timer.stop()
+
+    def _schedule_render_tail(self, index: int, tables, charts) -> None:
+        if not self._staged:
+            tables()
+            charts()
+            return
+        self._cancel_render_tail()
+        self._pending_render_tail = (
+            self._data_revision, self._render_generation, index, tables, charts,
+        )
+        self._update_loading_visibility()
+        self.loading_label.setText("กำลังเตรียมตารางรายงาน…")
+        self._render_tail_timer.start(0)
+
+    def _run_render_tail(self) -> None:
+        pending = self._pending_render_tail
+        self._pending_render_tail = None
+        if pending is None:
+            return
+        revision, generation, index, tables, charts = pending
+        if (revision != self._data_revision or generation != self._render_generation
+                or index != self.tabs.currentIndex() or not self._can_render_tab(index)):
+            return
+        if tables is not None:
+            tables()
+            if revision != self._data_revision or generation != self._render_generation:
+                return
+            # Yield once more so completed tables can paint before chart construction.
+            self._pending_render_tail = (revision, generation, index, None, charts)
+            self.loading_label.setText("กำลังวาดกราฟรายงาน…")
+            self._render_tail_timer.start(0)
+        else:
+            charts()
+            self._update_loading_visibility()
+            self._layout_timer.start(0)
+
+    def closeEvent(self, event) -> None:  # noqa: N802 - Qt API
+        self._cancel_render_tail()
+        super().closeEvent(event)
 
     def _sync_usage_device_filters(self) -> None:
+        if not hasattr(self, "usage_device_filter_layout") or (self._staged and not self._can_render_tab(3)):
+            return
         devices_by_slot = {int(device.slot): device for device in self._devices}
         records_by_slot = {
             int(getattr(record, "device_slot", 0)): record
@@ -1237,6 +1736,8 @@ class CloudReportsWidget(QWidget):
                 table.setItem(row_no, column, item)
 
     def _render_legacy_raw(self) -> None:
+        if self._staged and not self._can_render_tab(4):
+            return
         records = tuple(self._raw_counter_records)
         devices_by_slot = {int(device.slot): device for device in self._devices}
         slots = tuple(
@@ -1381,6 +1882,8 @@ class CloudReportsWidget(QWidget):
         )
 
     def _render_legacy_history(self) -> None:
+        if self._staged and not self._can_render_tab(4):
+            return
         rows = tuple(
             sorted(
                 self._legacy_history,
@@ -1529,6 +2032,7 @@ class CloudReportsWidget(QWidget):
                 continue
             breakdown = breakdown_from_raw_records(raw_records)
             slot_row = row["by_slot"][slot]
+            slot_row.setdefault("available_fields", set()).update(breakdown.available_fields)
             for field in (
                 "print_a3_color",
                 "print_a3_bw",
@@ -1610,8 +2114,9 @@ class CloudReportsWidget(QWidget):
             self._selected_printer = None
 
     def _render_overview(self) -> None:
+        if self._staged and not self._can_render_tab(0):
+            return
         total_pages = sum(row["total"] for row in self._printer_rows)
-        total_scan = sum(row["scan"] for row in self._printer_rows)
         records = self._records
         print_available = any(bool(getattr(record, "print_available", False)) for record in records)
         copy_available = any(bool(getattr(record, "copy_available", False)) for record in records)
@@ -1655,6 +2160,9 @@ class CloudReportsWidget(QWidget):
             "THB",
             available=cost_available,
         )
+        self._schedule_render_tail(0, self._render_overview_tables, self._render_overview_charts)
+
+    def _render_overview_tables(self) -> None:
         self._fill_table(
             self.overview_users,
             [
@@ -1677,6 +2185,9 @@ class CloudReportsWidget(QWidget):
             ],
             empty="ยังไม่มีข้อมูลเครื่องพิมพ์ในช่วงนี้",
         )
+
+    def _render_overview_charts(self) -> None:
+        total_scan = sum(row["scan"] for row in self._printer_rows)
         self.overview_mix.setChart(
             self._bar_chart(
                 ("Print", "Copy", "Scan"),
@@ -1697,43 +2208,30 @@ class CloudReportsWidget(QWidget):
         apply_language(self)
 
     def _render_users(self) -> None:
+        if self._staged and not self._can_render_tab(1):
+            return
         total = sum(row["usage"] for row in self._user_rows)
-        highest = self._user_rows[0]["usage"] if self._user_rows else 0
-        print_available = any(row["print_available"] for row in self._user_rows)
-        copy_available = any(row["copy_available"] for row in self._user_rows)
-        self.user_kpis["count"].setText(_number(len(self._user_rows)))
-        self.user_kpis["print"].setText(
-            _number(sum(row["print"] for row in self._user_rows))
-            if print_available
-            else "—"
-        )
-        self.user_kpis["copy"].setText(
-            _number(sum(row["copy"] for row in self._user_rows))
-            if copy_available
-            else "—"
-        )
-        self.user_kpis["usage"].setText(_number(total))
-        self.user_kpis["highest"].setText(_number(highest))
-        self.users_top_chart.setChart(
-            self._horizontal_like_chart(
-                [row["name"] for row in self._user_rows[:8]],
-                [row["usage"] for row in self._user_rows[:8]],
-                ORANGE,
+        slots = [slot for row in self._user_rows for slot in row["by_slot"].values()]
+        for key, operation, color in (
+            ("color_print", "print", "color"), ("bw_print", "print", "bw"),
+            ("color_copy", "copy", "color"), ("bw_copy", "copy", "bw"),
+        ):
+            fields = (f"{operation}_a3_{color}", f"{operation}_a4_{color}")
+            # A partial user/device breakdown must not masquerade as a complete total.
+            available = bool(slots) and all(
+                set(fields).issubset(slot.get("available_fields", set())) for slot in slots
             )
-        )
-        devices_by_identity = {row["key"]: row["name"] for row in self._printer_rows}
-        selected = next((row for row in self._user_rows if row["key"] == self._selected_user), None)
-        source = selected["printers"] if selected else defaultdict(float)
-        if not selected:
-            for row in self._user_rows:
-                for identity, usage in row["printers"].items():
-                    source[identity] += usage
-        labels = [devices_by_identity.get(key, key.replace("serial:", "")) for key in source]
-        self.users_printer_chart.setChart(self._horizontal_like_chart(labels, list(source.values()), BLUE))
-        self.user_filter_badge.setText(
-            f"กำลังกรอง: {selected['name']}" if selected else "เลือกผู้ใช้จากตารางเพื่อกรองกราฟ"
-        )
-        self.user_recovery_button.setVisible(not self._user_rows)
+            a3, a4 = (sum(slot.get(field, 0.0) for slot in slots) for field in fields)
+            card = self.user_metric_cards[key]
+            card.set_metric(_number(a3 + a4), f"A3 {_number(a3)}  |  A4 {_number(a4)}",
+                            available=available)
+            if not available:
+                card.set_metric("—", "ข้อมูลแยกประเภทยังไม่ครบ")
+        self.user_metric_cards["usage"].set_metric(_number(total), "ช่วงรายงานที่เลือก")
+        self.user_metric_cards["count"].set_metric(_number(len(self._user_rows)), "คน")
+        self._schedule_render_tail(1, self._render_users_table, self._render_users_charts)
+
+    def _render_users_table(self) -> None:
         slots = tuple(
             sorted(
                 {int(device.slot) for device in self._devices}
@@ -1775,6 +2273,32 @@ class CloudReportsWidget(QWidget):
         for index, row in enumerate(self._user_rows):
             self.users_table.item(index, 0).setData(Qt.ItemDataRole.UserRole, row["key"])
         del users_signal_blocker
+
+    def _render_users_charts(self) -> None:
+        self.users_top_chart.setChart(
+            self._horizontal_like_chart(
+                [row["name"] for row in self._user_rows[:8]],
+                [row["usage"] for row in self._user_rows[:8]],
+                ORANGE,
+            )
+        )
+        # Users can load before Printers in staged mode; resolve labels from this snapshot.
+        devices_by_slot = {int(device.slot): device for device in self._devices}
+        devices_by_identity = {}
+        for record in self._records:
+            devices_by_identity.setdefault(_record_identity(record), _record_name(record, devices_by_slot))
+        selected = next((row for row in self._user_rows if row["key"] == self._selected_user), None)
+        source = selected["printers"] if selected else defaultdict(float)
+        if not selected:
+            for row in self._user_rows:
+                for identity, usage in row["printers"].items():
+                    source[identity] += usage
+        labels = [devices_by_identity.get(key, key.replace("serial:", "")) for key in source]
+        self.users_printer_chart.setChart(self._horizontal_like_chart(labels, list(source.values()), BLUE))
+        self.user_filter_badge.setText(
+            f"กำลังกรอง: {selected['name']}" if selected else "เลือกผู้ใช้จากตารางเพื่อกรองกราฟ"
+        )
+        self.user_recovery_button.setVisible(not self._user_rows)
         apply_language(self)
 
     def _configure_users_matrix(
@@ -1826,36 +2350,40 @@ class CloudReportsWidget(QWidget):
         )
 
     def _render_printers(self) -> None:
+        if self._staged and not self._can_render_tab(2):
+            return
         rows = self._printer_rows
         total_cost = sum(row["cost"] for row in rows)
-        self.printer_kpis["count"].setText(_number(len([row for row in rows if row["total"] > 0])))
-        self.printer_kpis["print"].setText(
-            _number(sum(row["print"] for row in rows))
-            if any(row["print_available"] for row in rows)
-            else "—"
-        )
-        self.printer_kpis["copy"].setText(
-            _number(sum(row["copy"] for row in rows))
-            if any(row["copy_available"] for row in rows)
-            else "—"
-        )
-        self.printer_kpis["scan"].setText(_number(sum(row["scan"] for row in rows)))
-        self.printer_kpis["cost"].setText(_money(total_cost))
-        selected = next((row for row in rows if row["key"] == self._selected_printer), None)
-        self.printer_mix.setChart(
-            self._bar_chart(
-                ("Print", "Copy", "Scan"),
-                tuple(
-                    (
-                        _chart_printer_name(row["name"]),
-                        (row["print"], row["copy"], row["scan"]),
-                        DEVICE_COLORS[index % len(DEVICE_COLORS)],
-                    )
-                    for index, row in enumerate(rows)
-                ),
+        records = self._records
+        for key, operation, color in (
+            ("color_print", "print", "color"), ("bw_print", "print", "bw"),
+            ("color_copy", "copy", "color"), ("bw_copy", "copy", "bw"),
+        ):
+            available = bool(records) and all(_operation_available(record, operation) for record in records)
+            total = sum(_combined(record, f"{operation}_{color}") for record in records)
+            a3 = sum(_combined(record, f"{operation}_a3_{color}") for record in records)
+            a4 = sum(_combined(record, f"{operation}_a4_{color}") for record in records)
+            self.printer_metric_cards[key].set_metric(
+                _number(total), f"A3 {_number(a3)}  |  A4 {_number(a4)}", available=available,
             )
+        self.printer_metric_cards["usage"].set_metric(
+            _number(sum(row["total"] for row in rows)), "ช่วงรายงานที่เลือก"
         )
-        self.printer_trend.setChart(self._printer_timeline_chart(rows))
+        cost_available = all(
+            bool(getattr(record, "provisional_cost_available", True))
+            for record in records if int(getattr(record, "provisional_days", 0) or 0)
+        )
+        self.printer_metric_cards["cost"].set_metric(f"฿{_money(total_cost)}", "THB", available=cost_available)
+        count = sum(row["total"] > 0 or row["scan"] > 0 for row in rows)
+        scan = sum(row["scan"] for row in rows)
+        self.printer_activity_summary.setText(
+            f"เครื่องที่มีการใช้งาน {_number(count)} เครื่อง · Scan {_number(scan)} หน้า"
+        )
+        self._schedule_render_tail(2, self._render_printers_tables, self._render_printers_charts)
+
+    def _render_printers_tables(self) -> None:
+        rows = self._printer_rows
+        selected = next((row for row in rows if row["key"] == self._selected_printer), None)
         table_rows = []
         for row in rows:
             device = row["device"]
@@ -1900,6 +2428,23 @@ class CloudReportsWidget(QWidget):
             self._fill_table(self.printer_detail, detail_rows)
         else:
             self._fill_table(self.printer_detail, [], empty="เลือกเครื่องเพื่อดู Meter detail")
+
+    def _render_printers_charts(self) -> None:
+        rows = self._printer_rows
+        self.printer_mix.setChart(
+            self._bar_chart(
+                ("Print", "Copy", "Scan"),
+                tuple(
+                    (
+                        _chart_printer_name(row["name"]),
+                        (row["print"], row["copy"], row["scan"]),
+                        DEVICE_COLORS[index % len(DEVICE_COLORS)],
+                    )
+                    for index, row in enumerate(rows)
+                ),
+            )
+        )
+        self.printer_trend.setChart(self._printer_timeline_chart(rows))
         apply_language(self)
 
     @staticmethod
@@ -1921,7 +2466,7 @@ class CloudReportsWidget(QWidget):
     def include_waste_adjustment(self) -> bool:
         """Return the report-wide cost view selected by the user."""
 
-        return self.usage_waste_checkbox.isChecked()
+        return self.usage_waste_checkbox.isChecked() if hasattr(self, "usage_waste_checkbox") else True
 
     def _cost_field(self) -> str:
         return "net_cost" if self.include_waste_adjustment() else "gross_cost"
@@ -2008,6 +2553,8 @@ class CloudReportsWidget(QWidget):
             item.setToolTip(tooltip)
 
     def _render_usage(self) -> None:
+        if self._staged and not self._can_render_tab(3):
+            return
         granularity = self.usage_granularity
         period_label = {"D": "วัน", "M": "เดือน", "Y": "ปี"}[granularity]
         period_description = {"D": "รายวัน", "M": "รายเดือน", "Y": "รายปี"}[granularity]
@@ -2302,9 +2849,12 @@ class CloudReportsWidget(QWidget):
             else "ค่าใช้จ่ายก่อนส่วนลด"
         )
         self.overview_kpis["total_cost"].lbl_title.setText(caption)
-        printer_caption = getattr(self.printer_kpis["cost"], "_cloud_caption", None)
-        if printer_caption is not None:
-            printer_caption.setText(caption)
+        cost_cards = [self.overview_kpis["total_cost"]]
+        if "cost" in self.printer_metric_cards:
+            cost_cards.append(self.printer_metric_cards["cost"])
+        for card in cost_cards:
+            card._full_title = caption
+            card.refresh_elision()
         self._build_printer_rows()
         self._render_overview()
         self._render_printers()

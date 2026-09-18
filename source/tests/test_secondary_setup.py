@@ -260,3 +260,24 @@ def test_secondary_rejects_unsafe_tls_mode():
 
     with pytest.raises(secondary_setup.SecondarySetupError, match="TLS"):
         secondary_setup.validate_setup_snapshot(snapshot)
+
+
+def test_snapshot_uses_selected_candidate_port_even_with_default_client(monkeypatch):
+    candidate = secondary_setup.SecondaryPeerCandidate(
+        base_url="https://192.0.2.20:3443", company_name="Test", printer_count=1,
+        version="5.2.10", certificate_sha256="b" * 64,
+    )
+    client = secondary_setup.SecondaryPeerClient()
+    calls = []
+
+    def request(host, method, path, **kwargs):
+        assert host == "192.0.2.20"
+        assert kwargs["port"] == 3443
+        calls.append(path)
+        if method == "POST":
+            return 202, {"accepted": True}, "b" * 64, []
+        return 200, _valid_snapshot(), "b" * 64, []
+
+    monkeypatch.setattr(client, "_request", request)
+    assert client.fetch_snapshot(candidate) == _valid_snapshot()
+    assert len(calls) == 2

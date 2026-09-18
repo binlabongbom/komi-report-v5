@@ -20,6 +20,9 @@ from PyQt6.QtWidgets import QApplication
 
 import database
 from i18n import THAI, set_language
+from qt_render_environment import configure_offscreen_fonts
+from services.secondary_setup import SecondaryPeerCandidate
+from services.setup_connectivity import SetupConnectivityCheck, SetupConnectivityReport
 from v5_pages import SetupWizardV5
 
 OUTPUT_DIR = Path(os.environ.get("KOMI_WIZARD_QA_DIR", "/tmp/komi-v52-wizard-guide"))
@@ -73,6 +76,7 @@ def main() -> int:
     _block_network()
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     app = QApplication.instance() or QApplication([])
+    configure_offscreen_fonts(app)
     set_language(THAI)
 
     with tempfile.TemporaryDirectory(prefix="komi-v52-wizard-guide-") as temp_dir:
@@ -90,6 +94,39 @@ def main() -> int:
             wizard.database_path_input.setText(guide_path)
             wizard.database_path_input.setToolTip(guide_path)
             _capture(app, wizard, "01-setup-company.png")
+
+            problem = wizard._show_setup_connectivity_problem(
+                SetupConnectivityReport(
+                    started_at="2026-09-17T10:00:00+07:00",
+                    base_url="https://www.dmskm.com",
+                    checks=(
+                        SetupConnectivityCheck(
+                            name="Status API",
+                            target="https://www.dmskm.com/api/v1/installations/status",
+                            ok=False,
+                            detail="HTTP 503 | Host unavailable",
+                            support_code="host_unavailable",
+                            duration_ms=6000,
+                        ),
+                    ),
+                )
+            )
+            _capture(app, problem, "01c-setup-connectivity-problem.png")
+            problem.close()
+
+            wizard._secondary_discovery_finished(
+                [
+                    SecondaryPeerCandidate(
+                        base_url="https://192.0.2.20:3000",
+                        company_name="บริษัท สำนักงานใหญ่ จำกัด",
+                        printer_count=2,
+                        version="5.2.11",
+                        certificate_sha256="a" * 64,
+                    )
+                ],
+                "",
+            )
+            _capture(app, wizard, "01b-setup-company-primary-found.png")
 
             _add_device(
                 wizard,

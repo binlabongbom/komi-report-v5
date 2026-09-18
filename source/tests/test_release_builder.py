@@ -46,6 +46,7 @@ def test_source_release_excludes_runtime_data_dependencies_and_secrets():
     relative_paths = [path.relative_to(PROJECT_ROOT).as_posix() for path in files]
 
     assert files
+    assert "LICENSE" in relative_paths  # Inno Setup resolves ../../LICENSE.
     assert any(path.name == "CUSTOMER_GUIDE_V5_2.md" for path in files)
     assert any(path.name == "CUSTOMER_INSTALL_GUIDE.md" for path in files)
     assert any(path.name == "CUSTOMER_RELEASE_NOTES.md" for path in files)
@@ -369,7 +370,8 @@ def test_release_versions_are_aligned_to_5_2_5():
     assert web_lock["version"] == expected
     assert web_lock["packages"][""]["version"] == expected
     assert f'CFBundleShortVersionString": "{expected}"' in spec_text
-    assert 'CFBundleVersion": "50205"' in spec_text
+    major, minor, patch = map(int, expected.split("."))
+    assert f'CFBundleVersion": "{major * 10000 + minor * 100 + patch}"' in spec_text
     assert "KOMI Report V5.1.app" not in spec_text
 
 

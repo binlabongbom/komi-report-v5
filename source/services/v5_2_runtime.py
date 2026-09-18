@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import random
+from services.build_edition import is_offline_edition
+from services.registration_errors import SUPPORT_CODES
 from collections.abc import Callable, Mapping
 from concurrent.futures import Future, ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
@@ -300,6 +302,9 @@ class V52RuntimeProcessor:
                 return
         existing_token = self._token(state)
         request_token = None if operation.event_type == "register" else existing_token
+        if is_offline_edition():
+            self.outbox.cancel_unsent(now=self.clock())
+            return
         result = self.client.send(operation, installation_token=request_token)
         if result.success:
             if operation.event_type == "register":
@@ -458,6 +463,7 @@ class V52RuntimeProcessor:
             "revoked",
             "validation_error",
         }
+        allowed.update(SUPPORT_CODES)
         candidate = value.strip().lower()
         if candidate in allowed:
             return candidate
@@ -486,12 +492,17 @@ class V52RuntimeCoordinator(QObject):
         super().__init__(parent)
         self.clock = clock or (lambda: datetime.now(UTC))
         self.state_repository = state_repository or V52RuntimeStateRepository()
+        if is_offline_edition():
+            with registration_state_lock:
+                previous = self.state_repository.internal()
+                if previous is not None and previous["mode"] != "offline":
+                    self.state_repository.set_mode("offline", now=self.clock())
         self.outbox = outbox or V52OutboxRepository()
         self.vault = vault or _LazyPlatformVault()
         self.device_repository = device_repository or DeviceConfigRepository()
         self.adapter = adapter or DraftV1SigningAdapter()
         self.processor = V52RuntimeProcessor(
-            client=client,
+            client=None if is_offline_edition() else client,
             state_repository=self.state_repository,
             outbox=self.outbox,
             vault=self.vault,
@@ -505,9 +516,15 @@ class V52RuntimeCoordinator(QObject):
         self.timer.timeout.connect(self.tick)
         self.executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="komi-v52-runtime")
         self._future: Future | None = None
+        self._stopped = False
         self._work_finished.connect(self._after_work)
 
     def start(self) -> None:
+        if self._stopped:
+            raise RuntimeError("registration runtime cannot restart after shutdown")
+        state = self.state_repository.internal()
+        if is_offline_edition() and state is not None and state["mode"] != "offline":
+            self.set_mode("offline")
         self.processor.recover_after_restart()
         if self.snapshot().get("mode") != "online":
             self.timer.stop()
@@ -520,10 +537,11 @@ class V52RuntimeCoordinator(QObject):
         # meter telemetry or a new device read can start.
         self.tick(force_recovery=True, force_status_probe=True)
 
-    def stop(self) -> int:
+    def stop(self, *, wait: bool = False) -> int:
+        self._stopped = True
         self.timer.stop()
         remaining = int(self._future is not None and not self._future.done())
-        self.executor.shutdown(wait=False, cancel_futures=True)
+        self.executor.shutdown(wait=wait, cancel_futures=True)
         return remaining
 
     def tick(
@@ -532,7 +550,7 @@ class V52RuntimeCoordinator(QObject):
         force_recovery: bool = False,
         force_status_probe: bool = False,
     ) -> None:
-        if self._future is not None and not self._future.done():
+        if self._stopped or (self._future is not None and not self._future.done()):
             return
         self._future = self.executor.submit(
             self.processor.run_once,
@@ -542,6 +560,8 @@ class V52RuntimeCoordinator(QObject):
         self._future.add_done_callback(lambda _future: self._work_finished.emit())
 
     def configuration_changed(self) -> None:
+        if self._stopped:
+            return
         if self.snapshot().get("mode") != "online":
             self.timer.stop()
             return
@@ -558,6 +578,8 @@ class V52RuntimeCoordinator(QObject):
         """
 
     def network_recovered(self) -> int:
+        if self._stopped:
+            return 0
         state = self.state_repository.internal()
         if state is None or state["mode"] != "online":
             return 0
@@ -570,6 +592,8 @@ class V52RuntimeCoordinator(QObject):
         return queued
 
     def retry_now(self) -> int:
+        if self._stopped:
+            return 0
         if self.snapshot().get("mode") != "online":
             return 0
         changed = self.outbox.make_due(now=self.clock())
@@ -577,6 +601,8 @@ class V52RuntimeCoordinator(QObject):
         return changed
 
     def set_mode(self, mode: V52Mode) -> None:
+        if is_offline_edition() and mode != "offline":
+            raise ValueError("Offline edition requires Offline License activation")
         with registration_state_lock:
             self.state_repository.set_mode(mode, now=self.clock())
             if mode == "offline":
@@ -596,11 +622,24 @@ class V52RuntimeCoordinator(QObject):
         self.retry_now()
 
     def snapshot(self) -> dict[str, object]:
-        return self.state_repository.snapshot(now=self.clock())
+        snapshot = self.state_repository.snapshot(now=self.clock())
+        snapshot["request_in_progress"] = bool(self._future is not None and not self._future.done())
+        return snapshot
 
     def usage_eligibility(self) -> tuple[bool, str]:
-        """Fail closed unless Registration or Offline License is usable now."""
+        """Return whether local printer collection may run.
 
+        The air-gapped installer is its own immutable build edition.  It has no
+        Host client and therefore needs no online or file-based activation.  It
+        still requires completed local setup so an accidental empty database
+        cannot start a collector.
+        """
+
+        if is_offline_edition():
+            state = self.state_repository.internal()
+            if state is None or state["mode"] != "offline":
+                return False, "not_configured"
+            return True, "offline_edition"
         eligible, reason = self.state_repository.usage_eligibility(now=self.clock())
         if not eligible:
             return eligible, reason
@@ -692,6 +731,8 @@ class V52RuntimeCoordinator(QObject):
         return state
 
     def _after_work(self) -> None:
+        if self._stopped:
+            return
         future = self._future
         if future is not None:
             try:

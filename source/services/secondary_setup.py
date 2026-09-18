@@ -17,6 +17,7 @@ from collections.abc import Iterable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import date, datetime
+from urllib.parse import urlsplit
 
 from PyQt6.QtNetwork import QAbstractSocket, QNetworkInterface
 
@@ -25,6 +26,7 @@ from database import get_cfg
 from services.device_config import DeviceConfigRepository
 from services.peer_sync_authorization import new_claim_token
 from services.pricing import PricingRepository
+from services.web_port import validate_web_port
 from services.sync_schedule import dump_schedule_windows, load_schedule_windows
 
 SECONDARY_SETUP_CONTRACT = "komi-secondary-setup/v1"
@@ -323,7 +325,7 @@ class SecondaryPeerClient:
     """Small HTTPS client using certificate TOFU for the one-time LAN handoff."""
 
     def __init__(self, *, port: int = DEFAULT_WEB_PORT, timeout: float = 0.8) -> None:
-        self.port = int(port)
+        self.port = validate_web_port(port)
         self.timeout = float(timeout)
 
     @staticmethod
@@ -344,10 +346,11 @@ class SecondaryPeerClient:
         headers: dict[str, str] | None = None,
         expected_fingerprint: str = "",
         timeout: float | None = None,
+        port: int | None = None,
     ) -> tuple[int, dict[str, object], str, list[str]]:
         connection = http.client.HTTPSConnection(
             host,
-            self.port,
+            self.port if port is None else port,
             context=self._context(),
             timeout=timeout or self.timeout,
         )
@@ -405,7 +408,11 @@ class SecondaryPeerClient:
         return sorted(candidates, key=lambda item: item.base_url)
 
     def fetch_snapshot(self, candidate: SecondaryPeerCandidate) -> dict[str, object]:
-        host = candidate.base_url.removeprefix("https://").split(":", 1)[0]
+        parsed = urlsplit(candidate.base_url)
+        if parsed.scheme != "https" or not parsed.hostname:
+            raise SecondarySetupError("ที่อยู่ Primary ต้องเป็น HTTPS")
+        host = normalize_primary_ipv4(parsed.hostname)
+        port = validate_web_port(parsed.port or DEFAULT_WEB_PORT)
         token = new_claim_token()
         claim_body = json.dumps(
             {"token": token},
@@ -419,12 +426,13 @@ class SecondaryPeerClient:
             body=claim_body,
             headers={"Content-Type": "application/json"},
             expected_fingerprint=candidate.certificate_sha256,
+            port=port,
             timeout=4.0,
         )
         if claim_status == 423:
             raise SecondarySetupError(
                 "บนเครื่อง Primary ให้เปิด การตั้งค่าขั้นสูง > รายงานผ่าน LAN "
-                "แล้วกด ‘อนุญาต Secondary Sync 5 นาที’"
+                "แล้วเลือกเปิด Secondary Sync 5 นาที หรือเปิดตลอด"
             )
         if claim_status != 202 or not claim_payload.get("accepted"):
             raise SecondarySetupError("เครื่อง Primary ไม่อนุญาต Secondary Sync")
@@ -434,6 +442,7 @@ class SecondaryPeerClient:
             "/api/v1/peer/setup-snapshot",
             headers={PEER_SYNC_TOKEN_HEADER: token},
             expected_fingerprint=candidate.certificate_sha256,
+            port=port,
             timeout=4.0,
         )
         if status != 200:

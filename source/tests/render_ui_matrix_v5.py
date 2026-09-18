@@ -47,6 +47,7 @@ from services.monthly_history import MonthlyUsage
 from services.pricing import PriceList, PricingRepository
 from services.runtime_snapshots import runtime_snapshots
 from services import web_service
+from qt_render_environment import configure_offscreen_fonts
 
 
 VIEWPORTS = tuple(
@@ -343,6 +344,7 @@ def _contact_sheet(images: list[tuple[str, QImage]], title: str, target: Path) -
 def main() -> None:
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     app = QApplication.instance() or QApplication([])
+    configure_offscreen_fonts(app)
     original_db = database.get_db_path()
     network_attempts: list[str] = []
     current_count = {"value": 1}
@@ -500,6 +502,14 @@ def main() -> None:
                             settings_bar = settings_scroll.verticalScrollBar()
                             settings_content = window.pg_settings.fleet_content
                             for task_key in ("billing", "schedule", "support"):
+                                window.pg_settings._select_section(
+                                    {"billing": 0, "schedule": 1, "support": 3}[task_key]
+                                )
+                                settings_scroll = {
+                                    "billing": window.pg_settings.fleet,
+                                    "schedule": window.pg_settings.schedule_page,
+                                    "support": window.pg_settings.advanced_page,
+                                }[task_key]
                                 assert settings_content._set_active_editor(task_key)
                                 settings_scroll.ensureWidgetVisible(
                                     settings_content._task_editors[task_key],
@@ -594,35 +604,13 @@ def main() -> None:
                                     )
                                     assert settings_content._set_active_editor("support")
                                     app.processEvents()
-                            settings_content._set_active_editor(None, force=True)
+                            window.pg_settings.show_main()
+                            settings_scroll = window.pg_settings.fleet
+                            settings_bar = settings_scroll.verticalScrollBar()
                             settings_bar.setValue(0)
                             app.processEvents()
-                            # Collapsing the large inline Advanced section changes
-                            # the scroll range in a second layout pass on Qt/macOS.
-                            # Re-anchor twice so the button itself, not a stale
-                            # pre-collapse coordinate, is what we capture.
-                            for _layout_pass in range(2):
-                                app.processEvents()
-                                toggle_y = settings_content.support_section_toggle.mapTo(
-                                    settings_scroll.viewport(), QPoint(0, 0)
-                                ).y()
-                                settings_bar.setValue(
-                                    max(0, settings_bar.value() + toggle_y - 20)
-                                )
-                            app.processEvents()
-                            assert _visible_in_scroll(
-                                settings_scroll,
-                                window.pg_settings.fleet_content.support_section_toggle,
-                            ), (
-                                settings_content.support_section_toggle.isVisibleTo(window),
-                                settings_content.support_section_toggle.isHidden(),
-                                settings_content.support_section_toggle.mapTo(
-                                    settings_scroll.viewport(), QPoint(0, 0)
-                                ),
-                                settings_content.support_section_toggle.size(),
-                                settings_bar.value(),
-                                settings_bar.maximum(),
-                            )
+                            assert settings_content.billing_editor.isVisibleTo(window)
+                            assert window.pg_settings.section_tabs.currentIndex() == 0
                             window.grab().save(
                                 str(OUTPUT_DIR / "v5-1024-3dev-settings-bottom.png"),
                                 "PNG",

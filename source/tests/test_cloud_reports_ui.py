@@ -5,9 +5,10 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from dataclasses import replace
 from datetime import date
 
-from PyQt6.QtCore import QDate, QPoint, Qt
-from PyQt6.QtTest import QTest
-from PyQt6.QtWidgets import QApplication, QDateEdit, QPushButton
+import pytest
+from PyQt6.QtCore import QDate, QLocale, QPoint, Qt, QTimer
+from PyQt6.QtTest import QSignalSpy, QTest
+from PyQt6.QtWidgets import QApplication, QDateEdit, QPushButton, QTableView, QToolButton
 
 from services.device_config import DeviceConfig
 from services.monthly_history import MonthlyUsage
@@ -15,6 +16,116 @@ from services.raw_counter_history import RawCounterDailyRecord, UsageMeterBaseli
 from services.subject_history import SubjectPeriodUsage
 from ui.cloud_reports import USAGE_METRICS, CloudReportsWidget
 from widgets import FrozenLeftTable
+
+
+@pytest.mark.parametrize("field,target", [("start", QDate(2026, 8, 15)), ("end", QDate(2026, 10, 15))])
+def test_calendar_month_menu_and_day_click_allow_dates_outside_report_history(field, target):
+    qt_app = QApplication.instance() or QApplication([])
+    widget = CloudReportsWidget()
+    history = (("2026-09-01", "2026-09-30"),)
+    widget.set_periods(history, history[0])
+    widget.resize(1000, 720)
+    widget.show()
+    qt_app.processEvents()
+    QTest.qWait(20)
+    start, end = widget.period_edit_pairs[0]
+    editor = start if field == "start" else end
+    calendar = editor.calendarWidget()
+    calendar.setLocale(QLocale(QLocale.Language.English))
+    changed = QSignalSpy(widget.period_changed)
+    QTest.mouseClick(editor, Qt.MouseButton.LeftButton, pos=editor.rect().center())
+    qt_app.processEvents()
+    assert calendar.isVisible()
+    month_button = calendar.findChild(QToolButton, "qt_calendar_monthbutton")
+    assert month_button is not None
+    menu = month_button.menu()
+    assert menu is not None
+    interaction = {}
+
+    def choose_month():
+        # A native menu can enter a nested event loop. Record failures here;
+        # assertions belong outside Qt callbacks to avoid aborting the process.
+        try:
+            actions = [action for action in menu.actions() if not action.isSeparator()]
+            interaction["visible"] = menu.isVisible()
+            interaction["action_count"] = len(actions)
+            action = actions[target.month() - 1]
+            interaction["enabled"] = action.isEnabled()
+            if action.isEnabled():
+                QTest.mouseClick(menu, Qt.MouseButton.LeftButton, pos=menu.actionGeometry(action).center())
+        except Exception as error:
+            interaction["error"] = repr(error)
+        finally:
+            menu.close()
+
+    watchdog = QTimer()
+    watchdog.setSingleShot(True)
+    watchdog.timeout.connect(menu.close)
+    watchdog.start(1000)
+    QTimer.singleShot(0, choose_month)
+    QTest.mouseClick(month_button, Qt.MouseButton.LeftButton, pos=month_button.rect().center())
+    qt_app.processEvents()
+    watchdog.stop()
+    assert "error" not in interaction, interaction
+    assert interaction.get("visible"), interaction
+    assert interaction.get("action_count") == 12, interaction
+    assert interaction.get("enabled"), "Month selection must not be disabled by the available history range"
+    assert (calendar.yearShown(), calendar.monthShown()) == (target.year(), target.month())
+    assert len(changed) == 0, "Changing the displayed month must not change the report period yet"
+    view = calendar.findChild(QTableView, "qt_calendar_calendarview")
+    assert view is not None
+    model = view.model()
+    day_cells = [
+        model.index(row, column)
+        for row in range(model.rowCount())
+        for column in range(model.columnCount())
+        if str(model.index(row, column).data()) == str(target.day())
+    ]
+    assert len(day_cells) == 1
+    QTest.mouseClick(view.viewport(), Qt.MouseButton.LeftButton, pos=view.visualRect(day_cells[0]).center())
+    qt_app.processEvents()
+    assert editor.date() == target
+    assert not calendar.isVisible()
+    expected = ("2026-08-15", "2026-09-30") if field == "start" else ("2026-09-01", "2026-10-15")
+    assert len(changed) == 1
+    assert changed[0][0] == expected
+    assert widget.current_period() == expected
+    assert len(widget.period_edit_pairs) == 4
+    for pair in widget.period_edit_pairs:
+        for control in pair:
+            assert control.minimumDate() <= QDate(2026, 8, 15)
+            assert control.maximumDate() >= QDate(2026, 10, 15)
+        assert pair[0].date().toString("yyyy-MM-dd") == expected[0]
+        assert pair[1].date().toString("yyyy-MM-dd") == expected[1]
+    widget.close()
+
+
+def test_custom_calendar_range_survives_history_refresh_and_empty_report_data():
+    qt_app = QApplication.instance() or QApplication([])
+    widget = CloudReportsWidget()
+    history = (("2026-09-01", "2026-09-30"),)
+    widget.set_periods(history, history[0])
+    start, end = widget.period_edit_pairs[0]
+    start.setDate(QDate(2026, 8, 15))
+    end.setDate(QDate(2026, 10, 15))
+    expected = ("2026-08-15", "2026-10-15")
+    assert widget.current_period() == expected
+    changes = QSignalSpy(widget.period_changed)
+    for refreshed_history in (history, (), (("2026-09-07", "2026-09-07"),)):
+        widget.set_periods(refreshed_history, widget.current_period())
+        widget.set_data(
+            records=(), daily_records=(), monthly_records=(), subjects=(), devices=(),
+            period=widget.current_period(), last_sync_at=None,
+        )
+        for index in (1, 2, 4, 0):
+            widget.tabs.setCurrentIndex(index)
+        qt_app.processEvents()
+        assert widget.current_period() == expected
+        for first, last in widget.period_edit_pairs:
+            assert first.date() == QDate(2026, 8, 15)
+            assert last.date() == QDate(2026, 10, 15)
+    assert len(changes) == 0, "History refresh must not emit a replacement selection"
+    widget.close()
 
 
 def _usage(day: date, total: float = 120) -> MonthlyUsage:
@@ -303,10 +414,22 @@ def test_cloud_reports_header_and_date_range_fit_desktop_minimum():
         if button.text() == "📅"
     ]
     assert len(calendar_buttons) == 8
+    for button in calendar_buttons[:2]:
+        assert button.width() == button.height() == 24
+        assert button.height() <= start_edit.height()
     calendar_buttons[0].click()
     app.processEvents()
     assert start_edit.calendarWidget().isVisible()
     QTest.keyClick(start_edit, Qt.Key.Key_Escape)
+
+    export_requests = QSignalSpy(widget.export_requested)
+    date_exports = widget.findChildren(QPushButton, "cloud_period_export")
+    assert len(date_exports) == 4
+    selected_period = (start_edit.date(), _end_edit.date())
+    for index, button in enumerate(date_exports, start=1):
+        button.click()
+        assert len(export_requests) == index
+        assert (start_edit.date(), _end_edit.date()) == selected_period
 
     widget.close()
     app.processEvents()
@@ -612,3 +735,68 @@ def test_cloud_reports_use_transparent_label_surfaces_and_consistent_table_align
 
     widget.close()
     app.processEvents()
+
+
+@pytest.mark.parametrize("mode", ["classified", "total_only", "missing", "partial_users"])
+def test_users_cards_separate_color_without_inventing_missing_counters(mode):
+    app = QApplication.instance() or QApplication([])
+    day = date(2026, 9, 8)
+    widget = CloudReportsWidget()
+    subjects = (replace(_subject(day), period_usage=3),)
+    if mode == "partial_users":
+        subjects += (replace(_subject(day), subject_id="u-2", subject_name="bob", period_usage=1),)
+    counters = []
+    if mode in ("classified", "partial_users"):
+        for operation in ("print", "copy"):
+            for family in ("full_color", "bw"):
+                field = f"counter.{operation}.{family}_total"
+                counters.append(_raw(day, slot=0, field=field, label=field,
+                                     delta=3 if operation == "print" and family == "full_color" else 0,
+                                     subject=True))
+    elif mode == "total_only":
+        counters.append(_raw(day, slot=0, field="counter.print.total", label="Print total",
+                             delta=3, subject=True))
+    widget.set_data(records=(), daily_records=(), subjects=subjects, devices=(),
+                    raw_counter_records=counters, period=("2026-09-01", "2026-09-30"),
+                    last_sync_at=None)
+    widget.tabs.setCurrentIndex(1)
+    app.processEvents()
+    expected = ("3", "0", "0", "0") if mode == "classified" else ("—",) * 4
+    for key, value in zip(("color_print", "bw_print", "color_copy", "bw_copy"), expected):
+        card = widget.user_metric_cards[key]
+        assert card._full_value == value
+        assert card.layout().getItemPosition(card.layout().indexOf(card.lbl_val))[2] == 2
+    assert widget.user_metric_cards["usage"]._full_value == ("4" if mode == "partial_users" else "3")
+    assert widget.user_metric_cards["count"]._full_value == ("2" if mode == "partial_users" else "1")
+    widget.show_error("test error")
+    assert all(card._full_value == "—" for card in widget.user_metric_cards.values())
+    widget.close()
+
+
+def test_printer_cards_match_overview_and_preserve_scan_summary():
+    app = QApplication.instance() or QApplication([])
+    widget = CloudReportsWidget()
+    day = date(2026, 8, 6)
+    period = (day.isoformat(), day.isoformat())
+    widget.set_periods((period,), period)
+    widget.set_data(records=(_usage(day),), daily_records=(), subjects=(), devices=(),
+                    period=period, last_sync_at=None)
+    widget.tabs.setCurrentIndex(2)
+    widget.resize(1440, 800)
+    widget.show()
+    app.processEvents()
+    for key in ("color_print", "bw_print", "color_copy", "bw_copy"):
+        assert widget.printer_metric_cards[key]._full_value == widget.overview_kpis[key]._full_value
+        assert widget.printer_metric_cards[key]._full_detail == widget.overview_kpis[key]._full_detail
+    assert "เครื่องที่มีการใช้งาน 1 เครื่อง" in widget.printer_activity_summary.text()
+    assert "Scan" in widget.printer_activity_summary.text()
+    for width in (1440, 1024):
+        widget.resize(width, 760)
+        app.processEvents()
+        cards = list(widget.printer_metric_cards.values())
+        assert len({card.y() for card in cards}) == 1
+        assert len({card.height() for card in cards}) == 1
+    widget.show_error("unavailable")
+    assert all(card._full_value == "—" for card in widget.printer_metric_cards.values())
+    assert "Scan —" in widget.printer_activity_summary.text()
+    widget.close()
