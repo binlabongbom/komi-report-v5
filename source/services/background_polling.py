@@ -34,6 +34,7 @@ log = logging.getLogger(__name__)
 class BackgroundPollingCoordinator(QObject):
     device_updated = pyqtSignal(int)
     reading_saved = pyqtSignal(int)
+    activity_changed = pyqtSignal()
 
     def __init__(
         self,
@@ -89,6 +90,10 @@ class BackgroundPollingCoordinator(QObject):
     def _archive_busy(self):
         with self._lock:
             return bool(self.active) or self.peer_history.busy or self._stopped
+
+    def active_slots(self):
+        with self._lock:
+            return tuple(sorted(self.active))
 
     def start(self) -> None:
         if self._stopped:
@@ -411,6 +416,7 @@ class BackgroundPollingCoordinator(QObject):
             with self._lock:
                 self._futures[device.slot] = future
             future.add_done_callback(lambda item, slot=device.slot: self._finished(slot, item))
+            self.activity_changed.emit()
 
     def _finished(self, slot: int, future: Future) -> None:
         try:
@@ -443,6 +449,7 @@ class BackgroundPollingCoordinator(QObject):
             },
         )
         self.device_updated.emit(slot)
+        self.activity_changed.emit()
         if saved:
             self.reading_saved.emit(slot)
         elif retry_manual:

@@ -175,6 +175,29 @@ bf453738b934dcf5bea59dd8c70e191b52ba6b89 และ merge เข้า local main
   หลักฐานทดสอบเก่าตรวจว่ามีบน GitHub/commit/tag/release จริงก่อนเก็บกวาด
 - ปรับคู่มือ ภาพหน้าจอ และขั้นตอนทดสอบสองเครื่องให้ตรง ก่อนขออนุญาต build
 
+### 2026-09-18 — network activity panel with durable receipt status
+
+- Network settings now binds to the actual polling/peer-history runtime when
+  the Settings page opens. It shows local active Slots, per-member catch-up
+  status and last completed catch-up, outgoing Web receipt counts, pending
+  current settings, and unresolved settings/active Slot reviews. It does not
+  label catch-up completion as a new printer reading or settings delivery.
+- The view refreshes on local runtime/settings events or explicit status check,
+  not a network polling timer. Database reads run off the GUI thread, have a
+  query time budget, never open Archive payloads, and preserve displayed data
+  on failure. Members paginate by 100 without limiting company computers.
+  No confirmed sessions means an explicit empty state, not a claim of no LAN PCs.
+- Network/settings/navigation/polling/manual tests: **58 passed in 53.27s**.
+  Follow-up status/runtime/navigation/manual/Agent/archive checks after query
+  and style changes: **42 passed in 30.69s**. Sets overlap. Inspected native Qt
+  screenshots with synthetic members/queues and refreshed the Slot baseline
+  screenshot to show the current localized timestamp. Updated the source guide.
+- Status query regression after enforcing SQLite read-only open: **6 passed in
+  2.86s**, including missing DB creating no file and failure retaining prior data.
+- Global elected-reader status still requires the actual election integration;
+  the panel labels its current job list as this PC's jobs. Verified live member
+  discovery/delivery is still unavailable rather than simulated in production.
+
 ### 2026-09-18 — Agent/Desktop catch-up lifetime and source regression
 
 - The completed checkpoint regression covered **72 operational test files,
@@ -522,7 +545,7 @@ bf453738b934dcf5bea59dd8c70e191b52ba6b89 และ merge เข้า local main
 |---|---|
 | แผนเดิมและ merge เข้า local main | ทำแล้ว; รอบนี้ปรับแผนตามข้อสรุปใหม่ |
 | Web refresh/ข้อมูลค้าง/initial failure | มีโค้ดและ source tests แล้ว ต้อง regression กับระบบใหม่ |
-| หน้าตั้งค่าเครือข่าย | แยกโมดูล/ปรับโครงแล้ว ยังไม่ครบสมาชิกและ Sync ใหม่ |
+| หน้าตั้งค่าเครือข่าย | มีหน้าสถานะ runtime/คิวรอ ACK/ข้อขัดแย้งแล้ว; สมาชิกจริงและผู้อ่านร่วมยังรอ adapter/election |
 | Wizard ค้นหาซ้ำ | มี UDP discovery และ HTTPS probe พร้อมค้นซ้ำ/manual IP; ผ่าน fixture/loopback ยังรอ Firewall/สองคอมจริง |
 | ประวัติการตั้งค่า | Setup/ราคา save พร้อม revision แบบ atomic; มีหน้าประวัติ/เลือกค่าขัดแย้ง/undo ราคา รอบบิล ส่วนลด ตาราง; การส่งอัตโนมัติและ apply การเปลี่ยนเครื่องร่วมยังไม่ครบ |
 | Agent/handoff/tray | มี source lifecycle/tests และวัดงานจำลอง 3 เครื่อง 100 ผู้ใช้แล้ว ยังต้องรวมผู้อ่านร่วมและตรวจเครื่องจริง/บริการ Web ทั้ง process tree |

@@ -746,6 +746,7 @@ class MainWindow(QMainWindow):
         setattr(self, attribute, page)
         self._page_widgets[index] = page
         if index == self._settings_index:
+            page.fleet_content.network_activity.bind_runtime(self.polling)
             page.changed.connect(self._refresh_all)
             page.changed.connect(self.polling.reload_policy)
             page.changed.connect(self.registration.configuration_changed)

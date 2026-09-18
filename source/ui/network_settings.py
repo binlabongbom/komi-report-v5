@@ -151,6 +151,10 @@ def build_network_settings(self, program_body):
     self.shared_history_button = btn(tr("ประวัติการตั้งค่าร่วม", "Shared settings history"), "outline")
     self.shared_history_button.clicked.connect(lambda: show_shared_settings_history(self))
     program_body.addWidget(self.shared_history_button, 0, Qt.AlignmentFlag.AlignLeft)
+    from ui.network_activity import NetworkActivityPanel
+    self.network_activity = NetworkActivityPanel(self)
+    self.changed.connect(self.network_activity.schedule_refresh)
+    program_body.addWidget(self.network_activity)
     (
         self.web_save_status,
         web_save_actions,

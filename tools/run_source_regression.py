@@ -1,5 +1,6 @@
 """Run operational source files separately to isolate Windows Qt lifetime state."""
 import json
+import argparse
 import os
 from pathlib import Path
 import subprocess
@@ -15,7 +16,7 @@ test_app_setup test_setup_settings test_setup_wizard_v5 test_setup_connectivity
 test_shared_settings test_shared_price_history test_shared_slot_review test_shared_settings_history_ui
 test_peer_settings_history test_peer_settings_outbox test_peer_settings_pages test_peer_sync_authorization
 test_slot_epoch_store test_slot_epoch_exchange test_slot_meter_continuity test_slot_replacement
-test_peer_history_session test_peer_history_runtime
+test_peer_history_session test_peer_history_runtime test_network_activity
 test_web_observations test_web_catchup test_web_usage_projection test_web_evidence_report
 test_web_observation_archive test_archive_maintenance test_archive_recovery test_report_detail_archive
 test_archive_settings_ui test_billing_period_amendment test_billing_repricing test_billing_repricing_batch
@@ -29,7 +30,18 @@ test_database test_database_reset_v5 test_migrations test_desktop_shortcuts test
 test_lan_discovery test_lan_tls test_registration_recovery test_registration_client
 test_registration_worker test_v5_2_runtime test_runtime_snapshots test_web_api
 """.split()
-report = root / "docs/qa/v5.2.12/source-regression.json"
+parser = argparse.ArgumentParser()
+parser.add_argument("--remaining", action="store_true", help="Other source tests, excluding release/build suites")
+args = parser.parse_args()
+excluded = {"test_phase4_release_candidate", "test_phase5_pilot_release", "test_phase6_customer_release",
+            "test_release_builder", "test_prepare_web_runtime", "test_mac_v528_validation"}
+if args.remaining:
+    covered = set(names)
+    names = sorted(str(path.relative_to(source / "tests").with_suffix("")).replace("\\", "/")
+                   for path in (source / "tests").rglob("test_*.py")
+                   if path.stem not in covered | excluded)
+report = root / ("docs/qa/v5.2.12/additional-source-regression.json" if args.remaining else
+                 "docs/qa/v5.2.12/source-regression.json")
 report.parent.mkdir(parents=True, exist_ok=True)
 bootstrap = '''
 import ipaddress, sys
@@ -54,6 +66,7 @@ env = {**os.environ, "QT_QPA_PLATFORM": "offscreen", "KOMI_DISCOVERY_DISABLED": 
 state = {"scope": f"{len(names)} selected operational source files; each in a fresh pytest process",
          "source_head": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root, text=True).strip(),
          "working_tree_status": subprocess.check_output(["git", "status", "--short"], cwd=root, text=True),
+         "excluded_release_build_files": sorted(excluded) if args.remaining else [],
          "non_loopback_network": "denied by an audit hook in each pytest process; subprocess fixtures are separately isolated",
          "installer_or_release_build": False,
          "complete": False, "results": []}
