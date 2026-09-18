@@ -29,6 +29,7 @@ from services.peer_sync_authorization import new_claim_token
 from services.pricing import PriceList, PricingRepository
 from services.web_port import validate_web_port
 from services.sync_schedule import dump_schedule_windows, load_schedule_windows
+from services.billing_periods import effective_billing_day
 
 SECONDARY_SETUP_CONTRACT = "komi-secondary-setup/v1"
 DEFAULT_WEB_PORT = 3000
@@ -196,7 +197,7 @@ def _setup_snapshot(devices, pricing, config) -> dict[str, object]:
         },
         "settings": {
             "pricing_mode": config("pricing_mode", "shared") or "shared",
-            "billing_day": int(config("billing_day", "31") or 31),
+            "billing_day": effective_billing_day(config("billing_day", "25")),
             "waste_paper_pct": float(config("waste_paper_pct", "2") or 2),
             "work_start": config("work_start", "08:00") or "08:00",
             "work_end": config("work_end", "17:00") or "17:00",

@@ -15,7 +15,7 @@ import uuid
 import zlib
 
 from database import get_db_path
-from services.billing_periods import billing_month_range
+from services.billing_periods import billing_month_range, effective_billing_day
 from services.web_observation_archive import detail_cutoff, _digest
 
 TABLES = {"subject": "daily_subject_records", "raw": "daily_raw_counter_records"}
@@ -30,11 +30,7 @@ def _json(value):
 
 def _billing_day(conn):
     row = conn.execute("SELECT value FROM settings WHERE key='billing_day'").fetchone()
-    try:
-        value = int((row[0] if row else None) or "25")
-    except (ValueError, TypeError):
-        value = 25
-    return max(1, min(31, value))
+    return effective_billing_day(row[0] if row else None)
 
 
 def _decode(blob, length, digest):

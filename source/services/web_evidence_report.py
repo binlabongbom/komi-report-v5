@@ -6,6 +6,7 @@ import json
 import sqlite3
 
 from services.web_observations import WebObservationStore
+from services.billing_periods import effective_billing_day
 from services.web_usage_projection import CounterIdentity, project_counter
 
 MAX_REPORT_EVENTS = 4096
@@ -61,7 +62,7 @@ def load_evidence(database_path, *, slot, serial, start, end, calendar_timezone,
                 choices[key] = f"{c['label']}{subject}"
         prices = [date.fromisoformat(row[0]) for row in conn.execute("SELECT DISTINCT effective_date FROM price_history WHERE device_slot=?", (slot,))]
         row = conn.execute("SELECT value FROM settings WHERE key='billing_day'").fetchone()
-        billing_day = int(row[0]) if row else 31
+        billing_day = effective_billing_day(row[0] if row else None)
     return {"events": events, "choices": sorted(choices.items(), key=lambda item: item[1]),
             "price_change_dates": prices, "billing_day": billing_day}
 

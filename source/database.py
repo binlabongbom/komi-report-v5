@@ -580,13 +580,8 @@ def get_price(key: str, slot: int = -1) -> float:
 
 def get_billing_day() -> int:
     """[V4.5] วันตัดรอบบิล (1-31) — clamp ป้องกันค่า invalid"""
-    raw = get_cfg("billing_day", "25") or "25"
-    try:
-        v = int(raw)
-    except (ValueError, TypeError):
-        log.warning("invalid billing_day %r, fallback to 25", raw)
-        v = 25
-    return max(1, min(31, v))
+    from services.billing_periods import effective_billing_day
+    return effective_billing_day(get_cfg("billing_day", "25"))
 
 def get_waste_paper_pct() -> float:
     """% กระดาษเสีย (0-100) — ค่าเริ่มต้น 5.0"""

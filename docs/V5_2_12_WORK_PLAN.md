@@ -175,6 +175,34 @@ bf453738b934dcf5bea59dd8c70e191b52ba6b89 และ merge เข้า local main
   หลักฐานทดสอบเก่าตรวจว่ามีบน GitHub/commit/tag/release จริงก่อนเก็บกวาด
 - ปรับคู่มือ ภาพหน้าจอ และขั้นตอนทดสอบสองเครื่องให้ตรง ก่อนขออนุญาต build
 
+### 2026-09-18 — reviewed slot continuity reducer and billing-day consistency
+
+- `slot_meter_continuity.py` computes a virtual slot meter separately from the
+  physical printer meter, using explicitly assigned reviewed epochs. The stored
+  carry is exact (integer/rational amounts), derives from parent evidence, and
+  never adds a used printer's initial absolute meter to slot usage.
+- Examples verified across days and reordered/duplicate peer inputs:
+  **2,000 + (50,100 - 50,000) = 2,100**; a third printer at 9,000 then 9,050
+  continues to 2,150. Same-serial reset is a separate explicit decision; a raw
+  decrease by itself does not reset a baseline or add the next absolute value.
+- Definitions preserve parent evidence and stable user/counter IDs. Missing old
+  counters retain their previous total with a review flag; counters without a
+  reviewed baseline and changed normalization mappings cannot silently carry.
+  Late old-printer evidence does not rewrite a confirmed carry: verification
+  demands an amendment. The maximum keeps its own observation timestamp.
+- Continuity/projection/local-replacement source regression: **29 passed (9.19s)**.
+  This is the deterministic review/reducer layer only. Durable epoch storage,
+  journal binding, atomic settings/slot confirmation, shared delivery and UI
+  are still to be connected; no new production replacement path is enabled yet.
+- Found and fixed a legacy billing-day mismatch while connecting these views:
+  regular reports defaulted missing/invalid configuration to day 25, while
+  setup export and Web evidence used day 31. A common parser preserves legacy
+  report semantics; new setup still explicitly saves its selected default 31.
+  Report archive, setup export, standard reports and Web gap boundary flags now
+  use the same effective value. Combined setup/shared-price/archive/Web evidence
+  source regression: **84 passed (36.20s)**, including missing/empty/invalid and
+  explicitly configured day 31. Existing immutable billing periods stay frozen.
+
 ### 2026-09-18 — durable reader grants and joined-request simulation
 
 - Schema 26 and `ReaderJobs` provide first-accepted-request ordering at one
