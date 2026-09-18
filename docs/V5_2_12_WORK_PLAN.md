@@ -262,6 +262,37 @@ P9/H1 ที่ตรวจ source/fixture ได้อาจทำสลับ�
 
 ## Existing evidence (not release approval)
 
+### 2026-09-18 — durable settings events and Host source lookup
+
+- Added additive schema 21 for settings events and per-member receipts/retries.
+  Local revision append and accepted incoming fast-forward enqueue inside the
+  same transaction as settings/head changes. A queue-write failure rolls back
+  the setting, journal and head. Importing unreviewed history alone never queues
+  it as an applied setting.
+- Pending delivery coalesces to the active head, which carries previous edits
+  as ancestors. Reading a pending item or restarting cannot acknowledge it.
+  A verified complete-head ACK covers its queued ancestors for that member only;
+  an old ACK cannot hide a newer edit, and a late failure cannot erase an ACK.
+  Retry state survives restart, with bounded backoff and reconnect override.
+- Upgrade queues an existing current head. Usage reset preserves delivery state;
+  factory reset removes events and receipts before deleting revision history.
+  Source tests: **77 passed** in 28.22 seconds with one Starlette/AnyIO warning,
+  clean exit. This is a tested persistence layer, not an enabled delivery worker.
+- Rechecked Host access through the existing logged-in in-app session, read-only.
+  The previous tab had closed; a temporary tab confirmed login and License UI
+  still work, then was closed without signing out. The UI continues to describe
+  company counts as estimated from normalized names. No production records were
+  edited or exported, no licenses were issued, and no Host calls were fabricated.
+- Available saved projects and this repository expose no separate Host backend
+  source. Asked for its repository/folder so company-to-installation authority
+  and trust handling can be verified. This is not a request to approve an
+  already-agreed product policy, and is not evidence that the backend lacks the
+  capability. Park production membership integration pending that source;
+  continue independent source work. No blanket request for Host credentials.
+- Additional code audit found subject/raw counter paths still add a decreased
+  absolute counter as usage; include these in the P4 reset/baseline workflow,
+  not just device totals, before claiming replacement/reset behavior complete.
+
 ### 2026-09-18 — atomic Setup, dated prices, history review and bounded LAN discovery
 
 - Latest instruction: implement all remaining authorized work in sequence. Work

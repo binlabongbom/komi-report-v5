@@ -194,9 +194,10 @@ def test_peer_printer_change_cannot_bypass_replacement_workflow(tmp_path):
     configured()
     SettingsHistory().observe_current()
     other_path = tmp_path / "journal.sqlite3"
-    from migrations import _migration_020_peer_settings_history
+    from migrations import _migration_020_peer_settings_history, _migration_021_peer_settings_outbox
     with sqlite3.connect(other_path) as conn:
         _migration_020_peer_settings_history(conn)
+        _migration_021_peer_settings_outbox(conn)
     other = SettingsHistory(other_path)
     snapshot = deepcopy(primary_setup_snapshot())
     snapshot["devices"][0]["serial"] = "REPLACED"

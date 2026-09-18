@@ -13,6 +13,7 @@ from pathlib import Path
 from database import _open, config_write_transaction, get_db_path
 from services.peer_settings_history import SettingsHistory, _json
 from services.shared_settings_document import from_connection
+from services.peer_settings_outbox import enqueue_revision
 from services.sync_schedule import dump_schedule_windows, load_schedule_windows
 
 EDITABLE_KEYS = frozenset({"billing_day", "waste_paper_pct", "sync_schedule_windows"})
@@ -180,6 +181,7 @@ class SharedSettingsService:
                 # Receiving an existing edit must not create another edit and
                 # cause an endless revision exchange between identical peers.
                 conn.execute("UPDATE peer_settings_state SET value=? WHERE key='head'", (preview.remote_head,))
+                enqueue_revision(conn, preview.remote_head, datetime.now(UTC).isoformat())
                 return preview.remote_head
             parents = [head] + ([preview.remote_head] if preview.remote_head else [])
             return history._append(conn, after, parents, preview.reason)

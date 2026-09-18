@@ -4,7 +4,7 @@ import sqlite3
 import pytest
 from fastapi.testclient import TestClient
 
-from migrations import _migration_020_peer_settings_history
+from migrations import _migration_020_peer_settings_history, _migration_021_peer_settings_outbox
 from services.peer_settings_history import SettingsHistory
 from services import peer_sync_authorization
 from test_secondary_setup import _valid_snapshot
@@ -14,6 +14,7 @@ import web_api
 def journal(path):
     with sqlite3.connect(path) as conn:
         _migration_020_peer_settings_history(conn)
+        _migration_021_peer_settings_outbox(conn)
     return SettingsHistory(path)
 
 

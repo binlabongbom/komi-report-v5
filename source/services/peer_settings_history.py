@@ -14,6 +14,7 @@ import uuid
 from database import get_db_path
 from services.secondary_setup import SECONDARY_SETUP_CONTRACT, validate_setup_snapshot
 from services.shared_settings_document import from_connection, validate as validate_document
+from services.peer_settings_outbox import enqueue_revision
 
 CONTRACT = "komi-peer-settings-history/v1"
 PAGE_CONTRACT = "komi-peer-settings-page/v1"
@@ -115,6 +116,7 @@ class SettingsHistory:
         revision = _revision(document)
         conn.execute("INSERT INTO peer_settings_revisions VALUES(?,?)", (revision, _json(document)))
         conn.execute("INSERT INTO peer_settings_state VALUES('head',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (revision,))
+        enqueue_revision(conn, revision, document["created_at"])
         return revision
 
     def observe(self, snapshot):

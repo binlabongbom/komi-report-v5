@@ -12,7 +12,7 @@ from contextlib import closing
 from datetime import datetime
 from pathlib import Path
 
-CURRENT_SCHEMA_VERSION = 20
+CURRENT_SCHEMA_VERSION = 21
 
 
 class UnsupportedSchemaVersionError(RuntimeError):
@@ -24,6 +24,10 @@ class SchemaDriftError(RuntimeError):
 
 
 _REQUIRED_SCHEMA: dict[str, frozenset[str]] = {
+    "peer_settings_revisions": frozenset({"revision", "document_json"}),
+    "peer_settings_state": frozenset({"key", "value"}),
+    "peer_settings_events": frozenset({"revision", "created_at"}),
+    "peer_settings_deliveries": frozenset({"peer_id", "revision", "acknowledged_at", "attempts", "retry_at", "error_code"}),
     "readings": frozenset({"id", "slot", "data_json", "read_date_iso", "billing_month"}),
     "settings": frozenset({"key", "value"}),
     "devices": frozenset(
@@ -615,6 +619,22 @@ def _migration_020_peer_settings_history(connection: sqlite3.Connection) -> None
         key TEXT PRIMARY KEY, value TEXT NOT NULL)""")
 
 
+def _migration_021_peer_settings_outbox(connection: sqlite3.Connection) -> None:
+    connection.execute("""CREATE TABLE peer_settings_events(
+        revision TEXT PRIMARY KEY REFERENCES peer_settings_revisions(revision),
+        created_at TEXT NOT NULL)""")
+    connection.execute("""CREATE TABLE peer_settings_deliveries(
+        peer_id TEXT NOT NULL, revision TEXT NOT NULL REFERENCES peer_settings_events(revision),
+        acknowledged_at TEXT, attempts INTEGER NOT NULL DEFAULT 0,
+        retry_at REAL NOT NULL DEFAULT 0, error_code TEXT NOT NULL DEFAULT '',
+        PRIMARY KEY(peer_id,revision))""")
+    # Upgraded installations must announce their current state even if no user
+    # edits it after upgrading. Ancestors travel with this head's paged history.
+    connection.execute("""INSERT INTO peer_settings_events(revision,created_at)
+        SELECT value,? FROM peer_settings_state WHERE key='head'""",
+        (datetime.now().astimezone().isoformat(timespec="seconds"),))
+
+
 MIGRATIONS: tuple[tuple[int, str, object], ...] = (
     (8, "record_schema_history_and_reporting_indexes", _migration_008_record_schema_history),
     (9, "add_legacy_usage_history_import_provenance", _migration_009_legacy_history_import),
@@ -629,6 +649,7 @@ MIGRATIONS: tuple[tuple[int, str, object], ...] = (
     (18, "separate_raw_counter_history_by_printer_serial", _migration_018_raw_counter_device_identity),
     (19, "add_v52_registration_inventory_baselines", _migration_019_v52_registration_inventory_baseline),
     (20, "add_peer_settings_revision_history", _migration_020_peer_settings_history),
+    (21, "add_atomic_peer_settings_outbox", _migration_021_peer_settings_outbox),
 )
 
 

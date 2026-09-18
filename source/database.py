@@ -80,6 +80,8 @@ _USAGE_RESET_SEQUENCES = (
 )
 
 _FACTORY_RESET_TABLES = (
+    "peer_settings_deliveries",
+    "peer_settings_events",
     "peer_settings_state",
     "peer_settings_revisions",
     "registration_attempt_history",
