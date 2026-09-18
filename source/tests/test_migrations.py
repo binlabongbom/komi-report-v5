@@ -110,7 +110,7 @@ def test_v29_upgrade_preserves_existing_delivery_receipts_and_accounting(tmp_pat
         conn.execute("INSERT INTO peer_settings_revisions VALUES('revision','{}')")
         conn.execute("INSERT INTO peer_settings_events VALUES('revision','fixture')")
         conn.execute("INSERT INTO peer_settings_deliveries(peer_id,revision,acknowledged_at,attempts,retry_at) VALUES('B','revision','fixture',2,123)")
-        assert apply_migrations(conn) == [29]
+        assert apply_migrations(conn) == list(range(29, CURRENT_SCHEMA_VERSION + 1))
         assert conn.execute('SELECT * FROM billing_ledger').fetchall() == [(1,12345)]
         assert conn.execute('SELECT acknowledged_at,attempts,retry_at,page_offset FROM peer_settings_deliveries').fetchone() == ('fixture',2,123,0)
         assert conn.execute('SELECT COUNT(*) FROM peer_billing_amendments').fetchone()[0] == 0

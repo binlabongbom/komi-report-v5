@@ -582,6 +582,8 @@ def _ensure_reversal(
     )
     if existing is not None:
         return existing
+    if conn.execute('SELECT MAX(id) FROM billing_ledger WHERE source_daily_record_id=?', (source[8],)).fetchone()[0] != ledger_id:
+        raise ValueError('The selected posting has already been superseded')
     attestation = _reversal_attestation(
         source[18],
         target_ledger_id=ledger_id,
@@ -615,140 +617,177 @@ def _ensure_reversal(
     return int(cursor.lastrowid)
 
 
-def reverse_entry(ledger_id: int, *, reason: str) -> int:
+from services.peer_change_events import notify_local_change
+
+
+@notify_local_change
+def reverse_entry(ledger_id: int, *, reason: str, actor: str = "operator") -> int:
+    with _open() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        return _reverse_entry(conn, ledger_id, reason=reason, actor=actor)
+
+
+def _reverse_entry(conn, ledger_id: int, *, reason: str, actor: str = "operator") -> int:
     """Append one exact compensating entry; immutable rows are never edited."""
     reason = reason.strip()
     if not reason:
         raise ValueError("correction reason is required")
     now = datetime.now().astimezone().isoformat(timespec="seconds")
+    source = _load_correction_source(conn, ledger_id)
+    previous = conn.execute('SELECT MAX(id) FROM billing_ledger').fetchone()[0] or 0
+    result = _ensure_reversal(conn, ledger_id, source, reason=reason, now=now)
+    if result > previous:
+        from services.billing_correction_transfer import enqueue_corrections
+        enqueue_corrections(conn, [(ledger_id, result, 'reverse')], actor=actor, reason=reason, created_at=now)
+    return result
+
+
+@notify_local_change
+def replace_entry(ledger_id: int, *, gross_cents: int, net_cents: int, reason: str, actor: str = "operator") -> int:
     with _open() as conn:
         conn.execute("BEGIN IMMEDIATE")
-        source = _load_correction_source(conn, ledger_id)
-        return _ensure_reversal(conn, ledger_id, source, reason=reason, now=now)
+        return _replace_entry(conn, ledger_id, gross_cents=gross_cents, net_cents=net_cents, reason=reason, actor=actor)
 
 
-def replace_entry(ledger_id: int, *, gross_cents: int, net_cents: int, reason: str) -> int:
+def _replace_entry(conn, ledger_id: int, *, gross_cents: int, net_cents: int, reason: str, actor: str = "operator") -> int:
     """Atomically append an exact reversal and manual replacement.
 
     Both events commit together. Any failure while inserting the replacement
     rolls the newly-created reversal back as part of the same SQLite transaction.
     """
-    if gross_cents < 0 or net_cents < 0 or net_cents > gross_cents:
+    if type(gross_cents) is not int or type(net_cents) is not int or not 0 <= net_cents <= gross_cents <= 2**63 - 1:
         raise ValueError("invalid replacement amounts")
     reason = reason.strip()
     if not reason:
         raise ValueError("correction reason is required")
     key = f"replacement:{ledger_id}:{FORMULA_VERSION}"
     now = datetime.now().astimezone().isoformat(timespec="seconds")
+    existing = _existing_adjustment(
+        conn,
+        key=key,
+        gross_cents=gross_cents,
+        net_cents=net_cents,
+        reason=reason,
+        conflict="replacement",
+    )
+    if existing is not None:
+        return existing
+    source = _load_correction_source(conn, ledger_id)
+    latest = conn.execute('SELECT id,entry_kind,replaces_ledger_id FROM billing_ledger WHERE source_daily_record_id=? ORDER BY id DESC LIMIT 1',
+                          (source[8],)).fetchone()
+    if latest[0] != ledger_id and not (latest[1] == 'reversal' and latest[2] == ledger_id):
+        raise ValueError('The selected posting has already been superseded')
+    reversal_id = _ensure_reversal(conn, ledger_id, source, reason=reason, now=now)
+    waste_bp = _manual_waste_basis_points(gross_cents, net_cents)
+    attestation = _manual_adjustment_attestation(
+        source[18],
+        action="replace_entry",
+        target_ledger_id=ledger_id,
+        gross_cents=gross_cents,
+        net_cents=net_cents,
+        waste_basis_points=waste_bp,
+        reason=reason,
+        created_at=now,
+    )
+    attestation['manual_adjustment']['actor'] = actor.strip()
+    cursor = conn.execute(
+        """INSERT INTO billing_ledger(entry_kind,device_slot,device_identity,device_name_snapshot,device_serial_snapshot,
+        record_date,period_start,period_end,source_daily_record_id,source_hash,idempotency_key,replaces_ledger_id,delta_json,category_json,price_cents_json,
+        gross_cents,waste_basis_points,net_cents,billing_day,currency,formula_version,hold_reason,attestation_json,created_at)
+        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+        (
+            "replacement",
+            *source[1:10],
+            key,
+            reversal_id,
+            *source[10:13],
+            gross_cents,
+            waste_bp,
+            net_cents,
+            int(source[16]),
+            source[17],
+            MANUAL_ADJUSTMENT_VERSION,
+            reason,
+            json.dumps(attestation, ensure_ascii=False, sort_keys=True),
+            now,
+        ),
+    )
+    result = int(cursor.lastrowid)
+    from services.billing_correction_transfer import enqueue_corrections
+    enqueue_corrections(conn, [(ledger_id, result, 'replace')], actor=actor, reason=reason, created_at=now)
+    return result
+
+
+@notify_local_change
+def approve_held_entry(ledger_id: int, *, gross_cents: int, net_cents: int, reason: str, actor: str = "operator") -> int:
     with _open() as conn:
         conn.execute("BEGIN IMMEDIATE")
-        existing = _existing_adjustment(
-            conn,
-            key=key,
-            gross_cents=gross_cents,
-            net_cents=net_cents,
-            reason=reason,
-            conflict="replacement",
-        )
-        if existing is not None:
-            return existing
-        source = _load_correction_source(conn, ledger_id)
-        reversal_id = _ensure_reversal(conn, ledger_id, source, reason=reason, now=now)
-        waste_bp = _manual_waste_basis_points(gross_cents, net_cents)
-        attestation = _manual_adjustment_attestation(
-            source[18],
-            action="replace_entry",
-            target_ledger_id=ledger_id,
-            gross_cents=gross_cents,
-            net_cents=net_cents,
-            waste_basis_points=waste_bp,
-            reason=reason,
-            created_at=now,
-        )
-        cursor = conn.execute(
-            """INSERT INTO billing_ledger(entry_kind,device_slot,device_identity,device_name_snapshot,device_serial_snapshot,
-            record_date,period_start,period_end,source_daily_record_id,source_hash,idempotency_key,replaces_ledger_id,delta_json,category_json,price_cents_json,
-            gross_cents,waste_basis_points,net_cents,billing_day,currency,formula_version,hold_reason,attestation_json,created_at)
-            VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-            (
-                "replacement",
-                *source[1:10],
-                key,
-                reversal_id,
-                *source[10:13],
-                gross_cents,
-                waste_bp,
-                net_cents,
-                int(source[16]),
-                source[17],
-                MANUAL_ADJUSTMENT_VERSION,
-                reason,
-                json.dumps(attestation, ensure_ascii=False, sort_keys=True),
-                now,
-            ),
-        )
-        return int(cursor.lastrowid)
+        return _approve_held_entry(conn, ledger_id, gross_cents=gross_cents, net_cents=net_cents, reason=reason, actor=actor)
 
 
-def approve_held_entry(ledger_id: int, *, gross_cents: int, net_cents: int, reason: str) -> int:
+def _approve_held_entry(conn, ledger_id: int, *, gross_cents: int, net_cents: int, reason: str, actor: str = "operator") -> int:
     """Approve a hold with a clearly marked operator-entered adjustment."""
-    if gross_cents < 0 or net_cents < 0 or net_cents > gross_cents:
+    if type(gross_cents) is not int or type(net_cents) is not int or not 0 <= net_cents <= gross_cents <= 2**63 - 1:
         raise ValueError("invalid replacement amounts")
     reason = reason.strip()
     if not reason:
         raise ValueError("approval reason is required")
     key = f"hold-approval:{ledger_id}:{MANUAL_APPROVAL_VERSION}"
     now = datetime.now().astimezone().isoformat(timespec="seconds")
-    with _open() as conn:
-        conn.execute("BEGIN IMMEDIATE")
-        existing = _existing_adjustment(
-            conn,
-            key=key,
-            gross_cents=gross_cents,
-            net_cents=net_cents,
-            reason=reason,
-            conflict="hold approval",
-        )
-        if existing is not None:
-            return existing
-        source = _load_correction_source(conn, ledger_id)
-        if source[0] != "hold":
-            raise ValueError("only a hold can be explicitly approved")
-        waste_bp = _manual_waste_basis_points(gross_cents, net_cents)
-        attestation = _manual_adjustment_attestation(
-            source[18],
-            action="approve_hold",
-            target_ledger_id=ledger_id,
-            gross_cents=gross_cents,
-            net_cents=net_cents,
-            waste_basis_points=waste_bp,
-            reason=reason,
-            created_at=now,
-            original_hold_reason=source[19],
-        )
-        cursor = conn.execute(
-            """INSERT INTO billing_ledger(entry_kind,device_slot,device_identity,device_name_snapshot,device_serial_snapshot,
-            record_date,period_start,period_end,source_daily_record_id,source_hash,idempotency_key,replaces_ledger_id,delta_json,category_json,price_cents_json,
-            gross_cents,waste_basis_points,net_cents,billing_day,currency,formula_version,hold_reason,attestation_json,created_at)
-            VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-            (
-                "replacement",
-                *source[1:10],
-                key,
-                ledger_id,
-                *source[10:13],
-                gross_cents,
-                waste_bp,
-                net_cents,
-                int(source[16]),
-                source[17],
-                MANUAL_ADJUSTMENT_VERSION,
-                reason,
-                json.dumps(attestation, ensure_ascii=False, sort_keys=True),
-                now,
-            ),
-        )
-        return int(cursor.lastrowid)
+    existing = _existing_adjustment(
+        conn,
+        key=key,
+        gross_cents=gross_cents,
+        net_cents=net_cents,
+        reason=reason,
+        conflict="hold approval",
+    )
+    if existing is not None:
+        return existing
+    source = _load_correction_source(conn, ledger_id)
+    if source[0] != "hold":
+        raise ValueError("only a hold can be explicitly approved")
+    if conn.execute('SELECT MAX(id) FROM billing_ledger WHERE source_daily_record_id=?', (source[8],)).fetchone()[0] != ledger_id:
+        raise ValueError('The selected hold has already been superseded')
+    waste_bp = _manual_waste_basis_points(gross_cents, net_cents)
+    attestation = _manual_adjustment_attestation(
+        source[18],
+        action="approve_hold",
+        target_ledger_id=ledger_id,
+        gross_cents=gross_cents,
+        net_cents=net_cents,
+        waste_basis_points=waste_bp,
+        reason=reason,
+        created_at=now,
+        original_hold_reason=source[19],
+    )
+    attestation['manual_adjustment']['actor'] = actor.strip()
+    cursor = conn.execute(
+        """INSERT INTO billing_ledger(entry_kind,device_slot,device_identity,device_name_snapshot,device_serial_snapshot,
+        record_date,period_start,period_end,source_daily_record_id,source_hash,idempotency_key,replaces_ledger_id,delta_json,category_json,price_cents_json,
+        gross_cents,waste_basis_points,net_cents,billing_day,currency,formula_version,hold_reason,attestation_json,created_at)
+        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+        (
+            "replacement",
+            *source[1:10],
+            key,
+            ledger_id,
+            *source[10:13],
+            gross_cents,
+            waste_bp,
+            net_cents,
+            int(source[16]),
+            source[17],
+            MANUAL_ADJUSTMENT_VERSION,
+            reason,
+            json.dumps(attestation, ensure_ascii=False, sort_keys=True),
+            now,
+        ),
+    )
+    result = int(cursor.lastrowid)
+    from services.billing_correction_transfer import enqueue_corrections
+    enqueue_corrections(conn, [(ledger_id, result, 'approve_hold')], actor=actor, reason=reason, created_at=now)
+    return result
 
 
 def audit_coverage() -> AuditCoverage:

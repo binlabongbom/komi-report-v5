@@ -117,6 +117,10 @@ class WebEvidenceDialog(QDialog):
         self.amend_button.setEnabled(False)
         self.amend_button.clicked.connect(self.amend)
         actions.addWidget(self.amend_button)
+        self.detail_amend_button = QPushButton('ตรวจแก้รายละเอียด')
+        self.detail_amend_button.setEnabled(False)
+        self.detail_amend_button.clicked.connect(self.amend_detail)
+        actions.addWidget(self.detail_amend_button)
         actions.addStretch()
         close = QPushButton("ปิด")
         close.clicked.connect(self.reject)
@@ -139,6 +143,7 @@ class WebEvidenceDialog(QDialog):
         self.xlsx_button.setEnabled(False)
         self.pdf_button.setEnabled(False)
         self.amend_button.setEnabled(False)
+        self.detail_amend_button.setEnabled(False)
         self.counters.clear()
         self.epochs.clear()
         self.table.setRowCount(0)
@@ -154,6 +159,17 @@ class WebEvidenceDialog(QDialog):
         self.pdf_button.setEnabled(not value and self.projection is not None)
         self.amend_button.setEnabled(not value and self.projection is not None
                                      and self.epochs.currentData() not in (None, "legacy"))
+        self.detail_amend_button.setEnabled(self.amend_button.isEnabled())
+
+    def amend_detail(self):
+        if not self.detail_amend_button.isEnabled() or not self.request:
+            return
+        from ui.report_detail_amendment import ReportDetailAmendmentDialog
+        request = self.request
+        scope = (request['slot'], self.epochs.currentData(), request['start'], request['end'], self.zone, self.counters.currentData())
+        dialog = ReportDetailAmendmentDialog(scope, self, database_path=self.path)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            self.status.setText('บันทึกฉบับแก้ไขรายละเอียดแล้ว · รายงานใช้ฉบับล่าสุดและเก็บต้นฉบับไว้')
 
     def amend(self):
         if not self.amend_button.isEnabled() or not self.request:

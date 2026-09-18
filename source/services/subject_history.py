@@ -81,8 +81,8 @@ class SubjectDailyRecord:
     subject_type: str
     subject_id: str
     subject_name: str
-    opening_total: float
-    closing_total: float
+    opening_total: float | None
+    closing_total: float | None
     delta_total: float
     reset_count: int
     missing_baseline: bool
@@ -104,7 +104,7 @@ class SubjectPeriodUsage:
     subject_type: str
     subject_id: str
     subject_name: str
-    latest_total: float
+    latest_total: float | None
     period_usage: float
     reset_count: int
     missing_baseline_days: int
@@ -118,7 +118,8 @@ class SubjectPeriodUsage:
 
     @property
     def needs_review(self) -> bool:
-        return bool(self.reset_count or self.missing_baseline_days or self.warnings)
+        return bool(self.reset_count or self.missing_baseline_days or any(
+            not note.startswith(('ฉบับแก้ไขจากหลักฐาน Web', 'ยอดสะสมช่วงขาดการอ่าน:')) for note in self.warnings))
 
 
 def _number(value: int | float) -> float:
@@ -631,15 +632,20 @@ def load_subject_history(
             ).fetchall()
             from services.report_detail_archive import ReportDetailArchive
             archive = ReportDetailArchive()
+            documents = [{'row': dict(zip(SUBJECT_COLUMNS, row)), 'period': None} for row in rows]
             if period_start is None and period_end is None:
                 archived_buckets = archive.subject_summaries(conn, slots, only_period=only_period)
             else:
-                for item in archive.details(conn, "subject", slots, start=source_start, end=source_end):
-                    record = subject_record_from_row([item["row"][key] for key in SUBJECT_COLUMNS])
-                    daily.append((record, tuple(date.fromisoformat(value) for value in item["period"])))
-        for row in rows:
-            record = subject_record_from_row(row)
-            daily.append((record, frozen_periods.get((record.device_slot, record.record_date))))
+                documents.extend(archive.details(conn, "subject", slots, start=source_start, end=source_end))
+            from services.report_detail_amendment import effective_documents
+            documents = effective_documents(conn, 'subject', documents, slots, start=source_start, end=source_end,
+                                            include_revisions=period_start is not None or period_end is not None)
+            for item in documents:
+                record = subject_record_from_row([item['row'][key] for key in SUBJECT_COLUMNS])
+                period = frozen_periods.get((record.device_slot, record.record_date))
+                if period is None and item['period']:
+                    period = tuple(date.fromisoformat(value) for value in item['period'])
+                daily.append((record, period))
 
     cache_store = cache or SubjectDailyCacheStore()
     for slot in slots:
@@ -674,14 +680,20 @@ SUBJECT_COLUMNS = ("device_slot", "record_date", "subject_type", "subject_id", "
 
 def subject_record_from_row(row):
     device_identity, device_name, device_serial = _source_identity(row[15], int(row[0]))
+    try:
+        raw = json.loads(row[15] or '{}')
+        audit = raw.get('report_amendment', {}) if isinstance(raw, dict) else {}
+    except (TypeError, ValueError):
+        audit = {}
+    remarks = ('ฉบับแก้ไขจากหลักฐาน Web', *audit.get('remarks', ())) if audit else ()
     return SubjectDailyRecord(
         device_slot=int(row[0]),
         record_date=date.fromisoformat(row[1]),
         subject_type=row[2],
         subject_id=row[3],
         subject_name=row[4],
-        opening_total=float(row[5]),
-        closing_total=float(row[6]),
+        opening_total=float(row[5]) if row[5] is not None else None,
+        closing_total=float(row[6]) if row[6] is not None else None,
         delta_total=float(row[7]),
         reset_count=int(row[8]),
         missing_baseline=bool(row[9]),
@@ -689,7 +701,7 @@ def subject_record_from_row(row):
         first_success=row[11],
         last_success=row[12],
         incomplete=bool(row[13]),
-        warnings=tuple(json.loads(row[14] or "[]")),
+        warnings=tuple(json.loads(row[14] or "[]")) + remarks,
         device_identity=device_identity,
         device_name_snapshot=device_name,
         device_serial_snapshot=device_serial,
@@ -741,7 +753,7 @@ def aggregate_subject_days(daily, billing_day, *, period_start=None, period_end=
         bucket["incomplete_days"] += int(record.incomplete)
         bucket["sample_count"] += record.sample_count
         bucket["warnings"].update(record.warnings)
-        if record.record_date >= bucket["latest_date"]:
+        if record.closing_total is not None and (record.record_date >= bucket["latest_date"] or bucket['latest_total'] is None):
             bucket["latest_date"] = record.record_date
             bucket["latest_total"] = record.closing_total
             bucket["latest_at"] = record.last_success

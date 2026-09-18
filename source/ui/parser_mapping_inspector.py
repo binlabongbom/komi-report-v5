@@ -183,7 +183,7 @@ class ParserMappingInspector(QDialog):
                 f"Canonical เดิม: {record.canonical_field}\nSource: {record.source_path or '—'}"
             )
             self.table.setItem(row, 0, raw_item)
-            value = QTableWidgetItem(f"{record.closing_value:,.0f}")
+            value = QTableWidgetItem(f"{record.closing_value:,.0f}" if record.closing_value is not None else '—')
             value.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
             self.table.setItem(row, 1, value)
             combo = QComboBox()

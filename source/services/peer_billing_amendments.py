@@ -35,6 +35,12 @@ def decision(preview, *, actor, reason):
 
 
 def validate_document(document):
+    from services.report_detail_amendment import FORMAT as DETAIL_FORMAT, validate as validate_detail
+    if isinstance(document, dict) and isinstance(document.get('payload'), dict) and document['payload'].get('format') == DETAIL_FORMAT:
+        return validate_detail(document)
+    from services.billing_correction_transfer import FORMAT as CORRECTION_FORMAT, validate
+    if isinstance(document, dict) and isinstance(document.get('payload'), dict) and document['payload'].get('format') == CORRECTION_FORMAT:
+        return validate(document)
     if not isinstance(document, dict) or set(document) != {"id", "payload"}:
         raise ValueError("Invalid amendment envelope")
     payload = document["payload"]
@@ -91,14 +97,21 @@ class PeerBillingAmendments:
         if self.authorize(member, document) is not True:
             raise PermissionError("Member cannot exchange this billing amendment")
 
+    @staticmethod
+    def _result_present(conn, result):
+        if result.get('kind') == 'detail':
+            return conn.execute('SELECT 1 FROM report_detail_revisions WHERE id=? AND amendment_id=?',
+                                (result['id'], result['key'])).fetchone() is not None
+        return conn.execute('SELECT 1 FROM billing_ledger WHERE id=? AND idempotency_key=?',
+                            (result['id'], result['key'])).fetchone() is not None
+
     def contains(self, member, document):
         validate_document(document)
         self._allowed(member, document)
         with self.service._connection() as conn:
             saved = conn.execute('SELECT document_json,results_json FROM peer_billing_amendments WHERE amendment_id=?',
                                  (document['id'],)).fetchone()
-            present = bool(saved and saved[0] == _json(document) and all(conn.execute(
-                'SELECT 1 FROM billing_ledger WHERE id=? AND idempotency_key=?', (r['id'], r['key'])).fetchone()
+            present = bool(saved and saved[0] == _json(document) and all(self._result_present(conn, r)
                 for r in json.loads(saved[1])))
             self._allowed(member, document)
         return {'amendment_id': document['id'], 'present': present}
@@ -138,19 +151,32 @@ class PeerBillingAmendments:
             saved = conn.execute("SELECT document_json,results_json FROM peer_billing_amendments WHERE amendment_id=?",
                                  (document["id"],)).fetchone()
             if saved:
-                if saved[0] != _json(document) or any(not conn.execute(
-                        "SELECT 1 FROM billing_ledger WHERE id=? AND idempotency_key=?", (r["id"], r["key"])).fetchone()
-                        for r in json.loads(saved[1])):
+                if saved[0] != _json(document) or any(not self._result_present(conn, r) for r in json.loads(saved[1])):
                     raise ValueError("Stored amendment receipt is incomplete")
             else:
-                slot, epoch, start, end, zone = payload["scope"]
-                preview = _preview(conn, slot, epoch, date.fromisoformat(start), date.fromisoformat(end),
-                                   _zone(payload["calendar"]), self.service.today())
-                if decision(preview, actor=payload["actor"], reason=payload["reason"]) != document:
-                    raise ValueError("Local evidence or accounting differs; amendment needs review")
-                self.service._commit(conn, preview, actor=payload["actor"], reason=payload["reason"])
+                from services.billing_correction_transfer import FORMAT as CORRECTION_FORMAT, apply
+                from services.report_detail_amendment import FORMAT as DETAIL_FORMAT, preview as detail_preview, document_for, commit
+                if payload['format'] == CORRECTION_FORMAT:
+                    apply(conn, document)
+                elif payload['format'] == DETAIL_FORMAT:
+                    from services.web_usage_projection import CounterIdentity
+                    slot, epoch, start, end = payload['scope']
+                    candidate = detail_preview(conn, self.service.path, slot, epoch, date.fromisoformat(start), date.fromisoformat(end),
+                        _zone(payload['calendar']), CounterIdentity(*payload['counter']), self.service.today())
+                    if document_for(candidate, payload['actor'], payload['reason']) != document:
+                        raise ValueError('Local detail evidence differs; amendment needs review')
+                    commit(conn, self.service.path, document)
+                else:
+                    slot, epoch, start, end, zone = payload["scope"]
+                    preview = _preview(conn, slot, epoch, date.fromisoformat(start), date.fromisoformat(end),
+                                       _zone(payload["calendar"]), self.service.today())
+                    if decision(preview, actor=payload["actor"], reason=payload["reason"]) != document:
+                        raise ValueError("Local evidence or accounting differs; amendment needs review")
+                    self.service._commit(conn, preview, actor=payload["actor"], reason=payload["reason"])
             self._allowed(member, document)  # Revocation while processing rolls back everything.
             self._ack(conn, member, document["id"], datetime.now(UTC).isoformat())
+        from services.peer_change_events import committed
+        committed(self.service.path)
         return {"amendment_id": document["id"], "committed": True}
 
     @staticmethod

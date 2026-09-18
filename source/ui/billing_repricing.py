@@ -36,8 +36,8 @@ class BillingRepricingDialog(QDialog):
                 form.addRow(label, plain(value))
             layout.addLayout(form)
             layout.addWidget(plain(tr(
-                "ใช้มิเตอร์ หมวดราคา ส่วนลด และรอบบิลจากรายการเดิม สร้างรายการแก้ไขพร้อมประวัติในคอมนี้ เอกสารเดิมไม่ถูกเขียนทับ",
-                "Uses the original usage, categories, discount and billing period. Appends a local correction with audit; original documents remain unchanged.")))
+                "ใช้มิเตอร์ หมวดราคา ส่วนลด และรอบบิลจากรายการเดิม เก็บเอกสารเดิมและเข้าคิวส่งฉบับแก้ไขให้สมาชิกที่ยืนยันสิทธิ์แล้ว บัญชีที่ไม่ตรงกันจะรอตรวจ",
+                "Uses the original usage, categories, discount and period. Preserves original documents and queues the correction for verified members. Differing accounts require review.")))
             if not p["changed"]:
                 layout.addWidget(plain(tr("ราคาและยอดไม่เปลี่ยน", "Prices and amounts are unchanged")))
         self.reason = QLineEdit()

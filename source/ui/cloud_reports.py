@@ -2007,7 +2007,8 @@ class CloudReportsWidget(QWidget):
             )
             identity = _record_identity(item)
             row["usage"] += float(item.period_usage)
-            row["latest"] = max(row["latest"], float(item.latest_total))
+            if item.latest_total is not None:
+                row["latest"] = max(row["latest"], float(item.latest_total))
             row["printers"][identity] += float(item.period_usage)
             row["by_slot"][slot]["total"] += float(item.period_usage)
             row["review"] = row["review"] or bool(item.needs_review)

@@ -12,7 +12,7 @@ from contextlib import closing
 from datetime import datetime
 from pathlib import Path
 
-CURRENT_SCHEMA_VERSION = 29
+CURRENT_SCHEMA_VERSION = 30
 
 
 class UnsupportedSchemaVersionError(RuntimeError):
@@ -26,6 +26,8 @@ class SchemaDriftError(RuntimeError):
 _REQUIRED_SCHEMA: dict[str, frozenset[str]] = {
     "peer_billing_amendments": frozenset({"sequence", "amendment_id", "document_json", "results_json"}),
     "peer_billing_deliveries": frozenset({"member_id", "amendment_id", "acknowledged_at", "retry_at", "attempts", "error_code"}),
+    "report_detail_revisions": frozenset({"id", "amendment_id", "kind", "device_slot", "serial", "counter_key", "record_date", "row_json", "period_start", "period_end"}),
+    "report_revision_subject_periods": frozenset({"device_slot", "period_start", "period_end", "device_identity", "subject_type", "subject_id", "summary_json"}),
     "web_catchup_progress": frozenset({"peer_id", "state_json"}),
     "web_observations": frozenset({"sequence", "event_id", "document_json", "recorded_at", "archive_id"}),
     "web_observation_state": frozenset({"key", "value"}),
@@ -767,6 +769,28 @@ def _migration_029_billing_amendments(connection: sqlite3.Connection) -> None:
         error_code TEXT NOT NULL DEFAULT '',PRIMARY KEY(member_id,amendment_id))""")
 
 
+def _migration_030_report_detail_revisions(connection):
+    connection.execute('''CREATE TABLE report_detail_revisions(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,amendment_id TEXT NOT NULL,
+        kind TEXT NOT NULL CHECK(kind IN ('subject','raw')),device_slot INTEGER NOT NULL,
+        serial TEXT NOT NULL,counter_key TEXT NOT NULL,record_date TEXT NOT NULL,row_json TEXT NOT NULL,
+        period_start TEXT NOT NULL,period_end TEXT NOT NULL,
+        UNIQUE(amendment_id,kind,record_date))''')
+    connection.execute('CREATE INDEX idx_detail_revision_scope ON report_detail_revisions(kind,device_slot,record_date,serial,counter_key,id)')
+    create_detail_revision_guards(connection)
+    connection.execute('''CREATE TABLE report_revision_subject_periods(
+        device_slot INTEGER NOT NULL,period_start TEXT NOT NULL,period_end TEXT NOT NULL,device_identity TEXT NOT NULL,
+        subject_type TEXT NOT NULL,subject_id TEXT NOT NULL,summary_json TEXT NOT NULL,
+        PRIMARY KEY(device_slot,period_start,period_end,device_identity,subject_type,subject_id))''')
+
+
+def create_detail_revision_guards(connection):
+    for operation in ('UPDATE', 'DELETE'):
+        connection.execute(f'''CREATE TRIGGER IF NOT EXISTS report_detail_revisions_no_{operation.lower()}
+            BEFORE {operation} ON report_detail_revisions
+            BEGIN SELECT RAISE(ABORT, 'report detail revisions are append-only'); END''')
+
+
 MIGRATIONS: tuple[tuple[int, str, object], ...] = (
     (8, "record_schema_history_and_reporting_indexes", _migration_008_record_schema_history),
     (9, "add_legacy_usage_history_import_provenance", _migration_009_legacy_history_import),
@@ -790,6 +814,7 @@ MIGRATIONS: tuple[tuple[int, str, object], ...] = (
     (27, "add_reviewed_slot_epoch_storage_and_maximum_index", _migration_027_slot_meter_epochs),
     (28, "add_atomic_web_history_catchup_progress", _migration_028_web_catchup),
     (29, "add_atomic_billing_amendment_delivery", _migration_029_billing_amendments),
+    (30, "add_immutable_report_detail_revisions", _migration_030_report_detail_revisions),
 )
 
 

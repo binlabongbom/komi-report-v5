@@ -8,6 +8,7 @@ from services.billing_ledger import FORMULA_VERSION, _basis_points, _cents, _sou
 from services.pricing import CostCategory
 from services.billing_periods import billing_month_range, effective_billing_day
 from services.billing_web_amendment import WEB_AMENDMENT_VERSION
+from services.peer_change_events import notify_local_change
 
 REPRICE_VERSION = "komi.billing.reprice.v1"
 
@@ -90,6 +91,7 @@ class BillingRepricingService:
             preview, _ = _preview(conn, ledger_id, apply_current_discount=apply_current_discount)
             return preview
 
+    @notify_local_change
     def confirm(self, ledger_id, *, expected_revision, actor, reason, apply_current_discount=False):
         with _open() as conn:
             conn.execute("BEGIN IMMEDIATE")
@@ -98,7 +100,7 @@ class BillingRepricingService:
 
 
 def confirm_in_transaction(conn, ledger_id, *, expected_revision, actor, reason, apply_current_discount=False,
-                           apply_current_period=False):
+                           apply_current_period=False, enqueue=True):
     if type(apply_current_discount) is not bool:
         raise ValueError("Discount selection must be boolean")
     if type(apply_current_period) is not bool:
@@ -142,4 +144,8 @@ def confirm_in_transaction(conn, ledger_id, *, expected_revision, actor, reason,
          json.dumps(preview["price_cents"], sort_keys=True), preview["gross_cents"], preview["waste_basis_points"],
          preview["net_cents"], preview["billing_day"], source[17], REPRICE_VERSION, reason.strip(),
          json.dumps(attestation, sort_keys=True, ensure_ascii=False), now))
-    return int(cursor.lastrowid)
+    result = int(cursor.lastrowid)
+    if enqueue:
+        from services.billing_correction_transfer import enqueue_corrections
+        enqueue_corrections(conn, [(ledger_id, result, 'reprice')], actor=actor, reason=reason, created_at=now)
+    return result

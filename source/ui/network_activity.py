@@ -166,7 +166,7 @@ class NetworkActivityPanel(QWidget):
                                   f"{phases.get(job['phase'], 'รอตรวจ')} · {_date(job['observed_at'])}" for job in jobs)
                         or "ยังไม่มีคำขออ่านร่วม"))
                 message = (f"สมาชิกในรายการ {total} คอม" if total else
-                           "ยังไม่มีการเชื่อมต่อสมาชิกที่ยืนยันแล้ว · ไม่ได้หมายความว่าไม่มีคอมอื่นในเครือข่าย")
+                           "รุ่นนี้ยังไม่เปิดการเชื่อมสมาชิกอัตโนมัติ · เก็บไว้เวอร์ชันถัดไป · ไม่ได้หมายความว่าไม่มีคอมอื่นในเครือข่าย")
                 if total > 100:
                     message += f" · หน้าที่ {self._page + 1}"
                 message += f"\nการตั้งค่ารอตรวจ {data['settings_reviews']} รายการ"

@@ -208,6 +208,19 @@ def export_cloud_reports_xlsx(
     workbook = Workbook()
     machine_sheet = workbook.active
     machine_sheet.title = "การใช้งานรายเครื่อง"
+    detail_notes = [record for record in report.raw_counter_records if record.remarks]
+    if detail_notes:
+        notes = workbook.create_sheet('หมายเหตุรายละเอียด')
+        notes.append(['Slot', 'Serial', 'วันลงยอด', 'ตัวนับ', 'รหัสผู้ใช้/บัญชี', 'อ่านสำเร็จจริงล่าสุด', 'หมายเหตุ'])
+        for record in detail_notes:
+            values = [record.device_slot + 1, record.device_serial_snapshot, record.record_date.isoformat(),
+                      record.canonical_field, record.subject_id, record.last_success or 'ไม่มีจุดอ่านในวันนี้', '\n'.join(record.remarks)]
+            notes.append([_neutralize_untrusted_cell_string(v)[0] if isinstance(v, str) else v for v in values])
+        notes.freeze_panes = 'A2'
+        for column in ('B', 'C', 'E', 'F'):
+            notes.column_dimensions[column].width = 26
+        notes.column_dimensions['D'].width = 40
+        notes.column_dimensions['G'].width = 100
     amended = [record for record in records if record.remarks]
     if amended:
         notes = workbook.create_sheet("หมายเหตุฉบับแก้ไข")

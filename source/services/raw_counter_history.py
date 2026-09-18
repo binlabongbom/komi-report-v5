@@ -27,19 +27,20 @@ class RawCounterDailyRecord:
     subject_type: str
     subject_id: str
     subject_name: str
-    opening_value: float
-    closing_value: float
+    opening_value: float | None
+    closing_value: float | None
     delta_value: float
     reset_count: int
     sample_count: int
-    first_success: str
-    last_success: str
+    first_success: str | None
+    last_success: str | None
     source_name: str
     device_name_snapshot: str
     device_serial_snapshot: str
     incomplete: bool
     pending_review: bool = False
     baseline_reviewed: bool = False
+    remarks: tuple[str, ...] = ()
 
     @property
     def needs_review(self) -> bool:
@@ -406,8 +407,11 @@ def load_raw_counter_history(
         rows = connection.execute("SELECT " + ",".join(columns) + " FROM daily_raw_counter_records" + where,
             tuple(parameters)).fetchall()
         from services.report_detail_archive import ReportDetailArchive
-        rows.extend(tuple(item["row"][key] for key in columns) for item in ReportDetailArchive().details(
-            connection, "raw", slots, start=period_start, end=period_end))
+        documents = [{'row': dict(zip(columns, row)), 'period': None} for row in rows]
+        documents.extend(ReportDetailArchive().details(connection, "raw", slots, start=period_start, end=period_end))
+        from services.report_detail_amendment import effective_documents
+        documents = effective_documents(connection, 'raw', documents, slots, start=period_start, end=period_end)
+        rows = [tuple(item['row'][key] for key in columns) for item in documents]
     rows.sort(key=lambda row: (row[1], row[0], row[5], row[7], row[2]))
     return tuple(
         RawCounterDailyRecord(
@@ -419,19 +423,22 @@ def load_raw_counter_history(
             subject_type=str(row[5]),
             subject_id=str(row[6]),
             subject_name=str(row[7]),
-            opening_value=float(row[8]),
-            closing_value=float(row[9]),
+            opening_value=float(row[8]) if row[8] is not None else None,
+            closing_value=float(row[9]) if row[9] is not None else None,
             delta_value=float(row[10]),
             reset_count=int(row[11]),
             sample_count=int(row[12]),
-            first_success=str(row[13]),
-            last_success=str(row[14]),
+            first_success=str(row[13]) if row[13] is not None else None,
+            last_success=str(row[14]) if row[14] is not None else None,
             source_name=str(row[15]),
             device_name_snapshot=str(row[16]),
             device_serial_snapshot=str(row[17]),
             incomplete=bool(row[18]),
             pending_review=json.loads(row[19]) is not None,
-            baseline_reviewed=bool(json.loads(row[20])),
+            baseline_reviewed=any(item.get('format') != 'komi.report.detail-amendment.v1' for item in json.loads(row[20])),
+            remarks=tuple(dict.fromkeys(note for item in json.loads(row[20])
+                if item.get('format') == 'komi.report.detail-amendment.v1'
+                for note in ('ฉบับแก้ไขจากหลักฐาน Web', *item.get('remarks', [])))),
         )
         for row in rows
     )

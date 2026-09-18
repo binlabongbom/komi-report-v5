@@ -6714,13 +6714,13 @@ class PageManual(QWidget):
             button.setEnabled(self._manual_asset_available(guide))
             button.clicked.connect(lambda _=False, path=guide: QDesktopServices.openUrl(QUrl.fromLocalFile(str(path))))
             sections[0].layout().insertWidget(1, self._card('Updated guide' if english else 'คู่มือหน้าจอที่ปรับปรุง', [
-                self._txt('Network settings, shared Slot baselines, revised reports and Archive. The guide identifies features awaiting verified member connections.' if english else
-                    'รวมการตั้งค่าเครือข่าย ฐาน Slot รายงานฉบับแก้ไข และ Archive คู่มือระบุส่วนที่ยังรอเชื่อมต่อสมาชิกที่ยืนยันสิทธิ์ไว้ด้วย'), button]))
+                self._txt('Network settings, Slot baselines, revised reports and Archive. Automatic member connections and Host-dependent work are deferred to the next version.' if english else
+                    'รวมการตั้งค่าเครือข่าย ฐาน Slot รายงานฉบับแก้ไข และ Archive การเชื่อมสมาชิกอัตโนมัติและงานที่ติด Host เก็บไว้เวอร์ชันหน้า'), button]))
             sections[3].layout().insertWidget(1, self._card('Network settings and shared changes' if english else 'การตั้งค่าเครือข่ายและค่าร่วมกัน', [
                 self._txt('Settings > Advanced > Network settings shows actual work and durable receipt queues. A completed send is not proof that the peer saved it.' if english else
                     'ตั้งค่า > ขั้นสูง > การตั้งค่าเครือข่าย แสดงงานที่กำลังทำและคิวรอยืนยันรับ การส่งข้อความสำเร็จยังไม่ใช่หลักฐานว่าปลายทางบันทึกแล้ว'),
-                self._txt('Verified descendants apply after active reads finish. Conflicting edits remain available in shared settings history for review. Discovery alone does not enroll a computer.' if english else
-                    'ค่าที่รับมาและต่อจากประวัติเดิมจะใช้เมื่ออ่านมิเตอร์เสร็จ หากแก้ชนกันให้ตรวจเลือกในประวัติการตั้งค่าร่วม การค้นพบใน LAN อย่างเดียวยังไม่ถือว่าเข้าร่วมระบบ'),
+                self._txt('This version preserves local configuration history. Automatic multi-computer synchronization and shared reading will be enabled with verified membership in a later version.' if english else
+                    'รุ่นนี้เก็บประวัติการตั้งค่าในคอมนี้ การ Sync หลายคอมและผู้อ่านร่วมแบบอัตโนมัติจะเปิดพร้อมระบบสมาชิกที่ยืนยันสิทธิ์ในเวอร์ชันถัดไป'),
                 self._txt('Each computer keeps its own identity and shares the same three printer Slots. Replacing a used printer starts from its reviewed meter baseline.' if english else
                     'แต่ละคอมมีตัวตนของตนเองและใช้ Slot เครื่องพิมพ์สามช่องชุดเดียวกัน เมื่อเปลี่ยนเป็นเครื่องมือสอง ยอดจะนับต่อจากฐานที่ตรวจยืนยันแล้ว')]))
             sections[2].layout().insertWidget(1, self._card('Missing history and revised reports' if english else 'ช่วงขาดข้อมูลและรายงานฉบับแก้ไข', [
@@ -6728,6 +6728,8 @@ class PageManual(QWidget):
                     'ช่วงขาด 301 หน้าในสองวันที่ไม่มีข้อมูลทั้งวัน กราฟแสดงเฉลี่ยประมาณการวันละ 150.5 หน้า ไม่ใช้ค่าเฉลี่ยกราฟคิดเงิน'),
                 self._txt('Review Web evidence before confirming revised allocation. Originals remain intact and delivery awaits verified receipts. Old user/Raw details are not rewritten by this action.' if english else
                     'ตรวจหลักฐาน Web ก่อนยืนยันฉบับแก้ไขการแบ่งยอด ระบบเก็บต้นฉบับและคิวรอรับไว้ การยืนยันนี้ไม่เขียนทับรายละเอียดผู้ใช้หรือ Raw เก่า'),
+                self._txt('Use Review details for Web-derived user/Raw amendments. Review historical amounts in Billing Audit to approve held money; original meter warnings remain.' if english else
+                    'ใช้ตรวจแก้รายละเอียดเพื่อออกฉบับผู้ใช้/Raw จากหลักฐาน Web ส่วนตรวจและแก้ยอดในหน้ารอบบิลใช้อนุมัติเงินที่พักไว้ โดยเก็บคำเตือนมิเตอร์เดิม'),
                 self._txt('Details older than twelve months can be archived. Monthly summaries remain available; older files open only when requested.' if english else
                     'รายละเอียดเกิน 12 เดือนเก็บเป็น Archive ได้ สรุปรายเดือนยังเรียกดูได้ และเปิดไฟล์เก่าเฉพาะเมื่อขอดูรายละเอียด')]))
 
@@ -7059,7 +7061,7 @@ class PageManual(QWidget):
             self._step(1, "เมื่อพบคอมที่ตอบกลับใน LAN โปรแกรมแสดงข้อเสนอให้นำการตั้งค่ามาตรวจ"),
             self._step(2, "ตรวจชื่อบริษัท Slot เครื่องพิมพ์ ราคา รอบบิล และสิทธิ์เข้าร่วมก่อนรับค่า"),
             self._step(3, "ถ้าไม่พบคอมที่ต้องการ ให้กดค้นหาอีกครั้ง หรือกรอก IP ของคอมที่ให้บริการ"),
-            self._tip("การรับค่าเริ่มต้นไม่คัดลอกตัวตนของอีกคอม การ Sync ต่อเนื่องเริ่มเมื่อมีสมาชิกที่ยืนยันสิทธิ์แล้ว"),
+            self._tip("การรับค่าเริ่มต้นไม่คัดลอกตัวตนของอีกคอม การ Sync หลายคอมอัตโนมัติเก็บไว้เวอร์ชันถัดไป"),
         ]))
 
         lay.addWidget(self._card("ลงทะเบียนก่อนเปิดโปรแกรม", [

@@ -7,6 +7,7 @@ from database import _open
 from services.billing_ledger import _source_hash
 from services.billing_repricing import _discount_policy, _period_policy, _preview, confirm_in_transaction
 from services.billing_period_amendment import prepare_archives, rebuild_archives
+from services.peer_change_events import notify_local_change
 
 MAX_BATCH_ROWS = 2000
 
@@ -66,6 +67,7 @@ class BatchRepricingService:
             return _range_preview(conn, start, end, slots, apply_current_discount=apply_current_discount,
                                   apply_current_period=apply_current_period)
 
+    @notify_local_change
     def confirm(self, start, end, slots, *, expected_revision, actor, reason, apply_current_discount=False,
                 apply_current_period=False):
         if type(apply_current_discount) is not bool:
@@ -102,10 +104,16 @@ class BatchRepricingService:
             for row in preview["changed"]:
                 result_id = confirm_in_transaction(conn, row["ledger_id"], expected_revision=row["revision"], actor=actor, reason=reason,
                                                    apply_current_discount=apply_current_discount,
-                                                   apply_current_period=apply_current_period)
+                                                   apply_current_period=apply_current_period, enqueue=False)
                 key = conn.execute("SELECT idempotency_key FROM billing_ledger WHERE id=?", (result_id,)).fetchone()[0]
                 results.append({"id": result_id, "key": key})
             rebuild_archives(conn, preview["archives"])
+            from services.report_detail_amendment import refresh_period_summaries
+            refresh_period_summaries(conn, preview['changed'])
+            from services.billing_correction_transfer import enqueue_corrections
+            enqueue_corrections(conn, [(row['ledger_id'], result['id'], 'reprice')
+                for row, result in zip(preview['changed'], results)], actor=actor, reason=reason,
+                created_at=datetime.now().astimezone().isoformat())
             conn.execute("INSERT INTO config_log(config_key,old_value,new_value,changed_at) VALUES(?,?,?,?)",
                 ("billing_reprice_batch", expected_revision, json.dumps({"request": request, "results": results}, sort_keys=True),
                  datetime.now().astimezone().isoformat()))

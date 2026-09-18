@@ -15,6 +15,8 @@ from pathlib import Path
 
 CRITICAL_TABLES = (
     "peer_billing_deliveries",
+    "report_detail_revisions",
+    "report_revision_subject_periods",
     "peer_billing_amendments",
     "web_catchup_progress",
     "devices",

@@ -58,6 +58,8 @@ def _clear_read_caches(slot: int | None = None):
 
 _USAGE_RESET_TABLES = (
     "peer_billing_deliveries",
+    "report_detail_revisions",
+    "report_revision_subject_periods",
     "peer_billing_amendments",
     "web_catchup_progress",
     "slot_meter_epoch_outbox",
@@ -87,6 +89,7 @@ _USAGE_RESET_TABLES = (
 )
 
 _USAGE_RESET_SEQUENCES = (
+    "report_detail_revisions",
     "legacy_history_items",
     "billing_ledger",
     "daily_subject_records",
@@ -100,6 +103,8 @@ _USAGE_RESET_SEQUENCES = (
 
 _FACTORY_RESET_TABLES = (
     "peer_billing_deliveries",
+    "report_detail_revisions",
+    "report_revision_subject_periods",
     "peer_billing_amendments",
     "web_catchup_progress",
     "slot_meter_epoch_outbox",
@@ -147,6 +152,7 @@ _FACTORY_RESET_TABLES = (
 )
 
 _FACTORY_RESET_SEQUENCES = (
+    "report_detail_revisions",
     "registration_attempt_history",
     "legacy_history_items",
     "billing_ledger",
@@ -164,6 +170,9 @@ _FACTORY_RESET_SEQUENCES = (
 
 
 def _create_billing_ledger_immutability_triggers(connection: sqlite3.Connection) -> None:
+    if connection.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='report_detail_revisions'").fetchone():
+        from migrations import create_detail_revision_guards
+        create_detail_revision_guards(connection)
     connection.execute(
         """CREATE TRIGGER IF NOT EXISTS billing_ledger_no_update
            BEFORE UPDATE ON billing_ledger
@@ -966,6 +975,8 @@ def reset_usage_data():
             staged_cache = _stage_runtime_cache()
             c.execute("DROP TRIGGER IF EXISTS billing_ledger_no_update")
             c.execute("DROP TRIGGER IF EXISTS billing_ledger_no_delete")
+            c.execute("DROP TRIGGER IF EXISTS report_detail_revisions_no_update")
+            c.execute("DROP TRIGGER IF EXISTS report_detail_revisions_no_delete")
             _delete_rows_and_sequences(
                 c,
                 tables=_USAGE_RESET_TABLES,
@@ -1032,6 +1043,8 @@ def _factory_reset_v5_locked(*, registration_secret_store=None) -> None:
             staged_cache = _stage_runtime_cache()
             c.execute("DROP TRIGGER IF EXISTS billing_ledger_no_update")
             c.execute("DROP TRIGGER IF EXISTS billing_ledger_no_delete")
+            c.execute("DROP TRIGGER IF EXISTS report_detail_revisions_no_update")
+            c.execute("DROP TRIGGER IF EXISTS report_detail_revisions_no_delete")
             _delete_rows_and_sequences(
                 c,
                 tables=_FACTORY_RESET_TABLES,

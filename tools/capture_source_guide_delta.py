@@ -49,6 +49,26 @@ def capture():
             assert dialog.grab().save(str(target/'web-billing-amendment.png'))
             dialog.close()
             dialog.pool.shutdown(wait=True)
+            database.set_db_path(Path(folder)/'web-graph.db')
+            database.init_db()
+            from test_web_usage_projection import events_for, BANGKOK
+            from services.device_config import DeviceConfigRepository
+            from ui.web_evidence_report import WebEvidenceDialog
+            from datetime import date
+            events_for(('2026-09-18T17:00', 1000), ('2026-09-21T08:00', 1301))
+            graph = WebEvidenceDialog(DeviceConfigRepository().list(enabled_only=False),
+                today=date(2026, 9, 21), calendar_timezone=BANGKOK)
+            graph.show()
+            graph.load()
+            wait_for(lambda: graph.future is None and graph.projection is not None)
+            app.processEvents()
+            assert graph.grab().save(str(target/'web-gap-daily.png'))
+            graph.tabs.setCurrentIndex(2)
+            app.processEvents()
+            assert graph.grab().save(str(target/'web-gap-remarks.png'))
+            graph.close()
+            graph.pool.shutdown(wait=True)
+            database.set_db_path(Path(folder)/'synthetic.db')
             confirm(service, scope, service.preview(*scope))
             transfer = PeerBillingAmendments(authorize=lambda *a: True)
             amendment = transfer.pending('PC-A')
@@ -79,6 +99,40 @@ def capture():
             app.processEvents()
             assert manual.grab().save(str(evidence/'in-app-settings-guide.png'))
             manual.close()
+            database.set_db_path(Path(folder)/'manual-review.db')
+            database.init_db()
+            from test_billing_manual_review import held
+            from ui.billing_manual_review import BillingManualReviewDialog
+            dialog = BillingManualReviewDialog(held())
+            dialog.reason.setText('ตรวจเอกสารยอดพิมพ์แล้ว · ข้อมูลจำลอง')
+            dialog.gross.setValue(150)
+            dialog.net.setValue(145)
+            dialog.reviewed.setChecked(True)
+            dialog.show()
+            app.processEvents()
+            assert dialog.grab().save(str(target/'manual-billing-review.png'))
+            dialog.close()
+            from v5_pages import PageBillingAudit
+            audit = PageBillingAudit()
+            audit.resize(1120, 620)
+            audit.show()
+            app.processEvents()
+            assert audit.grab().save(str(evidence/'billing-audit.png'))
+            audit.close()
+            database.set_db_path(Path(folder)/'detail-review.db')
+            database.init_db()
+            from test_report_detail_amendment import setup as detail_setup
+            from ui.report_detail_amendment import ReportDetailAmendmentDialog
+            service, scope, _ = detail_setup(True)
+            dialog = ReportDetailAmendmentDialog(scope, service=service)
+            dialog.show()
+            dialog.load()
+            wait_for(lambda: dialog.future is None and dialog.preview is not None)
+            dialog.reason.setText('ตรวจประวัติ Web ที่เติมย้อนหลัง · ข้อมูลจำลอง')
+            app.processEvents()
+            assert dialog.grab().save(str(target/'detail-amendment.png'))
+            dialog.close()
+            dialog.pool.shutdown(wait=True)
         finally:
             database.set_db_path(previous)
     print(target)

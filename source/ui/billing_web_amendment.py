@@ -24,9 +24,10 @@ class BillingWebAmendmentDialog(QDialog):
         self.resize(1000, 620)
         layout = QVBoxLayout(self)
         layout.addWidget(plain(f"Slot {scope[0] + 1} · {scope[2]:%d/%m/%Y} – {scope[3]:%d/%m/%Y}"))
-        layout.addWidget(plain("ตรวจตัวนับเครื่องทั้งหมดและยอดรวมเดิม ใช้ราคาและส่วนลดที่บันทึกไว้ ไม่คิดเงินจากกราฟเฉลี่ย "
+        self.description = plain("ตรวจตัวนับเครื่องทั้งหมดและยอดรวมเดิม ใช้ราคาและส่วนลดที่บันทึกไว้ ไม่คิดเงินจากกราฟเฉลี่ย "
             "ยืนยันแล้วจะเก็บต้นฉบับและคิวส่งฉบับแก้ไข สมาชิกที่เชื่อมต่อและยืนยันสิทธิ์แล้วจึงรับได้ "
-            "ดูรายการรอยืนยันรับได้ที่การตั้งค่าเครือข่าย"))
+            "ดูรายการรอยืนยันรับได้ที่การตั้งค่าเครือข่าย")
+        layout.addWidget(self.description)
         self.load_button = QPushButton("ตรวจการแบ่งยอด")
         self.load_button.clicked.connect(self.load)
         layout.addWidget(self.load_button)
@@ -94,6 +95,13 @@ class BillingWebAmendmentDialog(QDialog):
             self.accept()
             return
         self.preview = result
+        self.show_preview(result)
+        self.table.resizeColumnsToContents()
+        self.table.setColumnWidth(4, 430)
+        self.table.resizeRowsToContents()
+        self.validate()
+
+    def show_preview(self, result):
         self.status.setText(f"เปลี่ยน {len(result['changed'])} วัน · สุทธิของรายการที่เปลี่ยน "
                             f"฿{result['old_net_cents']/100:,.2f} → ฿{result['net_cents']/100:,.2f}\n"
                             "ยอดหน้าไม่เพิ่มซ้ำ · ส่วนลดปัดเป็นสตางค์ต่อวันจึงอาจทำให้ยอดเงินต่างเล็กน้อย")
@@ -104,10 +112,6 @@ class BillingWebAmendmentDialog(QDialog):
                       f"{item['net_cents']/100:,.2f}", notes or "ย้ายยอดไปตามหลักฐานของวันอื่นในช่วงเดียวกัน")
             for column, value in enumerate(values):
                 self.table.setItem(index, column, QTableWidgetItem(str(value)))
-        self.table.resizeColumnsToContents()
-        self.table.setColumnWidth(4, 430)
-        self.table.resizeRowsToContents()
-        self.validate()
 
     def confirm(self):
         if not self.confirm_button.isEnabled():

@@ -216,6 +216,8 @@ class ReportDetailArchive:
 
     @staticmethod
     def _store_summaries(conn, archive_id, documents, billing_day):
+        from services.report_detail_amendment import without_superseded
+        documents = without_superseded(conn, 'subject', documents)
         from services.subject_history import SUBJECT_COLUMNS, subject_record_from_row, aggregate_subject_days
         daily = [(subject_record_from_row([item["row"][key] for key in SUBJECT_COLUMNS]),
             tuple(date.fromisoformat(value) for value in item["period"])) for item in documents]
@@ -235,8 +237,9 @@ class ReportDetailArchive:
             filters += " AND period_start=? AND period_end=?"
             parameters += [value.isoformat() for value in only_period]
         buckets = {}
-        for row in conn.execute("SELECT period_start,period_end,device_slot,device_identity,subject_type,subject_id,summary_json "
-                "FROM archived_subject_periods WHERE " + filters, parameters):
+        selection = 'SELECT period_start,period_end,device_slot,device_identity,subject_type,subject_id,summary_json FROM '
+        query = selection + 'archived_subject_periods WHERE ' + filters + ' UNION ALL ' + selection + 'report_revision_subject_periods WHERE ' + filters
+        for row in conn.execute(query, parameters + parameters):
             key = (date.fromisoformat(row[0]), date.fromisoformat(row[1]), *row[2:6])
             item = json.loads(row[6])
             item["latest_date"] = date.fromisoformat(item["latest_date"])
@@ -248,7 +251,7 @@ class ReportDetailArchive:
             for name in ("period_usage", "reset_count", "missing_baseline_days", "incomplete_days", "sample_count"):
                 current[name] += item[name]
             current["warnings"].update(item["warnings"])
-            if item["latest_date"] >= current["latest_date"]:
+            if item['latest_total'] is not None and (item["latest_date"] >= current["latest_date"] or current['latest_total'] is None):
                 for name in ("latest_date", "latest_at", "latest_total", "name", "device_name_snapshot", "device_serial_snapshot"):
                     current[name] = item[name]
         return buckets

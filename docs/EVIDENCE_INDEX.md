@@ -6,17 +6,21 @@
 - [ขั้นตอนทดสอบจาก source](V5_2_12_SOURCE_QA.md)
 - [HTTPS/คิวส่ง/รับค่าร่วมและข้อจำกัด](V5_2_12_PEER_TRANSPORT.md)
 - [คู่มือ source และภาพหน้าจอข้อมูลจำลอง](CUSTOMER_GUIDE_V5_2_12_DRAFT.md)
-- [คู่มือ source PDF — ตรวจภาพครบ 7 หน้า](customer-guide/KOMI_Report_5.2.12_Source_Guide.pdf)
+- [คู่มือ source PDF — ตรวจภาพครบ 9 หน้า](customer-guide/KOMI_Report_5.2.12_Source_Guide.pdf)
 - [การทดลองข้อมูลห้าปี](qa/v5.2.12/FIVE_YEAR_BENCHMARK.md)
 - [ผลหลัง Archive](qa/v5.2.12/five-year-archive.json)
 - [ผลวัด Agent ขณะอ่านข้อมูลจำลอง](V5_2_12_ACTIVE_FOOTPRINT.json)
-- [ตรวจ source หลัก 85 ไฟล์ — 797 passed](qa/v5.2.12/source-regression.json)
-- [ตรวจ source อีก 79 ไฟล์ — 560 passed](qa/v5.2.12/additional-source-regression.json)
-- [ตรวจซ้ำท้ายรอบหลังแก้คู่มือ/Agent 10 ไฟล์ — ผ่านทั้งหมด](qa/v5.2.12/source-followup-regression.json)
+- [ตรวจ source หลัก 88 ไฟล์ — 818 passed](qa/v5.2.12/source-regression.json)
+- [ตรวจ source อีก 79 ไฟล์ — 561 passed](qa/v5.2.12/additional-source-regression.json)
+- [ตรวจซ้ำท้ายรอบบัญชี/รายละเอียด/คู่มือ 9 ไฟล์ — 72 passed](qa/v5.2.12/source-followup-regression.json)
 
-ผลล่าสุดต่อไฟล์รวม 164 ไฟล์ ผ่าน 1,358 tests ไม่มีไฟล์ที่ยัง fail;
+ผลล่าสุดต่อไฟล์รวม 167 ไฟล์ ผ่าน 1,380 tests ไม่มี failed/skipped;
 ไม่ได้บวกผลซ้อนจากรอบตรวจซ้ำ รายละเอียด version gate/ขอบเขตอยู่ใน SOURCE_QA
 ผลชุดเก่าและความล้มเหลว Web API รอบก่อนดูผ่าน Git commit `26f1fc6`
+ผลรอบ schema 29 ก่อนเพิ่มฉบับแก้รายละเอียดดู commit `2046da0`
+
+พร้อมก่อน build ตามขอบเขตที่เลื่อน Host/production membership และการเปิด Sync สมาชิกจริง
+ไปเวอร์ชันหน้า ยังไม่ได้ build หรือทดสอบแพ็กเกจจริงบนเครื่องนี้/Proxmox VM105
 
 จำนวนทดสอบในบันทึกแต่ละชุดอาจซ้อนกัน ต้องดูขอบเขตและ commit ที่เกี่ยวข้อง
 การผ่าน source tests ไม่ใช่ผลทดสอบตัวติดตั้ง เครื่องพิมพ์จริง หรือการอนุมัติ release

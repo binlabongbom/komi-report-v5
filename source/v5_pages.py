@@ -9207,12 +9207,12 @@ class PageHistoryV5(PageHistory):
                 )
                 subject_rows[key] = (
                     record.subject_name,
-                    max(previous[1], record.latest_total),
+                    max((value for value in (previous[1], record.latest_total) if value is not None), default=None),
                     record.subject_type,
                     device_label,
                     device_tooltip,
                 )
-        top_subjects = sorted(subject_rows.values(), key=lambda item: item[1], reverse=True)[:8]
+        top_subjects = sorted(subject_rows.values(), key=lambda item: item[1] if item[1] is not None else -1, reverse=True)[:8]
         self.report_users.clearSpans()
         self.report_users.setRowCount(max(1, len(top_subjects)))
         if not top_subjects:
@@ -9225,7 +9225,7 @@ class PageHistoryV5(PageHistory):
             for column, text in enumerate(
                 (
                     f"{name}\n{device_label}",
-                    f"{usage:,.0f}",
+                    f"{usage:,.0f}" if usage is not None else '—',
                 )
             ):
                 item = QTableWidgetItem(text)
@@ -9527,13 +9527,14 @@ class PageHistoryV5(PageHistory):
                     )
                     latest = (latest_value or "—").replace("T", " ")[:16]
                     latest_total = max(
-                        (record.latest_total for record in identity_records),
-                        default=0.0,
+                        (record.latest_total for record in identity_records if record.latest_total is not None),
+                        default=None,
                     )
+                    latest_text = f'{latest_total:,.0f}' if latest_total is not None else '—'
                     item.setToolTip(
                         f"{group['tooltip']}\n"
                         f"Usage รอบบิล: {period_usage:,.0f}\n"
-                        f"Total Counter ล่าสุด: {latest_total:,.0f}\n"
+                        f"Total Counter ล่าสุด: {latest_text}\n"
                         f"ข้อมูลล่าสุด: {latest}\n"
                         f"subject_id={sample.subject_id}\n"
                         f"สถานะ: {'Needs Review · ' + ' · '.join(status_parts) if status_parts else 'OK'}"
@@ -12498,7 +12499,7 @@ class PageBillingAudit(QWidget):
         layout.setContentsMargins(24, 20, 24, 20)
         layout.setSpacing(14)
 
-        title = QLabel("Billing Audit — Local only")
+        title = QLabel("ตรวจสอบและแก้ไขรอบบิล")
         title.setFont(fnt(F_2XL, True))
         layout.addWidget(title)
         hint = QLabel(
@@ -12573,12 +12574,18 @@ class PageBillingAudit(QWidget):
         self.reprice_button = btn("คำนวณใหม่จากประวัติราคา", "outline")
         self.reprice_button.setEnabled(False)
         self.reprice_range_button = btn("คำนวณใหม่ตามวันที่", "outline")
+        self.manual_review_button = btn("ตรวจและแก้ยอด", "outline")
+        self.manual_review_button.setEnabled(False)
         self.export_button = btn("Export CSV", "outline")
         actions.addWidget(self.load_more_button)
         actions.addWidget(self.detail_button)
-        actions.addWidget(self.reprice_button)
-        actions.addWidget(self.reprice_range_button)
         actions.addWidget(self.export_button)
+        corrections = QHBoxLayout()
+        corrections.addWidget(self.reprice_button)
+        corrections.addWidget(self.reprice_range_button)
+        corrections.addWidget(self.manual_review_button)
+        corrections.addStretch(1)
+        layout.addLayout(corrections)
         layout.addLayout(actions)
 
         self.state_filter.currentIndexChanged.connect(self._reset_and_refresh)
@@ -12588,6 +12595,7 @@ class PageBillingAudit(QWidget):
         self.detail_button.clicked.connect(self._show_selected_detail)
         self.reprice_button.clicked.connect(self._reprice_selected)
         self.reprice_range_button.clicked.connect(self._reprice_range)
+        self.manual_review_button.clicked.connect(self._manual_review)
         self.export_button.clicked.connect(self._export)
         self.table.itemSelectionChanged.connect(self._selection_changed)
         self.table.cellDoubleClicked.connect(self._show_detail)
@@ -12676,6 +12684,17 @@ class PageBillingAudit(QWidget):
     def _selection_changed(self) -> None:
         self.detail_button.setEnabled(self._selected_ledger_id() is not None)
         self.reprice_button.setEnabled(self._selected_ledger_id() is not None)
+        self.manual_review_button.setEnabled(self._selected_ledger_id() is not None)
+
+    def _manual_review(self) -> None:
+        ledger_id = self._selected_ledger_id()
+        if ledger_id is None:
+            return
+        from ui.billing_manual_review import BillingManualReviewDialog
+        dialog = BillingManualReviewDialog(ledger_id, self)
+        dialog.finished.connect(lambda _result: self.refresh())
+        dialog.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        dialog.open()
 
     def _reprice_selected(self) -> None:
         ledger_id = self._selected_ledger_id()
