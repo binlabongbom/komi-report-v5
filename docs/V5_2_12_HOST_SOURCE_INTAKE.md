@@ -2,11 +2,13 @@
 
 ## Latest user boundary: retain the existing Host
 
-The user explicitly instructed that nothing on the Host is to be changed yet.
+The user explicitly excluded Host code changes from version 5.2.12, rather than
+merely postponing them until later in this release.
 Do not modify/deploy its backend, schema, APIs, configuration, certificates or
 data. This intake remains a read-only review of the existing implementation.
 Desktop adapters may target a verified existing contract; if a capability needs
-a Host change, park that specific dependency and continue independent Desktop
+a Host change, exclude that change from this version and record the affected
+feature limitation honestly, then continue independent Desktop
 work. Missing backend evidence does not prove that the existing Host lacks the
 capability and does not authorize inventing membership or bypassing trust.
 
