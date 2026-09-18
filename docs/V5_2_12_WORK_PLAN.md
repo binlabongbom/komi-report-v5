@@ -116,7 +116,13 @@ disabled foundation, not a working customer Hotfix. UI preview is a prototype.
 
 - ตรวจการส่งต่องาน desktop → Agent → desktop กับบริการอ่านข้อมูลและ Web
   ให้มีผู้ทำงานชุดเดียว คืนทรัพยากรหน้าต่างเมื่อปิด และปิดทั้งหมดผ่าน tray พร้อมยืนยัน
-- ใช้การค้นหา LAN ที่มีอยู่เป็นจุดเริ่มต้น แยก discovery ออกจากการอนุญาตรับข้อมูล
+- แนวทางที่ผู้ใช้อนุมัติเพิ่ม: ให้ Wizard ประกาศค้นหาใน LAN และให้ Agent ที่ออนไลน์
+  ตอบกลับตรงไปยังผู้ถาม จากนั้นตรวจสิทธิ์และดึงค่าผ่าน HTTPS; ประกาศเฉพาะข้อมูลค้นหา
+  ไม่ส่งการตั้งค่าทั้งชุดแบบ broadcast ลองซ้ำแบบจำกัดครั้ง และมีปุ่ม “ค้นหาอีกครั้ง”
+  เมื่อไม่มีใครตอบ พร้อมทางกรอก IP/การค้นหาเดิมเป็น fallback ไม่สรุปว่าไม่มี KOMI
+  เพียงเพราะไม่ได้รับคำตอบ เตรียมและทดสอบกฎ Firewall เฉพาะโปรแกรม/พอร์ต/เครือข่าย
+  ตามนโยบายองค์กร โดยไม่ปิด Firewall หรือข้ามข้อจำกัดส่วนกลาง
+- แยก discovery ออกจากการอนุญาตรับข้อมูล
   เก็บสมาชิก/การเชื่อมต่อที่ยืนยันแล้ว เพื่อกลับมาเชื่อมใหม่โดยไม่ตั้งค่าใหม่ทุกครั้ง
   ไม่ใช้ชื่อบริษัทหรือชื่อ LAN เป็นหลักฐานสิทธิ์ และไม่เพิ่มบทบาทผู้ดูแลใหม่
 - ทุกคอมเป็น peer เท่าเทียม ไม่มี primary ถาวร แลกค่าตอนเริ่มและทุก 5 นาที
@@ -217,6 +223,23 @@ disabled foundation, not a working customer Hotfix. UI preview is a prototype.
 การ build, ติดตั้ง/อัปเกรดจาก installer และเผยแพร่เป็น R1 ที่ยังไม่อนุญาต
 
 ## Existing evidence (not release approval)
+
+### 2026-09-18 — approved discovery design and Wizard retry
+
+- User approved announce/respond discovery as the primary installation path and
+  explicitly requested a retry button after no response. P2 above now records
+  this approach, direct HTTPS settings transfer, bounded retries, manual/IP-scan
+  fallback and scoped firewall testing. UDP transport is still to be implemented.
+- Wizard now keeps its discovery card visible after an empty/error result with
+  “ค้นหาอีกครั้ง” (Search again), using the existing asynchronous discovery entry
+  point. The manual-IP fallback remains available. A successful retry returns to
+  Import settings; stale error tooltips clear on a fresh attempt/completion.
+- **59 Wizard source tests passed**, including empty-result visibility, repeat
+  retry after failure and transition to found results. Synthetic offscreen view
+  checked at 1120x720; shortened the status copy after initial render clipping.
+  Final image: `Temp/komi-wizard-retry-c_xqo7cq/retry-final.png`. No live LAN scan,
+  Host requests, firewall changes or build. The retry button currently uses the
+  existing IP discovery; this is not evidence that broadcast is implemented.
 
 ### 2026-09-18 — authenticated Host UI inspection (read only)
 

@@ -416,8 +416,22 @@ def test_secondary_setup_stays_compact_until_a_primary_is_found_or_requested(tmp
 
         no_primary = SetupWizardV5()
         no_primary._secondary_discovery_finished([], "")
-        assert no_primary.secondary_join_card.isHidden()
+        assert not no_primary.secondary_join_card.isHidden()
         assert not no_primary.secondary_existing_button.isHidden()
+        assert no_primary.secondary_manual_row.isHidden()
+        assert no_primary.secondary_join_button.text() == "ค้นหาอีกครั้ง"
+        assert no_primary.secondary_join_button.isEnabled()
+        calls = []
+        no_primary._start_secondary_discovery = lambda: calls.append("search")
+        no_primary.secondary_join_button.click()
+        assert calls == ["search"]
+        no_primary._secondary_discovery_finished([], "LAN unavailable")
+        assert no_primary.secondary_join_button.text() == "ค้นหาอีกครั้ง"
+        assert no_primary.secondary_join_status.toolTip() == "LAN unavailable"
+        no_primary.secondary_join_button.click()
+        assert calls == ["search", "search"]
+        no_primary._secondary_discovery_finished([candidate], "")
+        assert no_primary.secondary_join_button.text() == "ดึงการตั้งค่า"
         no_primary.close()
         app.processEvents()
     finally:

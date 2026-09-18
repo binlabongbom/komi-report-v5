@@ -1861,6 +1861,7 @@ class SetupWizardV5(QDialog):
         self._secondary_discovery_manual_host = manual_host
         self.secondary_join_button.setEnabled(False)
         self.secondary_join_button.setText(tr("กำลังค้นหา…", "Searching…"))
+        self.secondary_join_status.setToolTip("")
         self.secondary_manual_button.setEnabled(False)
         self.secondary_manual_ip.setEnabled(False)
         self.secondary_primary_port.setEnabled(False)
@@ -1914,6 +1915,7 @@ class SetupWizardV5(QDialog):
         self.secondary_manual_button.setEnabled(True)
         self.secondary_manual_ip.setEnabled(True)
         self.secondary_primary_port.setEnabled(True)
+        self.secondary_join_status.setToolTip(error or "")
         self.secondary_join_button.setText(tr("ค้นหาเครื่องหลัก", "Find Primary"))
         self.secondary_candidates = [
             item for item in (candidates if isinstance(candidates, list) else [])
@@ -1945,6 +1947,10 @@ class SetupWizardV5(QDialog):
             return
         manual_host = self._secondary_discovery_manual_host
         self._secondary_discovery_manual_host = ""
+        self.secondary_join_card.setVisible(True)
+        self.secondary_join_title.setText(tr("ค้นหา KOMI Report ในเครือข่าย", "Find KOMI Report on the network"))
+        self.secondary_join_button.setText(tr("ค้นหาอีกครั้ง", "Search again"))
+        self.secondary_join_status.setToolTip(error or "")
         if manual_host:
             self.secondary_join_card.setVisible(True)
             self.secondary_existing_button.setVisible(False)
@@ -1961,18 +1967,13 @@ class SetupWizardV5(QDialog):
             if error:
                 self.secondary_join_status.setToolTip(error)
             return
-        if not self._secondary_manual_revealed:
-            self.secondary_join_card.setVisible(False)
-            self.secondary_existing_button.setVisible(True)
-            return
-        self.secondary_join_card.setVisible(True)
-        self.secondary_existing_button.setVisible(False)
-        self.secondary_manual_row.setVisible(True)
+        self.secondary_existing_button.setVisible(not self._secondary_manual_revealed)
+        self.secondary_manual_row.setVisible(self._secondary_manual_revealed)
         self.secondary_join_status.setStyleSheet("color:#52677D;")
         self.secondary_join_status.setText(
             tr(
-                "ยังไม่พบเครื่องหลัก · ตั้งค่าเครื่องนี้ตามปกติได้ หรือค้นหาใหม่ภายหลัง",
-                "No Primary was found · continue normal setup or search again later",
+                "ยังไม่พบเครื่องตอบกลับ · ตรวจ LAN และเปิด KOMI บนเครื่องที่ตั้งค่าไว้แล้ว",
+                "No response yet. Check the LAN and open KOMI on a configured computer.",
             )
         )
         if error:
