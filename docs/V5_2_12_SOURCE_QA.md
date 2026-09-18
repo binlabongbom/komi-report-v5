@@ -10,7 +10,7 @@
 | ส่วน | หลักฐานล่าสุด | ข้อจำกัด |
 |---|---|---|
 | ฐาน Slot, Web v2, ประวัติจาก peer | epoch/store/exchange tests; จำลองสาม DB แยก | ยังไม่มี verified Host adapter หรือ HTTPS worker |
-| งานอ่านร่วม | reader/store/exchange 30 passed | grant ต้องตรง active epoch; ยังไม่เปิด election ใน runtime |
+| งานอ่านร่วม | election/shared Web/jobs/polling/Agent/catch-up 71 passed ใน 41.77s | ต่อ optional polling provider แล้ว; ใช้สาม DB จำลอง ยังไม่มี verified Host/HTTPS provider จริง |
 | เติมประวัติหลังเปิดเครื่อง | runtime/session/tray/setup/startup/manual/handoff 53 passed | ต่อ lifecycle Desktop/Agent และ network recovery แล้ว; ยังไม่มี verified member/HTTPS adapter จริง |
 | ประวัติและกราฟหลังรีเซ็ต | evidence/projection/billing-day 22 passed | แยก epoch; ไม่แก้ ledger จากหน้าดูหลักฐาน |
 | ปิด UI และ Agent | tray/agent 29 passed; refresh/tray 27 passed หลังปรับ test doubles | ต้องทดสอบ tray/ตัวติดตั้งจริงอีกครั้ง |
@@ -32,6 +32,7 @@ process ใช้เวลารวม 518.60 วินาที รายละ
 ```powershell
 $env:QT_QPA_PLATFORM='offscreen'
 python -m pytest tests/test_reader_jobs.py tests/test_slot_epoch_store.py tests/test_slot_epoch_exchange.py -q
+python -m pytest tests/test_shared_web_read.py tests/test_reader_election.py tests/test_reader_jobs.py tests/test_manual_polling_coordination.py tests/test_background_polling.py tests/test_background_agent_lifecycle.py tests/test_agent_handoff.py tests/test_peer_history_runtime.py -q
 python -m pytest tests/test_web_catchup.py tests/test_web_observations.py tests/test_archive_recovery.py tests/test_database_reset_v5.py tests/test_migrations.py -q
 python -m pytest tests/test_web_evidence_report.py tests/test_web_usage_projection.py tests/test_billing_day_consistency.py -q
 ```

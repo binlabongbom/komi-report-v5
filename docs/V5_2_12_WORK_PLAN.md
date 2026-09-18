@@ -175,6 +175,47 @@ bf453738b934dcf5bea59dd8c70e191b52ba6b89 และ merge เข้า local main
   หลักฐานทดสอบเก่าตรวจว่ามีบน GitHub/commit/tag/release จริงก่อนเก็บกวาด
 - ปรับคู่มือ ภาพหน้าจอ และขั้นตอนทดสอบสองเครื่องให้ตรง ก่อนขออนุญาต build
 
+### 2026-09-18 — demand-driven reader election and polling integration
+
+- Added `ReaderElection`: verify full company/Slot/Serial/settings/epoch scope,
+  keep a reachable incumbent, use stable member ordering for simultaneous starts
+  and split authorities, and select on demand without another heartbeat timer.
+  A failed probe has one immediate retry; selection has a time budget and can
+  be cancelled. Reboot clears the old incumbent claim. Revocation, malformed
+  replies and scope changes fail closed instead of becoming an offline vote.
+- `ReaderAuthority` fences `ReaderJobs` after losing ownership;
+  `SharedReaderCoordinator` routes manual requests to the same durable authority.
+  An ambiguous request reply is retried with the same request ID against the
+  same authority, never silently rerouted into a second job.
+- `SharedWebRead` now connects to the existing Desktop/Agent polling worker
+  through an explicitly injected authenticated provider. Scheduled non-readers
+  skip printer access. A manual request joins before probing: a joined member
+  skips both SNMP and Web, waits for the committed job, verifies origin/read ID/
+  scope/time, imports parsed evidence, then updates normal local presentations.
+  Its actual Web time is retained; no new local event is fabricated for a relay.
+- The elected reader stores Web evidence and outgoing work before publication;
+  the authority must commit it before completing the job. Receipt validation,
+  revoked membership, corrupt results, storage failure, wait expiry and
+  cancellation preserve the previous success. A retry after lost publication
+  acknowledgement reuses the recorded event rather than reading again.
+- **70 passed in 39.77s** across reader election/jobs/shared Web, existing manual
+  scheduling/polling, Agent lifecycle/handoff and peer-history runtime. Fixtures
+  use three independent temporary databases and in-process authenticated
+  adapters. Tests include first-ready stickiness, power loss/restart, partition
+  healing, concurrent requests, and actual 10:00/10:10/10:15/10:30 observations.
+  This supersedes older notes saying no election/polling integration exists.
+- Final transaction review adds an authority/scope/active-epoch recheck before
+  commit; losing authority during a grant rolls back both the job and request.
+  The same regression plus this race test: **71 passed in 41.77s**.
+- Remaining boundaries: production has no verified member/HTTPS provider yet,
+  so it does not activate this optional coordination path. Partitioned members
+  may both collect until connected; an already-running SNMP-only scheduled
+  probe can overlap a new manual grant before reaching the Web grant boundary.
+  Expired/failed jobs are shown as failure and recovered by a subsequent request,
+  not an unbounded background retry. Global reader status UI, live network QA,
+  historical billing amendments and archived/report reconciliation remain open.
+  No installer/release build, deployment or customer-data operation occurred.
+
 ### 2026-09-18 — atomic complete peer setup and Slot adoption
 
 - Added `PeerSetupApplication` for an already imported and independently

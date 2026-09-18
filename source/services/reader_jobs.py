@@ -49,13 +49,16 @@ class VerifiedReader:
 
 
 class ReaderJobs:
-    def __init__(self, *, authorize, current_scope, path=None, clock=monotonic):
+    def __init__(self, *, authorize, current_scope, path=None, clock=monotonic, authority_ready=None):
         if not callable(authorize) or not callable(current_scope):
             raise ValueError("Verified membership and current scope providers are required")
         self.path = path or get_db_path()
         self.authorize = authorize
         self.current_scope = current_scope
         self.clock = clock
+        if authority_ready is not None and not callable(authority_ready):
+            raise TypeError("Reader authority check must be callable")
+        self.authority_ready = authority_ready
         self.boot_id = uuid.uuid4().hex
         # One instance per authority lifetime, constructed only after runtime
         # ownership is acquired. Fence an accidentally surviving old instance.
@@ -64,7 +67,7 @@ class ReaderJobs:
             conn.execute("INSERT OR REPLACE INTO reader_authority_state VALUES(1,?)", (self.boot_id,))
 
     @contextmanager
-    def _write(self):
+    def _write(self, scope):
         with closing(sqlite3.connect(self.path, timeout=30)) as conn, conn:
             conn.row_factory = sqlite3.Row
             conn.execute("PRAGMA foreign_keys=ON")
@@ -73,10 +76,16 @@ class ReaderJobs:
             if current is None or current[0] != self.boot_id:
                 raise ValueError("Reader authority ownership changed")
             yield conn
+            if (self.current_scope(scope.slot).document() != scope.document()
+                    or (self.authority_ready is not None and self.authority_ready(scope) is not True)):
+                raise PermissionError("Reader authority or scope changed during transaction")
+            self._active_epoch(conn, scope)
 
     def _member(self, member_id, scope):
         _text(member_id)
         expected = scope.document()
+        if self.authority_ready is not None and self.authority_ready(scope) is not True:
+            raise PermissionError("This member no longer owns reader coordination")
         member = self.authorize(member_id, scope.slot)
         if (not isinstance(member, VerifiedReader) or member.member_id != member_id
                 or member.scope.document() != expected
@@ -125,7 +134,7 @@ class ReaderJobs:
         _text(request_id)
         if type(lease_seconds) not in (float, int) or not math.isfinite(lease_seconds) or not 5 <= lease_seconds <= 300:
             raise ValueError("Reader lease must be between 5 and 300 seconds")
-        with self._write() as conn:
+        with self._write(scope) as conn:
             member, encoded = self._member(member_id, scope)
             self._active_epoch(conn, scope)
             now = self._now()
@@ -151,7 +160,7 @@ class ReaderJobs:
 
     def status(self, member_id, job_id, scope):
         _text(job_id)
-        with self._write() as conn:
+        with self._write(scope) as conn:
             _, encoded = self._member(member_id, scope)
             now = self._now()
             self._expire(conn, scope.slot, encoded, now)
@@ -168,7 +177,7 @@ class ReaderJobs:
         """
         _text(job_id)
         _text(event_id)
-        with self._write() as conn:
+        with self._write(scope) as conn:
             member, encoded = self._member(member_id, scope)
             self._active_epoch(conn, scope)
             now = self._now()
@@ -194,7 +203,7 @@ class ReaderJobs:
     def fail(self, member_id, job_id, scope, *, reason):
         if reason not in {"snmp", "web", "timeout", "cancelled", "storage"}:
             raise ValueError("Unknown reader failure reason")
-        with self._write() as conn:
+        with self._write(scope) as conn:
             _, encoded = self._member(member_id, scope)
             row = conn.execute("SELECT * FROM reader_jobs WHERE id=? AND scope_json=?", (job_id, encoded)).fetchone()
             if row is None or row["reader_id"] != member_id:

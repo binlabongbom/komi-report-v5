@@ -1,0 +1,19 @@
+{
+  "date": "2026-09-18",
+  "base_commit": "b432c03",
+  "scope": "Working tree reader election, shared Web and polling integration; temporary synthetic databases only",
+  "command": "python -m pytest tests/test_shared_web_read.py tests/test_reader_election.py tests/test_reader_jobs.py tests/test_manual_polling_coordination.py tests/test_background_polling.py tests/test_background_agent_lifecycle.py tests/test_agent_handoff.py tests/test_peer_history_runtime.py -q",
+  "result": "71 passed in 41.77s",
+  "exit_code": 0,
+  "fixture_failures_fixed": [
+    "Cloned baseline outbox incorrectly expected to be empty; assertion now checks that received event is not echoed",
+    "Receipt transport contract accepts the store's tuple as well as an HTTP list"
+  ],
+  "not_verified": [
+    "Production Host membership and authenticated HTTPS adapter",
+    "Physical multi-PC, Firewall or printer acceptance",
+    "Installer or release build",
+    "Historical Web-driven billing amendments"
+  ],
+  "build_or_publish": false
+}

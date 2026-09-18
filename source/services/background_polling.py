@@ -47,6 +47,7 @@ class BackgroundPollingCoordinator(QObject):
         raw_counter_history: RawCounterHistoryStore | None = None,
         observations: WebObservationStore | None = None,
         peer_history=None,
+        shared_reads=None,
         clock=None,
         parent=None,
     ) -> None:
@@ -61,6 +62,9 @@ class BackgroundPollingCoordinator(QObject):
         self.subject_cache = subject_cache or SubjectDailyCacheStore()
         self.raw_counter_history = raw_counter_history or RawCounterHistoryStore()
         self.observations = observations or WebObservationStore()
+        # Attached only by a verified member/session provider. Discovery alone
+        # never suppresses local collection or authorizes shared observations.
+        self.shared_reads = shared_reads
         self.clock = clock or (lambda: datetime.now().astimezone())
         self.machine = PollingStateMachine()
         self.snmp_interval = timedelta(minutes=5)
@@ -457,19 +461,9 @@ class BackgroundPollingCoordinator(QObject):
             if device is not None and device.enabled:
                 self._submit(device, force_web=True)
 
-    def _poll_device(self, device: DeviceConfig, force_web: bool) -> bool:
-        # A future queued before deactivation may start after pause() raced
-        # with ThreadPoolExecutor. Do not let it issue its first SNMP/Web read.
-        if self.is_paused:
-            return False
-        now = self.clock()
-        manual_round = force_web
-        round_started_at = now
-        state = self.states.setdefault(device.slot, DevicePollState(last_snmp_total=device.last_total))
+    def _snmp_round(self, device, state, now, preferred_oid):
         snmp_error = ""
         probe_result = None
-        preferred_oid = self._preferred_total_oid(device)
-        calibration_needed = not preferred_oid
         marker_root = getattr(self.probe, "MARKER_LIFE_ROOT", "1.3.6.1.2.1.43.10.2.1.4")
         model_root = getattr(self.probe, "MODEL_ROOT", "1.3.6.1.2.1.25.3.2.1.3")
         serial_root = getattr(self.probe, "SERIAL_ROOT", "1.3.6.1.2.1.43.5.1.1.17")
@@ -603,6 +597,35 @@ class BackgroundPollingCoordinator(QObject):
                 at=now,
             )
 
+        return decision, snmp_error, probe_result
+
+    def _poll_device(self, device: DeviceConfig, force_web: bool) -> bool:
+        # A future queued before deactivation may start after pause() raced
+        # with ThreadPoolExecutor. Do not let it issue its first SNMP/Web read.
+        if self.is_paused:
+            return False
+        if self.shared_reads is not None and not force_web:
+            if not self.shared_reads.scheduled_owner(device.slot, cancelled=lambda: self._stopped or self.is_paused):
+                return False
+        prepared = None
+        if self.shared_reads is not None and force_web:
+            import uuid
+            prepared = self.shared_reads.prepare(device.slot, manual=True, request_id=uuid.uuid4().hex,
+                cancelled=lambda: self._stopped or self.is_paused)
+        now = self.clock()
+        manual_round = force_web
+        round_started_at = now
+        state = self.states.setdefault(device.slot, DevicePollState(last_snmp_total=device.last_total))
+        snmp_error = ""
+        probe_result = None
+        preferred_oid = self._preferred_total_oid(device)
+        calibration_needed = not preferred_oid
+        if prepared is not None and not prepared.job["can_read"]:
+            from services.polling import PollDecision
+            decision = PollDecision(True, "waiting", "รับผลจากงานอ่านที่เริ่มก่อน")
+        else:
+            decision, snmp_error, probe_result = self._snmp_round(device, state, now, preferred_oid)
+
         scheduled_read = not manual_round and (decision.request_web or calibration_needed)
         with self._lock:
             force_web = force_web or device.slot in self._manual_requested
@@ -656,14 +679,25 @@ class BackgroundPollingCoordinator(QObject):
             epoch = SlotEpochStore().head(device.slot)
             read_epoch_id = (epoch["id"] if epoch and
                 epoch["document"]["baseline_event"]["payload"]["serial"] == observed_serial else None)
-            reading = (
-                self.reader.read(
+            def read_printer():
+                return self.reader.read(
                     device.host,
                     model=(probe_result.model if probe_result is not None else "") or device.model,
-                )
-                if isinstance(self.reader, MeterReader)
-                else self.reader.read(device.host)
-            )
+                ) if isinstance(self.reader, MeterReader) else self.reader.read(device.host)
+            shared_result = None
+            if self.shared_reads is not None:
+                import uuid
+                scope = self.shared_reads.current_scope(device.slot)
+                if (scope.serial, scope.epoch_id) != (observed_serial, read_epoch_id):
+                    raise ValueError("Printer identity or baseline differs from shared read scope")
+                shared_result = self.shared_reads.collect(device.slot, manual=force_web,
+                    request_id=uuid.uuid4().hex, read=read_printer, printer_name=device.name, prepared=prepared,
+                    cancelled=lambda: self._stopped or self.is_paused)
+                if shared_result is None:
+                    return False
+                reading = shared_result.reading
+            else:
+                reading = read_printer()
             # Report the actual Web observation time, including a read that
             # crosses midnight. Scheduling retains its separate round anchor.
             observed_at = datetime.fromisoformat(reading.collected_at.replace("Z", "+00:00"))
@@ -708,12 +742,12 @@ class BackgroundPollingCoordinator(QObject):
                     at=now,
                 )
             observed_serial = (probe_result.serial if probe_result is not None else "") or device.serial
-            if observed_serial:
+            if observed_serial and shared_result is None:
                 self.observations.record(device.slot, reading, serial=observed_serial,
                     printer_name=device.name,
                     epoch_id=read_epoch_id,
                     at=datetime.fromisoformat(reading.collected_at.replace("Z", "+00:00")))
-            else:
+            elif not observed_serial:
                 pipeline_log.append(stage="DB", action="Web observation identity unavailable",
                     device_slot=device.slot, device_name=device.name, host=device.host,
                     target="web_observations", value="Missing printer Serial",
