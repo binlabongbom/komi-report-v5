@@ -12,7 +12,7 @@ from contextlib import closing
 from datetime import datetime
 from pathlib import Path
 
-CURRENT_SCHEMA_VERSION = 26
+CURRENT_SCHEMA_VERSION = 27
 
 
 class UnsupportedSchemaVersionError(RuntimeError):
@@ -33,6 +33,12 @@ _REQUIRED_SCHEMA: dict[str, frozenset[str]] = {
     "reader_jobs": frozenset({"id", "authority_boot", "scope_json", "reader_id", "phase", "event_id"}),
     "reader_job_requests": frozenset({"member_id", "request_id", "scope_json", "job_id"}),
     "reader_authority_state": frozenset({"singleton_id", "boot_id"}),
+    "slot_meter_epochs": frozenset({"id", "device_slot", "parent_id", "document_json"}),
+    "slot_meter_heads": frozenset({"device_slot", "epoch_id"}),
+    "slot_meter_assignments": frozenset({"event_id", "epoch_id"}),
+    "slot_meter_epoch_state": frozenset({"epoch_id", "version", "issues_json"}),
+    "slot_meter_maxima": frozenset({"epoch_id", "counter_key", "value_json", "event_id"}),
+    "slot_meter_epoch_outbox": frozenset({"epoch_id"}),
     "archived_subject_periods": frozenset({"archive_id", "device_slot", "summary_json"}),
     "web_observation_archives": frozenset({"id", "relative_path", "sha256", "event_count", "year"}),
     "peer_settings_revisions": frozenset({"revision", "document_json"}),
@@ -723,6 +729,26 @@ def _migration_026_reader_jobs(connection: sqlite3.Connection) -> None:
         PRIMARY KEY(member_id,request_id))""")
 
 
+def _migration_027_slot_meter_epochs(connection: sqlite3.Connection) -> None:
+    connection.execute("""CREATE TABLE slot_meter_epochs(
+        id TEXT PRIMARY KEY,device_slot INTEGER NOT NULL,parent_id TEXT REFERENCES slot_meter_epochs(id),
+        document_json TEXT NOT NULL)""")
+    connection.execute("""CREATE TABLE slot_meter_heads(
+        device_slot INTEGER PRIMARY KEY,epoch_id TEXT NOT NULL REFERENCES slot_meter_epochs(id))""")
+    connection.execute("""CREATE TABLE slot_meter_assignments(
+        event_id TEXT NOT NULL REFERENCES web_observations(event_id),
+        epoch_id TEXT NOT NULL REFERENCES slot_meter_epochs(id),PRIMARY KEY(event_id,epoch_id))""")
+    connection.execute("CREATE INDEX idx_slot_meter_assignments_epoch ON slot_meter_assignments(epoch_id,event_id)")
+    connection.execute("""CREATE TABLE slot_meter_epoch_state(
+        epoch_id TEXT PRIMARY KEY REFERENCES slot_meter_epochs(id),
+        version INTEGER NOT NULL DEFAULT 0,issues_json TEXT NOT NULL DEFAULT '[]')""")
+    connection.execute("""CREATE TABLE slot_meter_maxima(
+        epoch_id TEXT NOT NULL REFERENCES slot_meter_epochs(id),counter_key TEXT NOT NULL,
+        value_json TEXT NOT NULL,event_id TEXT NOT NULL REFERENCES web_observations(event_id),
+        observed_at TEXT NOT NULL,PRIMARY KEY(epoch_id,counter_key))""")
+    connection.execute("CREATE TABLE slot_meter_epoch_outbox(epoch_id TEXT PRIMARY KEY REFERENCES slot_meter_epochs(id))")
+
+
 MIGRATIONS: tuple[tuple[int, str, object], ...] = (
     (8, "record_schema_history_and_reporting_indexes", _migration_008_record_schema_history),
     (9, "add_legacy_usage_history_import_provenance", _migration_009_legacy_history_import),
@@ -743,6 +769,7 @@ MIGRATIONS: tuple[tuple[int, str, object], ...] = (
     (24, "add_on_demand_web_observation_archives", _migration_024_web_observation_archives),
     (25, "add_verified_report_details_and_monthly_summaries", _migration_025_report_detail_archives),
     (26, "add_durable_reader_grants_and_joined_requests", _migration_026_reader_jobs),
+    (27, "add_reviewed_slot_epoch_storage_and_maximum_index", _migration_027_slot_meter_epochs),
 )
 
 

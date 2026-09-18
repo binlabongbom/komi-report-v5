@@ -76,6 +76,9 @@ def validate_epoch(epoch):
     elif not isinstance(doc["parent"], str) or len(doc["parent"]) != 64:
         raise ValueError("A reviewed parent epoch is required")
     baseline = counter_values(doc["baseline_event"])
+    declared = doc["baseline_event"]["payload"].get("meter_epoch_id")
+    if declared is not None and not (doc["operation"] == "reset" and declared == doc["parent"]):
+        raise ValueError("Baseline belongs to a different reviewed epoch")
     for key, pair in doc["carried"].items():
         if not isinstance(key, str):
             raise ValueError("Invalid stable counter identity")
@@ -133,6 +136,10 @@ def project_epoch(epoch, observations):
         event = assigned.event
         validate_event(event)
         other = event["payload"]
+        declared = other.get("meter_epoch_id")
+        if declared is not None and declared != epoch["id"] and not (
+                event["id"] == anchor["id"] and doc["operation"] == "reset" and declared == doc["parent"]):
+            raise ValueError("Web observation declares another reviewed epoch")
         if (other["slot"], other["serial"]) != (payload["slot"], payload["serial"]):
             raise ValueError("Observation belongs to a different slot or physical printer")
         job = (other["origin"], other["read_id"])
@@ -194,7 +201,16 @@ def reviewed_epoch(baseline_event, *, actor, reason, parent=None, parent_observa
             raise ValueError("Review normalization mappings before carrying slot meters")
         if operation not in {"replacement", "reset"} or (left["serial"] == right["serial"]) != (operation == "reset"):
             raise ValueError("Review must distinguish a replacement from a same-printer reset")
+        parent_observations = list(parent_observations)
         projection = project_epoch(parent, parent_observations)
+        if operation == "reset":
+            maxima = {item.key: item.physical_maximum for item in projection.counters}
+            if (baseline_event["id"] == previous["baseline_event"]["id"]
+                    or not any(maxima.get(key) is not None and value < maxima[key] for key, value in values.items())):
+                raise ValueError("A new lower counter observation is required to review a reset")
+            # A reset may affect only one counter. Preserve increases in the
+            # other counters observed in this same boundary reading.
+            projection = project_epoch(parent, [*parent_observations, EpochObservation(parent["id"], baseline_event)])
         if {"normalization_schema_changed", "counter_without_reviewed_baseline"}.intersection(projection.issues):
             raise ValueError("Review counter mappings and missing baselines first")
         carried = {item.key: item.slot_total for item in projection.counters}

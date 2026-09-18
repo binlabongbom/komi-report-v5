@@ -637,6 +637,13 @@ class BackgroundPollingCoordinator(QObject):
                 status="request",
                 at=now,
             )
+            # Pin the reviewed epoch before reading Web. A confirmation that
+            # races this read cannot silently bind the result to a new baseline.
+            from services.slot_epoch_store import SlotEpochStore
+            observed_serial = (probe_result.serial if probe_result is not None else "") or device.serial
+            epoch = SlotEpochStore().head(device.slot)
+            read_epoch_id = (epoch["id"] if epoch and
+                epoch["document"]["baseline_event"]["payload"]["serial"] == observed_serial else None)
             reading = (
                 self.reader.read(
                     device.host,
@@ -692,6 +699,7 @@ class BackgroundPollingCoordinator(QObject):
             if observed_serial:
                 self.observations.record(device.slot, reading, serial=observed_serial,
                     printer_name=device.name,
+                    epoch_id=read_epoch_id,
                     at=datetime.fromisoformat(reading.collected_at.replace("Z", "+00:00")))
             else:
                 pipeline_log.append(stage="DB", action="Web observation identity unavailable",

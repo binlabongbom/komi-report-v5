@@ -39,10 +39,19 @@ def validate_event(event):
     if not isinstance(event, dict) or set(event) != {"id", "payload"}:
         raise ValueError("Invalid Web observation envelope")
     payload = event["payload"]
-    if not isinstance(payload, dict) or set(payload) != {
-        "format", "read_id", "origin", "slot", "serial", "printer_name", "observed_at", "reading"
-    } or payload["format"] != "komi.web.observation.v1":
+    if not isinstance(payload, dict):
         raise ValueError("Invalid Web observation payload")
+    fields = {"format", "read_id", "origin", "slot", "serial", "printer_name", "observed_at", "reading"}
+    if payload.get("format") == "komi.web.observation.v2":
+        fields.add("meter_epoch_id")
+    elif payload.get("format") != "komi.web.observation.v1":
+        raise ValueError("Invalid Web observation payload")
+    if set(payload) != fields:
+        raise ValueError("Invalid Web observation payload")
+    if "meter_epoch_id" in payload:
+        value = payload["meter_epoch_id"]
+        if not isinstance(value, str) or len(value) != 64 or any(ch not in "0123456789abcdef" for ch in value):
+            raise ValueError("Invalid Web meter epoch identity")
     for key in ("read_id", "origin", "serial"):
         _text(payload[key])
     _text(payload["printer_name"], empty=True)
@@ -96,10 +105,11 @@ class WebObservationStore:
         from services.web_observation_archive import WebObservationArchive
         return WebObservationArchive(self.path).read_document(archive_id, event_id)
 
-    def record(self, slot, reading, *, serial, printer_name, at=None, read_id=None):
+    def record(self, slot, reading, *, serial, printer_name, at=None, read_id=None, epoch_id=None):
         """Durably capture a completed Web result before updating presentations."""
         stamp = at or datetime.now().astimezone()
         with closing(sqlite3.connect(self.path)) as conn, conn:
+            conn.execute("PRAGMA foreign_keys=ON")
             conn.execute("BEGIN IMMEDIATE")
             device = conn.execute("SELECT serial,host FROM devices WHERE slot=?", (slot,)).fetchone()
             if not serial or not device or device != (serial, reading.host):
@@ -114,6 +124,11 @@ class WebObservationStore:
             payload = {"format": "komi.web.observation.v1", "origin": origin,
                        "read_id": read_id or str(uuid.uuid4()), "slot": slot, "serial": serial,
                        "printer_name": printer_name, "observed_at": stamp.isoformat(), "reading": reading_dict}
+            if epoch_id is not None:
+                from services.slot_epoch_store import SlotEpochStore
+                if SlotEpochStore._head(conn, slot) != epoch_id:
+                    raise ValueError("Slot meter epoch changed during Web reading")
+                payload.update(format="komi.web.observation.v2", meter_epoch_id=epoch_id)
             event = {"id": hashlib.sha256(_json(payload).encode("utf-8")).hexdigest(), "payload": payload}
             document = validate_event(event)
             self._insert(conn, event, document)
@@ -131,8 +146,12 @@ class WebObservationStore:
             (event_id,origin_id,read_id,device_slot,device_serial,observed_at,document_json,recorded_at) VALUES(?,?,?,?,?,?,?,?)""",
             (event["id"], payload["origin"], payload["read_id"], payload["slot"], payload["serial"], payload["observed_at"], document,
              datetime.now(UTC).isoformat()))
+        if payload.get("meter_epoch_id") is not None:
+            from services.slot_epoch_store import SlotEpochStore
+            epoch = SlotEpochStore._epoch(conn, payload["meter_epoch_id"])
+            SlotEpochStore._assign(conn, epoch, event)
 
-    def receive(self, events, *, expected_slot, expected_serial):
+    def receive(self, events, *, expected_slot, expected_serial, expected_epoch=None):
         """Import a bounded authorized batch, idempotently, without projecting usage.
 
         Callers must validate membership and shared slot authority beforehand.
@@ -147,7 +166,10 @@ class WebObservationStore:
             payload = event["payload"]
             if (payload["slot"], payload["serial"]) != (expected_slot, expected_serial):
                 raise ValueError("Observation does not match the authorized slot and serial")
+            if payload.get("meter_epoch_id") != expected_epoch:
+                raise ValueError("Observation does not match the authorized meter epoch")
         with closing(sqlite3.connect(self.path)) as conn, conn:
+            conn.execute("PRAGMA foreign_keys=ON")
             conn.execute("BEGIN IMMEDIATE")
             for event, document in zip(events, documents):
                 self._insert(conn, event, document)

@@ -175,6 +175,39 @@ bf453738b934dcf5bea59dd8c70e191b52ba6b89 และ merge เข้า local main
   หลักฐานทดสอบเก่าตรวจว่ามีบน GitHub/commit/tag/release จริงก่อนเก็บกวาด
 - ปรับคู่มือ ภาพหน้าจอ และขั้นตอนทดสอบสองเครื่องให้ตรง ก่อนขออนุญาต build
 
+### 2026-09-18 — durable slot epochs and reviewed peer ancestry
+
+- Schema 27 stores immutable slot epochs, an active head, explicit observation
+  assignments, bounded per-counter maxima, review issues and a local decision
+  outbox. Confirmation rechecks printer identity, latest candidate and parent
+  evidence in one transaction. A stale preview cannot change the baseline.
+- Parsed Web v2 declares the epoch in its content hash. Local polling pins the
+  head before Web collection; journal/outbox/maximum commit together and reject
+  an epoch changed during the read. Legacy/uninitialized observations remain v1;
+  no epoch is guessed from time or a falling counter.
+- Replacement survives restart/archive: 2,000 + (50,100 - 50,000) = 2,100.
+  Partial resets preserve increases in unaffected counters. Late higher parent
+  evidence holds descendants for review without rewriting frozen carried totals.
+  Initializing a slot with another/unknown historical printer is blocked pending
+  migration review, rather than treating a used printer's absolute as new usage.
+- SlotEpochExchange requires an explicit authorization callback. Bounded import
+  checks exact parent proof/carry and commits evidence/definition atomically.
+  Import never changes settings or active heads. Explicit compare-and-swap
+  adoption checks ancestry, branches, identity and locally newer parent evidence.
+  Imported decisions/events do not enter outgoing echo queues.
+- Three isolated databases simulate ordered ancestry, restart-safe maxima,
+  duplicate delivery, reset boundaries, forged carry, missing parent, failed
+  commit, divergent branches and higher receiver evidence. This is source-level
+  simulation, not authenticated HTTPS or installation on three physical PCs.
+- Validation: epoch/Web/archive/polling/manual/reset/recovery regression 66
+  passed; expanded run 77 passed and 2 new fixture/diagnostic-order failures.
+  Both corrected; final store/exchange tests 19 passed. Counts overlap and are
+  not a claim that the entire application's test suite passed.
+- Remaining: verified Host membership adapter and transport; startup catch-up;
+  epoch review UI integrated with shared settings and legacy cache/billing holds;
+  explicit historical migration/amendment. Do not enable peer suppression or
+  claim the full shared replacement workflow complete from these primitives.
+
 ### 2026-09-18 — reviewed slot continuity reducer and billing-day consistency
 
 - `slot_meter_continuity.py` computes a virtual slot meter separately from the

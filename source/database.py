@@ -57,6 +57,12 @@ def _clear_read_caches(slot: int | None = None):
 
 
 _USAGE_RESET_TABLES = (
+    "slot_meter_epoch_outbox",
+    "slot_meter_maxima",
+    "slot_meter_epoch_state",
+    "slot_meter_assignments",
+    "slot_meter_heads",
+    "slot_meter_epochs",
     "reader_job_requests",
     "reader_jobs",
     "archived_subject_periods",
@@ -90,6 +96,12 @@ _USAGE_RESET_SEQUENCES = (
 )
 
 _FACTORY_RESET_TABLES = (
+    "slot_meter_epoch_outbox",
+    "slot_meter_maxima",
+    "slot_meter_epoch_state",
+    "slot_meter_assignments",
+    "slot_meter_heads",
+    "slot_meter_epochs",
     "reader_authority_state",
     "reader_job_requests",
     "reader_jobs",

@@ -30,6 +30,12 @@ CRITICAL_TABLES = (
     "report_archive_days",
     "reader_jobs",
     "reader_job_requests",
+    "slot_meter_epochs",
+    "slot_meter_heads",
+    "slot_meter_assignments",
+    "slot_meter_epoch_state",
+    "slot_meter_maxima",
+    "slot_meter_epoch_outbox",
     "web_observation_outbox",
     "web_observation_receipts",
 )
