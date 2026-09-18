@@ -175,6 +175,22 @@ bf453738b934dcf5bea59dd8c70e191b52ba6b89 และ merge เข้า local main
   หลักฐานทดสอบเก่าตรวจว่ามีบน GitHub/commit/tag/release จริงก่อนเก็บกวาด
 - ปรับคู่มือ ภาพหน้าจอ และขั้นตอนทดสอบสองเครื่องให้ตรง ก่อนขออนุญาต build
 
+### 2026-09-18 — additional source regression and obsolete check cleanup
+
+- Ran the other **79 source test files** independently with the network audit
+  guard: **560 passed**, one failed source-text assertion (394.87 seconds).
+  It incorrectly required `_subject_name_is_placeholder` to be defined inside
+  `meter.py` after extraction into `subject_identity.py`. Removed that duplicate
+  location check, retaining actual MeterReader placeholder/name enrichment
+  behavior tests. Targeted follow-up: **7 passed in 0.83 seconds**.
+- Original outputs and the follow-up are both retained in
+  `docs/qa/v5.2.12/additional-source-regression.json`; the original failure has
+  not been overwritten. No unresolved failure remains from these checks.
+  Six build/release-related files were excluded; no release build ran.
+- This complements the earlier 72-file checkpoint and the three newly added
+  session/runtime/status test files. It is evidence across source checkpoints,
+  not a claim of one full-suite run at the final commit or multi-PC acceptance.
+
 ### 2026-09-18 — network activity panel with durable receipt status
 
 - Network settings now binds to the actual polling/peer-history runtime when

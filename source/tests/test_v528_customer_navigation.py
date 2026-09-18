@@ -15,7 +15,6 @@ def test_top_users_prefers_real_name_over_numeric_placeholder():
     assert "item[0] = subject_name" in text
 
 
-def test_collector_replaces_numeric_subject_placeholder():
-    text = Path(__file__).resolve().parents[1].joinpath("komi_snmp_profiler", "meter.py").read_text(encoding="utf-8")
-    assert "def _subject_name_is_placeholder" in text
-    assert "should_replace = bool(name) and _subject_name_is_placeholder" in text
+# Collector name replacement is exercised with actual MeterReader inputs in
+# test_v528_numeric_subject_names.py. Its helper now lives in subject_identity;
+# searching for its definition in meter.py rejected a valid module extraction.

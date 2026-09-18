@@ -9,6 +9,7 @@
 - [ผลหลัง Archive](qa/v5.2.12/five-year-archive.json)
 - [ผลวัด Agent ขณะอ่านข้อมูลจำลอง](V5_2_12_ACTIVE_FOOTPRINT.json)
 - [ตรวจถดถอย source 72 ไฟล์ / 685 tests ก่อนต่อ runtime catch-up](qa/v5.2.12/source-regression.json)
+- [ตรวจ source อีก 79 ไฟล์ พร้อมผลแก้เทสเก่าที่ล้าสมัย](qa/v5.2.12/additional-source-regression.json)
 
 จำนวนทดสอบในบันทึกแต่ละชุดอาจซ้อนกัน ต้องดูขอบเขตและ commit ที่เกี่ยวข้อง
 การผ่าน source tests ไม่ใช่ผลทดสอบตัวติดตั้ง เครื่องพิมพ์จริง หรือการอนุมัติ release
