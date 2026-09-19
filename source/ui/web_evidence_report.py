@@ -1,53 +1,29 @@
 """On-demand Web inspection, with a separate explicit billing amendment review."""
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
-import html
 import logging
 from threading import Event
 
 from PyQt6.QtCore import QDate, QDateTime, QTimer, Qt
-from PyQt6.QtGui import QColor, QPen, QTextDocument, QPdfWriter
+from PyQt6.QtGui import QColor, QPen
 from PyQt6.QtCharts import QChart, QChartView, QBarSeries, QBarSet, QBarCategoryAxis, QValueAxis, QLineSeries, QScatterSeries
 from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QComboBox, QDateEdit,
-    QPushButton, QTabWidget, QTableWidget, QTableWidgetItem, QAbstractItemView, QFileDialog, QHeaderView)
+    QPushButton, QTabWidget, QTableWidget, QTableWidgetItem, QAbstractItemView, QFileDialog, QHeaderView, QPlainTextEdit, QLabel)
 
 from database import get_db_path
 from services.web_evidence_report import load_evidence, inspect_counter, export_evidence_xlsx, review_labels
 from ui.counter_review import plain
+from ui.review_components import labeled_control, field_label
+from i18n import tr
+from functools import partial
+from services.web_evidence_export import projection_pdf, export_web_evidence
+from ui.report_export import ReportExportController
 
 
 def display_number(value):
     return f"{float(value):,.2f}".rstrip("0").rstrip(".")
 
 
-def projection_pdf(path, projection, *, title):
-    """Paginated evidence/remarks, escaped data; no rasterized tiny printout."""
-    rows = []
-    for item in projection.intervals:
-        rows.append("<tr>" + "".join(f"<td>{html.escape(value)}</td>" for value in (
-            item.start.at.strftime("%d/%m/%Y %H:%M"), item.end.at.strftime("%d/%m/%Y %H:%M"),
-            display_number(item.amount), item.allocation_day.isoformat(), item.remark,
-            review_labels(item.holds))) + "</tr>")
-    graph_rows = "".join("<tr>" + "".join(f"<td>{html.escape(value)}</td>" for value in (
-        item.day.isoformat(), display_number(item.total), "ประมาณการ" if item.estimated else "ยอดตามช่วงอ่าน",
-        "\n".join(item.remarks))) + "</tr>" for item in projection.daily_graph())
-    document = QTextDocument()
-    document.setHtml(
-        "<style>body{font-family:'Tahoma';font-size:9pt}td,th{padding:5px}th{background:#eaf2f8}</style>"
-        f"<h2>{html.escape(title)}</h2><p>เริ่มนับจากจุด Web แรกในช่วงที่เลือก · รายงานหลักฐาน ไม่ใช่ยอดเรียกเก็บ</p>"
-        f"<p>ช่วงฐานมิเตอร์: {html.escape(projection.epoch_id)}</p>"
-        f"<p>รุ่นหลักฐาน: {projection.revision}</p><p>ข้อควรตรวจ: {html.escape(review_labels(projection.issues))}</p>"
-        "<h3>ยอดตามช่วงอ่าน</h3><table border='1' cellspacing='0'><thead><tr><th>เริ่ม</th><th>ถึง</th><th>ผลต่าง</th>"
-        "<th>วันลงยอด</th><th>หมายเหตุ</th><th>รอตรวจ</th></tr></thead>" + "".join(rows) + "</table>"
-        "<h3>ข้อมูลกราฟรายวัน</h3><p>แทนยอดช่วงขาดด้วยค่าเฉลี่ย ไม่บวกซ้ำกับยอดลงวันก่อนกลับมาอ่านได้</p>"
-        "<table border='1' cellspacing='0'><thead><tr><th>วันที่</th><th>ยอดแสดง</th><th>ชนิด</th><th>หมายเหตุ</th>"
-        "</tr></thead>" + graph_rows + "</table>")
-    writer = QPdfWriter(str(path))
-    writer.setTitle(title)
-    writer.setResolution(144)
-    from PyQt6.QtGui import QPageLayout
-    writer.setPageOrientation(QPageLayout.Orientation.Landscape)
-    document.print(writer)
 
 
 class WebEvidenceDialog(QDialog):
@@ -74,22 +50,24 @@ class WebEvidenceDialog(QDialog):
         for device in devices:
             if device.serial:
                 self.devices.addItem(f"Slot {device.slot + 1} · {device.name} · {device.serial}", (device.slot, device.serial, device.name))
-        controls.addWidget(self.devices, 2)
+        controls.addWidget(labeled_control(self.devices, "เครื่องพิมพ์", "Printer"), 2)
         current = today or datetime.now().date()
         self.start_date = QDateEdit(QDate(current - timedelta(days=30)))
         self.end_date = QDateEdit(QDate(current))
-        for picker in (self.start_date, self.end_date):
+        for picker, thai, english in ((self.start_date, "วันที่เริ่มต้น", "Start date"), (self.end_date, "วันที่สิ้นสุด", "End date")):
             picker.setDisplayFormat("dd/MM/yyyy")
             picker.setCalendarPopup(True)
-            controls.addWidget(picker)
+            controls.addWidget(labeled_control(picker, thai, english))
         self.load_button = QPushButton("เรียกดูข้อมูล")
         self.load_button.setEnabled(self.devices.count() > 0)
         controls.addWidget(self.load_button)
         layout.addLayout(controls)
         self.counters = QComboBox()
+        field_label(layout, self.counters, "มิเตอร์", "Counter")
         layout.addWidget(self.counters)
         self.epochs = QComboBox()
         self.epochs.setAccessibleName("ช่วงฐานมิเตอร์ · แยกก่อนและหลังรีเซ็ต")
+        field_label(layout, self.epochs, "ช่วงฐานมิเตอร์", "Meter epoch")
         layout.addWidget(self.epochs)
         self.status = plain("")
         layout.addWidget(self.status)
@@ -98,6 +76,8 @@ class WebEvidenceDialog(QDialog):
         self.chart = QChartView(QChart())
         self.cumulative = QChartView(QChart())
         self.table = QTableWidget(0, 6)
+        self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.table.setHorizontalHeaderLabels(["ช่วงอ่านจริง", "ผลต่าง", "วันลงยอด", "วันขาด Web", "รอตรวจ", "หมายเหตุ"])
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.table.setWordWrap(True)
@@ -106,7 +86,7 @@ class WebEvidenceDialog(QDialog):
         self.tabs.addTab(self.chart, "กราฟรายวัน")
         self.tabs.addTab(self.cumulative, "มิเตอร์สะสมจริง")
         self.tabs.addTab(self.table, "รายละเอียดและหมายเหตุ")
-        self.tabs.currentChanged.connect(lambda index: self.table.resizeRowsToContents() if index == 2 else None)
+        self.tabs.currentChanged.connect(self._tab_changed)
         actions = QHBoxLayout()
         self.xlsx_button = QPushButton("ส่งออก Excel")
         self.pdf_button = QPushButton("ส่งออก PDF")
@@ -121,19 +101,27 @@ class WebEvidenceDialog(QDialog):
         self.detail_amend_button.setEnabled(False)
         self.detail_amend_button.clicked.connect(self.amend_detail)
         actions.addWidget(self.detail_amend_button)
+        self.row_detail_button = QPushButton(tr("อ่านหมายเหตุเต็ม", "Read full remarks"))
+        self.row_detail_button.setEnabled(False)
+        self.row_detail_button.clicked.connect(self.show_row_details)
+        self.table.itemSelectionChanged.connect(self._update_row_detail)
+        self.table.cellDoubleClicked.connect(self.show_row_details)
+        actions.addWidget(self.row_detail_button)
         actions.addStretch()
         close = QPushButton("ปิด")
         close.clicked.connect(self.reject)
         actions.addWidget(close)
         layout.addLayout(actions)
+        self.export_controller = None
+        self.finished.connect(self._stop_export)
         self.timer = QTimer(self)
         self.timer.setInterval(100)
         self.timer.timeout.connect(self.collect)
         self.load_button.clicked.connect(self.load)
         self.counters.currentIndexChanged.connect(self.project)
         self.epochs.currentIndexChanged.connect(self.project)
-        self.xlsx_button.clicked.connect(lambda: self.export("xlsx"))
-        self.pdf_button.clicked.connect(lambda: self.export("pdf"))
+        self.xlsx_button.clicked.connect(self.export_xlsx)
+        self.pdf_button.clicked.connect(self.export_pdf)
         self.devices.currentIndexChanged.connect(self.invalidate)
         self.start_date.dateChanged.connect(self.invalidate)
         self.end_date.dateChanged.connect(self.invalidate)
@@ -149,7 +137,11 @@ class WebEvidenceDialog(QDialog):
         self.table.setRowCount(0)
         self._replace_chart(self.chart, QChart())
         self._replace_chart(self.cumulative, QChart())
-        self.status.setText("เลือกช่วงแล้วกดเรียกดูข้อมูล")
+        self.status.setText(tr('เลือกช่วงแล้วกดเรียกดูข้อมูล', 'Choose dates and load evidence'))
+
+    def _tab_changed(self, index):
+        if index == 2:
+            self.table.resizeRowsToContents()
 
     def _busy(self, value):
         for control in (self.devices, self.start_date, self.end_date, self.counters, self.epochs):
@@ -191,7 +183,7 @@ class WebEvidenceDialog(QDialog):
         self.printer_name = name
         self.cancelled.clear()
         self._busy(True)
-        self.status.setText("กำลังเรียกหลักฐาน Web…")
+        self.status.setText(tr('กำลังเรียกหลักฐาน Web…', 'Loading Web evidence…'))
         self.job = "load"
         self.future = self.pool.submit(load_evidence, self.path, **self.request, cancelled=self.cancelled)
         self.timer.start()
@@ -243,7 +235,7 @@ class WebEvidenceDialog(QDialog):
                     break
             self.counters.blockSignals(False)
             if not self.counters.count():
-                self.status.setText("ไม่มีผล Web ที่บันทึกไว้ในช่วงที่เลือก")
+                self.status.setText(tr('ไม่มีผล Web ที่บันทึกไว้ในช่วงที่เลือก', 'No saved Web readings in the selected period.'))
             else:
                 self.project()
         else:
@@ -261,36 +253,43 @@ class WebEvidenceDialog(QDialog):
     def render_projection(self):
         result = self.projection
         held = sum(bool(item.holds) for item in result.intervals)
-        self.status.setText(f"{len(result.points):,} จุดอ่านจริง · ผลต่างรวม {display_number(result.total_usage)} · รอตรวจ {held:,} ช่วง · สีส้ม = ประมาณการ")
+        self.status.setText(tr("{count:,} จุดอ่านจริง · ผลต่างรวม {total} · รอตรวจ {held:,} ช่วง · สีส้ม = ประมาณการ",
+            "{count:,} actual readings · Total difference {total} · {held:,} intervals need review · Orange = estimated").format(count=len(result.points), total=display_number(result.total_usage), held=held))
         if result.issues:
             self.status.setText(self.status.text() + "\n" + review_labels(result.issues))
         chart = QChart()
-        chart.setTitle("ยอดรายวันจากช่วงอ่าน Web · สีส้มเป็นค่าประมาณ แม้แสดงเป็นจำนวนเต็ม")
-        series = QBarSeries()
-        actual, estimated = QBarSet("ยอดตามช่วงอ่าน"), QBarSet("ประมาณการ")
-        actual.setColor(QColor("#1677C8"))
-        estimated.setColor(QColor("#D97706"))
+        chart.setTitle(tr('ยอดรายวันจากช่วงอ่าน Web · สีส้มเป็นค่าประมาณ แม้แสดงเป็นจำนวนเต็ม', 'Daily usage from Web intervals. Orange values are estimates, including whole numbers.'))
         bars = result.daily_graph()
-        actual.append([round(float(row.observed_interval_usage), 2) for row in bars])
-        estimated.append([round(float(row.estimated_usage), 2) for row in bars])
-        if any(row.observed_interval_usage for row in bars) or not any(row.estimated for row in bars):
-            series.append(actual)
-        if any(row.estimated for row in bars):
-            series.append(estimated)
-        series.setLabelsVisible(True)
-        series.setLabelsFormat("@value")
-        series.setLabelsPrecision(12)
-        chart.addSeries(series)
-        axis = QBarCategoryAxis()
-        axis.append([row.day.strftime("%d/%m") for row in bars])
-        chart.addAxis(axis, Qt.AlignmentFlag.AlignBottom)
-        series.attachAxis(axis)
-        values = QValueAxis()
-        values.setRange(0, max((float(row.total) for row in bars), default=0) * 1.15 or 1)
-        values.setLabelFormat("%.2f")
-        values.applyNiceNumbers()
-        chart.addAxis(values, Qt.AlignmentFlag.AlignLeft)
-        series.attachAxis(values)
+        # A baseline is evidence, but not an interval with zero usage. Do not
+        # attach empty QBarSets/axes or imply that usage was measured as zero.
+        if not bars:
+            chart.setTitle(tr("ยังไม่มีช่วงอ่านให้คำนวณ · ต้องมีผล Web อย่างน้อยสองครั้ง", "No usage interval yet. At least two Web readings are required."))
+            chart.legend().hide()
+        else:
+            series = QBarSeries()
+            actual, estimated = QBarSet("ยอดตามช่วงอ่าน"), QBarSet("ประมาณการ")
+            actual.setColor(QColor("#1677C8"))
+            estimated.setColor(QColor("#D97706"))
+            actual.append([round(float(row.observed_interval_usage), 2) for row in bars])
+            estimated.append([round(float(row.estimated_usage), 2) for row in bars])
+            if any(row.observed_interval_usage for row in bars) or not any(row.estimated for row in bars):
+                series.append(actual)
+            if any(row.estimated for row in bars):
+                series.append(estimated)
+            series.setLabelsVisible(True)
+            series.setLabelsFormat("@value")
+            series.setLabelsPrecision(12)
+            chart.addSeries(series)
+            axis = QBarCategoryAxis()
+            axis.append([row.day.strftime("%d/%m") for row in bars])
+            chart.addAxis(axis, Qt.AlignmentFlag.AlignBottom)
+            series.attachAxis(axis)
+            values = QValueAxis()
+            values.setRange(0, max((float(row.total) for row in bars), default=0) * 1.15 or 1)
+            values.setLabelFormat("%.2f")
+            values.applyNiceNumbers()
+            chart.addAxis(values, Qt.AlignmentFlag.AlignLeft)
+            series.attachAxis(values)
         self._replace_chart(self.chart, chart)
         cumulative = QChart()
         cumulative.setTitle("จุดมิเตอร์ที่อ่านจริง · เส้นประเชื่อมช่วงที่ขาดข้อมูล ไม่ใช่จุดอ่านประมาณ")
@@ -346,20 +345,63 @@ class WebEvidenceDialog(QDialog):
             self.table.setColumnWidth(column, width)
         self.table.resizeRowsToContents()
 
-    def export(self, kind):
-        if self.projection is None:
+    def _stop_export(self, *_):
+        if self.export_controller is not None:
+            self.export_controller.shutdown()
+
+    def _ensure_export_controller(self):
+        if self.export_controller is None:
+            self.export_controller = ReportExportController(self)
+            self.export_controller.busy_changed.connect(self._export_busy)
+            self.export_controller.succeeded.connect(self._export_succeeded)
+            self.export_controller.failed.connect(self._export_failed)
+        return self.export_controller
+
+    def _export_succeeded(self, path):
+        self.status.setText(tr("ส่งออกแล้ว: {path}", "Exported: {path}").format(path=path))
+
+    def _export_failed(self, error):
+        self.status.setText(tr("ส่งออกไม่สำเร็จ กรุณาปิดไฟล์ที่เปิดอยู่และตรวจพื้นที่/สิทธิ์ไฟล์", "Export failed. Close any open destination file and check disk space and permissions."))
+
+    def _export_busy(self, busy):
+        for button in (self.xlsx_button, self.pdf_button):
+            button.setEnabled(not busy and self.projection is not None)
+
+    def _update_row_detail(self):
+        self.row_detail_button.setEnabled(self.table.currentRow() >= 0)
+
+    def export_xlsx(self):
+        self.export("xlsx")
+
+    def export_pdf(self):
+        self.export("pdf")
+
+    def show_row_details(self, *_):
+        row = self.table.currentRow()
+        if row < 0 or row >= self.table.rowCount():
             return
-        path, _ = QFileDialog.getSaveFileName(self, "ส่งออกหลักฐาน Web", f"KOMI-Web-evidence.{kind}", f"{kind.upper()} (*.{kind})")
+        dialog = QDialog(self)
+        dialog.setWindowTitle(tr("รายละเอียดช่วงอ่านและหมายเหตุ", "Reading interval and remarks"))
+        dialog.resize(720, 440)
+        layout = QVBoxLayout(dialog)
+        text = QPlainTextEdit()
+        text.setReadOnly(True)
+        text.setPlainText("\n\n".join(
+            f"{self.table.horizontalHeaderItem(column).text()}:\n{self.table.item(row, column).text()}"
+            for column in range(self.table.columnCount()) if self.table.item(row, column) is not None))
+        layout.addWidget(text)
+        close = QPushButton(tr("ปิด", "Close"))
+        close.clicked.connect(dialog.accept)
+        layout.addWidget(close)
+        dialog.exec()
+
+    def export(self, kind):
+        if self.projection is None or (self.export_controller is not None and self.export_controller.busy):
+            return
+        path, _ = QFileDialog.getSaveFileName(self, tr("ส่งออกหลักฐาน Web", "Export Web evidence"),
+                                             f"KOMI-Web-evidence.{kind}", f"{kind.upper()} (*.{kind})")
         if not path:
             return
-        try:
-            if kind == "xlsx":
-                export_evidence_xlsx(path, self.projection, printer=self.printer_name,
-                    serial=self.request["serial"], counter_label=self.counter_label)
-            else:
-                projection_pdf(path, self.projection, title=f"{self.printer_name} · {self.request['serial']} · {self.counter_label}")
-        except Exception:
-            logging.getLogger(__name__).exception("Web evidence export failed")
-            self.status.setText("ส่งออกไม่สำเร็จ กรุณาตรวจพื้นที่และสิทธิ์ไฟล์")
-        else:
-            self.status.setText(f"ส่งออกแล้ว: {path}")
+        job = partial(export_web_evidence, path, self.projection, kind=kind, printer=self.printer_name,
+                      serial=self.request["serial"], counter_label=self.counter_label)
+        self._ensure_export_controller().start(job, title=tr("ส่งออกหลักฐาน Web", "Export Web evidence") + " · " + kind.upper())

@@ -1,4 +1,5 @@
 """Review every changed posting before an atomic date-range price correction."""
+
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date
 import logging
@@ -9,7 +10,9 @@ from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QDateEdit, QComb
     QPushButton, QLineEdit, QTableWidget, QTableWidgetItem, QAbstractItemView, QDialogButtonBox, QCheckBox)
 
 from services.billing_repricing_batch import BatchRepricingService
+from i18n import tr
 from ui.counter_review import plain
+from ui.review_components import labeled_control, field_label
 
 
 class BatchRepricingDialog(QDialog):
@@ -31,11 +34,12 @@ class BatchRepricingDialog(QDialog):
         now = today or date.today()
         self.start = QDateEdit(QDate(now.replace(day=1)))
         self.end = QDateEdit(QDate(now))
-        for picker in (self.start, self.end):
+        for picker, thai, english in ((self.start, "วันที่เริ่มต้น", "Start date"), (self.end, "วันที่สิ้นสุด", "End date")):
             picker.setCalendarPopup(True)
             picker.setDisplayFormat("dd/MM/yyyy")
-            controls.addWidget(picker)
+            controls.addWidget(labeled_control(picker, thai, english))
         self.slots = QComboBox()
+        self.slots.setProperty("i18n_items", True)
         self.slots.addItem("ทุก Slot", [0, 1, 2])
         for slot in range(3):
             self.slots.addItem(f"Slot {slot + 1}", [slot])
@@ -52,18 +56,22 @@ class BatchRepricingDialog(QDialog):
         layout.addWidget(self.status)
         self.table = QTableWidget(0, 8)
         self.table.setHorizontalHeaderLabels(["รายการ", "วันที่ใช้งาน", "เครื่อง / Serial", "ส่วนลดเดิม → ใหม่", "สุทธิเดิม", "สุทธิใหม่", "รอบเดิม → ใหม่", "ผลตรวจ"])
+        from PyQt6.QtWidgets import QHeaderView
+        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
+        self.table.horizontalHeader().setStretchLastSection(True)
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         layout.addWidget(self.table, 1)
         self.reason = QLineEdit()
         self.reason.setMaxLength(300)
         self.reason.setPlaceholderText("เหตุผลที่คำนวณใหม่")
+        field_label(layout, self.reason)
         layout.addWidget(self.reason)
         self.buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         self.confirm_button = self.buttons.button(QDialogButtonBox.StandardButton.Ok)
         self.confirm_button.setText("ยืนยันรายการที่เปลี่ยนทั้งหมด")
         self.confirm_button.setEnabled(False)
         self.confirm_button.setAutoDefault(False)
-        self.buttons.button(QDialogButtonBox.StandardButton.Cancel).setText("ยกเลิก")
+        self.buttons.button(QDialogButtonBox.StandardButton.Cancel).setText(tr('ยกเลิก', 'Cancel'))
         self.buttons.button(QDialogButtonBox.StandardButton.Cancel).setDefault(True)
         self.buttons.accepted.connect(self.confirm)
         self.buttons.rejected.connect(self.reject)
@@ -82,7 +90,7 @@ class BatchRepricingDialog(QDialog):
     def invalidate(self, *_):
         self.preview = None
         self.table.setRowCount(0)
-        self.status.setText("ตัวเลือกเปลี่ยน กรุณาตรวจรายการใหม่")
+        self.status.setText(tr('ตัวเลือกเปลี่ยน กรุณาตรวจรายการใหม่', 'Options changed. Review the entries again.'))
         self.validate()
 
     def validate(self, *_):
@@ -98,7 +106,7 @@ class BatchRepricingDialog(QDialog):
         self.operation = "preview"
         for widget in self.controls():
             widget.setEnabled(False)
-        self.status.setText("กำลังตรวจรายการและประวัติราคา…")
+        self.status.setText(tr('กำลังตรวจรายการและประวัติราคา…', 'Checking entries and dated prices…'))
         self.future = self.pool.submit(self.service.preview, *self.scope, apply_current_discount=self.discount_selected,
                                       apply_current_period=self.period_selected)
         self.timer.start()
@@ -122,7 +130,7 @@ class BatchRepricingDialog(QDialog):
             except Exception:
                 logging.getLogger(__name__).exception("Batch repricing failed")
                 self.preview = None
-                self.status.setText("บันทึกไม่สำเร็จหรือข้อมูลเปลี่ยน ไม่มีการแก้เพียงบางรายการ กรุณาตรวจรายการใหม่")
+                self.status.setText(tr('บันทึกไม่สำเร็จหรือข้อมูลเปลี่ยน ไม่มีการแก้เพียงบางรายการ กรุณาตรวจรายการใหม่', 'Save failed or data changed. No partial corrections were saved. Review the entries again.'))
                 self.validate()
                 return
             self.accept()
@@ -134,8 +142,9 @@ class BatchRepricingDialog(QDialog):
             self.status.setText(str(error) if isinstance(error, ValueError) else "อ่านข้อมูลไม่สำเร็จ กรุณาลองใหม่")
             return
         p = self.preview
-        self.status.setText(f"เปลี่ยน {len(p['changed']):,} รายการ · ไม่เปลี่ยน {p['unchanged']:,} · ข้ามรายการรอตรวจ {len(p['skipped']):,}\n"
-            f"ยอดสุทธิของรายการที่เปลี่ยน: ฿{p['old_net_cents']/100:,.2f} → ฿{p['net_cents']/100:,.2f} · ปรับสรุป Archive {p['archive_count']} ไฟล์")
+        self.status.setText(tr("เปลี่ยน {changed:,} รายการ · ไม่เปลี่ยน {unchanged:,} · ข้ามรายการรอตรวจ {skipped:,}\nยอดสุทธิของรายการที่เปลี่ยน: ฿{before:,.2f} → ฿{after:,.2f} · ปรับสรุป Archive {archives} ไฟล์",
+            "Changed: {changed:,} · Unchanged: {unchanged:,} · Held entries skipped: {skipped:,}\nNet amount of changed entries: ฿{before:,.2f} → ฿{after:,.2f} · Archive summaries to update: {archives}").format(
+                changed=len(p['changed']), unchanged=p['unchanged'], skipped=len(p['skipped']), before=p['old_net_cents']/100, after=p['net_cents']/100, archives=p['archive_count']))
         self.table.setRowCount(len(p["changed"]) + len(p["skipped"]))
         for index, row in enumerate(p["changed"]):
             values = (row["ledger_id"], row["record_date"], f"{row['device_name']} / {row['serial']}",
@@ -161,7 +170,7 @@ class BatchRepricingDialog(QDialog):
             widget.setEnabled(False)
         self.reason.setEnabled(False)
         self.buttons.button(QDialogButtonBox.StandardButton.Cancel).setEnabled(False)
-        self.status.setText("กำลังบันทึกรายการแก้ไขและสรุปรายเดือน…")
+        self.status.setText(tr('กำลังบันทึกรายการแก้ไขและสรุปรายเดือน…', 'Saving corrections and monthly summaries…'))
         self.future = self.pool.submit(self.service.confirm, *self.scope, expected_revision=self.preview["revision"],
             actor=socket.gethostname(), reason=self.reason.text(), apply_current_discount=self.discount_selected,
             apply_current_period=self.period_selected)

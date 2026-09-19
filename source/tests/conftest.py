@@ -11,6 +11,15 @@ from services import device_config
 _qt_app_keepalive = None
 
 
+@pytest.fixture(autouse=True)
+def isolated_ui_language():
+    """Each synthetic database starts in Thai; do not leak a prior UI locale."""
+    from i18n import set_language
+    set_language("th")
+    yield
+    set_language("th")
+
+
 @pytest.fixture(scope="session", autouse=True)
 def native_offscreen_fonts():
     """Avoid tofu glyphs and false layout failures in Windows offscreen tests."""

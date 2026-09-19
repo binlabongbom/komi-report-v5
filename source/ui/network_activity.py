@@ -5,6 +5,7 @@ from datetime import datetime
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QTableWidget, QTableWidgetItem, QHeaderView
 
+from i18n import tr, apply_language
 from database import get_db_path
 from services.network_activity import load_network_activity
 from widgets import btn
@@ -12,11 +13,11 @@ from widgets import btn
 
 def _date(value):
     if not value:
-        return "ยังไม่มี"
+        return tr("ยังไม่มี", "Not yet")
     try:
         return datetime.fromisoformat(value).astimezone().strftime("%d/%m/%Y %H:%M:%S")
     except (ValueError, TypeError):
-        return "ตรวจสอบเวลา"
+        return tr("ตรวจสอบเวลา", "Check timestamp")
 
 
 class NetworkActivityPanel(QWidget):
@@ -150,45 +151,52 @@ class NetworkActivityPanel(QWidget):
             try:
                 data = future.result()
             except Exception:
-                self.summary.setText("อ่านสถานะไม่สำเร็จ ข้อมูลเดิมยังแสดงอยู่ · กดตรวจสถานะอีกครั้ง")
+                self.summary.setText(tr("อ่านสถานะไม่สำเร็จ ข้อมูลเดิมยังแสดงอยู่ · กดตรวจสถานะอีกครั้ง", "Unable to load status. Previous data is still displayed. Check status again."))
             else:
                 active = self.polling.active_slots() if self.polling is not None else ()
-                self.local_read.setText("การอ่านบนคอมนี้: " + (", ".join(f"Slot {slot + 1}" for slot in active) if active else "ไม่มีงานอ่านอยู่"))
+                self.local_read.setText(tr("การอ่านบนคอมนี้: {slots}", "Reading on this computer: {slots}").format(slots=", ".join(f"Slot {slot + 1}" for slot in active) if active else tr("ไม่มีงานอ่านอยู่", "No active reads")))
                 shared = getattr(self.polling, "shared_reads", None)
                 if shared is None:
-                    self.shared_read.setText("ผู้อ่านร่วม: ยังไม่ได้เชื่อมต่อบริการสมาชิก")
+                    self.shared_read.setText(tr('ผู้อ่านร่วม: ยังไม่ได้เชื่อมต่อบริการสมาชิก', 'Shared reader: membership service is not connected'))
                 else:
                     jobs = shared.snapshot()
-                    phases = {"reading": "กำลังอ่าน", "complete": "บันทึกผลแล้ว", "failed": "อ่านไม่สำเร็จ", "expired": "งานหมดเวลา",
-                              "probe_complete": "จบ SNMP · ไม่มีผล Web ใหม่"}
-                    self.shared_read.setText("ผู้อ่านร่วม · สถานะที่รับล่าสุด ไม่ใช่การตรวจออนไลน์:\n" + (
-                        "\n".join(f"Slot {job['slot'] + 1} · ผู้ประสาน {job['authority']} · ผู้อ่าน {job['reader']} · "
-                                  f"{phases.get(job['phase'], 'รอตรวจ')} · {_date(job['observed_at'])}" for job in jobs)
-                        or "ยังไม่มีคำขออ่านร่วม"))
-                message = (f"สมาชิกในรายการ {total} คอม" if total else
-                           "รุ่นนี้ยังไม่เปิดการเชื่อมสมาชิกอัตโนมัติ · เก็บไว้เวอร์ชันถัดไป · ไม่ได้หมายความว่าไม่มีคอมอื่นในเครือข่าย")
+                    phases = {"reading": tr("กำลังอ่าน", "Reading"), "complete": tr("บันทึกผลแล้ว", "Saved"),
+                              "failed": tr("อ่านไม่สำเร็จ", "Read failed"), "expired": tr("งานหมดเวลา", "Expired"),
+                              "probe_complete": tr("จบ SNMP · ไม่มีผล Web ใหม่", "SNMP finished; no new Web reading")}
+                    self.shared_read.setText(tr("ผู้อ่านร่วม · สถานะที่รับล่าสุด ไม่ใช่การตรวจออนไลน์:\n", "Shared reader: last received status, not an online check:\n") + (
+                        "\n".join(tr("Slot {slot} · ผู้ประสาน {authority} · ผู้อ่าน {reader} · {phase} · {at}",
+                                      "Slot {slot} · Coordinator {authority} · Reader {reader} · {phase} · {at}").format(
+                            slot=job['slot']+1, authority=job['authority'], reader=job['reader'],
+                            phase=phases.get(job['phase'], tr("รอตรวจ", "Needs review")), at=_date(job['observed_at'])) for job in jobs)
+                        or tr("ยังไม่มีคำขออ่านร่วม", "No shared read requests")))
+                    self.shared_read.setProperty("i18n_data", True)  # Names inside the rendered status are data.
+                message = (tr("สมาชิกในรายการ {total} คอม", "{total} listed computers").format(total=total) if total else
+                           tr("รุ่นนี้ยังไม่เปิดการเชื่อมสมาชิกอัตโนมัติ · เก็บไว้เวอร์ชันถัดไป · ไม่ได้หมายความว่าไม่มีคอมอื่นในเครือข่าย", "Automatic membership is deferred to the next version. This does not mean there are no other computers on the network."))
                 if total > 100:
-                    message += f" · หน้าที่ {self._page + 1}"
-                message += f"\nการตั้งค่ารอตรวจ {data['settings_reviews']} รายการ"
+                    message += tr(" · หน้าที่ {page}", " · Page {page}").format(page=self._page + 1)
+                message += tr("\nการตั้งค่ารอตรวจ {count} รายการ", "\nSettings awaiting review: {count}").format(count=data['settings_reviews'])
                 if data["slot_reviews"]:
-                    message += " · ฐานมิเตอร์รอตรวจ: " + ", ".join(f"Slot {slot}" for slot in data["slot_reviews"])
+                    message += tr(" · ฐานมิเตอร์รอตรวจ: ", " · Baselines awaiting review: ") + ", ".join(f"Slot {slot}" for slot in data["slot_reviews"])
                 self.summary.setText(message)
                 self.table.setRowCount(len(rows))
                 self.table.setFixedHeight(min(265, self.table.horizontalHeader().sizeHint().height()
                     + 42 * len(rows) + 2 * self.table.frameWidth() + 4))
                 self.table.setVisible(bool(rows))
-                states = {"waiting": "รอเริ่ม", "receiving": "กำลังรับ", "complete": "รับครบตามรอบ", "pending": "รอเชื่อมต่อ/ตรวจสอบ", "cancelled": "หยุดแล้ว"}
-                errors = {"unauthorized": "สิทธิ์สมาชิกเปลี่ยน", "timeout": "เชื่อมต่อหมดเวลา", "invalid_data": "ข้อมูลต้องตรวจสอบ", "transport": "รับข้อมูลไม่สำเร็จ"}
+                states = {"waiting": tr("รอเริ่ม", "Waiting"), "receiving": tr("กำลังรับ", "Receiving"),
+                          "complete": tr("รับครบตามรอบ", "Round complete"), "pending": tr("รอเชื่อมต่อ/ตรวจสอบ", "Awaiting connection/review"), "cancelled": tr("หยุดแล้ว", "Stopped")}
+                errors = {"unauthorized": tr("สิทธิ์สมาชิกเปลี่ยน", "Membership changed"), "timeout": tr("เชื่อมต่อหมดเวลา", "Connection timed out"),
+                          "invalid_data": tr("ข้อมูลต้องตรวจสอบ", "Data needs review"), "transport": tr("รับข้อมูลไม่สำเร็จ", "Unable to receive data")}
                 for index, row in enumerate(rows):
                     member = row["member"]
                     queue = data["queues"][member]
-                    values = [member, states.get(row["status"], "รอตรวจสอบ"), _date(row["last_success"]),
-                              str(queue["web_pending"]), "รอยืนยันรับ" if queue["settings_pending"] else "ไม่มีค่ารอส่ง",
+                    values = [member, states.get(row["status"], tr("รอตรวจสอบ", "Needs review")), _date(row["last_success"]),
+                              str(queue["web_pending"]), tr("รอยืนยันรับ", "Awaiting receipt") if queue["settings_pending"] else tr("ไม่มีค่ารอส่ง", "No pending settings"),
                               str(queue['amendments_pending'])]
                     for column, value in enumerate(values):
                         item = QTableWidgetItem(value)
                         item.setToolTip(errors.get(row["error"], "") if column == 1 else value)
                         self.table.setItem(index, column, item)
+        apply_language(self)
         if self._again:
             self._again = False
             self.schedule_refresh()

@@ -1,4 +1,6 @@
 """Review a held or issued day's manual monetary correction."""
+from ui.review_components import field_label, technical_details, hold_reason_text, display_date
+
 from decimal import Decimal
 import json
 import socket
@@ -27,13 +29,16 @@ class BillingManualReviewDialog(QDialog):
         if self.preview:
             p = self.preview
             for label, value in ((tr('เครื่องพิมพ์', 'Printer'), f"Slot {p['slot']+1} · {p['name']} · {p['serial']}"),
-                                 (tr('วันที่ / รอบบิล', 'Day / period'), f"{p['day']} · {' – '.join(p['period'])}"),
+                                 (tr('วันที่ / รอบบิล', 'Day / period'), f"{display_date(p['day'])} · {' – '.join(display_date(day) for day in p['period'])}"),
                                  (tr('ยอดเดิม', 'Previous amount'), f"฿{p['gross']/100:,.2f} / ฿{p['net']/100:,.2f}"),
-                                 (tr('เหตุผลที่พักยอด', 'Hold reason'), p['hold_reason'] or '—')):
-                form.addRow(label, plain(value))
+                                 (tr('เหตุผลที่พักยอด', 'Hold reason'), hold_reason_text(p['hold_reason']))):
+                value_label = plain(value)
+                value_label.setProperty("i18n_data", True)
+                form.addRow(label, value_label)
         self.gross, self.net = QDoubleSpinBox(), QDoubleSpinBox()
         for field in (self.gross, self.net):
             field.setDecimals(2)
+            field.setGroupSeparatorShown(True)
             field.setRange(0, 1_000_000_000)
             field.setPrefix('฿ ')
         if self.preview:
@@ -43,10 +48,7 @@ class BillingManualReviewDialog(QDialog):
         form.addRow(tr('ยอดใหม่สุทธิ', 'New net amount'), self.net)
         layout.addLayout(form)
         if self.preview:
-            proof = QPlainTextEdit(json.dumps({'delta': self.preview['delta'], 'evidence': self.preview['proof']}, ensure_ascii=False, indent=2))
-            proof.setReadOnly(True)
-            proof.setMaximumHeight(140)
-            layout.addWidget(proof)
+            layout.addWidget(technical_details(json.dumps({'delta': self.preview['delta'], 'evidence': self.preview['proof']}, ensure_ascii=False, indent=2)))
         layout.addWidget(plain(tr(
             'ยอดนี้เป็นจำนวนเงินที่ผู้ตรวจกรอก ไม่ได้ยืนยันว่ามิเตอร์เดิมถูกต้อง ต้นฉบับและคำเตือนมิเตอร์ยังคงอยู่ '
             'ฉบับแก้ไขจะเข้าคิวส่งให้สมาชิกที่ยืนยันสิทธิ์แล้ว หากบัญชีปลายทางไม่ตรงจะรอตรวจ',
@@ -55,6 +57,7 @@ class BillingManualReviewDialog(QDialog):
         self.reason = QLineEdit()
         self.reason.setMaxLength(300)
         self.reason.setPlaceholderText(tr('เหตุผลและหลักฐานที่ใช้ตรวจยอด', 'Reason and evidence for the amount'))
+        field_label(layout, self.reason)
         layout.addWidget(self.reason)
         self.reviewed = QCheckBox(tr('ตรวจยอดแล้ว และรับทราบว่ามีผลกับบัญชีร่วม', 'I reviewed these amounts and their effect on shared accounting'))
         layout.addWidget(self.reviewed)

@@ -1,0 +1,65 @@
+{
+  "plain": {
+    "enabled_disabled_identical": false,
+    "normal_focused_identical": false,
+    "has_focus": true,
+    "font_pt": 12.0,
+    "font_px": -1
+  },
+  "primary": {
+    "enabled_disabled_identical": false,
+    "normal_focused_identical": false,
+    "has_focus": true,
+    "font_pt": 12.0,
+    "font_px": -1
+  },
+  "outline": {
+    "enabled_disabled_identical": false,
+    "normal_focused_identical": false,
+    "has_focus": true,
+    "font_pt": 12.0,
+    "font_px": -1
+  },
+  "danger": {
+    "enabled_disabled_identical": false,
+    "normal_focused_identical": false,
+    "has_focus": true,
+    "font_pt": 12.0,
+    "font_px": -1
+  },
+  "success": {
+    "enabled_disabled_identical": false,
+    "normal_focused_identical": false,
+    "has_focus": true,
+    "font_pt": 12.0,
+    "font_px": -1
+  },
+  "warning": {
+    "enabled_disabled_identical": false,
+    "normal_focused_identical": false,
+    "has_focus": true,
+    "font_pt": 12.0,
+    "font_px": -1
+  },
+  "nav": {
+    "enabled_disabled_identical": false,
+    "normal_focused_identical": false,
+    "has_focus": true,
+    "font_pt": 13.0,
+    "font_px": -1
+  },
+  "pinned_empty_save": {
+    "rows": 1,
+    "before": "[\"counter.total.total\"]",
+    "after": "[\"counter.total.total\"]"
+  },
+  "translation_examples": {
+    "ช่วงที่แสดงอยู่": "Displayed period",
+    "ช่วงที่เลือก 31 วัน": "Selected period 31 days",
+    "เปอร์เซ็นต์แสดงความคืบหน้าตามขั้นตอน": "Percentage indicates progress through the export stages"
+  },
+  "table_data_translation": {
+    "before": "บริษัท แสดงผล จำกัด",
+    "after": "บริษัท แสดงผล จำกัด"
+  }
+}

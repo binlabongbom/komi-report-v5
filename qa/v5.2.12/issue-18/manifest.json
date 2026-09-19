@@ -1,0 +1,2131 @@
+{
+  "source_base": "dfc67e4 + issue-18 working changes",
+  "synthetic": true,
+  "platform": "Windows Qt offscreen with native fonts; not installed Windows acceptance",
+  "capture_count": 265,
+  "note": "Capture count includes repeated views/states/sizes, not independent screens. App source paths in the same commit.",
+  "runs": [
+    {
+      "run": "pages-1440x900-th",
+      "language": "th",
+      "requested_size": [
+        1440,
+        900
+      ],
+      "scale_factor": "1",
+      "captures": 40,
+      "sizes": [
+        {
+          "screen": "overview",
+          "actual_size": [
+            1440,
+            900
+          ]
+        },
+        {
+          "screen": "devices",
+          "actual_size": [
+            1440,
+            900
+          ]
+        },
+        {
+          "screen": "reports",
+          "actual_size": [
+            1440,
+            900
+          ]
+        },
+        {
+          "screen": "reports-tab-0",
+          "actual_size": [
+            1440,
+            900
+          ]
+        },
+        {
+          "screen": "reports-tab-0-bottom-0",
+          "actual_size": [
+            1440,
+            900
+          ]
+        },
+        {
+          "screen": "reports-tab-1",
+          "actual_size": [
+            1440,
+            900
+          ]
+        },
+        {
+          "screen": "reports-tab-1-bottom-1",
+          "actual_size": [
+            1440,
+            900
+          ]
+        },
+        {
+          "screen": "reports-tab-2",
+          "actual_size": [
+            1440,
+            900
+          ]
+        },
+        {
+          "screen": "reports-tab-2-bottom-2",
+          "actual_size": [
+            1440,
+            900
+          ]
+        },
+        {
+          "screen": "reports-tab-3",
+          "actual_size": [
+            1440,
+            900
+          ]
+        },
+        {
+          "screen": "reports-tab-3-tab-0",
+          "actual_size": [
+            1440,
+            900
+          ]
+        },
+        {
+          "screen": "reports-tab-3-tab-1",
+          "actual_size": [
+            1440,
+            900
+          ]
+        },
+        {
+          "screen": "reports-tab-4",
+          "actual_size": [
+            1440,
+            900
+          ]
+        },
+        {
+          "screen": "reports-tab-4-tab-0",
+          "actual_size": [
+            1440,
+            900
+          ]
+        },
+        {
+          "screen": "reports-tab-4-tab-1",
+          "actual_size": [
+            1440,
+            900
+          ]
+        },
+        {
+          "screen": "reports-tab-4-tab-2",
+          "actual_size": [
+            1440,
+            900
+          ]
+        },
+        {
+          "screen": "settings",
+          "actual_size": [
+            1440,
+            900
+          ]
+        },
+        {
+          "screen": "settings-tab-0",
+          "actual_size": [
+            1440,
+            900
+          ]
+        },
+        {
+          "screen": "settings-tab-1",
+          "actual_size": [
+            1440,
+            900
+          ]
+        },
+        {
+          "screen": "settings-tab-2",
+          "actual_size": [
+            1440,
+            900
+          ]
+        },
+        {
+          "screen": "settings-tab-2-tab-0",
+          "actual_size": [
+            1440,
+            900
+          ]
+        },
+        {
+          "screen": "settings-tab-2-tab-1",
+          "actual_size": [
+            1440,
+            900
+          ]
+        },
+        {
+          "screen": "settings-tab-2-tab-2",
+          "actual_size": [
+            1440,
+            900
+          ]
+        },
+        {
+          "screen": "settings-tab-2-tab-3",
+          "actual_size": [
+            1440,
+            900
+          ]
+        },
+        {
+          "screen": "settings-tab-3",
+          "actual_size": [
+            1440,
+            900
+          ]
+        },
+        {
+          "screen": "settings-tab-3-bottom-6",
+          "actual_size": [
+            1440,
+            900
+          ]
+        },
+        {
+          "screen": "billing-audit",
+          "actual_size": [
+            1440,
+            900
+          ]
+        },
+        {
+          "screen": "settings-schedule-expanded",
+          "actual_size": [
+            1440,
+            900
+          ]
+        },
+        {
+          "screen": "settings-schedule-expanded-bottom-6",
+          "actual_size": [
+            1440,
+            900
+          ]
+        },
+        {
+          "screen": "settings-network",
+          "actual_size": [
+            1440,
+            900
+          ]
+        },
+        {
+          "screen": "settings-network-port",
+          "actual_size": [
+            1440,
+            900
+          ]
+        },
+        {
+          "screen": "settings-network-bottom",
+          "actual_size": [
+            1440,
+            900
+          ]
+        },
+        {
+          "screen": "registration-notice",
+          "actual_size": [
+            680,
+            520
+          ]
+        },
+        {
+          "screen": "manual",
+          "actual_size": [
+            1440,
+            900
+          ]
+        },
+        {
+          "screen": "manual-bottom-0",
+          "actual_size": [
+            1440,
+            900
+          ]
+        },
+        {
+          "screen": "manual-section-0",
+          "actual_size": [
+            1440,
+            900
+          ]
+        },
+        {
+          "screen": "manual-section-1",
+          "actual_size": [
+            1440,
+            900
+          ]
+        },
+        {
+          "screen": "manual-section-2",
+          "actual_size": [
+            1440,
+            900
+          ]
+        },
+        {
+          "screen": "manual-section-3",
+          "actual_size": [
+            1440,
+            900
+          ]
+        },
+        {
+          "screen": "manual-section-4",
+          "actual_size": [
+            1440,
+            900
+          ]
+        }
+      ],
+      "errors": [],
+      "network_attempts": []
+    },
+    {
+      "run": "pages-1440x900-en",
+      "language": "en",
+      "requested_size": [
+        1440,
+        900
+      ],
+      "scale_factor": "1",
+      "captures": 40,
+      "sizes": [
+        {
+          "screen": "overview",
+          "actual_size": [
+            1440,
+            900
+          ]
+        },
+        {
+          "screen": "devices",
+          "actual_size": [
+            1440,
+            900
+          ]
+        },
+        {
+          "screen": "reports",
+          "actual_size": [
+            1440,
+            900
+          ]
+        },
+        {
+          "screen": "reports-tab-0",
+          "actual_size": [
+            1440,
+            900
+          ]
+        },
+        {
+          "screen": "reports-tab-0-bottom-0",
+          "actual_size": [
+            1440,
+            900
+          ]
+        },
+        {
+          "screen": "reports-tab-1",
+          "actual_size": [
+            1440,
+            900
+          ]
+        },
+        {
+          "screen": "reports-tab-1-bottom-1",
+          "actual_size": [
+            1440,
+            900
+          ]
+        },
+        {
+          "screen": "reports-tab-2",
+          "actual_size": [
+            1440,
+            900
+          ]
+        },
+        {
+          "screen": "reports-tab-2-bottom-2",
+          "actual_size": [
+            1440,
+            900
+          ]
+        },
+        {
+          "screen": "reports-tab-3",
+          "actual_size": [
+            1440,
+            900
+          ]
+        },
+        {
+          "screen": "reports-tab-3-tab-0",
+          "actual_size": [
+            1440,
+            900
+          ]
+        },
+        {
+          "screen": "reports-tab-3-tab-1",
+          "actual_size": [
+            1440,
+            900
+          ]
+        },
+        {
+          "screen": "reports-tab-4",
+          "actual_size": [
+            1440,
+            900
+          ]
+        },
+        {
+          "screen": "reports-tab-4-tab-0",
+          "actual_size": [
+            1440,
+            900
+          ]
+        },
+        {
+          "screen": "reports-tab-4-tab-1",
+          "actual_size": [
+            1440,
+            900
+          ]
+        },
+        {
+          "screen": "reports-tab-4-tab-2",
+          "actual_size": [
+            1440,
+            900
+          ]
+        },
+        {
+          "screen": "settings",
+          "actual_size": [
+            1440,
+            900
+          ]
+        },
+        {
+          "screen": "settings-tab-0",
+          "actual_size": [
+            1440,
+            900
+          ]
+        },
+        {
+          "screen": "settings-tab-1",
+          "actual_size": [
+            1440,
+            900
+          ]
+        },
+        {
+          "screen": "settings-tab-2",
+          "actual_size": [
+            1440,
+            900
+          ]
+        },
+        {
+          "screen": "settings-tab-2-tab-0",
+          "actual_size": [
+            1440,
+            900
+          ]
+        },
+        {
+          "screen": "settings-tab-2-tab-1",
+          "actual_size": [
+            1440,
+            900
+          ]
+        },
+        {
+          "screen": "settings-tab-2-tab-2",
+          "actual_size": [
+            1440,
+            900
+          ]
+        },
+        {
+          "screen": "settings-tab-2-tab-3",
+          "actual_size": [
+            1440,
+            900
+          ]
+        },
+        {
+          "screen": "settings-tab-3",
+          "actual_size": [
+            1440,
+            900
+          ]
+        },
+        {
+          "screen": "settings-tab-3-bottom-6",
+          "actual_size": [
+            1440,
+            900
+          ]
+        },
+        {
+          "screen": "billing-audit",
+          "actual_size": [
+            1440,
+            900
+          ]
+        },
+        {
+          "screen": "settings-schedule-expanded",
+          "actual_size": [
+            1440,
+            900
+          ]
+        },
+        {
+          "screen": "settings-schedule-expanded-bottom-6",
+          "actual_size": [
+            1440,
+            900
+          ]
+        },
+        {
+          "screen": "settings-network",
+          "actual_size": [
+            1440,
+            900
+          ]
+        },
+        {
+          "screen": "settings-network-port",
+          "actual_size": [
+            1440,
+            900
+          ]
+        },
+        {
+          "screen": "settings-network-bottom",
+          "actual_size": [
+            1440,
+            900
+          ]
+        },
+        {
+          "screen": "registration-notice",
+          "actual_size": [
+            680,
+            520
+          ]
+        },
+        {
+          "screen": "manual",
+          "actual_size": [
+            1440,
+            900
+          ]
+        },
+        {
+          "screen": "manual-bottom-0",
+          "actual_size": [
+            1440,
+            900
+          ]
+        },
+        {
+          "screen": "manual-section-0",
+          "actual_size": [
+            1440,
+            900
+          ]
+        },
+        {
+          "screen": "manual-section-1",
+          "actual_size": [
+            1440,
+            900
+          ]
+        },
+        {
+          "screen": "manual-section-2",
+          "actual_size": [
+            1440,
+            900
+          ]
+        },
+        {
+          "screen": "manual-section-3",
+          "actual_size": [
+            1440,
+            900
+          ]
+        },
+        {
+          "screen": "manual-section-4",
+          "actual_size": [
+            1440,
+            900
+          ]
+        }
+      ],
+      "errors": [],
+      "network_attempts": []
+    },
+    {
+      "run": "pages-1024x640-th-settings",
+      "language": "th",
+      "requested_size": [
+        1024,
+        640
+      ],
+      "scale_factor": "1",
+      "captures": 20,
+      "sizes": [
+        {
+          "screen": "settings",
+          "actual_size": [
+            1024,
+            640
+          ]
+        },
+        {
+          "screen": "settings-tab-0",
+          "actual_size": [
+            1024,
+            640
+          ]
+        },
+        {
+          "screen": "settings-tab-0-bottom-6",
+          "actual_size": [
+            1024,
+            640
+          ]
+        },
+        {
+          "screen": "settings-tab-1",
+          "actual_size": [
+            1024,
+            640
+          ]
+        },
+        {
+          "screen": "settings-tab-1-bottom-6",
+          "actual_size": [
+            1024,
+            640
+          ]
+        },
+        {
+          "screen": "settings-tab-2",
+          "actual_size": [
+            1024,
+            640
+          ]
+        },
+        {
+          "screen": "settings-tab-2-tab-0",
+          "actual_size": [
+            1024,
+            640
+          ]
+        },
+        {
+          "screen": "settings-tab-2-tab-0-bottom-6",
+          "actual_size": [
+            1024,
+            640
+          ]
+        },
+        {
+          "screen": "settings-tab-2-tab-1",
+          "actual_size": [
+            1024,
+            640
+          ]
+        },
+        {
+          "screen": "settings-tab-2-tab-2",
+          "actual_size": [
+            1024,
+            640
+          ]
+        },
+        {
+          "screen": "settings-tab-2-tab-3",
+          "actual_size": [
+            1024,
+            640
+          ]
+        },
+        {
+          "screen": "settings-tab-3",
+          "actual_size": [
+            1024,
+            640
+          ]
+        },
+        {
+          "screen": "settings-tab-3-bottom-6",
+          "actual_size": [
+            1024,
+            640
+          ]
+        },
+        {
+          "screen": "billing-audit",
+          "actual_size": [
+            1024,
+            640
+          ]
+        },
+        {
+          "screen": "settings-schedule-expanded",
+          "actual_size": [
+            1024,
+            640
+          ]
+        },
+        {
+          "screen": "settings-schedule-expanded-bottom-6",
+          "actual_size": [
+            1024,
+            640
+          ]
+        },
+        {
+          "screen": "settings-network",
+          "actual_size": [
+            1024,
+            640
+          ]
+        },
+        {
+          "screen": "settings-network-port",
+          "actual_size": [
+            1024,
+            640
+          ]
+        },
+        {
+          "screen": "settings-network-bottom",
+          "actual_size": [
+            1024,
+            640
+          ]
+        },
+        {
+          "screen": "registration-notice",
+          "actual_size": [
+            680,
+            520
+          ]
+        }
+      ],
+      "errors": [],
+      "network_attempts": []
+    },
+    {
+      "run": "pages-900x600-en",
+      "language": "en",
+      "requested_size": [
+        900,
+        600
+      ],
+      "scale_factor": "1.5",
+      "captures": 45,
+      "sizes": [
+        {
+          "screen": "overview",
+          "actual_size": [
+            900,
+            600
+          ]
+        },
+        {
+          "screen": "devices",
+          "actual_size": [
+            900,
+            600
+          ]
+        },
+        {
+          "screen": "reports",
+          "actual_size": [
+            900,
+            600
+          ]
+        },
+        {
+          "screen": "reports-tab-0",
+          "actual_size": [
+            900,
+            600
+          ]
+        },
+        {
+          "screen": "reports-tab-0-bottom-0",
+          "actual_size": [
+            900,
+            600
+          ]
+        },
+        {
+          "screen": "reports-tab-1",
+          "actual_size": [
+            900,
+            600
+          ]
+        },
+        {
+          "screen": "reports-tab-1-bottom-1",
+          "actual_size": [
+            900,
+            600
+          ]
+        },
+        {
+          "screen": "reports-tab-2",
+          "actual_size": [
+            900,
+            600
+          ]
+        },
+        {
+          "screen": "reports-tab-2-bottom-2",
+          "actual_size": [
+            900,
+            600
+          ]
+        },
+        {
+          "screen": "reports-tab-3",
+          "actual_size": [
+            900,
+            600
+          ]
+        },
+        {
+          "screen": "reports-tab-3-tab-0",
+          "actual_size": [
+            900,
+            600
+          ]
+        },
+        {
+          "screen": "reports-tab-3-tab-0-bottom-3",
+          "actual_size": [
+            900,
+            600
+          ]
+        },
+        {
+          "screen": "reports-tab-3-tab-1",
+          "actual_size": [
+            900,
+            600
+          ]
+        },
+        {
+          "screen": "reports-tab-3-tab-1-bottom-3",
+          "actual_size": [
+            900,
+            600
+          ]
+        },
+        {
+          "screen": "reports-tab-4",
+          "actual_size": [
+            900,
+            600
+          ]
+        },
+        {
+          "screen": "reports-tab-4-tab-0",
+          "actual_size": [
+            900,
+            600
+          ]
+        },
+        {
+          "screen": "reports-tab-4-tab-1",
+          "actual_size": [
+            900,
+            600
+          ]
+        },
+        {
+          "screen": "reports-tab-4-tab-2",
+          "actual_size": [
+            900,
+            600
+          ]
+        },
+        {
+          "screen": "settings",
+          "actual_size": [
+            900,
+            600
+          ]
+        },
+        {
+          "screen": "settings-tab-0",
+          "actual_size": [
+            900,
+            600
+          ]
+        },
+        {
+          "screen": "settings-tab-0-bottom-6",
+          "actual_size": [
+            900,
+            600
+          ]
+        },
+        {
+          "screen": "settings-tab-1",
+          "actual_size": [
+            900,
+            600
+          ]
+        },
+        {
+          "screen": "settings-tab-1-bottom-6",
+          "actual_size": [
+            900,
+            600
+          ]
+        },
+        {
+          "screen": "settings-tab-2",
+          "actual_size": [
+            900,
+            600
+          ]
+        },
+        {
+          "screen": "settings-tab-2-tab-0",
+          "actual_size": [
+            900,
+            600
+          ]
+        },
+        {
+          "screen": "settings-tab-2-tab-0-bottom-6",
+          "actual_size": [
+            900,
+            600
+          ]
+        },
+        {
+          "screen": "settings-tab-2-tab-1",
+          "actual_size": [
+            900,
+            600
+          ]
+        },
+        {
+          "screen": "settings-tab-2-tab-2",
+          "actual_size": [
+            900,
+            600
+          ]
+        },
+        {
+          "screen": "settings-tab-2-tab-3",
+          "actual_size": [
+            900,
+            600
+          ]
+        },
+        {
+          "screen": "settings-tab-3",
+          "actual_size": [
+            900,
+            600
+          ]
+        },
+        {
+          "screen": "settings-tab-3-bottom-6",
+          "actual_size": [
+            900,
+            600
+          ]
+        },
+        {
+          "screen": "billing-audit",
+          "actual_size": [
+            900,
+            600
+          ]
+        },
+        {
+          "screen": "settings-schedule-expanded",
+          "actual_size": [
+            900,
+            600
+          ]
+        },
+        {
+          "screen": "settings-schedule-expanded-bottom-6",
+          "actual_size": [
+            900,
+            600
+          ]
+        },
+        {
+          "screen": "settings-network",
+          "actual_size": [
+            900,
+            600
+          ]
+        },
+        {
+          "screen": "settings-network-port",
+          "actual_size": [
+            900,
+            600
+          ]
+        },
+        {
+          "screen": "settings-network-bottom",
+          "actual_size": [
+            900,
+            600
+          ]
+        },
+        {
+          "screen": "registration-notice",
+          "actual_size": [
+            680,
+            520
+          ]
+        },
+        {
+          "screen": "manual",
+          "actual_size": [
+            900,
+            600
+          ]
+        },
+        {
+          "screen": "manual-bottom-0",
+          "actual_size": [
+            900,
+            600
+          ]
+        },
+        {
+          "screen": "manual-section-0",
+          "actual_size": [
+            900,
+            600
+          ]
+        },
+        {
+          "screen": "manual-section-1",
+          "actual_size": [
+            900,
+            600
+          ]
+        },
+        {
+          "screen": "manual-section-2",
+          "actual_size": [
+            900,
+            600
+          ]
+        },
+        {
+          "screen": "manual-section-3",
+          "actual_size": [
+            900,
+            600
+          ]
+        },
+        {
+          "screen": "manual-section-4",
+          "actual_size": [
+            900,
+            600
+          ]
+        }
+      ],
+      "errors": [],
+      "network_attempts": []
+    },
+    {
+      "run": "dialogs-1024x640-th",
+      "language": "th",
+      "requested_size": [
+        1024,
+        640
+      ],
+      "scale_factor": "1",
+      "captures": 38,
+      "sizes": [
+        {
+          "screen": "export-period",
+          "actual_size": [
+            520,
+            377
+          ]
+        },
+        {
+          "screen": "export-period-compact",
+          "actual_size": [
+            520,
+            377
+          ]
+        },
+        {
+          "screen": "export-progress",
+          "actual_size": [
+            460,
+            289
+          ]
+        },
+        {
+          "screen": "export-progress-compact",
+          "actual_size": [
+            460,
+            289
+          ]
+        },
+        {
+          "screen": "web-access",
+          "actual_size": [
+            470,
+            297
+          ]
+        },
+        {
+          "screen": "web-access-compact",
+          "actual_size": [
+            470,
+            297
+          ]
+        },
+        {
+          "screen": "legacy-import",
+          "actual_size": [
+            860,
+            620
+          ]
+        },
+        {
+          "screen": "legacy-import-compact",
+          "actual_size": [
+            860,
+            620
+          ]
+        },
+        {
+          "screen": "all-counters",
+          "actual_size": [
+            760,
+            560
+          ]
+        },
+        {
+          "screen": "all-counters-compact",
+          "actual_size": [
+            760,
+            560
+          ]
+        },
+        {
+          "screen": "pinned-counters",
+          "actual_size": [
+            760,
+            560
+          ]
+        },
+        {
+          "screen": "pinned-counters-compact",
+          "actual_size": [
+            760,
+            560
+          ]
+        },
+        {
+          "screen": "parser-mapping",
+          "actual_size": [
+            1120,
+            700
+          ]
+        },
+        {
+          "screen": "parser-mapping-compact",
+          "actual_size": [
+            1024,
+            640
+          ]
+        },
+        {
+          "screen": "slot-baseline",
+          "actual_size": [
+            1000,
+            680
+          ]
+        },
+        {
+          "screen": "slot-baseline-compact",
+          "actual_size": [
+            1000,
+            640
+          ]
+        },
+        {
+          "screen": "shared-history",
+          "actual_size": [
+            940,
+            640
+          ]
+        },
+        {
+          "screen": "shared-history-compact",
+          "actual_size": [
+            940,
+            640
+          ]
+        },
+        {
+          "screen": "shared-confirmation",
+          "actual_size": [
+            740,
+            300
+          ]
+        },
+        {
+          "screen": "shared-confirmation-compact",
+          "actual_size": [
+            740,
+            300
+          ]
+        },
+        {
+          "screen": "web-evidence",
+          "actual_size": [
+            1050,
+            750
+          ]
+        },
+        {
+          "screen": "web-evidence-compact",
+          "actual_size": [
+            1024,
+            640
+          ]
+        },
+        {
+          "screen": "batch-repricing",
+          "actual_size": [
+            1200,
+            650
+          ]
+        },
+        {
+          "screen": "batch-repricing-compact",
+          "actual_size": [
+            1024,
+            640
+          ]
+        },
+        {
+          "screen": "manual-billing",
+          "actual_size": [
+            560,
+            533
+          ]
+        },
+        {
+          "screen": "manual-billing-compact",
+          "actual_size": [
+            560,
+            533
+          ]
+        },
+        {
+          "screen": "repricing",
+          "actual_size": [
+            500,
+            204
+          ]
+        },
+        {
+          "screen": "repricing-compact",
+          "actual_size": [
+            500,
+            204
+          ]
+        },
+        {
+          "screen": "web-amendment",
+          "actual_size": [
+            1000,
+            620
+          ]
+        },
+        {
+          "screen": "web-amendment-compact",
+          "actual_size": [
+            1000,
+            620
+          ]
+        },
+        {
+          "screen": "detail-amendment",
+          "actual_size": [
+            1000,
+            620
+          ]
+        },
+        {
+          "screen": "detail-amendment-compact",
+          "actual_size": [
+            1000,
+            620
+          ]
+        },
+        {
+          "screen": "counter-review",
+          "actual_size": [
+            480,
+            459
+          ]
+        },
+        {
+          "screen": "counter-review-compact",
+          "actual_size": [
+            480,
+            459
+          ]
+        },
+        {
+          "screen": "archive",
+          "actual_size": [
+            327,
+            219
+          ]
+        },
+        {
+          "screen": "archive-compact",
+          "actual_size": [
+            327,
+            219
+          ]
+        },
+        {
+          "screen": "billing-detail",
+          "actual_size": [
+            860,
+            680
+          ]
+        },
+        {
+          "screen": "billing-detail-compact",
+          "actual_size": [
+            860,
+            640
+          ]
+        }
+      ],
+      "errors": [],
+      "network_attempts": []
+    },
+    {
+      "run": "dialogs-1024x640-en",
+      "language": "en",
+      "requested_size": [
+        1024,
+        640
+      ],
+      "scale_factor": "1",
+      "captures": 38,
+      "sizes": [
+        {
+          "screen": "export-period",
+          "actual_size": [
+            520,
+            377
+          ]
+        },
+        {
+          "screen": "export-period-compact",
+          "actual_size": [
+            520,
+            377
+          ]
+        },
+        {
+          "screen": "export-progress",
+          "actual_size": [
+            460,
+            309
+          ]
+        },
+        {
+          "screen": "export-progress-compact",
+          "actual_size": [
+            460,
+            309
+          ]
+        },
+        {
+          "screen": "web-access",
+          "actual_size": [
+            470,
+            317
+          ]
+        },
+        {
+          "screen": "web-access-compact",
+          "actual_size": [
+            470,
+            317
+          ]
+        },
+        {
+          "screen": "legacy-import",
+          "actual_size": [
+            860,
+            620
+          ]
+        },
+        {
+          "screen": "legacy-import-compact",
+          "actual_size": [
+            860,
+            620
+          ]
+        },
+        {
+          "screen": "all-counters",
+          "actual_size": [
+            760,
+            560
+          ]
+        },
+        {
+          "screen": "all-counters-compact",
+          "actual_size": [
+            760,
+            560
+          ]
+        },
+        {
+          "screen": "pinned-counters",
+          "actual_size": [
+            760,
+            560
+          ]
+        },
+        {
+          "screen": "pinned-counters-compact",
+          "actual_size": [
+            760,
+            560
+          ]
+        },
+        {
+          "screen": "parser-mapping",
+          "actual_size": [
+            1120,
+            700
+          ]
+        },
+        {
+          "screen": "parser-mapping-compact",
+          "actual_size": [
+            1024,
+            640
+          ]
+        },
+        {
+          "screen": "slot-baseline",
+          "actual_size": [
+            1000,
+            680
+          ]
+        },
+        {
+          "screen": "slot-baseline-compact",
+          "actual_size": [
+            1000,
+            640
+          ]
+        },
+        {
+          "screen": "shared-history",
+          "actual_size": [
+            940,
+            640
+          ]
+        },
+        {
+          "screen": "shared-history-compact",
+          "actual_size": [
+            940,
+            640
+          ]
+        },
+        {
+          "screen": "shared-confirmation",
+          "actual_size": [
+            740,
+            300
+          ]
+        },
+        {
+          "screen": "shared-confirmation-compact",
+          "actual_size": [
+            740,
+            300
+          ]
+        },
+        {
+          "screen": "web-evidence",
+          "actual_size": [
+            1050,
+            750
+          ]
+        },
+        {
+          "screen": "web-evidence-compact",
+          "actual_size": [
+            1024,
+            640
+          ]
+        },
+        {
+          "screen": "batch-repricing",
+          "actual_size": [
+            1200,
+            650
+          ]
+        },
+        {
+          "screen": "batch-repricing-compact",
+          "actual_size": [
+            1024,
+            640
+          ]
+        },
+        {
+          "screen": "manual-billing",
+          "actual_size": [
+            560,
+            488
+          ]
+        },
+        {
+          "screen": "manual-billing-compact",
+          "actual_size": [
+            560,
+            488
+          ]
+        },
+        {
+          "screen": "repricing",
+          "actual_size": [
+            500,
+            224
+          ]
+        },
+        {
+          "screen": "repricing-compact",
+          "actual_size": [
+            500,
+            224
+          ]
+        },
+        {
+          "screen": "web-amendment",
+          "actual_size": [
+            1000,
+            620
+          ]
+        },
+        {
+          "screen": "web-amendment-compact",
+          "actual_size": [
+            1000,
+            620
+          ]
+        },
+        {
+          "screen": "detail-amendment",
+          "actual_size": [
+            1000,
+            620
+          ]
+        },
+        {
+          "screen": "detail-amendment-compact",
+          "actual_size": [
+            1000,
+            620
+          ]
+        },
+        {
+          "screen": "counter-review",
+          "actual_size": [
+            480,
+            459
+          ]
+        },
+        {
+          "screen": "counter-review-compact",
+          "actual_size": [
+            480,
+            459
+          ]
+        },
+        {
+          "screen": "archive",
+          "actual_size": [
+            418,
+            219
+          ]
+        },
+        {
+          "screen": "archive-compact",
+          "actual_size": [
+            418,
+            219
+          ]
+        },
+        {
+          "screen": "billing-detail",
+          "actual_size": [
+            860,
+            680
+          ]
+        },
+        {
+          "screen": "billing-detail-compact",
+          "actual_size": [
+            860,
+            640
+          ]
+        }
+      ],
+      "errors": [],
+      "network_attempts": []
+    },
+    {
+      "run": "wizard-1100x760-th",
+      "language": "th",
+      "requested_size": [
+        1100,
+        760
+      ],
+      "scale_factor": "1",
+      "captures": 12,
+      "sizes": [
+        {
+          "screen": "wizard-company",
+          "actual_size": [
+            1100,
+            760
+          ]
+        },
+        {
+          "screen": "wizard-secondary-manual",
+          "actual_size": [
+            1100,
+            760
+          ]
+        },
+        {
+          "screen": "wizard-secondary-not-found",
+          "actual_size": [
+            1100,
+            760
+          ]
+        },
+        {
+          "screen": "wizard-devices",
+          "actual_size": [
+            1100,
+            760
+          ]
+        },
+        {
+          "screen": "wizard-credentials",
+          "actual_size": [
+            620,
+            186
+          ]
+        },
+        {
+          "screen": "wizard-advanced-scan",
+          "actual_size": [
+            268,
+            186
+          ]
+        },
+        {
+          "screen": "wizard-manual-setup",
+          "actual_size": [
+            650,
+            289
+          ]
+        },
+        {
+          "screen": "wizard-printer-names",
+          "actual_size": [
+            720,
+            317
+          ]
+        },
+        {
+          "screen": "wizard-privacy",
+          "actual_size": [
+            680,
+            520
+          ]
+        },
+        {
+          "screen": "wizard-prices",
+          "actual_size": [
+            1100,
+            760
+          ]
+        },
+        {
+          "screen": "wizard-prices-bottom-2",
+          "actual_size": [
+            1100,
+            760
+          ]
+        },
+        {
+          "screen": "wizard-review",
+          "actual_size": [
+            1100,
+            760
+          ]
+        }
+      ],
+      "errors": [],
+      "network_attempts": []
+    },
+    {
+      "run": "wizard-1100x760-en",
+      "language": "en",
+      "requested_size": [
+        1100,
+        760
+      ],
+      "scale_factor": "1",
+      "captures": 12,
+      "sizes": [
+        {
+          "screen": "wizard-company",
+          "actual_size": [
+            1100,
+            760
+          ]
+        },
+        {
+          "screen": "wizard-secondary-manual",
+          "actual_size": [
+            1100,
+            760
+          ]
+        },
+        {
+          "screen": "wizard-secondary-not-found",
+          "actual_size": [
+            1100,
+            760
+          ]
+        },
+        {
+          "screen": "wizard-devices",
+          "actual_size": [
+            1100,
+            760
+          ]
+        },
+        {
+          "screen": "wizard-credentials",
+          "actual_size": [
+            843,
+            186
+          ]
+        },
+        {
+          "screen": "wizard-advanced-scan",
+          "actual_size": [
+            280,
+            186
+          ]
+        },
+        {
+          "screen": "wizard-manual-setup",
+          "actual_size": [
+            650,
+            271
+          ]
+        },
+        {
+          "screen": "wizard-printer-names",
+          "actual_size": [
+            720,
+            337
+          ]
+        },
+        {
+          "screen": "wizard-privacy",
+          "actual_size": [
+            680,
+            520
+          ]
+        },
+        {
+          "screen": "wizard-prices",
+          "actual_size": [
+            1100,
+            760
+          ]
+        },
+        {
+          "screen": "wizard-prices-bottom-2",
+          "actual_size": [
+            1100,
+            760
+          ]
+        },
+        {
+          "screen": "wizard-review",
+          "actual_size": [
+            1100,
+            760
+          ]
+        }
+      ],
+      "errors": [],
+      "network_attempts": []
+    },
+    {
+      "run": "controls-100-final",
+      "language": "en",
+      "requested_size": [
+        1024,
+        640
+      ],
+      "scale_factor": "1",
+      "captures": 1,
+      "sizes": [
+        {
+          "screen": "control-roles",
+          "actual_size": [
+            200,
+            377
+          ]
+        }
+      ],
+      "errors": [],
+      "network_attempts": []
+    },
+    {
+      "run": "controls-125-final",
+      "language": "en",
+      "requested_size": [
+        1024,
+        640
+      ],
+      "scale_factor": "1.25",
+      "captures": 1,
+      "sizes": [
+        {
+          "screen": "control-roles",
+          "actual_size": [
+            200,
+            377
+          ]
+        }
+      ],
+      "errors": [],
+      "network_attempts": []
+    },
+    {
+      "run": "controls-150-final",
+      "language": "en",
+      "requested_size": [
+        1024,
+        640
+      ],
+      "scale_factor": "1.5",
+      "captures": 1,
+      "sizes": [
+        {
+          "screen": "control-roles",
+          "actual_size": [
+            200,
+            377
+          ]
+        }
+      ],
+      "errors": [],
+      "network_attempts": []
+    },
+    {
+      "run": "pages-1024x640-th-reports",
+      "language": "th",
+      "requested_size": [
+        1024,
+        640
+      ],
+      "scale_factor": "1",
+      "captures": 17,
+      "sizes": [
+        {
+          "screen": "reports",
+          "actual_size": [
+            1024,
+            640
+          ]
+        },
+        {
+          "screen": "reports-tab-0",
+          "actual_size": [
+            1024,
+            640
+          ]
+        },
+        {
+          "screen": "reports-tab-0-bottom-0",
+          "actual_size": [
+            1024,
+            640
+          ]
+        },
+        {
+          "screen": "reports-tab-1",
+          "actual_size": [
+            1024,
+            640
+          ]
+        },
+        {
+          "screen": "reports-tab-1-bottom-1",
+          "actual_size": [
+            1024,
+            640
+          ]
+        },
+        {
+          "screen": "reports-tab-2",
+          "actual_size": [
+            1024,
+            640
+          ]
+        },
+        {
+          "screen": "reports-tab-2-bottom-2",
+          "actual_size": [
+            1024,
+            640
+          ]
+        },
+        {
+          "screen": "reports-tab-3",
+          "actual_size": [
+            1024,
+            640
+          ]
+        },
+        {
+          "screen": "reports-tab-3-tab-0",
+          "actual_size": [
+            1024,
+            640
+          ]
+        },
+        {
+          "screen": "reports-tab-3-tab-1",
+          "actual_size": [
+            1024,
+            640
+          ]
+        },
+        {
+          "screen": "reports-tab-4",
+          "actual_size": [
+            1024,
+            640
+          ]
+        },
+        {
+          "screen": "reports-tab-4-tab-0",
+          "actual_size": [
+            1024,
+            640
+          ]
+        },
+        {
+          "screen": "reports-tab-4-tab-1",
+          "actual_size": [
+            1024,
+            640
+          ]
+        },
+        {
+          "screen": "reports-tab-4-tab-2",
+          "actual_size": [
+            1024,
+            640
+          ]
+        },
+        {
+          "screen": "reports-loading",
+          "actual_size": [
+            1024,
+            640
+          ]
+        },
+        {
+          "screen": "reports-error",
+          "actual_size": [
+            1024,
+            640
+          ]
+        },
+        {
+          "screen": "reports-empty",
+          "actual_size": [
+            1024,
+            640
+          ]
+        }
+      ],
+      "errors": [],
+      "network_attempts": []
+    }
+  ],
+  "selected_images": [
+    {
+      "file": "reports-th.png",
+      "source": "outputs/ui-ux-audit/pages-1440x900-th/reports.png",
+      "sha256": "62ac3ad3998b39d571d3c02cfa94dbc99907f120557b6fd1b815fc2a08a7a1ae"
+    },
+    {
+      "file": "reports-en.png",
+      "source": "outputs/ui-ux-audit/pages-1440x900-en/reports.png",
+      "sha256": "28a6a5f9ed9e03cb6a1112a67ae5ef0d0f67c0da536d977bcca3e4684363789e"
+    },
+    {
+      "file": "audit-small-th.png",
+      "source": "outputs/ui-ux-audit/pages-1024x640-th-settings/billing-audit.png",
+      "sha256": "03bfe0979f3c1c564a6275b1eca2580daf6a26931c88b3253adcf5856ac3a6d9"
+    },
+    {
+      "file": "audit-small-en-150.png",
+      "source": "outputs/ui-ux-audit/pages-900x600-en/billing-audit.png",
+      "sha256": "8f169c579ef67a49f2cb380166f82e98265ba7147b3e3cc6573cc45d620390f1"
+    },
+    {
+      "file": "settings-en-150.png",
+      "source": "outputs/ui-ux-audit/pages-900x600-en/settings.png",
+      "sha256": "563ab824ed395f1d5e384673fccf83d25ed6735a2261f40c77f80366a61c9fcb"
+    },
+    {
+      "file": "network-en-150.png",
+      "source": "outputs/ui-ux-audit/pages-900x600-en/settings-network-bottom.png",
+      "sha256": "8264df34710dcf1288a798040e9ed26d1492c6024c2d15665e2533d18cb7511b"
+    },
+    {
+      "file": "reports-empty.png",
+      "source": "outputs/ui-ux-audit/pages-1024x640-th-reports/reports-empty.png",
+      "sha256": "8b0e7d98b3eeb235911b137e153c891ad1362d75d168c9ceede75016e2e81fe8"
+    },
+    {
+      "file": "reports-loading.png",
+      "source": "outputs/ui-ux-audit/pages-1024x640-th-reports/reports-loading.png",
+      "sha256": "3f94df9a7647ce65eb53ff0ddab53715911e61b55da4178bf57c3e194a7d6457"
+    },
+    {
+      "file": "reports-error.png",
+      "source": "outputs/ui-ux-audit/pages-1024x640-th-reports/reports-error.png",
+      "sha256": "6d802272f03874f87ad5b1b34be68c0b310a04ce21ac0a90ac50e728cc0b99c0"
+    },
+    {
+      "file": "counter-full-button.png",
+      "source": "outputs/ui-ux-audit/dialogs-1024x640-en/all-counters.png",
+      "sha256": "4f08895a727a72f90bb7d2db878ac5868a057b6f0df39d3ee3c298b752e00d41"
+    },
+    {
+      "file": "shared-confirmation.png",
+      "source": "outputs/ui-ux-audit/dialogs-1024x640-en/shared-confirmation.png",
+      "sha256": "fe75e275ddb92234a39e25595e49bb0e6dfb8defb91b021b8d4add53a448ce4e"
+    },
+    {
+      "file": "billing-detail.png",
+      "source": "outputs/ui-ux-audit/dialogs-1024x640-th/billing-detail.png",
+      "sha256": "41019921f2b5d92a1318dbef2f1c6f01ba6e9a9d0c99fe8ba91eddb2f9570c99"
+    },
+    {
+      "file": "export-progress-en.png",
+      "source": "outputs/ui-ux-audit/dialogs-1024x640-en/export-progress.png",
+      "sha256": "cebb353f0f76603dc78e443b534821557195a152d9fec7f9e740ac6c5e1436d6"
+    },
+    {
+      "file": "wizard-en.png",
+      "source": "outputs/ui-ux-audit/wizard-1100x760-en/wizard-review.png",
+      "sha256": "4b2738f554001d22586a46be0a299053141244db96c457f032244c40a07cb08a"
+    },
+    {
+      "file": "controls-150.png",
+      "source": "outputs/ui-ux-audit/controls-150-final/control-roles.png",
+      "sha256": "d9116a191246e9513912099c89c0bc4fdfa1125aa2dd716728d3cdcea7cf8aee"
+    },
+    {
+      "file": "web-gap-daily.png",
+      "source": "docs/customer-guide/assets-v5.2.12-source/web-gap-daily.png",
+      "sha256": "338309ec45ebb3e9d5a9bbd0d130cb02089a54c67fa8fbdb4538a96837e8e02a"
+    },
+    {
+      "file": "web-gap-remarks.png",
+      "source": "docs/customer-guide/assets-v5.2.12-source/web-gap-remarks.png",
+      "sha256": "e45d87fe6c3d047a67bbaa19d214d58158a993601e3cb58fe39d9205a4d538f3"
+    },
+    {
+      "file": "manual-billing-review.png",
+      "source": "docs/customer-guide/assets-v5.2.12-source/manual-billing-review.png",
+      "sha256": "2db79c29dc014d418a44c37c16d2c3dc4acea6ba5323be953081bf5b1fb0ec34"
+    },
+    {
+      "file": "slot-baseline-preview.png",
+      "source": "docs/customer-guide/assets-v5.2.12-source/slot-baseline-preview.png",
+      "sha256": "5a431f7c965febf1a22d14b498bafa47e40310a3f27f929a5c415326e63b10b2"
+    }
+  ],
+  "guide_pdf_pages": 24,
+  "guide_visual_review": "All pages rendered and reviewed; Thai/English gallery pairs kept together; no image fragments across pages."
+}

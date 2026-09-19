@@ -150,3 +150,23 @@ def test_display_pagination_does_not_limit_members():
     finally:
         panel.close()
         panel._pool.shutdown(wait=True)
+
+
+def test_async_english_status_is_complete_and_member_name_is_preserved():
+    from i18n import set_language
+    set_language("en")
+    panel = NetworkActivityPanel()
+    runtime = Runtime([row("บริษัท แสดงผล จำกัด", "complete")])
+    panel.bind_runtime(runtime)
+    panel.show()
+    try:
+        until(lambda: panel.table.rowCount() == 1)
+        assert panel.table.item(0, 0).text() == "บริษัท แสดงผล จำกัด"
+        assert panel.table.item(0, 1).text() == "Round complete"
+        assert panel.table.item(0, 2).text() == "Not yet"
+        assert "Settings awaiting review:" in panel.summary.text()
+        assert not any("\u0e00" <= c <= "\u0e7f" for c in panel.summary.text() + panel.local_read.text())
+    finally:
+        panel.close()
+        panel._pool.shutdown(wait=True)
+        set_language("th")

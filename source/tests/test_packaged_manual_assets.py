@@ -1,6 +1,17 @@
 from pathlib import Path
 
 
+def test_current_in_app_and_pdf_guide_share_bilingual_screenshots():
+    from ui.manual_screens import manual_screen_path
+    root = Path(__file__).resolve().parents[2] / "docs"
+    guide = (root / "CUSTOMER_GUIDE_V5_2_12_DRAFT.md").read_text(encoding="utf-8")
+    for english in (False, True):
+        for index in range(1, 14):
+            relative = manual_screen_path(index, english=english)
+            assert relative in guide
+            assert (root / relative).is_file()
+
+
 def test_app_spec_packages_every_customer_guide_screenshot():
     source_root = Path(__file__).resolve().parents[1]
     project_root = source_root.parent

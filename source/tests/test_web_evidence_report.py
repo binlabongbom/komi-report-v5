@@ -154,6 +154,9 @@ def test_single_reading_still_shows_pending_epoch_conflict():
     with store._connection(write=True) as conn:
         store._flag_branch(conn, epoch, "competing_epoch_decisions")
     dialog = WebEvidenceDialog(DeviceConfigRepository().list(enabled_only=False), today=date(2026, 9, 19), calendar_timezone=BANGKOK)
+    dialog._ensure_export_controller()
+    dialog.show()
+    QApplication.processEvents()
     dialog.load()
     dialog.future.result(timeout=10)
     dialog.collect()
@@ -162,4 +165,5 @@ def test_single_reading_still_shows_pending_epoch_conflict():
     assert not dialog.projection.intervals
     assert "รอตรวจสอบ" in dialog.epochs.currentText()
     assert "ยืนยันฐาน Slot ขัดกัน" in dialog.status.text()
+    QApplication.processEvents()
     dialog.pool.shutdown(wait=True)

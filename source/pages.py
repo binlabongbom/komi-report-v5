@@ -25,6 +25,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore  import Qt, pyqtSignal, pyqtSlot, QRect, QRectF, QPoint, QSize, QMargins, QUrl, QThread
 from PyQt6.QtGui   import QColor, QBrush, QPainter, QPainterPath, QPen, QDesktopServices, QFont, QPixmap
 
+from ui.chart_lifecycle import replace_chart
 from ui.numeric_inputs import NumericDoubleSpinBox as QDoubleSpinBox, NumericSpinBox as QSpinBox
 from ui.page_tabs import PageTabs as QTabWidget
 
@@ -634,7 +635,7 @@ class PageOverview(QWidget):
 
         if not monthly:
             chart.setTitle("ยังไม่มีข้อมูล")
-            self.view_bar.setChart(chart)
+            replace_chart(self.view_bar, chart)
             return
 
         months = sorted(monthly.keys())[-12:]
@@ -683,7 +684,7 @@ class PageOverview(QWidget):
         series.attachAxis(axis_y)
 
         chart.setAnimationOptions(QChart.AnimationOption.NoAnimation)
-        self.view_bar.setChart(chart)
+        replace_chart(self.view_bar, chart)
 
     # ────────────────────────────────────────────────────────────
     # REFRESH
@@ -830,6 +831,7 @@ class PageOverview(QWidget):
             row_layout.setHorizontalSpacing(14)
             row_layout.setVerticalSpacing(3)
             name = QLabel(display_name)
+            name.setProperty("i18n_data", True)
             name.setFont(fnt(F_LG, True))
             model = QLabel(str(device.get("model") or device.get("host") or ""))
             model.setFont(fnt(F_XS))
@@ -977,6 +979,7 @@ class PageOverviewV2(QWidget):
 
     def _period_combo(self) -> QComboBox:
         combo = QComboBox()
+        combo.setProperty("i18n_items", True)
         combo.setObjectName("overview_period_combo")
         combo.setAccessibleName("ตัวกรองช่วงเวลา")
         for label, key in self.PERIODS:
@@ -1155,7 +1158,7 @@ class PageOverviewV2(QWidget):
         if not monthly:
             chart.setTitle("ยังไม่มีข้อมูล")
             chart.legend().hide()
-            self.view_bar.setChart(chart)
+            replace_chart(self.view_bar, chart)
             return
 
         months = sorted(monthly)
@@ -1219,7 +1222,7 @@ class PageOverviewV2(QWidget):
                 marker.setBrush(QBrush(line.color()))
                 marker.setPen(QPen(line.color(), 1.0))
         chart.setAnimationOptions(QChart.AnimationOption.NoAnimation)
-        self.view_bar.setChart(chart)
+        replace_chart(self.view_bar, chart)
 
     @staticmethod
     def _detail(a3: float, a4: float) -> str:
@@ -1468,6 +1471,7 @@ class PreviewDialog(QDialog):
             pb_icon.setFont(fnt(F_MD))
             pb_icon.setStyleSheet(f"color:{C_TEXT2}; background:transparent; border:none;")
             pb_name = QLabel(self.parser_name)
+            pb_name.setProperty("i18n_data", True)
             pb_name.setFont(fnt(F_LG, True))
             pb_name.setStyleSheet(f"color:{p_color}; background:transparent; border:none;")
             pb_lay.addWidget(pb_icon)
@@ -1509,13 +1513,13 @@ class PreviewDialog(QDialog):
         d = self.parsed
         info_card = mk_preview_card()
         il = QVBoxLayout(info_card); il.setContentsMargins(16,12,16,12); il.setSpacing(8)
-        
+
         # Header: ชื่อ + Mode badge (Account/User)
         header_lay = QHBoxLayout()
         header_lbl = QLabel("ข้อมูลจากไฟล์"); header_lbl.setFont(fnt(F_LG, True))
         header_lay.addWidget(header_lbl)
         header_lay.addStretch()
-        
+
         mode = d.get("mode")
         if mode == "account":
             mode_text = "User Mode"
@@ -1733,7 +1737,7 @@ class PageImport(QWidget):
         f = mk_card(top_color=color)
         f.setAcceptDrops(True)
         f._slot_index = i  # เก็บหมายเลข slot เพื่อใช้ในตัวจัดการ
-        
+
         # เพิ่ม drag & drop handler ให้กับ card
         def dragEnterEvent_handler(event):
             if event.mimeData().hasUrls():
@@ -1744,17 +1748,17 @@ class PageImport(QWidget):
                         event.acceptProposedAction()
                         return
             event.ignore()
-        
+
         def dragMoveEvent_handler(event):
             if event.mimeData().hasUrls():
                 event.acceptProposedAction()
             else:
                 event.ignore()
-        
+
         def dragLeaveEvent_handler(event):
             self._clear_drag_highlight()
             event.ignore()
-        
+
         def dropEvent_handler(event):
             self._clear_drag_highlight()
             if event.mimeData().hasUrls():
@@ -1767,13 +1771,13 @@ class PageImport(QWidget):
                         break
             else:
                 event.ignore()
-        
+
         # Bind the event handlers to the frame
         f.dragEnterEvent = dragEnterEvent_handler
         f.dragMoveEvent = dragMoveEvent_handler
         f.dragLeaveEvent = dragLeaveEvent_handler
         f.dropEvent = dropEvent_handler
-        
+
         f.setMinimumHeight(200)
         lay = QVBoxLayout(f)
         lay.setContentsMargins(16, 14, 16, 14)
@@ -1815,7 +1819,7 @@ class PageImport(QWidget):
                 "mode":mode_l,"name":name_l}
         f._import_button = b_imp
         f._clear_button = b_clr
-        
+
         # สร้าง overlay widget สำหรับ drag & drop hint
         overlay = QLabel("", f)  # parent คือ card frame
         overlay.setStyleSheet(
@@ -1828,7 +1832,7 @@ class PageImport(QWidget):
         overlay.setVisible(False)
         f._overlay = overlay
         f._overlay_text = f"วางไฟล์ที่ {get_cfg(f'machine_name_{i}', SLOT_NAMES[i])}"
-        
+
         self._slot_widgets.append(f)
         return f
 
@@ -1842,7 +1846,7 @@ class PageImport(QWidget):
         if not path:
             return
         self._import_from_path(slot, path)
-    
+
     def _import_from_path(self, slot: int, path: str):
         """ประมวลผลไฟล์นำเข้า (เรียกจาก _import หรือ drag & drop)"""
         try:
@@ -1941,7 +1945,7 @@ class PageImport(QWidget):
     def _set_drag_highlight(self, slot_index: int):
         """Highlight นาง drag destination ด้วย overlay + shade อื่นๆ"""
         self._current_drag_card = slot_index
-        
+
         for i, card_frame in enumerate(self._slot_widgets):
             if i == slot_index:
                 # แสดง overlay widget ในการ์ด destination
@@ -1957,18 +1961,18 @@ class PageImport(QWidget):
                 )
                 if hasattr(card_frame, '_overlay'):
                     card_frame._overlay.setVisible(False)
-    
+
     def _clear_drag_highlight(self):
         """คืนค่าการ์ดเป็นสภาพปกติ"""
         if self._current_drag_card is None:
             return
-        
+
         for i, card_frame in enumerate(self._slot_widgets):
             # รีเซ็ต stylesheet เป็นค่าปกติ
             card_frame.setStyleSheet("QFrame { background: transparent; }")
             if hasattr(card_frame, '_overlay'):
                 card_frame._overlay.setVisible(False)
-        
+
         self._current_drag_card = None
 
     def _on_activity_double_clicked(self, row, col):
@@ -2176,7 +2180,7 @@ class PageHistory(QWidget):
             b.clicked.connect(lambda checked, idx=i: self._select_slot(idx))
             bar.addWidget(b)
             self.slot_btns[i] = b
-        
+
         bar.addStretch()
         self.lbl_info = QLabel("")
         self.lbl_info.setFont(fnt(F_XS)); self.lbl_info.setStyleSheet(f"color:{C_TEXT3};")
@@ -2210,7 +2214,7 @@ class PageHistory(QWidget):
         self.tabs.addTab(self.tab_graph, "📈  กราฟประวัติ")
 
         lay.addWidget(self.tabs, 1)
-    
+
     def _select_slot(self, slot: int):
         """เลือกเครื่องจากปุ่ม (ใช้สำหรับแท็บที่ยังต้องการ)"""
         self._current_slot = slot
@@ -2378,7 +2382,7 @@ class PageHistory(QWidget):
         slot = self._current_slot
         curr, prev = get_last_two(slot)
         mname = get_cfg(f"machine_name_{slot}", SLOT_NAMES[slot])
-        
+
         # อัปเดต button text
         for i in range(3):
             n = get_cfg(f"machine_name_{i}", SLOT_NAMES[i])
@@ -2403,7 +2407,7 @@ class PageHistory(QWidget):
         self.cmb_month_users.blockSignals(True)
         old_month = self.cmb_month_users.currentData() if self.cmb_month_users.count() > 0 else None
         self.cmb_month_users.clear()
-        
+
         # ดึง billing_month ที่มีข้อมูล (Account mode หรือ Summary/Production) จากทั้ง 3 เครื่อง
         months_with_data = set()
         for i in range(3):
@@ -2417,10 +2421,10 @@ class PageHistory(QWidget):
                         continue
                 else:
                     data = data_json
-                
+
                 if not data or not billing_month:
                     continue
-                
+
                 # Check for Account mode with named accounts
                 has_named_account = False
                 if data.get("accounts"):
@@ -2428,24 +2432,24 @@ class PageHistory(QWidget):
                         if acc.get("name"):
                             has_named_account = True
                             break
-                
+
                 # Check for Summary/Production mode with data
                 has_summary_data = data.get("summary") and data["summary"].get("total", 0) > 0
-                
+
                 # Add month if has either named accounts OR summary data
                 if has_named_account or has_summary_data:
                     months_with_data.add(billing_month)
-        
+
         # เรียง months ตามลำดับ ที่ใหม่ก่อน
         months_list = sorted(list(months_with_data), reverse=True)
-        
+
         if not months_list:
             # ถ้าไม่มีข้อมูล เลย ให้แสดงข้อความ
             self.cmb_month_users.addItem("ไม่มีข้อมูล", None)
         else:
             for month in months_list:
                 self.cmb_month_users.addItem(month, month)
-        
+
         self.cmb_month_users.blockSignals(False)
         # เลือก item แรก (ล่าสุด) เสมอ ตาม requirement
         if self.cmb_month_users.count() > 0:
@@ -2914,6 +2918,7 @@ class PageHistory(QWidget):
         # Dropdown สำหรับเลือกเดือน
         tr.addWidget(QLabel("เดือนที่แสดง:", font=fnt(F_LG)))
         self.cmb_month_users = QComboBox()
+        self.cmb_month_users.setProperty("i18n_items", True)
         self.cmb_month_users.setFixedWidth(140)
         self.cmb_month_users.currentIndexChanged.connect(self._on_month_users_changed)
         tr.addWidget(self.cmb_month_users)
@@ -3095,6 +3100,7 @@ class PageHistory(QWidget):
         date_lay.addWidget(QLabel("ช่วงรอบบิล:", font=fnt(F_LG)))
 
         self.cmb_date_from = QComboBox()
+        self.cmb_date_from.setProperty("i18n_items", True)
         self.cmb_date_from.setMinimumWidth(130)
         self.cmb_date_from.setFont(fnt(F_MD))
         self.cmb_date_from.currentTextChanged.connect(self._on_date_from_changed)
@@ -3103,6 +3109,7 @@ class PageHistory(QWidget):
         date_lay.addWidget(QLabel("ถึง", font=fnt(F_LG)))
 
         self.cmb_date_to = QComboBox()
+        self.cmb_date_to.setProperty("i18n_items", True)
         self.cmb_date_to.setMinimumWidth(130)
         self.cmb_date_to.setFont(fnt(F_MD))
         self.cmb_date_to.currentTextChanged.connect(self._on_date_to_changed)
@@ -3146,20 +3153,20 @@ class PageHistory(QWidget):
         if _PQG_OK:
             self.plot_widget = pg.PlotWidget()
             self.plot_widget.setBackground(GRAPH_BG_COLOR)
-            
+
             # ปรับขนาด font ของ axis labels
             left_axis = self.plot_widget.getAxis('left')
             left_axis.setLabel('จำนวน (แผ่น)', units='', size=GRAPH_AXIS_LABEL_SIZE)
-            
+
             bottom_axis = self.plot_widget.getAxis('bottom')
             bottom_axis.setLabel('รอบบิล', units='', size=GRAPH_AXIS_LABEL_SIZE)
-            
+
             # ปรับขนาด font ของ title โดยตั้ง TitleLabel
             self.plot_widget.setTitle('ประวัติการใช้งาน')
             pi = self.plot_widget.getPlotItem()
             if pi.titleLabel is not None:
                 pi.titleLabel.setFont(fnt(GRAPH_TITLE_SIZE, bold=True))
-            
+
             self.plot_widget.showGrid(x=True, y=True, alpha=GRAPH_GRID_ALPHA)
             self.plot_widget.setMinimumHeight(200)
             lay.addWidget(self.plot_widget, 1)
@@ -3452,7 +3459,7 @@ class PageHistory(QWidget):
                 pi.legend = None
             legend = self.plot_widget.addLegend(offset=(10, 10))
             self._current_legend = legend
-            
+
             # ซ่อน legend checkbox widget โดยค่าเริ่มต้น (จะแสดงเมื่อจำเป็น)
             if hasattr(self, '_ext_legend_widget'):
                 self._ext_legend_widget.setVisible(False)
@@ -3461,13 +3468,13 @@ class PageHistory(QWidget):
             def _h(hx):
                 h = hx.lstrip('#')
                 return (int(h[0:2],16), int(h[2:4],16), int(h[4:6],16))
-            
+
             def _get_text_color(rgb):
                 """คืน (255,255,255) ถ้าพื้นม่วง เข้ม หรือ (0,0,0) สำหรับพื้นอ่อน"""
                 r, g, b = rgb
                 luminance = 0.299 * r + 0.587 * g + 0.114 * b
                 return (255, 255, 255) if luminance < 128 else (0, 0, 0)
-            
+
             colors_machine = [_h(c) for c in GRAPH_COLORS_MACHINE]
             colors_type    = {k: _h(v) for k, v in GRAPH_COLORS_TYPE.items()}
             colors_user_pool = [
@@ -3502,7 +3509,7 @@ class PageHistory(QWidget):
                 hidden_machines = getattr(self, '_hidden_machines', set())
                 visible_slots = [si for si in active_slots if si not in hidden_machines]
                 # ห้ามแสดงเครื่องทั้งหมด ถ้าผู้ใช้ปิด filter ทั้งหมด
-                
+
                 # ถ้าทั้งหมดถูกซ่อน แสดงข้อความให้ผู้ใช้เห็น แต่ยังให้ checkbox ทำงานได้
                 if not visible_slots:
                     self.plot_widget.setTitle("โปรดเลือกเครื่องอย่างน้อย 1 เครื่อง")
@@ -3551,7 +3558,7 @@ class PageHistory(QWidget):
                         pen=pg.mkPen(*rgb, width=1),
                     )
                     self.plot_widget.addItem(bar_item)
-                    
+
                     # เพิ่มค่าบน bar ถ้า checkbox ถูกเลือก
                     if hasattr(self, 'chk_show_values') and self.chk_show_values.isChecked():
                         for x, y in zip(xs, ys):
@@ -3627,11 +3634,11 @@ class PageHistory(QWidget):
                     )
                 ] or configured_type_keys[:4]
                 type_labels = {"copy_color":"Copy สี", "copy_bw":"Copy ขาวดำ", "print_color":"Print สี", "print_bw":"Print ขาวดำ", "meter_color":"Meter สี", "meter_bw":"Meter ขาวดำ"}
-                
+
                 # กรองประเภทตามสถานะ checkbox
                 hidden_types = getattr(self, '_hidden_types', set())
                 visible_type_keys = [tk for tk in type_keys if tk not in hidden_types]
-                
+
                 # ถ้าทั้งหมดถูกซ่อน แสดงข้อความให้ผู้ใช้เห็น แต่ยังให้ checkbox ทำงานได้
                 if not visible_type_keys:
                     self.plot_widget.setTitle("โปรดเลือกประเภทงานอย่างน้อย 1 ประเภท")
@@ -3658,7 +3665,7 @@ class PageHistory(QWidget):
                             self._ext_legend_layout.addWidget(cb)
                         self._ext_legend_widget.setVisible(True)
                     return
-                
+
                 n_machines = len(active_slots)
                 bar_w = GRAPH_BAR_WIDTH
                 group_w = n_machines * bar_w + 0.15
@@ -4122,7 +4129,7 @@ class PageHistory(QWidget):
             except Exception:
                 label = m
             thai_items.append((m, label))
-        
+
         # เติม cmb_date_from และ cmb_date_to
         self.cmb_date_from.blockSignals(True)
         self.cmb_date_to.blockSignals(True)
@@ -4143,7 +4150,7 @@ class PageHistory(QWidget):
         """อัปเดตกราฟ"""
         if not _PQG_OK or not hasattr(self, 'plot_widget'):
             return
-        
+
         try:
             data = self._prepare_graph_data()
             # Populate date filter dropdowns ทุกครั้งเพื่อให้เดือนใหม่ขึ้นทันทีหลัง import
@@ -4312,14 +4319,14 @@ class PageHistory(QWidget):
             # ── Pie ใหญ่ รวมทุกเครื่อง ──
             s_all = QPieSeries()
             _fill_type(s_all, active_slots, is_large=True)
-            self.pie_view_all.setChart(
+            replace_chart(self.pie_view_all,
                 _make_chart(s_all, "📊  ประเภทงาน — รวมทุกเครื่อง", is_large=True))
 
             # ── Pie เล็ก แยก 3 เครื่อง ──
             for i, view in enumerate(self.pie_views_slot):
                 s = QPieSeries()
                 _fill_type(s, [i], is_large=False)
-                view.setChart(_make_chart(s, f"🖨  {m_names[i]}"))
+                replace_chart(view, _make_chart(s, f"🖨  {m_names[i]}"))
 
         else:  # by_user
             # สร้าง color map ร่วม (สีเดียวกันทุก chart)
@@ -4335,14 +4342,14 @@ class PageHistory(QWidget):
             # ── Pie ใหญ่ รวมทุกเครื่อง ──
             s_all = QPieSeries()
             _fill_user(s_all, active_slots, color_map, is_large=True)
-            self.pie_view_all.setChart(
+            replace_chart(self.pie_view_all,
                 _make_chart(s_all, "👤  ผู้ใช้งาน — รวมทุกเครื่อง", is_large=True))
 
             # ── Pie เล็ก แยก 3 เครื่อง ──
             for i, view in enumerate(self.pie_views_slot):
                 s = QPieSeries()
                 _fill_user(s, [i], color_map, is_large=False)
-                view.setChart(_make_chart(s, f"🖨  {m_names[i]}"))
+                replace_chart(view, _make_chart(s, f"🖨  {m_names[i]}"))
 
 
     def _populate_users_overview(self, rows):
@@ -4803,12 +4810,12 @@ class PageHistory(QWidget):
         if table.rowCount() == 0:
             QMessageBox.warning(self, "ไม่มีข้อมูล", "ตารางไม่มีข้อมูลสำหรับส่งออก")
             return
-            
+
         path, _ = QFileDialog.getSaveFileName(
             self, "บันทึกเป็นไฟล์ Excel", f"{default_name}.xlsx", "Excel Files (*.xlsx);;All Files (*)"
         )
         if not path: return
-        
+
         try:
             # Keep the large Excel dependency off the interactive startup path.
             import openpyxl
@@ -4817,19 +4824,19 @@ class PageHistory(QWidget):
             wb = openpyxl.Workbook()
             ws = wb.active
             ws.title = "Report"
-            
+
             # Header
             headers = []
             for c in range(table.columnCount()):
                 it = table.horizontalHeaderItem(c)
                 headers.append(it.text().replace('\n', ' ') if it else "")
             ws.append(headers)
-            
+
             for col in range(1, len(headers)+1):
                 cell = ws.cell(row=1, column=col)
                 cell.font = Font(bold=True)
                 cell.alignment = Alignment(horizontal='center', vertical='center')
-                
+
             # Data
             for r in range(table.rowCount()):
                 row_data = []
@@ -4847,7 +4854,7 @@ class PageHistory(QWidget):
                         except: pass
                     row_data.append(val)
                 ws.append(row_data)
-                
+
             wb.save(path)
             QMessageBox.information(self, "สำเร็จ", "ส่งออกไฟล์ Excel เรียบร้อยแล้ว")
         except Exception as e:
@@ -4871,7 +4878,7 @@ class PageIndividual(QWidget):
 
         tr = QHBoxLayout()
         tr.addWidget(sec_title("👤  การใช้งานรายบุคคล"))
-        
+
         # ── ปุ่มเลือกมุมมอง
         tr.addSpacing(20)
         tr.addWidget(QLabel("มุมมอง:", font=fnt(F_LG)))
@@ -4888,7 +4895,7 @@ class PageIndividual(QWidget):
             b.clicked.connect(lambda checked, m=mode: self._set_view_users(m))
             tr.addWidget(b)
             self.view_btns_users[mode] = b
-        
+
         tr.addStretch()
         self.search = QLineEdit()
         self.search.setPlaceholderText("🔍  ค้นหาชื่อ...")
@@ -5074,11 +5081,11 @@ class PageSettings(QWidget):
             ("a3_color", "A3 สี",    C_ORANGE),
             ("a3_bw",    "A3 ขาวดำ", C_PURPLE),
         ]
-        
+
         # สร้าง price_spins dict โครงสร้าง: {slot: {key: spin}}
         self.price_spins = {0: {}, 1: {}, 2: {}}
         self.price_labels = {0: {}, 1: {}, 2: {}}
-        
+
         # 3 subsections สำหรับแต่ละเครื่อง
         for slot in range(3):
             mname = get_cfg(f"machine_name_{slot}", SLOT_NAMES[slot])
@@ -5089,7 +5096,7 @@ class PageSettings(QWidget):
             mk_row = QHBoxLayout(); mk_row.setSpacing(6)
             mk_row.addWidget(dot); mk_row.addWidget(mk_lbl); mk_row.addStretch()
             l2.addLayout(mk_row)
-            
+
             pg = QGridLayout(); pg.setSpacing(10)
             for r, (key, label, color) in enumerate(price_specs):
                 lbl = QLabel(f"  {label} :"); lbl.setFont(fnt(F_LG))
@@ -5138,7 +5145,7 @@ class PageSettings(QWidget):
         c_day = mk_card(); c_day.setMaximumWidth(700)
         l_day = QVBoxLayout(c_day); l_day.setContentsMargins(20,16,20,16); l_day.setSpacing(12)
         l_day.addWidget(sub_title("📅  วันตัดรอบบิล"))
-        
+
         dr = QHBoxLayout()
         lb_day = QLabel("วันตัดรอบบิล :"); lb_day.setFont(fnt(F_LG)); lb_day.setFixedWidth(130)
         self.spin_day = QSpinBox()
@@ -5146,7 +5153,7 @@ class PageSettings(QWidget):
         self.spin_day.setSuffix(" ของเดือน"); self.spin_day.setFont(fnt(F_LG)); self.spin_day.setFixedWidth(180)
         dr.addWidget(lb_day); dr.addWidget(self.spin_day); dr.addStretch()
         l_day.addLayout(dr)
-        
+
         day_hint = QLabel("เช่น ถ้าตั้งวัน 25 → ไฟล์ที่อ่านวันที่ 1-25 นับเป็นเดือนนั้น, หลังวันที่ 25 นับเป็นเดือนถัดไป")
         day_hint.setFont(fnt(F_XS)); day_hint.setStyleSheet(f"color:{C_TEXT3};")
         l_day.addWidget(day_hint)
@@ -5162,7 +5169,7 @@ class PageSettings(QWidget):
         c_log = mk_card(); c_log.setMaximumWidth(700)
         l_log = QVBoxLayout(c_log); l_log.setContentsMargins(20,16,20,16); l_log.setSpacing(12)
         l_log.addWidget(sub_title("📋  ประวัติการเปลี่ยนแปลงการตั้งค่า"))
-        
+
         self.log_table = make_table(
             ["ลำดับที่", "รายการ", "ค่าเก่า", "ค่าใหม่", "วัน/เวลา"],
             stretch_cols=[1],
@@ -5675,12 +5682,12 @@ class PageSettings(QWidget):
         """โหลดและแสดง Pricelist change log"""
         self.log_table.setRowCount(0)
         logs = get_config_log(50)  # แสดง 50 รายการล่าสุด
-        
+
         for idx, log in enumerate(logs):
             self.log_table.insertRow(idx)
             # ลำดับที่
             self.log_table.setItem(idx, 0, tbl_item(str(idx + 1), Qt.AlignmentFlag.AlignCenter))
-            
+
             # รายการ (config_key) — แปลงเป็นชื่อไทยสำหรับอ่านง่าย
             config_key = log["config_key"]
             if config_key.startswith("price_"):
@@ -5705,17 +5712,17 @@ class PageSettings(QWidget):
                 display_key = "วันตัดรอบบิล"
             else:
                 display_key = config_key
-            
+
             self.log_table.setItem(idx, 1, tbl_item(display_key))
-            
+
             # ค่าเก่า
             old_val = log["old_value"] or "-"
             self.log_table.setItem(idx, 2, tbl_item(str(old_val)))
-            
+
             # ค่าใหม่
             new_val = log["new_value"] or "-"
             self.log_table.setItem(idx, 3, tbl_item(str(new_val)))
-            
+
             # วัน/เวลา
             time_str = log["changed_at"] or "-"
             self.log_table.setItem(idx, 4, tbl_item(str(time_str)))
@@ -6315,12 +6322,12 @@ class PageSettings(QWidget):
                         idx_p = -1
                     if idx_p >= 0:
                         parser_combo.setCurrentIndex(idx_p)
-        
+
         # รีเฟรช Price List
         for slot in range(3):
             for key, spin in self.price_spins[slot].items():
                 spin.setValue(get_price(key, slot))
-        
+
         # รีเฟรช วันตัดรอบบิล
         self.spin_day.setValue(get_billing_day())
         # รีเฟรช % กระดาษเสีย
@@ -6453,25 +6460,8 @@ class PageManual(QWidget):
         return lbl
 
     def _guide_screenshot(self, index: int, caption: str, *, english=False) -> QWidget:
-        filename = f"customer-guide/assets-v5.2/{index:02d}-"
-        names = {
-            1: "setup-company.png",
-            2: "setup-printers.png",
-            3: "setup-pricing.png",
-            4: "setup-review.png",
-            5: "overview.png",
-            6: "devices.png",
-            7: "reports-overview.png",
-            8: "reports-usage.png",
-            9: "reports-legacy.png",
-            10: "settings.png",
-            11: "advanced-lan.png",
-            12: "advanced-tools.png",
-            13: "manual.png",
-        }
-        image_path = self._manual_asset(filename + names[index])
-        if index == 11:
-            image_path = self._manual_asset('customer-guide/assets-v5.2.12-source/network-activity.png')
+        from ui.manual_screens import manual_screen_path
+        image_path = self._manual_asset(manual_screen_path(index, english=english))
         pixmap = (
             QPixmap(str(image_path))
             if self._manual_asset_available(image_path)
@@ -6603,7 +6593,7 @@ class PageManual(QWidget):
         self.manual_title = QLabel("📖  คู่มือการใช้งาน")
         self.manual_title.setFont(self._manual_font(F_2XL))
         self.manual_title.setStyleSheet(f"color:{C_TEXT}; font-weight:bold;")
-        self.manual_subtitle = QLabel("KOMI Report V5.2 — ติดตั้ง อ่านมิเตอร์ และออกรายงาน")
+        self.manual_subtitle = QLabel("KOMI Report 5.2.12 — ติดตั้ง อ่านมิเตอร์ และออกรายงาน")
         self.manual_subtitle.setFont(self._manual_font(F_LG))
         self.manual_subtitle.setStyleSheet(f"color:{C_TEXT2};")
         title_col = QVBoxLayout()
@@ -6744,7 +6734,7 @@ class PageManual(QWidget):
         self.manual_subtitle.setText(
             "KOMI Report V5.2 — setup, meters and reports"
             if english
-            else "KOMI Report V5.2 — ติดตั้ง อ่านมิเตอร์ และออกรายงาน"
+            else "KOMI Report 5.2.12 — ติดตั้ง อ่านมิเตอร์ และออกรายงาน"
         )
         self.manual_toc_title.setText("On this page" if english else "สารบัญหน้านี้")
         self.manual_toc_combo.setAccessibleName(
@@ -6874,7 +6864,7 @@ class PageManual(QWidget):
                 ("Legacy and Excel", [
                     self._txt("Legacy preserves exact printer counter labels such as A5, Large Size or FAX instead of forcing them into A3/A4."),
                     self._txt("Excel exports six sheets: three normalized views and three Legacy views for printer, user and daily data."),
-                    self._txt("Use Export Excel in the Reports header, then choose dates and a destination. A popup shows stage progress, percent, completed users and elapsed time while export runs in the background. Cancel, Escape or closing the popup requests cancellation; it stays visible until the worker stops. Duplicate requests stay disabled until completion. Cancellation or failure preserves an existing destination file."),
+                    self._txt("Use Export Excel in the Reports header, then choose dates and a destination. A popup shows stage progress, percent, completed users and elapsed time while export runs in the background. Web evidence Excel/PDF exports also run in the background; select a remarks row and use Read full remarks to inspect all evidence. Cancel, Escape or closing the popup requests cancellation; it stays visible until the worker stops. Duplicate requests stay disabled until completion. Cancellation or failure preserves an existing destination file."),
                 ]),
             ]),
             self._english_manual_section("Settings", [
@@ -6918,9 +6908,9 @@ class PageManual(QWidget):
         layout.addWidget(self._card("คอมพิวเตอร์ร่วมกันและ Web Report", [
             self._step(1, "คอมเครื่องแรกตั้งค่าเครื่องพิมพ์ ราคา รอบบิล และฐานข้อมูล"),
             self._step(2, "คอมเพิ่มเติมตรวจและรับชุดค่าบริษัทที่ได้รับสิทธิ์มาใช้ โดยคงตัวตนการลงทะเบียนของตนเอง"),
-            self._step(3, "คอมทุกเครื่องใช้ Slot ชุดเดียวกัน Web Report แบบอ่านอย่างเดียวเปิดผ่าน LAN ได้เมื่อเครื่องที่ให้บริการยังออนไลน์"),
+            self._step(3, "รับค่าติดตั้งครั้งแรกเพื่อใช้ Slot ชุดเดียวกัน การเปลี่ยนค่าภายหลังยังไม่ส่งต่ออัตโนมัติ · Web Report เปิดดูผ่านเครื่องที่ยังออนไลน์"),
             self._step(4, "เมื่อปิดหน้าต่าง Agent ทำงานต่อที่ System Tray; ใช้เมนูออกจาก Agent เมื่อต้องการหยุดจริง"),
-            self._tip("ก่อน Sync ให้ตรวจชื่อบริษัท รายการเครื่อง ราคา และรอบบิลบนหน้าสรุปทุกครั้ง"),
+            self._tip("ก่อนรับค่าติดตั้งครั้งแรก ให้ตรวจชื่อบริษัท รายการเครื่อง ราคา และรอบบิลบนหน้าสรุปทุกครั้ง"),
         ]))
         layout.addWidget(self._card("การลงทะเบียนและสถานะ", [
             self._step(1, "Online Registration เป็นวิธีปกติ และทำงานก่อนเปิดหน้าหลักครั้งแรก"),
@@ -7129,6 +7119,9 @@ class PageManual(QWidget):
             self._tip("No Mapping หมายถึงเก็บข้อมูลต้นทางไว้ แต่ไม่รวมเข้าหมวดมาตรฐานที่อาจทำให้ยอดผิด"),
         ]))
 
+        lay.addWidget(self._card("หลักฐาน Web / หมายเหตุ", [
+            self._txt("เลือกแถวแล้วกด [อ่านหมายเหตุเต็ม] หรือดับเบิลคลิกเพื่ออ่านข้อความทั้งหมด Excel และ PDF ส่งออกเบื้องหลังพร้อมแถบความคืบหน้าและปุ่มยกเลิก ไฟล์เดิมจะยังอยู่เมื่อยกเลิกหรือส่งออกไม่สำเร็จ"),
+        ]))
         lay.addWidget(self._card("ส่งออก Excel", [
             self._step(1, "กด [ส่งออก Excel] ที่หัวหน้า Reports แล้วเลือกช่วงวันที่และตำแหน่งบันทึก"),
             self._step(2, "ไฟล์มี 6 ชีท: รายเครื่อง, ผู้ใช้, รายวัน และ Legacy ของทั้งสามมุมมอง"),

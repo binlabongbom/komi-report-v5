@@ -10,6 +10,10 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT/'source'), str(ROOT/'source/tests')]
 os.environ['QT_QPA_PLATFORM'] = 'offscreen'
 os.environ['KOMI_DISCOVERY_DISABLED'] = '1'
+def block_network(event, _values):
+    if event in ('socket.connect', 'socket.sendto', 'socket.bind'):
+        raise PermissionError('Synthetic export capture blocks network operations')
+sys.addaudithook(block_network)
 from PyQt6.QtWidgets import QApplication, QPushButton
 from PyQt6.QtTest import QTest
 from qt_render_environment import configure_offscreen_fonts
@@ -21,6 +25,10 @@ import database
 
 app = QApplication([])
 configure_offscreen_fonts(app)
+from config import build_qss
+from ui_consistency import install_button_system
+install_button_system(app)
+app.setStyleSheet(build_qss())
 previous = database.get_db_path()
 with tempfile.TemporaryDirectory(prefix='komi-excel-capture-') as folder:
     try:

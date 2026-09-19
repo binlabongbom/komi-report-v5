@@ -44,7 +44,7 @@ def _daily(*, record_date: str, source: dict) -> int:
         )
 
 
-def _insert_direct_events(count: int) -> None:
+def _insert_direct_events(count: int, *, printer_name: str | None = None) -> None:
     now = datetime.now().astimezone().isoformat(timespec="seconds")
     with _open() as conn:
         for index in range(count):
@@ -60,7 +60,7 @@ def _insert_direct_events(count: int) -> None:
                     "posting",
                     0,
                     "serial:AUDIT-SERIAL",
-                    f"Audit Printer {index:03d}",
+                    printer_name if printer_name is not None else f"Audit Printer {index:03d}",
                     "AUDIT-SERIAL",
                     "2026-07-16",
                     "2026-07-01",

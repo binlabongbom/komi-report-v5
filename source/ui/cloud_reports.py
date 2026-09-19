@@ -14,6 +14,7 @@ from PyQt6.QtCharts import (
     QLineSeries,
     QValueAxis,
 )
+from ui.chart_lifecycle import replace_chart
 from PyQt6.QtCore import QDate, QEvent, QMargins, QPointF, QSignalBlocker, Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QColor, QFont, QFontMetrics, QMouseEvent, QPainter
 from PyQt6.QtWidgets import (
@@ -242,16 +243,15 @@ class _CloudOverviewMetricCard(QFrame):
         self.lbl_val = QLabel("—")
         self.lbl_val.setObjectName("cloud_overview_metric_value")
         self.lbl_val.setStyleSheet(f"color:{accent};background:transparent;border:0;")
-        self.lbl_val.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        self.lbl_val.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         self.lbl_detail = QLabel("")
         self.lbl_detail.setObjectName("cloud_overview_metric_detail")
         for label in (self.lbl_title, self.lbl_val, self.lbl_detail):
             label.setMinimumWidth(0)
             label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
-        self.lbl_val.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         layout.addWidget(self.lbl_title, 0, 0)
-        layout.addWidget(self.lbl_detail, 1, 0)
-        layout.addWidget(self.lbl_val, 0, 1, 2, 1)
+        layout.addWidget(self.lbl_val, 1, 0)
+        layout.addWidget(self.lbl_detail, 2, 0)
         self.set_compact(False)
 
     def set_compact(self, compact: bool) -> None:
@@ -266,10 +266,11 @@ class _CloudOverviewMetricCard(QFrame):
             self.lbl_title.height() + self.lbl_detail.height()
             + self.layout().verticalSpacing()
         )
-        self.lbl_val.setFixedHeight(max(text_height, QFontMetrics(value_font).height()))
+        self.lbl_val.setFixedHeight(QFontMetrics(value_font).height())
         margins = self.layout().contentsMargins()
         self.setFixedHeight(
-            self.lbl_val.height() + margins.top() + margins.bottom() + 2
+            text_height + self.lbl_val.height() + self.layout().verticalSpacing()
+            + margins.top() + margins.bottom() + 2
         )
         self.refresh_elision()
 
@@ -286,12 +287,12 @@ class _CloudOverviewMetricCard(QFrame):
         self.refresh_elision()
 
     def refresh_elision(self) -> None:
-        # Fit ordinary totals before eliding exceptional values. Full text
-        # remains available without widening the six-card row.
+        # Values are data: never replace digits with an ellipsis. The grid
+        # reflows first, then the value font can fit a particularly long total.
         margins = self.layout().contentsMargins()
         available = max(1, self.contentsRect().width() - margins.left() - margins.right()
                         - self.layout().horizontalSpacing())
-        value_limit = max(1, int(available * 0.6))
+        value_limit = available
         value_font = QFont(self.lbl_val.font())
         pixel_size = 24 if self._compact else 32
         minimum_size = 16 if self._compact else 20
@@ -306,8 +307,6 @@ class _CloudOverviewMetricCard(QFrame):
             self.lbl_val.setStyleSheet(
                 f"color:{self._accent};background:transparent;border:0;font-size:{pixel_size}px;"
             )
-        value_width = min(natural_width, value_limit)
-        self.lbl_val.setFixedWidth(value_width)
         self.layout().activate()
         full_title = translate_text(self._full_title) if get_language() == ENGLISH else self._full_title
         self.lbl_title.setToolTip(full_title)
@@ -316,11 +315,7 @@ class _CloudOverviewMetricCard(QFrame):
             full_title, Qt.TextElideMode.ElideRight,
             max(1, self.lbl_title.contentsRect().width()),
         ))
-        value = self.lbl_val.fontMetrics().elidedText(
-            self._full_value, Qt.TextElideMode.ElideMiddle,
-            max(1, self.lbl_val.contentsRect().width()),
-        )
-        self.lbl_val.setText(value)
+        self.lbl_val.setText(self._full_value)
         full_detail = translate_text(self._full_detail) if get_language() == ENGLISH else self._full_detail
         self.lbl_detail.setToolTip(full_detail)
         detail = self.lbl_detail.fontMetrics().elidedText(
@@ -871,7 +866,8 @@ class CloudReportsWidget(QWidget):
             parent = grid.parentWidget()
             available = max(1, parent.width() - grid.contentsMargins().left() - grid.contentsMargins().right())
             if widgets and isinstance(widgets[0], _CloudOverviewMetricCard):
-                self._place_grid(grid, widgets, 6)
+                columns = 6 if available >= 1380 else (3 if available >= 660 else 2)
+                self._place_grid(grid, widgets, columns)
                 for card in widgets:
                     card.refresh_elision()
                 continue
@@ -1391,7 +1387,7 @@ class CloudReportsWidget(QWidget):
     def _chart_view() -> QChartView:
         view = QChartView()
         view.setRenderHint(QPainter.RenderHint.Antialiasing)
-        view.setFixedHeight(190)
+        view.setFixedHeight(240)
         view.setStyleSheet("background:white;border:0;")
         return view
 
@@ -2118,7 +2114,7 @@ class CloudReportsWidget(QWidget):
         records = self._records
         print_available = any(bool(getattr(record, "print_available", False)) for record in records)
         copy_available = any(bool(getattr(record, "copy_available", False)) for record in records)
-        cost_available = all(
+        cost_available = bool(records) and all(
             bool(getattr(record, "provisional_cost_available", True))
             for record in records
             if int(getattr(record, "provisional_days", 0) or 0)
@@ -2158,6 +2154,9 @@ class CloudReportsWidget(QWidget):
             "THB",
             available=cost_available,
         )
+        if not records:
+            for card in self.overview_kpis.values():
+                card.set_metric("—", tr("ไม่มีข้อมูลในช่วงนี้ · ลองเปลี่ยนวันที่", "No data in this period. Try another date."))
         self._schedule_render_tail(0, self._render_overview_tables, self._render_overview_charts)
 
     def _render_overview_tables(self) -> None:
@@ -2186,7 +2185,7 @@ class CloudReportsWidget(QWidget):
 
     def _render_overview_charts(self) -> None:
         total_scan = sum(row["scan"] for row in self._printer_rows)
-        self.overview_mix.setChart(
+        replace_chart(self.overview_mix,
             self._bar_chart(
                 ("Print", "Copy", "Scan"),
                 (
@@ -2202,7 +2201,7 @@ class CloudReportsWidget(QWidget):
                 ),
             )
         )
-        self.overview_trend.setChart(self._timeline_chart(None))
+        replace_chart(self.overview_trend, self._timeline_chart(None))
         apply_language(self)
 
     def _render_users(self) -> None:
@@ -2227,6 +2226,9 @@ class CloudReportsWidget(QWidget):
                 card.set_metric("—", "ข้อมูลแยกประเภทยังไม่ครบ")
         self.user_metric_cards["usage"].set_metric(_number(total), "ช่วงรายงานที่เลือก")
         self.user_metric_cards["count"].set_metric(_number(len(self._user_rows)), "คน")
+        if not self._user_rows:
+            for card in self.user_metric_cards.values():
+                card.set_metric("—", tr("ไม่มีข้อมูลผู้ใช้ในช่วงนี้", "No user data in this period"))
         self._schedule_render_tail(1, self._render_users_table, self._render_users_charts)
 
     def _render_users_table(self) -> None:
@@ -2273,7 +2275,7 @@ class CloudReportsWidget(QWidget):
         del users_signal_blocker
 
     def _render_users_charts(self) -> None:
-        self.users_top_chart.setChart(
+        replace_chart(self.users_top_chart,
             self._horizontal_like_chart(
                 [row["name"] for row in self._user_rows[:8]],
                 [row["usage"] for row in self._user_rows[:8]],
@@ -2292,7 +2294,7 @@ class CloudReportsWidget(QWidget):
                 for identity, usage in row["printers"].items():
                     source[identity] += usage
         labels = [devices_by_identity.get(key, key.replace("serial:", "")) for key in source]
-        self.users_printer_chart.setChart(self._horizontal_like_chart(labels, list(source.values()), BLUE))
+        replace_chart(self.users_printer_chart, self._horizontal_like_chart(labels, list(source.values()), BLUE))
         self.user_filter_badge.setText(
             f"กำลังกรอง: {selected['name']}" if selected else "เลือกผู้ใช้จากตารางเพื่อกรองกราฟ"
         )
@@ -2377,6 +2379,10 @@ class CloudReportsWidget(QWidget):
         self.printer_activity_summary.setText(
             f"เครื่องที่มีการใช้งาน {_number(count)} เครื่อง · Scan {_number(scan)} หน้า"
         )
+        if not records:
+            for card in self.printer_metric_cards.values():
+                card.set_metric("—", tr("ไม่มีข้อมูลในช่วงนี้ · ลองเปลี่ยนวันที่", "No data in this period. Try another date."))
+            self.printer_activity_summary.setText(tr("ยังไม่มีผลอ่านในช่วงวันที่เลือก", "No readings in the selected period"))
         self._schedule_render_tail(2, self._render_printers_tables, self._render_printers_charts)
 
     def _render_printers_tables(self) -> None:
@@ -2429,7 +2435,7 @@ class CloudReportsWidget(QWidget):
 
     def _render_printers_charts(self) -> None:
         rows = self._printer_rows
-        self.printer_mix.setChart(
+        replace_chart(self.printer_mix,
             self._bar_chart(
                 ("Print", "Copy", "Scan"),
                 tuple(
@@ -2442,7 +2448,7 @@ class CloudReportsWidget(QWidget):
                 ),
             )
         )
-        self.printer_trend.setChart(self._printer_timeline_chart(rows))
+        replace_chart(self.printer_trend, self._printer_timeline_chart(rows))
         apply_language(self)
 
     @staticmethod
@@ -2722,7 +2728,7 @@ class CloudReportsWidget(QWidget):
         if all_baselines_by_slot:
             self._style_baseline_row(self.usage_by_printer_table)
         chronological = [row for _period, row in sorted(totals_by_period.items())]
-        self.usage_timeline_chart.setChart(
+        replace_chart(self.usage_timeline_chart,
             self._multi_line_chart(
                 tuple(row["period"] for row in chronological),
                 (
@@ -2919,6 +2925,8 @@ class CloudReportsWidget(QWidget):
         labels: tuple[str, ...],
         series_data: tuple[tuple[str, tuple[float, ...], str], ...],
     ) -> QChart:
+        if len(labels) == 1:
+            return CloudReportsWidget._bar_chart(labels, series_data)
         chart = QChart()
         chart.setBackgroundVisible(False)
         chart.setMargins(QMargins(2, 2, 2, 2))
@@ -2944,6 +2952,12 @@ class CloudReportsWidget(QWidget):
         axis_y = QValueAxis()
         axis_y.setRange(0, max(1.0, maximum * 1.18))
         axis_y.setLabelFormat("%.0f")
+        axis_y.setTickCount(4)
+        axis_y.applyNiceNumbers()
+        axis_font = QFont()
+        axis_font.setPointSize(9)
+        axis_x.setLabelsFont(axis_font)
+        axis_y.setLabelsFont(axis_font)
         chart.addAxis(axis_x, Qt.AlignmentFlag.AlignBottom)
         chart.addAxis(axis_y, Qt.AlignmentFlag.AlignLeft)
         for series in line_series:
@@ -2954,8 +2968,18 @@ class CloudReportsWidget(QWidget):
 
     @staticmethod
     def _horizontal_like_chart(labels: list[str], values: list[float], color: str) -> QChart:
-        short = [label if len(label) <= 15 else f"{label[:14]}…" for label in labels]
-        return CloudReportsWidget._bar_chart(tuple(short), (("หน้า", tuple(values), color),))
+        from PyQt6.QtWidgets import QToolTip
+        from PyQt6.QtGui import QCursor
+        short = [f"{index + 1}. {label if len(label) <= 15 else label[:10] + '…' + label[-4:]}"
+                 for index, label in enumerate(labels)]
+        chart = CloudReportsWidget._bar_chart(tuple(short), (("หน้า", tuple(values), color),))
+        # Exact names and values remain available by mouse and accessibility;
+        # the adjacent report tables expose the same data to keyboard users.
+        for series in chart.series():
+            for bar in series.barSets():
+                bar.hovered.connect(lambda entered, index: QToolTip.showText(QCursor.pos(),
+                    f"{labels[index]}: {_number(values[index])}") if entered else QToolTip.hideText())
+        return chart
 
     @staticmethod
     def _bar_chart(categories: tuple[str, ...], series_data: tuple[tuple[str, tuple[float, ...], str], ...]) -> QChart:
@@ -2980,6 +3004,12 @@ class CloudReportsWidget(QWidget):
         axis_y = QValueAxis()
         axis_y.setRange(0, max(1.0, maximum * 1.18))
         axis_y.setLabelFormat("%.0f")
+        axis_y.setTickCount(4)
+        axis_y.applyNiceNumbers()
+        axis_font = QFont()
+        axis_font.setPointSize(9)
+        axis_x.setLabelsFont(axis_font)
+        axis_y.setLabelsFont(axis_font)
         chart.addAxis(axis_x, Qt.AlignmentFlag.AlignBottom)
         chart.addAxis(axis_y, Qt.AlignmentFlag.AlignLeft)
         series.attachAxis(axis_x)

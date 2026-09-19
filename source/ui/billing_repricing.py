@@ -1,4 +1,6 @@
 """A concrete before/after review of a dated price correction."""
+from ui.review_components import field_label, display_date
+
 import socket
 import sqlite3
 
@@ -28,12 +30,14 @@ class BillingRepricingDialog(QDialog):
             form = QFormLayout()
             for label, value in (
                 (tr("เครื่องพิมพ์", "Printer"), p["device_name"]), ("Serial", p["serial"]),
-                (tr("วันที่ใช้งาน", "Usage date"), p["record_date"]),
-                (tr("ราคามีผลตั้งแต่", "Price effective from"), p["price_effective_date"]),
+                (tr("วันที่ใช้งาน", "Usage date"), display_date(p["record_date"])),
+                (tr("ราคามีผลตั้งแต่", "Price effective from"), display_date(p["price_effective_date"])),
                 (tr("ก่อนหักส่วนลด", "Gross amount"), f"฿{p['old_gross_cents']/100:,.2f} → ฿{p['gross_cents']/100:,.2f}"),
                 (tr("ยอดสุทธิ", "Net amount"), f"฿{p['old_net_cents']/100:,.2f} → ฿{p['net_cents']/100:,.2f}"),
             ):
-                form.addRow(label, plain(value))
+                value_label = plain(value)
+                value_label.setProperty("i18n_data", True)
+                form.addRow(label, value_label)
             layout.addLayout(form)
             layout.addWidget(plain(tr(
                 "ใช้มิเตอร์ หมวดราคา ส่วนลด และรอบบิลจากรายการเดิม เก็บเอกสารเดิมและเข้าคิวส่งฉบับแก้ไขให้สมาชิกที่ยืนยันสิทธิ์แล้ว บัญชีที่ไม่ตรงกันจะรอตรวจ",
@@ -43,6 +47,7 @@ class BillingRepricingDialog(QDialog):
         self.reason = QLineEdit()
         self.reason.setMaxLength(300)
         self.reason.setPlaceholderText(tr("เหตุผลที่คำนวณใหม่", "Reason for recalculation"))
+        field_label(layout, self.reason)
         layout.addWidget(self.reason)
         self.error = plain("")
         layout.addWidget(self.error)

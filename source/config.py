@@ -240,7 +240,7 @@ QTabBar::tab:hover {{ background: #DCE7EF; color: {C_TEXT}; }}
 def build_qss():
     return f"""
 /* ── พื้นฐาน ── */
-QMainWindow, QWidget {{
+QMainWindow, QDialog {{
     background: {C_BG};
     color: {C_TEXT};
     font-family: {QSS_FONT_FAMILY};
@@ -280,11 +280,15 @@ QToolTip {{
     font-size: {F_SM}pt;
 }}
 
+QWidget {{ color: {C_TEXT}; font-family: {QSS_FONT_FAMILY}; }}
+QLabel {{ background: transparent; }}
+
 /* ── Shared button geometry ── */
 QPushButton {{
+    background: #FFFFFF; color: {C_TEXT}; border: 1px solid {C_BORDER};
     border-radius: {BUTTON_RADIUS}px;
     padding: 7px 16px;
-    font-size: {F_MD}pt;
+    font-size: {F_LG}pt;
     font-weight: 600;
 }}
 
@@ -381,7 +385,7 @@ QHeaderView::section {{
 }}
 
 /* ── Input / ComboBox ── */
-QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox, QTimeEdit {{
+QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox, QTimeEdit, QDateEdit {{
     background: white;
     border: 1.5px solid {C_BORDER};
     border-radius: 8px;
@@ -389,7 +393,7 @@ QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox, QTimeEdit {{
     font-size: {F_LG}pt;
     color: {C_TEXT};
 }}
-QLineEdit:focus, QComboBox:focus, QSpinBox:focus, QDoubleSpinBox:focus, QTimeEdit:focus {{
+QLineEdit:focus, QComboBox:focus, QSpinBox:focus, QDoubleSpinBox:focus, QTimeEdit:focus, QDateEdit:focus {{
     border-color: {C_ACCENT};
 }}
 QPushButton:focus {{
@@ -403,71 +407,58 @@ QComboBox QAbstractItemView {{
 
 /* ── ปุ่มหลัก (Primary) — สีน้ำเงิน = เลือกอยู่ ── */
 QPushButton#btn_primary {{
-    background: {C_ACCENT} !important;
-    color: #FFFFFF !important;
-    border: 1px solid {C_ACCENT} !important;
+    background: {C_ACCENT};
+    color: #FFFFFF;
+    border: 1px solid {C_ACCENT};
     border-radius: 8px;
     padding: 7px 16px;
     font-size: {F_LG}pt;
     font-weight: 700;
 }}
-QPushButton#btn_primary:hover {{ background: #017DD0 !important; color: #FFFFFF !important; border-color: #017DD0 !important; }}
-QPushButton#btn_primary:pressed {{ background: #074A76 !important; color: #FFFFFF !important; border-color: #074A76 !important; }}
-QPushButton#btn_primary:disabled {{ background: #E8EEF4 !important; color: #52677D !important; border-color: #C2CFDB !important; }}
+QPushButton#btn_primary:hover {{ background: #017DD0; color: #FFFFFF; border-color: #017DD0; }}
+QPushButton#btn_primary:pressed {{ background: #074A76; color: #FFFFFF; border-color: #074A76; }}
+QPushButton#btn_primary:disabled {{ background: #E8EEF4; color: #52677D; border-color: #C2CFDB; }}
 
 /* ── ปุ่ม Outline ── */
 QPushButton#btn_outline {{
-    background: #FFFFFF !important; color: #24506E !important;
-    border: 1px solid #B8C8D8 !important; border-radius: 8px;
-    padding: 7px 16px; font-size: {F_LG}px; font-weight: 600;
+    background: #FFFFFF; color: #24506E;
+    border: 1px solid #B8C8D8; border-radius: 8px;
+    padding: 7px 16px; font-size: {F_LG}pt; font-weight: 600;
 }}
 QPushButton#btn_outline:hover {{
-    background: #dbeafe !important; color: #123262 !important;
-    border-color: #93c5fd !important;
+    background: #dbeafe; color: #123262;
+    border-color: #93c5fd;
 }}
 QPushButton#btn_outline:pressed {{
-    background: #bfdbfe !important; color: #123262 !important;
-    border-color: #60a5fa !important;
+    background: #bfdbfe; color: #123262;
+    border-color: #60a5fa;
 }}
 
-/* ── ปุ่ม Danger (แดง) ── */
-QPushButton#btn_danger {{
-    background: #f4f4f4 !important; color: #123262 !important;
-    border: 1.5px solid #d0d0d0 !important; border-radius: 8px;
-    padding: 7px 16px; font-size: {F_LG}px; font-weight: 600;
+/* Semantic actions share geometry with the default button. */
+QPushButton#btn_danger {{ background: #FFF1F2; color: #9F1239; border: 1px solid #FDA4AF; }}
+QPushButton#btn_danger:hover {{ background: #FFE4E6; }}
+QPushButton#btn_danger:pressed {{ background: #FECDD3; }}
+QPushButton#btn_success {{ background: #ECFDF5; color: #065F46; border: 1px solid #6EE7B7; }}
+QPushButton#btn_success:hover {{ background: #D1FAE5; }}
+QPushButton#btn_success:pressed {{ background: #A7F3D0; }}
+QPushButton#btn_warning {{ background: #FFFBEB; color: #92400E; border: 1px solid #FCD34D; }}
+QPushButton#btn_warning:hover {{ background: #FEF3C7; }}
+QPushButton#btn_warning:pressed {{ background: #FDE68A; }}
+QPushButton:disabled, QPushButton#btn_primary:disabled,
+QPushButton#btn_outline:disabled, QPushButton#btn_danger:disabled,
+QPushButton#btn_success:disabled, QPushButton#btn_warning:disabled {{
+    background: #EDF1F5; color: #66788A; border: 1px dashed #B8C8D8;
 }}
-QPushButton#btn_danger:hover {{
-    background: #123262 !important; color: #ffffff !important;
-    border-color: #123262 !important;
-}}
-QPushButton#btn_danger:pressed {{
-    background: #0d1e39 !important; color: #ffffff !important;
-    border-color: #0d1e39 !important;
-}}
-
-/* ── ปุ่ม Success (เขียว) ── */
-QPushButton#btn_success {{
-    background: #f4f4f4 !important; color: #123262 !important;
-    border: 1.5px solid #d0d0d0 !important; border-radius: 8px;
-    padding: 7px 16px; font-size: {F_LG}px; font-weight: 600;
-}}
-QPushButton#btn_success:hover {{ background: #123262 !important; color: #ffffff !important; border-color: #123262 !important; }}
-QPushButton#btn_success:pressed {{ background: #0d1e39 !important; color: #ffffff !important; border-color: #0d1e39 !important; }}
-QPushButton#btn_success:disabled {{ background: #f4f4f4 !important; color: #c7c7c7 !important; }}
-
-/* ── ปุ่ม Warning (เหลือง/ส้ม) ── */
-QPushButton#btn_warning {{
-    background: #f4f4f4 !important; color: #123262 !important;
-    border: 1.5px solid #d0d0d0 !important; border-radius: 8px;
-    padding: 7px 16px; font-size: {F_LG}px; font-weight: 600;
-}}
-QPushButton#btn_warning:hover {{ background: #123262 !important; color: #ffffff !important; border-color: #123262 !important; }}
-QPushButton#btn_warning:pressed {{ background: #0d1e39 !important; color: #ffffff !important; border-color: #0d1e39 !important; }}
+QPushButton#nav:disabled {{ background: #203D56; color: #91A6B7; border: 1px dashed #56748D; }}
+QPushButton#nav:focus, QPushButton#nav[active=true]:focus {{ border: 2px solid #69C7FF; }}
+QPushButton#btn_primary:focus, QPushButton#btn_outline:focus,
+QPushButton#btn_danger:focus, QPushButton#btn_success:focus,
+QPushButton#btn_warning:focus {{ border: 2px solid #0284C7; }}
 
 /* ── Checkbox ──
    Keep the native platform indicator so checked state always has a visible
    checkmark, including high-contrast and accessibility modes. */
-QCheckBox {{ font-size: {F_LG}px; spacing: 7px; }}
+QCheckBox {{ font-size: {F_LG}pt; spacing: 7px; }}
 
 /* ── Tab Widget ── */
 {page_tabs_qss()}
@@ -575,8 +566,8 @@ QFrame#overview_summary_strip {{
     border-radius: 8px;
 }}
 QPushButton#btn_outline:disabled {{
-    background: #E8EEF4 !important; color: #52677D !important;
-    border-color: #C2CFDB !important;
+    background: #E8EEF4; color: #52677D;
+    border-color: #C2CFDB;
 }}
 QFrame#overview_summary_strip QFrame#stat_card {{
     background: transparent;
@@ -637,32 +628,32 @@ QFrame#overview_printer_row[lastRow="true"] {{
 
 /* ── Overview actions ── */
 QPushButton#btn_primary {{
-    background: #dbeafe !important;
-    color: #123262 !important;
-    border: 1px solid #1a3d8a !important;
+    background: #dbeafe;
+    color: #123262;
+    border: 1px solid #1a3d8a;
     border-radius: {BUTTON_RADIUS}px;
     padding: 7px 16px;
     font-size: {F_MD}pt;
     font-weight: 700;
 }}
 QPushButton#btn_primary:hover {{
-    background: #bfdbfe !important;
-    color: #123262 !important;
-    border-color: #1a3d8a !important;
+    background: #bfdbfe;
+    color: #123262;
+    border-color: #1a3d8a;
 }}
 QPushButton#btn_outline {{
-    background: #f4f4f4 !important;
-    color: #123262 !important;
-    border: 1px solid #d0d0d0 !important;
+    background: #f4f4f4;
+    color: #123262;
+    border: 1px solid #d0d0d0;
     border-radius: {BUTTON_RADIUS}px;
     padding: 7px 16px;
     font-size: {F_MD}pt;
     font-weight: 600;
 }}
 QPushButton#btn_outline:hover {{
-    background: #dbeafe !important;
-    color: #123262 !important;
-    border-color: #93c5fd !important;
+    background: #dbeafe;
+    color: #123262;
+    border-color: #93c5fd;
 }}
 
 /* ── ตาราง Top Users ── */

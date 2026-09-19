@@ -79,6 +79,8 @@ def settle(ms=50):
 
 def capture(name, root):
     settle()
+    if isinstance(root, MainWindow) and (root.width() > args.width or root.height() > args.height):
+        errors.append({'screen': name, 'error': f'Window expanded to {root.width()}x{root.height()} from {args.width}x{args.height}'})
     slug = re.sub(r'[^a-zA-Z0-9_-]+', '-', name)
     assert root.grab().save(str(out/f'{slug}.png'))
     widgets = []
@@ -421,6 +423,15 @@ try:
     elif args.mode=='evidence':main_evidence()
     else:main_wizard()
 finally:
+    # Dispose native windows while QApplication and its event dispatcher still
+    # exist. Leaving a large capture tree for Python's interpreter shutdown is
+    # unsafe for Qt charts/effects, even when every screenshot was saved.
+    from PyQt6.QtCore import QTimer
+    app.setQuitOnLastWindowClosed(False)
+    for audit_window in list(app.topLevelWidgets()):
+        audit_window.deleteLater()
+    QTimer.singleShot(50, app.quit)
+    app.exec()
     save()
     print(f'{len(results)} captures; errors={errors}; network attempts={network_attempts}',flush=True)
 if errors or network_attempts:

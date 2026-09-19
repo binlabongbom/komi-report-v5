@@ -71,14 +71,14 @@ def test_scoped_snapshots_never_render_other_tabs_data(staged, monkeypatch):
     assert staged.user_metric_cards["usage"]._full_value == "—"
     deliver(staged, tab_index=1)
     assert counts == {"users": 2, "printers": 1}
-    assert staged.user_metric_cards["usage"]._full_value == "0"
+    assert staged.user_metric_cards["usage"]._full_value == "—"
     staged.tabs.setCurrentIndex(2)
     assert not staged.has_data
     assert staged.printer_metric_cards["usage"]._full_value == "—"
     staged.tabs.setCurrentIndex(0)
     assert staged.has_data
     assert counts == {"users": 2, "printers": 1}
-    assert staged.overview_kpis["total_usage"]._full_value == "0"
+    assert staged.overview_kpis["total_usage"]._full_value == "—"
 
 
 def test_loading_slow_and_error_preserve_snapshot_and_offer_retry(staged):
@@ -136,7 +136,7 @@ def test_cards_render_immediately_then_tables_then_charts(staged, monkeypatch, i
     monkeypatch.setattr(staged, chart_method, lambda: events.append("charts"))
     deliver(staged, tab_index=index)
     cards = (staged.overview_kpis, staged.user_metric_cards, staged.printer_metric_cards)[index]
-    assert cards[card_key]._full_value == "0"
+    assert cards[card_key]._full_value == "—"
     assert events == [], "tables and charts must yield after cards"
     staged._render_tail_timer.stop()
     staged._run_render_tail()

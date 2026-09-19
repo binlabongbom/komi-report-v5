@@ -53,7 +53,7 @@ def test_sections_use_one_tab_shell_and_share_the_schedule(settings, language):
     assert not settings.fleet_content.billing_editor.isVisibleTo(settings)
     settings.section_tabs.setCurrentIndex(2)
     assert settings.activity.isVisibleTo(settings)
-    settings.activity.tabs.setCurrentWidget(settings.activity.counter_reviews)
+    settings.activity.tabs.setCurrentWidget(settings.activity.counter_review_page)
     assert settings.activity.counter_reviews.isVisibleTo(settings)
     settings.section_tabs.setCurrentIndex(3)
     assert settings.fleet_content.support_task_editor.isVisibleTo(settings)

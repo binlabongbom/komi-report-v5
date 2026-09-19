@@ -213,7 +213,8 @@ def test_shared_confirmation_shows_before_after_and_defaults_to_cancel(tmp_path)
         assert dialog.table.item(0, 2).text() == "15"
         assert dialog.table.item(1, 2).text() == "3.5%"
         assert dialog.buttons.button(QDialogButtonBox.StandardButton.Cancel).isDefault()
-        assert any("ทุกเครื่อง" in label.text() for label in dialog.findChildren(QLabel))
+        assert any("บนคอมพิวเตอร์เครื่องนี้" in label.text() for label in dialog.findChildren(QLabel))
+        assert any("ยังไม่ส่ง" in label.text() for label in dialog.findChildren(QLabel))
         dialog.close()
     finally:
         database.set_db_path(original)

@@ -1,4 +1,6 @@
 """Review actual Web baselines before creating a shared slot decision."""
+from ui.review_components import field_label
+
 from concurrent.futures import ThreadPoolExecutor
 from decimal import Decimal
 from datetime import datetime
@@ -12,6 +14,7 @@ from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QComboBox, QLine
 
 from services.shared_slot_review import SharedSlotReviewService
 from services.slot_meter_continuity import counter_values, _number
+from i18n import tr
 from ui.counter_review import plain
 
 
@@ -44,23 +47,27 @@ class SlotBaselineDialog(QDialog):
         self.reason = QLineEdit()
         self.reason.setMaxLength(300)
         self.reason.setPlaceholderText("เหตุผล เช่น เปลี่ยนเครื่องแทนเครื่องเดิม หรือรีเซ็ตมิเตอร์ที่ตรวจสอบแล้ว")
+        field_label(layout, self.reason)
         layout.addWidget(self.reason)
         self.status = plain("ระบุเหตุผลแล้วตรวจค่าที่บันทึกจากเครื่องพิมพ์")
         layout.addWidget(self.status)
         self.table = QTableWidget(0, 3)
         self.table.setHorizontalHeaderLabels(["มิเตอร์ / ผู้ใช้", "ค่าจากเครื่องที่ใช้เป็นฐานใหม่", "ยอดสะสม Slot ที่ยกมา"])
+        from PyQt6.QtWidgets import QHeaderView
+        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
+        self.table.horizontalHeader().setStretchLastSection(True)
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         layout.addWidget(self.table, 1)
         self.verified = QCheckBox("ตรวจสอบเครื่องใน Slot, Serial และฐานมิเตอร์ตามรายการแล้ว")
         layout.addWidget(self.verified)
-        layout.addWidget(plain("การยืนยันเป็นการเปลี่ยนฐานของ Slot ร่วมกันทั้งระบบ และจะบันทึกประวัติกับรายการรอส่งให้สมาชิกพร้อมกัน การบันทึกบนคอมนี้ยังไม่ยืนยันว่าคอมอื่นได้รับแล้ว"))
+        layout.addWidget(plain(tr("การยืนยันจะบันทึกฐาน Slot และประวัติบนคอมนี้ รุ่นนี้ยังไม่ส่งการเปลี่ยนฐานให้คอมอื่นอัตโนมัติ", "Confirmation saves the slot baseline and history on this computer. This version does not automatically send baseline changes to other computers.")))
         layout.addWidget(plain("รายงานเรียกเก็บเดิมและรายการมิเตอร์ที่ยังรอตรวจสอบจะไม่ถูกอนุมัติจากการยืนยันฐานนี้"))
         self.buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         self.confirm_button = self.buttons.button(QDialogButtonBox.StandardButton.Ok)
         self.confirm_button.setText("ยืนยันฐานและบันทึกประวัติ")
         self.confirm_button.setEnabled(False)
         self.confirm_button.setAutoDefault(False)
-        self.buttons.button(QDialogButtonBox.StandardButton.Cancel).setText("ยกเลิก")
+        self.buttons.button(QDialogButtonBox.StandardButton.Cancel).setText(tr('ยกเลิก', 'Cancel'))
         self.buttons.button(QDialogButtonBox.StandardButton.Cancel).setDefault(True)
         layout.addWidget(self.buttons)
         self.timer = QTimer(self)
@@ -81,7 +88,7 @@ class SlotBaselineDialog(QDialog):
         self.preview = None
         self.verified.setChecked(False)
         self.table.setRowCount(0)
-        self.status.setText("กรุณาตรวจค่าล่าสุดก่อนยืนยัน")
+        self.status.setText(tr('กรุณาตรวจค่าล่าสุดก่อนยืนยัน', 'Review the latest readings before confirming.'))
         self.validate()
 
     def busy(self, value):
@@ -95,13 +102,13 @@ class SlotBaselineDialog(QDialog):
             return
         self.invalidate()
         if self.slots.currentData() is None or not self.reason.text().strip():
-            self.status.setText("เลือก Slot และระบุเหตุผลก่อนตรวจค่า")
+            self.status.setText(tr('เลือก Slot และระบุเหตุผลก่อนตรวจค่า', 'Select a slot and enter a reason before reviewing.'))
             return
         self.operation = "preview"
         self.future = self.pool.submit(self.service.preview, self.slots.currentData(),
             actor=socket.gethostname(), reason=self.reason.text().strip())
         self.busy(True)
-        self.status.setText("กำลังตรวจ Serial ค่า Web และฐานเดิม…")
+        self.status.setText(tr('กำลังตรวจ Serial ค่า Web และฐานเดิม…', 'Checking serial, Web reading and previous baseline…'))
         self.timer.start()
 
     def collect(self):
@@ -129,9 +136,11 @@ class SlotBaselineDialog(QDialog):
         review = result["review"]
         doc = review["epoch"]["document"]
         baseline = doc["baseline_event"]["payload"]
-        label = {"initial": "กำหนดฐาน Slot ครั้งแรก", "replacement": "เปลี่ยนเครื่องใน Slot เดิม", "reset": "ยืนยันหลังรีเซ็ตมิเตอร์"}[doc["operation"]]
+        label = {"initial": tr("กำหนดฐาน Slot ครั้งแรก", "Initial slot baseline"), "replacement": tr("เปลี่ยนเครื่องใน Slot เดิม", "Replace printer in the same slot"), "reset": tr("ยืนยันหลังรีเซ็ตมิเตอร์", "Confirm a meter reset")}[doc["operation"]]
         observed = datetime.fromisoformat(baseline["observed_at"]).astimezone().strftime("%d/%m/%Y %H:%M:%S")
-        self.status.setText(f"{label}\nSerial: {result['previous_serial'] or 'ยังไม่มีฐานเดิม'} → {baseline['serial']} · อ่านเมื่อ {observed}")
+        self.status.setText(tr("{operation}\nSerial: {before} → {after} · อ่านเมื่อ {at}", "{operation}\nSerial: {before} → {after} · Read at {at}").format(
+            operation=label, before=result['previous_serial'] or tr('ยังไม่มีฐานเดิม', 'No previous baseline'), after=baseline['serial'], at=observed))
+        self.status.setProperty("i18n_data", True)
         values = counter_values(doc["baseline_event"])
         self.table.setRowCount(len(doc["carried"]))
         for index, (key, carried) in enumerate(sorted(doc["carried"].items())):
@@ -148,7 +157,7 @@ class SlotBaselineDialog(QDialog):
         self.operation = "confirm"
         self.future = self.pool.submit(self.service.confirm, self.preview)
         self.busy(True)
-        self.status.setText("กำลังบันทึกฐาน Slot และประวัติร่วม…")
+        self.status.setText(tr('กำลังบันทึกฐาน Slot และประวัติร่วม…', 'Saving the slot baseline and history…'))
         self.timer.start()
 
     def reject(self):

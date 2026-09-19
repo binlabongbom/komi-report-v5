@@ -1,4 +1,6 @@
 """Counter review UI, separate from the settings/report monolith."""
+from ui.review_components import field_label, technical_details
+
 from datetime import datetime
 import sqlite3
 import socket
@@ -50,6 +52,7 @@ class CounterReviewDialog(QDialog):
         self.reason.setMaxLength(300)
         self.reason.setPlaceholderText(tr("เหตุผลที่ยืนยันค่าเริ่มต้นใหม่", "Reason for the new baseline"))
         self.reason.setAccessibleName(self.reason.placeholderText())
+        field_label(layout, self.reason)
         layout.addWidget(self.reason)
         self.verified = QCheckBox(tr("ตรวจสอบ Serial และค่ามิเตอร์จากเครื่องพิมพ์แล้ว", "I checked the printer serial and meter"))
         layout.addWidget(self.verified)

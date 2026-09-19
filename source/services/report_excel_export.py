@@ -12,6 +12,7 @@ from contextvars import ContextVar
 from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
+from time import monotonic, sleep
 
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
@@ -39,10 +40,18 @@ WHITE = "FFFFFF"
 _EXCEL_FORMULA_PREFIXES = frozenset("=+-@")
 _ILLEGAL_XML_CONTROL_RE = re.compile(r"[\x00-\x08\x0b-\x0c\x0e-\x1f]")
 _export_control = ContextVar('excel_export_control', default=(None, None))
+_last_ui_yield = ContextVar('excel_export_last_ui_yield', default=0.0)
 
 
 def _checkpoint(percent=None, message=''):
     cancelled, progress = _export_control.get()
+    # CPU-heavy Python loops can repeatedly reacquire the GIL before Qt's
+    # Python event filters run on Windows. Leave a brief, bounded opportunity
+    # for the GUI to handle input, in addition to moving the work off-thread.
+    now = monotonic()
+    if cancelled is not None and now - _last_ui_yield.get() >= 0.02:
+        sleep(0.001)
+        _last_ui_yield.set(monotonic())
     if cancelled is not None and cancelled.is_set():
         raise CancelledError()
     if percent is not None and progress is not None:

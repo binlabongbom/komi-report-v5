@@ -127,20 +127,27 @@ def build_network_settings(self, program_body):
     peer_sync_layout = QHBoxLayout(peer_sync)
     peer_sync_layout.setContentsMargins(0, 8, 0, 8)
     peer_sync_copy = QVBoxLayout()
-    peer_sync_title = section_title("ส่งการตั้งค่าให้คอมพิวเตอร์อื่น", "Share settings with another computer")
+    peer_sync_title = section_title("ส่งค่าตอนติดตั้งครั้งแรก", "Share initial setup settings")
     self.peer_sync_status = QLabel()
     self.peer_sync_status.setWordWrap(True)
     self.peer_sync_status.setAccessibleName("สถานะการอนุญาตรับการตั้งค่า")
     peer_sync_copy.addWidget(peer_sync_title)
     peer_sync_copy.addWidget(self.peer_sync_status)
+    setup_note = QLabel(tr(
+        "รับค่าครั้งเดียวระหว่างติดตั้ง · การเปลี่ยนค่าภายหลังยังไม่ส่งต่ออัตโนมัติ",
+        "One-time copy during setup. Later changes are not sent automatically.",
+    ))
+    setup_note.setWordWrap(True)
+    peer_sync_copy.addWidget(setup_note)
     peer_sync_layout.addLayout(peer_sync_copy, 1)
     self.peer_sync_mode = QComboBox()
+    self.peer_sync_mode.setProperty("i18n_items", True)
     self.peer_sync_mode.addItem("ปิด", "off")
     self.peer_sync_mode.addItem("เปิด 5 นาที", "temporary")
     self.peer_sync_mode.addItem("เปิดตลอด", "always")
     self.peer_sync_mode.setAccessibleName("ระยะเวลาอนุญาตรับการตั้งค่า")
     peer_sync_layout.addWidget(self.peer_sync_mode)
-    self.peer_sync_authorize_button = btn("ใช้การตั้งค่า Sync", "outline")
+    self.peer_sync_authorize_button = btn(tr("ใช้สิทธิ์รับค่าติดตั้ง", "Apply setup access"), "outline")
     self.peer_sync_authorize_button.setAccessibleName(
         "ใช้การตั้งค่าสิทธิ์ให้คอมพิวเตอร์อื่นรับการตั้งค่า"
     )

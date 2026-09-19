@@ -94,7 +94,7 @@ from database import (
     set_cfg,
     set_db_path,
 )
-from i18n import ENGLISH, THAI, apply_language, get_language, set_language, tr, translate_text
+from i18n import ENGLISH, THAI, ITEM_TRANSLATABLE_ROLE, apply_language, get_language, set_language, tr, translate_text
 from komi_snmp_profiler.connectors import (
     AuthenticatedWebConnectionCounterConnector,
     LegacyAuthenticatedWebConnectionCounterConnector,
@@ -1810,6 +1810,8 @@ class SetupWizardV5(QDialog):
         """Apply and persist a language selected on the first setup screen."""
         set_language(language)
         set_cfg("ui_language", language)
+        if hasattr(self, "review_sections") and self._selected_entries():
+            self._update_review()
         apply_language(self)
         self._sync_language_switch()
 
@@ -2467,6 +2469,8 @@ class SetupWizardV5(QDialog):
             heading.setFont(fnt(F_MD, True))
             heading.setStyleSheet("color:#176B49;border:none;")
             body = QLabel("")
+            # These summaries combine translated templates with customer data.
+            body.setProperty("i18n_data", True)
             body.setWordWrap(True)
             body.setTextInteractionFlags(
                 Qt.TextInteractionFlag.TextSelectableByMouse
@@ -2738,6 +2742,7 @@ class SetupWizardV5(QDialog):
         self.waste_paper_pct.setDecimals(1)
         self.waste_paper_pct.setSuffix(" %")
         self.billing_end_day = WizardComboBox()
+        self.billing_end_day.setProperty("i18n_items", True)
         for day in range(1, 32):
             self.billing_end_day.addItem(f"วันที่ {day} ของเดือน", day)
         billing_input_style = (
@@ -3077,6 +3082,7 @@ class SetupWizardV5(QDialog):
                 | (Qt.AlignmentFlag.AlignRight if column == 2 else Qt.AlignmentFlag.AlignLeft)
             )
             if column == 4:
+                item.setData(ITEM_TRANSLATABLE_ROLE, True)
                 item.setForeground(QColor(color))
             if background is not None:
                 item.setBackground(background)
@@ -3095,6 +3101,7 @@ class SetupWizardV5(QDialog):
         else:
             action_text = "ตั้งค่า"
         credential_item = QTableWidgetItem(action_text)
+        credential_item.setData(ITEM_TRANSLATABLE_ROLE, True)
         credential_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
         credential_item.setForeground(QColor("#1769AA"))
         if result.get("session_busy"):
@@ -4070,8 +4077,9 @@ class SetupWizardV5(QDialog):
         deferred = self.deferred_price_mode.isChecked()
         company = escape(self.company_name_input.text().strip())
         self.review_sections["organization"].setText(
-            f"<b>{company}</b> · เริ่มใช้งาน {escape(self.first_started_input.text())} · "
-            f"Version {escape(PACKAGE_VERSION)}"
+            tr("<b>{company}</b> · เริ่มใช้งาน {started} · Version {version}",
+               "<b>{company}</b> · Started {started} · Version {version}").format(
+                   company=company, started=escape(self.first_started_input.text()), version=escape(PACKAGE_VERSION))
         )
         device_lines: list[str] = []
         entries_by_host = {
@@ -4081,24 +4089,27 @@ class SetupWizardV5(QDialog):
             meter = entries_by_host.get(device.host, {}).get("result", {}).get("total")
             meter_text = f"{meter:,.0f}" if isinstance(meter, (int, float)) else "—"
             device_lines.append(
-                f"<b>{escape(device.name)}</b> · {escape(device.model or 'ไม่ทราบรุ่น')} · "
-                f"พร้อมใช้งาน · Meter {meter_text}"
+                tr("<b>{name}</b> · {model} · พร้อมใช้งาน · Meter {meter}",
+                   "<b>{name}</b> · {model} · Ready · Meter {meter}").format(
+                       name=escape(device.name), model=escape(device.model or tr("ไม่ทราบรุ่น", "Unknown model")), meter=meter_text)
             )
         self.review_sections["devices"].setText("<br>".join(device_lines))
 
         if deferred:
-            pricing_text = (
-                "<b>ตั้งค่าภายหลัง</b> · ขณะนี้ราคา 0.00 ทุกประเภทและยังไม่คิดค่าใช้จ่าย"
-            )
+            pricing_text = tr(
+                "<b>ตั้งค่าภายหลัง</b> · ขณะนี้ราคา 0.00 ทุกประเภทและยังไม่คิดค่าใช้จ่าย",
+                "<b>Set up later</b> · All rates are currently 0.00; no charges are calculated")
         elif shared:
             pricing_text = (
-                f"<b>ใช้ราคาเดียวกันทุกเครื่อง</b> · เริ่มใช้ "
+                tr("<b>ใช้ราคาเดียวกันทุกเครื่อง</b> · เริ่มใช้ ",
+                   "<b>One price list for all printers</b> · Effective ") +
                 f"{self.effective_date.date().toString('dd/MM/yyyy')}<br>"
                 f"{self._price_summary(self.shared_price_row)}"
             )
         else:
             price_lines = [
-                f"<b>ราคาแยกรายเครื่อง</b> · เริ่มใช้ "
+                tr("<b>ราคาแยกรายเครื่อง</b> · เริ่มใช้ ",
+                   "<b>Price list by printer</b> · Effective ") +
                 f"{self.effective_date.date().toString('dd/MM/yyyy')}"
             ]
             for device in devices:
@@ -4109,13 +4120,16 @@ class SetupWizardV5(QDialog):
         self.review_sections["pricing"].setText(pricing_text)
 
         if self.edit_mode:
-            billing_text = "รอบบิลและส่วนลดจัดการจากหน้า Settings โดยไม่เปลี่ยนตาม Wizard นี้"
+            billing_text = tr("รอบบิลและส่วนลดจัดการจากหน้า Settings โดยไม่เปลี่ยนตาม Wizard นี้",
+                              "Manage the billing cycle and discount in Settings; this wizard keeps them unchanged.")
         elif deferred:
-            billing_text = "ยังไม่เริ่มคิดค่าใช้จ่าย · ตั้งราคาและรอบบิลภายหลังได้จาก Settings"
+            billing_text = tr("ยังไม่เริ่มคิดค่าใช้จ่าย · ตั้งราคาและรอบบิลภายหลังได้จาก Settings",
+                              "Billing has not started. Set prices and the billing cycle later in Settings.")
         else:
             billing_text = (
-                f"ส่วนลดกระดาษเสีย {self.waste_paper_pct.value():g}% · "
-                f"สิ้นสุดรอบวันที่ {self._billing_day()} ของเดือน"
+                tr("ส่วนลดกระดาษเสีย {discount:g}% · สิ้นสุดรอบวันที่ {day} ของเดือน",
+                   "Waste-paper discount {discount:g}% · Billing ends on day {day} of each month").format(
+                       discount=self.waste_paper_pct.value(), day=self._billing_day())
             )
         self.review_sections["billing"].setText(billing_text)
         platform_name, architecture = runtime_platform()
@@ -4169,10 +4183,11 @@ class SetupWizardV5(QDialog):
     @staticmethod
     def _price_summary(inputs: dict[str, QDoubleSpinBox]) -> str:
         return (
-            f"A4 สี <b>{inputs['a4_color'].value():,.2f}</b> · "
-            f"A4 ขาวดำ <b>{inputs['a4_bw'].value():,.2f}</b> · "
-            f"A3 สี <b>{inputs['a3_color'].value():,.2f}</b> · "
-            f"A3 ขาวดำ <b>{inputs['a3_bw'].value():,.2f}</b> บาท/หน้า"
+            tr("A4 สี <b>{a4_color:,.2f}</b> · A4 ขาวดำ <b>{a4_bw:,.2f}</b> · "
+               "A3 สี <b>{a3_color:,.2f}</b> · A3 ขาวดำ <b>{a3_bw:,.2f}</b> บาท/หน้า",
+               "A4 color <b>{a4_color:,.2f}</b> · A4 B&W <b>{a4_bw:,.2f}</b> · "
+               "A3 color <b>{a3_color:,.2f}</b> · A3 B&W <b>{a3_bw:,.2f}</b> THB/page").format(
+                   **{key: control.value() for key, control in inputs.items()})
         )
 
     def _save(self) -> None:
@@ -4593,6 +4608,7 @@ class PageDeviceOverview(QWidget):
         header.addWidget(self.title)
         header.addStretch()
         self.mode_combo = QComboBox()
+        self.mode_combo.setProperty("i18n_items", True)
         self.mode_combo.addItem("Usage รอบนี้", "usage")
         self.mode_combo.addItem("Counter สะสมล่าสุด", "latest")
         self.mode_combo.currentIndexChanged.connect(self._mode_changed)
@@ -4637,6 +4653,7 @@ class PageDeviceOverview(QWidget):
             layout = QVBoxLayout(card)
             cap = QHBoxLayout()
             name = QLabel(device.name)
+            name.setProperty("i18n_data", True)
             name.setFont(fnt(F_MD, True))
             cap.addWidget(name)
             cap.addStretch()
@@ -4767,14 +4784,21 @@ class PagePipelineLog(QWidget):
         root.addWidget(self.page_note)
 
         self.tabs = QTabWidget()
-        self.tabs.addTab(self._status_tab(), "สถานะการอ่าน")
-        self.tabs.addTab(self._live_tab(), "ประวัติการอ่าน")
-        self.tabs.addTab(self._cache_tab(), "ข้อมูลวันนี้")
+        def scrollable(content):
+            scroll = QScrollArea()
+            scroll.setWidgetResizable(True)
+            scroll.setFrameShape(QFrame.Shape.NoFrame)
+            scroll.setWidget(content)
+            return scroll
+        self.tabs.addTab(scrollable(self._status_tab()), "สถานะการอ่าน")
+        self.tabs.addTab(scrollable(self._live_tab()), "ประวัติการอ่าน")
+        self.tabs.addTab(scrollable(self._cache_tab()), "ข้อมูลวันนี้")
         self.timeline_scroll = self._timeline_tab()
         self.tabs.addTab(self.timeline_scroll, "การทำงานอัตโนมัติ")
         from ui.counter_review import CounterReviewPanel
         self.counter_reviews = CounterReviewPanel(self.repository, self.cache)
-        self.tabs.addTab(self.counter_reviews, tr("ตรวจสอบมิเตอร์", "Meter review"))
+        self.counter_review_page = scrollable(self.counter_reviews)
+        self.tabs.addTab(self.counter_review_page, tr("ตรวจสอบมิเตอร์", "Meter review"))
         self.tabs.currentChanged.connect(lambda _index: self.refresh())
         root.addWidget(self.tabs, 1)
 
@@ -4908,6 +4932,7 @@ class PagePipelineLog(QWidget):
         self.device_filter.currentIndexChanged.connect(self.refresh_live)
         controls.addWidget(self.device_filter)
         self.stage_filter = QComboBox()
+        self.stage_filter.setProperty("i18n_items", True)
         for label, stage in self.STAGES:
             self.stage_filter.addItem(label, stage)
         self.stage_filter.currentIndexChanged.connect(self.refresh_live)
@@ -6575,6 +6600,7 @@ class PageImportV5(QWidget):
 
         top = QHBoxLayout()
         name = QLabel(device.name)
+        name.setProperty("i18n_data", True)
         name.setFont(fnt(F_MD, True))
         name.setWordWrap(True)
         name.setMinimumWidth(0)
@@ -8312,6 +8338,7 @@ class PageHistoryV5(PageHistory):
         description.setStyleSheet("color:#123262;")
         layout.addWidget(description)
         self.report_profile_combo = QComboBox()
+        self.report_profile_combo.setProperty("i18n_items", True)
         self.report_profile_combo.setMinimumWidth(230)
         layout.addWidget(self.report_profile_combo)
         self.report_search_button = btn("Search", "primary")
@@ -8340,6 +8367,7 @@ class PageHistoryV5(PageHistory):
         advanced.addSpacing(8)
         advanced.addWidget(QLabel("สรุปตาราง:"))
         self.report_granularity_combo = QComboBox()
+        self.report_granularity_combo.setProperty("i18n_items", True)
         for label, value in (
             ("รายวัน", "daily"),
             ("รายสัปดาห์", "weekly"),
@@ -8419,6 +8447,7 @@ class PageHistoryV5(PageHistory):
         controls.addStretch()
         controls.addWidget(QLabel("ช่วงรายงาน:"))
         self.report_period_combo = QComboBox()
+        self.report_period_combo.setProperty("i18n_items", True)
         self.report_period_combo.setMinimumWidth(230)
         self.report_period_combo.currentIndexChanged.connect(
             lambda _index: self._refresh_reports_overview()
@@ -9297,6 +9326,7 @@ class PageHistoryV5(PageHistory):
         controls = QHBoxLayout()
         controls.addWidget(QLabel("รอบบิล:"))
         self.cmb_month_users = QComboBox()
+        self.cmb_month_users.setProperty("i18n_items", True)
         self.cmb_month_users.setMinimumWidth(190)
         self.cmb_month_users.currentIndexChanged.connect(self._on_month_users_changed)
         controls.addWidget(self.cmb_month_users)
@@ -9667,6 +9697,7 @@ class PageHistoryV5(PageHistory):
         controls.addStretch()
         controls.addWidget(QLabel("มุมมอง:"))
         self.history_view_combo = QComboBox()
+        self.history_view_combo.setProperty("i18n_items", True)
         self.history_view_combo.addItem("รายวัน", "daily")
         self.history_view_combo.addItem("รายสัปดาห์", "weekly")
         self.history_view_combo.addItem("รายเดือน", "monthly")
@@ -12444,11 +12475,26 @@ class BillingAuditDetailDialog(QDialog):
         heading = QLabel(f"Ledger #{row.id} · {row.entry_kind.upper()}")
         heading.setFont(fnt(F_2XL, True))
         layout.addWidget(heading)
-        body = QPlainTextEdit(audit_row_detail_text(row))
-        body.setReadOnly(True)
-        body.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
+        from ui.review_components import technical_details, display_date, hold_reason_text
+        from ui.counter_review import plain
+        summary = QFormLayout()
+        for caption, value in (
+            (tr("เครื่องพิมพ์", "Printer"), f"Slot {row.device_slot + 1} · {row.device_name_snapshot} · {row.device_serial_snapshot}"),
+            (tr("วันที่ / รอบบิล", "Day / billing period"), f"{display_date(row.record_date)} · {display_date(row.period_start)} – {display_date(row.period_end)}"),
+            (tr("ผลต่อยอด", "Billing effect"), _AUDIT_STATE_LABELS.get(row.effective_state, row.effective_state)),
+            (tr("ก่อนส่วนลด / สุทธิ", "Gross / net"), f"฿{row.gross_cents / 100:,.2f} / ฿{row.net_cents / 100:,.2f}"),
+            (tr("หมายเหตุ", "Remark"), hold_reason_text(row.hold_reason)),
+        ):
+            value_label = plain(value)
+            value_label.setProperty("i18n_data", True)
+            summary.addRow(caption, value_label)
+        layout.addLayout(summary)
+        layout.addWidget(plain(tr("รายการเดิมยังคงอยู่ การแก้ยอดจะสร้างรายการใหม่พร้อมหลักฐาน", "Original entries are preserved. Corrections create new entries with evidence.")))
+        evidence = technical_details(audit_row_detail_text(row))
+        body = evidence.findChild(QPlainTextEdit)
         body.setObjectName("billingAuditDetail")
-        layout.addWidget(body, 1)
+        layout.addWidget(evidence)
+        layout.addStretch(1)
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
@@ -12460,25 +12506,26 @@ class PageBillingAudit(QWidget):
     PAGE_SIZE = 100
     EXPORT_FIELDS = tuple(AuditRow.__dataclass_fields__)
 
-    def __init__(self, parent=None) -> None:
+    def __init__(self, parent=None, *, embedded=False) -> None:
         super().__init__(parent)
         self._loaded_limit = self.PAGE_SIZE
         self._rows: list[AuditRow] = []
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(24, 20, 24, 20)
-        layout.setSpacing(14)
+        layout.setContentsMargins(0, 0, 0, 0) if embedded else layout.setContentsMargins(16, 12, 16, 12)
+        layout.setSpacing(8)
 
         title = QLabel("ตรวจสอบและแก้ไขรอบบิล")
         title.setFont(fnt(F_2XL, True))
         layout.addWidget(title)
+        title.setVisible(not embedded)
         hint = QLabel(
-            "Ledger เป็น append-only: Hold จะไม่ถูกคิดเงิน และการแก้ยอดจะเพิ่ม Reversal + Replacement "
-            "โดยไม่แก้หรือลบรายการเดิม · ดับเบิลคลิกแถวเพื่อดูหลักฐานครบ"
+            tr("รายการรอตรวจยังไม่คิดเงิน · เลือกแถวเพื่อดูหลักฐานหรือแก้ยอด",
+               "Held items are not billed. Select a row to review evidence or correct an amount.")
         )
         hint.setWordWrap(True)
         hint.setStyleSheet(
             "background:#EEF6F9;color:#245268;border:1px solid #C8E1EA;"
-            "border-radius:6px;padding:12px;"
+            "border-radius:6px;padding:6px;"
         )
         layout.addWidget(hint)
         self.coverage = QLabel()
@@ -12489,6 +12536,7 @@ class PageBillingAudit(QWidget):
         filters.setSpacing(8)
         filters.addWidget(QLabel("สถานะ"))
         self.state_filter = QComboBox()
+        self.state_filter.setProperty("i18n_items", True)
         self.state_filter.setObjectName("billingAuditStateFilter")
         self.state_filter.addItem("ทั้งหมด", None)
         self.state_filter.addItem("มีผลต่อยอด", "effective")
@@ -12545,6 +12593,9 @@ class PageBillingAudit(QWidget):
         self.reprice_range_button = btn("คำนวณใหม่ตามวันที่", "outline")
         self.manual_review_button = btn("ตรวจและแก้ยอด", "outline")
         self.manual_review_button.setEnabled(False)
+        self.reprice_button.setToolTip("คำนวณรายการที่เลือกใหม่จากราคาตามวันบังคับใช้")
+        self.reprice_range_button.setToolTip("ตรวจรายการและคำนวณราคาใหม่ตามช่วงวันที่ที่เลือก")
+        self.manual_review_button.setToolTip("ตรวจหลักฐานและกรอกยอดแก้ไขของรายการที่เลือก")
         self.export_button = btn("Export CSV", "outline")
         actions.addWidget(self.load_more_button)
         actions.addWidget(self.detail_button)
@@ -12585,11 +12636,13 @@ class PageBillingAudit(QWidget):
     def _refresh_coverage(self) -> None:
         coverage = audit_coverage()
         self.coverage.setText(
-            f"มีผลต่อยอด {coverage.effective_posted} วัน · Hold รอตรวจ {coverage.open_holds} วัน · "
-            f"Reversal ยังไม่ครบคู่ {coverage.open_reversals} วัน · "
-            f"มีประวัติการแก้ไข {coverage.corrected_sources} วัน\n"
-            f"ข้อมูลเก่าก่อนใช้ Ledger {coverage.legacy_uncovered} วัน · "
-            f"ข้อมูลใหม่ที่ควรมี Ledger แต่หาย {coverage.expected_missing} วัน"
+            tr("มีผลต่อยอด {effective} วัน · Hold รอตรวจ {held} วัน · Reversal ยังไม่ครบคู่ {reversals} วัน · "
+               "มีประวัติการแก้ไข {corrected} วัน\nข้อมูลเก่าก่อนใช้ Ledger {legacy} วัน · ข้อมูลใหม่ที่ควรมี Ledger แต่หาย {missing} วัน",
+               "Days: effective {effective} · held for review {held} · unpaired reversals {reversals} · "
+               "corrected {corrected}\nBefore Ledger {legacy} · new records missing Ledger evidence {missing}").format(
+                   effective=coverage.effective_posted, held=coverage.open_holds,
+                   reversals=coverage.open_reversals, corrected=coverage.corrected_sources,
+                   legacy=coverage.legacy_uncovered, missing=coverage.expected_missing)
         )
         if coverage.expected_missing or coverage.open_reversals:
             style = "background:#FFF0F0;color:#A61B1B;border:1px solid #F4B4B4;"
@@ -12635,6 +12688,7 @@ class PageBillingAudit(QWidget):
                 if column == 0:
                     item.setData(Qt.ItemDataRole.UserRole, row.id)
                 if column == 3:
+                    item.setData(ITEM_TRANSLATABLE_ROLE, True)
                     item.setForeground(state_colors.get(row.effective_state, QColor(C_TEXT2)))
                 self.table.setItem(row_no, column, item)
         self.row_count.setText(f"แสดง {len(self._rows):,} จาก {total:,} รายการ")
@@ -12744,7 +12798,7 @@ class PageSettingsV5(QWidget):
         self.activity = PagePipelineLog()
         self.activity.page_title.hide()
         self.activity.page_note.hide()
-        self.audit = PageBillingAudit()
+        self.audit = PageBillingAudit(embedded=True)
         self.legacy_content = legacy_settings
         embed_mode = getattr(self.legacy_content, "set_v5_embed_mode", None)
         if callable(embed_mode):
@@ -12757,7 +12811,7 @@ class PageSettingsV5(QWidget):
         )
         self._audit_host = self._detail_page(
             "ตรวจสอบรอบบิล",
-            "ดูหลักฐานและรายการที่ระบบพักไว้เพื่อตรวจสอบ โดยไม่เปลี่ยนยอดย้อนหลังอัตโนมัติ",
+            "",
             self.audit,
         )
         self.legacy = self.legacy_content
@@ -12945,8 +12999,8 @@ class PageSettingsV5(QWidget):
     ) -> QWidget:
         page = QWidget()
         layout = QVBoxLayout(page)
-        layout.setContentsMargins(24, 18, 24, 20)
-        layout.setSpacing(12)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(8)
         top = QHBoxLayout()
         back = btn("← กลับไปการตั้งค่า", "outline")
         back.setAccessibleName("กลับไปหน้าการตั้งค่าหลัก")
@@ -12957,6 +13011,7 @@ class PageSettingsV5(QWidget):
         heading.setFont(fnt(F_2XL, True))
         heading.setStyleSheet("color:#102A43;border:none;")
         detail = QLabel(description)
+        detail.setVisible(bool(description))
         detail.setWordWrap(True)
         detail.setStyleSheet(
             "color:#8A4B08;background:#FFF7E8;border:1px solid #F2C879;"

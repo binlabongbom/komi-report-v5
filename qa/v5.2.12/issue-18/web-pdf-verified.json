@@ -1,0 +1,26 @@
+[
+  {
+    "points": 960,
+    "intervals": 959,
+    "total": 959,
+    "daily_rows": 30,
+    "daily_total": 959,
+    "pages": 62,
+    "bytes": 264740,
+    "timestamps_match_all_intervals": true,
+    "first": "01/01/202600:00",
+    "last": "30/01/202623:15"
+  },
+  {
+    "points": 4096,
+    "intervals": 4095,
+    "total": 4095,
+    "daily_rows": 128,
+    "daily_total": 4095,
+    "pages": 264,
+    "bytes": 1057883,
+    "timestamps_match_all_intervals": true,
+    "first": "01/01/202600:00",
+    "last": "08/05/202623:15"
+  }
+]

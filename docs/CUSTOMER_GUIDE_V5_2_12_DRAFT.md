@@ -49,6 +49,24 @@ popup จะแสดง **กำลังยกเลิก** จนงาน�
 ระบบไม่แทนไฟล์เดิมด้วยไฟล์ที่เขียนไม่ครบ หากแจ้งว่าเขียนไฟล์ไม่ได้ ให้ปิดไฟล์นั้น
 ใน Excel หรือเลือกชื่อ/โฟลเดอร์ใหม่ แล้วส่งออกอีกครั้ง
 
+
+### ส่งออกหลักฐาน Web และอ่านหมายเหตุ
+
+ใน **ประวัติ Web และช่วงขาดการอ่าน** เลือกวันที่เริ่มต้น/สิ้นสุด มิเตอร์ และช่วงฐานมิเตอร์ แล้วกดเรียกดูข้อมูล
+เลือกแถวในแท็บรายละเอียด แล้วกด **อ่านหมายเหตุเต็ม** หรือดับเบิลคลิก เพื่อเปิดข้อความทั้งหมดที่เลื่อนอ่านและคัดลอกได้
+ปุ่มส่งออก Excel/PDF ทำงานเบื้องหลัง มี popup แสดงขั้นตอนและเวลาที่ใช้ กดยกเลิกได้ ระบบรอจุดหยุดที่ปลอดภัย
+ก่อนแทนไฟล์ปลายทาง การยกเลิกหรือไฟล์ถูกล็อกจะไม่ทำลายไฟล์เดิม เมื่อย้ายช่วงวันที่ระหว่างส่งออก ไฟล์ยังใช้ข้อมูลที่เลือกตอนเริ่มงาน
+กราฟที่มีเพียงผลอ่านครั้งแรกยังไม่แสดงยอดศูนย์ เพราะยังไม่มีช่วงอ่านให้คำนวณ ส่วนข้อมูลที่อ่านได้จริงเป็นศูนย์จะแสดงศูนย์
+
+### ตรวจยอดและการตั้งค่า
+
+การ์ดยอดเงินแสดงจำนวนเต็ม โดยจัดแถวใหม่ตามความกว้างหน้าต่าง ปุ่มสีจางและเส้นประยังใช้งานไม่ได้
+กด Tab เพื่อเลื่อนไปตามปุ่ม กรอบสีฟ้าบอกตำแหน่ง keyboard focus
+หน้าตรวจรอบบิลแสดงรายการเป็นหลัก เลือกแถวเพื่อเปิดรายละเอียด เครื่องพิมพ์ วันที่ และยอดก่อน/หลัง
+หลักฐานทางเทคนิคอยู่ในส่วนที่กดขยายและคัดลอกได้ ต้องกรอกเหตุผลในช่องที่มีป้ายกำกับก่อนยืนยัน
+ค่าที่บันทึกมีผลบนคอมนี้ รุ่นนี้ยังไม่ส่งการเปลี่ยนแปลงให้คอมอื่นอัตโนมัติ การรับค่าตอนติดตั้งเป็นสำเนาครั้งเดียว
+หากยังอ่าน Counter ไม่ได้ รายการที่เคยเลือกจะคงอยู่ การเอาทุกตัวออกต้องยืนยันอีกครั้ง
+
 ## ตรวจประวัติและช่วงขาดการอ่าน
 
 1. เปิดส่วนตรวจสอบมิเตอร์ แล้วเลือก **ประวัติ Web และช่วงขาดการอ่าน**
@@ -234,3 +252,103 @@ ledger หรือเอกสารเรียกเก็บเดิม แ
 - หลัง build: ตรวจ Agent ของแพ็กเกจจริง รวมบริการลูกภายใต้ workload และสองคอมจริง
 - งานที่ติด Host รวม trust path ของการลงทะเบียน/ใบรับรอง เก็บไว้เวอร์ชันหน้า
 - ภาพการติดตั้งและการใช้งานสองคอมจริงหลัง build ใช้ตรวจคู่มือฉบับส่งมอบอีกครั้ง
+
+## English workflow reference
+
+This source guide documents version 5.2.12 before installer testing. All screenshots use synthetic data.
+Initial setup sharing is a one-time copy. Later settings changes, membership and shared-reader coordination are not automatically distributed in this release.
+Each computer keeps its own registration identity. A local save is not a delivery acknowledgement.
+
+- **Setup:** select the company, test the chosen printers and assign slots, review dated prices and billing day, then confirm the summary. During secondary setup, allow access on the sending computer and search again if discovery finds nothing.
+- **Overview and reports:** select a date range and review full totals. Cards reflow on smaller windows. A dash means data is unavailable; a measured zero remains zero. Single-point charts use bars. Numbered user labels correspond to the detailed table; hover for the full name.
+- **Reports Excel:** use the single Export Excel button in the Reports header. Choose dates and a destination. Progress shows the stage and elapsed time, not a promised time remaining. You can keep using the report. Cancel, Escape or closing the popup requests cancellation and preserves the previous destination file.
+- **Web evidence:** choose the printer, start/end dates, counter and meter epoch, then load saved evidence. The first reading is a baseline. Daily estimates divide the missing-period difference over days without any Web reading; 301 pages across two days displays 150.5 per day. Estimated graph values are not added again to billing.
+- **Full remarks and export:** select a remarks row and use Read full remarks, or double-click it. Both Excel and PDF export in the background with progress and cancellation. If a destination file is open, close it or choose a different filename and retry. The file uses the selection captured when export began.
+- **Billing review:** select a row, review its printer, dates, amounts and hold reason. Expand Technical details only when needed; Copy evidence keeps the complete original text. Enter the required reason before confirming. Original entries are retained. Reviewing or confirming a meter baseline does not silently approve earlier invoices.
+- **Settings:** General, Automation, Status and history, and Advanced use the same navigation. Small windows scroll rather than expanding beyond the available area. Initial setup access and read-only Web reports are separate controls.
+- **Pinned counters:** saved choices remain visible and selected when a printer has not supplied counters. Uncheck unwanted entries. Removing all saved entries requires explicit confirmation.
+- **Background agent:** closing the desktop window leaves the agent running in the system tray. Use the agent's Exit action to stop it completely. Opening the desktop again reconnects to the local data.
+- **Archive:** data older than a year can be archived. Monthly summaries remain available; detailed historical Web evidence is loaded only when requested. Keep the archive with its database when making a backup.
+
+## ภาพหน้าจอปัจจุบัน / Current screen reference
+
+ภาพไทยและอังกฤษด้านล่างใช้ไฟล์ชุดเดียวกับคู่มือในแอป ข้อมูลบริษัท เครื่องพิมพ์ และผู้ใช้เป็นข้อมูลจำลอง
+The Thai and English screenshots below are shared with the in-app guide. Names are fixture data and are not translated.
+
+### 1. บริษัท / Company
+
+![บริษัท / Company - TH](customer-guide/assets-v5.2.12-source/ui-th/01-setup-company.png)
+
+![บริษัท / Company - EN](customer-guide/assets-v5.2.12-source/ui-en/01-setup-company.png)
+
+### 2. เครื่องพิมพ์ / Printers
+
+![เครื่องพิมพ์ / Printers - TH](customer-guide/assets-v5.2.12-source/ui-th/02-setup-printers.png)
+
+![เครื่องพิมพ์ / Printers - EN](customer-guide/assets-v5.2.12-source/ui-en/02-setup-printers.png)
+
+### 3. ราคา / Pricing
+
+![ราคา / Pricing - TH](customer-guide/assets-v5.2.12-source/ui-th/03-setup-pricing.png)
+
+![ราคา / Pricing - EN](customer-guide/assets-v5.2.12-source/ui-en/03-setup-pricing.png)
+
+### 4. ยืนยันติดตั้ง / Setup review
+
+![ยืนยันติดตั้ง / Setup review - TH](customer-guide/assets-v5.2.12-source/ui-th/04-setup-review.png)
+
+![ยืนยันติดตั้ง / Setup review - EN](customer-guide/assets-v5.2.12-source/ui-en/04-setup-review.png)
+
+### 5. ภาพรวม / Overview
+
+![ภาพรวม / Overview - TH](customer-guide/assets-v5.2.12-source/ui-th/05-overview.png)
+
+![ภาพรวม / Overview - EN](customer-guide/assets-v5.2.12-source/ui-en/05-overview.png)
+
+### 6. อุปกรณ์ / Devices
+
+![อุปกรณ์ / Devices - TH](customer-guide/assets-v5.2.12-source/ui-th/06-devices.png)
+
+![อุปกรณ์ / Devices - EN](customer-guide/assets-v5.2.12-source/ui-en/06-devices.png)
+
+### 7. รายงาน / Reports
+
+![รายงาน / Reports - TH](customer-guide/assets-v5.2.12-source/ui-th/07-reports-overview.png)
+
+![รายงาน / Reports - EN](customer-guide/assets-v5.2.12-source/ui-en/07-reports-overview.png)
+
+### 8. การใช้งาน / Usage
+
+![การใช้งาน / Usage - TH](customer-guide/assets-v5.2.12-source/ui-th/08-reports-usage.png)
+
+![การใช้งาน / Usage - EN](customer-guide/assets-v5.2.12-source/ui-en/08-reports-usage.png)
+
+### 9. ข้อมูลเดิม / Legacy
+
+![ข้อมูลเดิม / Legacy - TH](customer-guide/assets-v5.2.12-source/ui-th/09-reports-legacy.png)
+
+![ข้อมูลเดิม / Legacy - EN](customer-guide/assets-v5.2.12-source/ui-en/09-reports-legacy.png)
+
+### 10. การตั้งค่า / Settings
+
+![การตั้งค่า / Settings - TH](customer-guide/assets-v5.2.12-source/ui-th/10-settings.png)
+
+![การตั้งค่า / Settings - EN](customer-guide/assets-v5.2.12-source/ui-en/10-settings.png)
+
+### 11. เครือข่าย / Network
+
+![เครือข่าย / Network - TH](customer-guide/assets-v5.2.12-source/ui-th/11-advanced-lan.png)
+
+![เครือข่าย / Network - EN](customer-guide/assets-v5.2.12-source/ui-en/11-advanced-lan.png)
+
+### 12. ขั้นสูง / Advanced
+
+![ขั้นสูง / Advanced - TH](customer-guide/assets-v5.2.12-source/ui-th/12-advanced-tools.png)
+
+![ขั้นสูง / Advanced - EN](customer-guide/assets-v5.2.12-source/ui-en/12-advanced-tools.png)
+
+### 13. คู่มือ / Manual
+
+![คู่มือ / Manual - TH](customer-guide/assets-v5.2.12-source/ui-th/13-manual.png)
+
+![คู่มือ / Manual - EN](customer-guide/assets-v5.2.12-source/ui-en/13-manual.png)

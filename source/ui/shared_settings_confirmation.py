@@ -75,10 +75,12 @@ class SharedSettingsConfirmation(QDialog):
             self.resize(740, 300)
         layout = QVBoxLayout(self)
         notice = QLabel(tr(
-            "การตั้งค่านี้มีผลกับคอมพิวเตอร์ทุกเครื่องในระบบ\n"
-            "เครื่องที่ออฟไลน์จะรับเมื่อกลับมาเชื่อมต่อ และจะมีการบันทึกประวัติการเปลี่ยนแปลง",
-            "These settings apply to every computer in the system.\n"
-            "Offline computers receive them after reconnecting. This change will be recorded.",
+            "บันทึกการตั้งค่าและประวัติการเปลี่ยนแปลงบนคอมพิวเตอร์เครื่องนี้\n"
+            "รุ่นนี้ยังไม่ส่งการเปลี่ยนแปลงให้คอมพิวเตอร์อื่นอัตโนมัติ "
+            "การรับค่าตอนติดตั้งเป็นการคัดลอกครั้งเดียว",
+            "Save settings and change history on this computer.\n"
+            "This version does not automatically send changes to other computers. "
+            "Receiving settings during setup is a one-time copy.",
         ))
         notice.setWordWrap(True)
         layout.addWidget(notice)

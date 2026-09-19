@@ -23,7 +23,28 @@ def wait_until(predicate, seconds=15):
 
 
 def test_90_users_export_keeps_qt_responsive_and_verifies_workbook(tmp_path):
+    # Timing measurements need their own QApplication/process: the functional
+    # suite deliberately creates and tears down hundreds of unrelated Qt
+    # windows. Keep the timer/click thresholds and workbook assertions intact.
+    import os
+    import subprocess
+    import sys
+    if os.environ.get("KOMI_TEST_FRESH_QT_EXPORT") != "1":
+        result = subprocess.run(
+            [sys.executable, "-m", "pytest", __file__ + "::test_90_users_export_keeps_qt_responsive_and_verifies_workbook",
+             "-q", "--tb=short", "--basetemp", str(tmp_path / "fresh-qt")],
+            env={**os.environ, "KOMI_TEST_FRESH_QT_EXPORT": "1"},
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+            encoding="utf-8", errors="replace", timeout=120,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+        assert result.returncode == 0, result.stdout
+        return
     app = QApplication.instance() or QApplication([])
+    from config import build_qss
+    from ui_consistency import install_button_system
+    install_button_system(app)
+    app.setStyleSheet(build_qss())
     parent = QWidget()
     button = QPushButton('Navigate', parent)
     parent.show()

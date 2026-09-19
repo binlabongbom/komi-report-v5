@@ -1,0 +1,135 @@
+{
+  "fixture": "synthetic; networking blocked; source UI",
+  "images": [
+    {
+      "source": "outputs/ui-ux-audit/wizard-1100x760-th/wizard-company.png",
+      "asset": "docs/customer-guide/assets-v5.2.12-source/ui-th/01-setup-company.png",
+      "sha256": "d78ea527d720166040b4c8f5cb314677be98d4d4d4fa42ba87be1cb2ac6b43cf"
+    },
+    {
+      "source": "outputs/ui-ux-audit/wizard-1100x760-th/wizard-devices.png",
+      "asset": "docs/customer-guide/assets-v5.2.12-source/ui-th/02-setup-printers.png",
+      "sha256": "016b406e7024795580f6f730969af7816922edfa08d11d5cf67062cd096d53e3"
+    },
+    {
+      "source": "outputs/ui-ux-audit/wizard-1100x760-th/wizard-prices.png",
+      "asset": "docs/customer-guide/assets-v5.2.12-source/ui-th/03-setup-pricing.png",
+      "sha256": "f1ad7759810ba01047a76744e5a8eb0cbc0d3498cd64a540add440c740c69ae1"
+    },
+    {
+      "source": "outputs/ui-ux-audit/wizard-1100x760-th/wizard-review.png",
+      "asset": "docs/customer-guide/assets-v5.2.12-source/ui-th/04-setup-review.png",
+      "sha256": "625993d3614cb731a795ffa5c5c6240cb2369ff78892e61336b88365230323cf"
+    },
+    {
+      "source": "outputs/ui-ux-audit/pages-1440x900-th/overview.png",
+      "asset": "docs/customer-guide/assets-v5.2.12-source/ui-th/05-overview.png",
+      "sha256": "eccf5bd8dbb018b1f7f19be992507d737f3db71506fb7fafd3e202546c33ddc9"
+    },
+    {
+      "source": "outputs/ui-ux-audit/pages-1440x900-th/devices.png",
+      "asset": "docs/customer-guide/assets-v5.2.12-source/ui-th/06-devices.png",
+      "sha256": "5d68e11ffec7df970b9bfcd4f119a70f066af62bdd439f09cc55b802001a56ba"
+    },
+    {
+      "source": "outputs/ui-ux-audit/pages-1440x900-th/reports.png",
+      "asset": "docs/customer-guide/assets-v5.2.12-source/ui-th/07-reports-overview.png",
+      "sha256": "62ac3ad3998b39d571d3c02cfa94dbc99907f120557b6fd1b815fc2a08a7a1ae"
+    },
+    {
+      "source": "outputs/ui-ux-audit/pages-1440x900-th/reports-tab-3.png",
+      "asset": "docs/customer-guide/assets-v5.2.12-source/ui-th/08-reports-usage.png",
+      "sha256": "cf07b97ab73e3a6e48c4cbad22cd2c463c8ce79957e0ff526bcd01a9b250ba67"
+    },
+    {
+      "source": "outputs/ui-ux-audit/pages-1440x900-th/reports-tab-4.png",
+      "asset": "docs/customer-guide/assets-v5.2.12-source/ui-th/09-reports-legacy.png",
+      "sha256": "b1499416784f25165b18b83fbc565200542f46b244b0d900374cd68ba14f06d7"
+    },
+    {
+      "source": "outputs/ui-ux-audit/pages-1440x900-th/settings.png",
+      "asset": "docs/customer-guide/assets-v5.2.12-source/ui-th/10-settings.png",
+      "sha256": "0a95cdfb45b029e5922e47fa50f9f0366587065e573b434279057fed80dd0e17"
+    },
+    {
+      "source": "outputs/ui-ux-audit/pages-1440x900-th/settings-network-bottom.png",
+      "asset": "docs/customer-guide/assets-v5.2.12-source/ui-th/11-advanced-lan.png",
+      "sha256": "dd2f4d1f79f9582f9326a3c51e2f8d4dd9cc924e0c7841a553613f8c26bc59be"
+    },
+    {
+      "source": "outputs/ui-ux-audit/pages-1440x900-th/settings-tab-3.png",
+      "asset": "docs/customer-guide/assets-v5.2.12-source/ui-th/12-advanced-tools.png",
+      "sha256": "41294af5d0efac85a1f037ac8cb9575899632d181774472c49863f4a7bc719d4"
+    },
+    {
+      "source": "outputs/ui-ux-audit/pages-1440x900-th/manual.png",
+      "asset": "docs/customer-guide/assets-v5.2.12-source/ui-th/13-manual.png",
+      "sha256": "fd578fd387dcc5cbee4854040dbc05ea0ef782e8b11b2dfb1f201549514fd9a1"
+    },
+    {
+      "source": "outputs/ui-ux-audit/wizard-1100x760-en/wizard-company.png",
+      "asset": "docs/customer-guide/assets-v5.2.12-source/ui-en/01-setup-company.png",
+      "sha256": "e9cd94128ee8c948d60c71d2eed48716d1b98eb7ff2890deb0fec7418feb6343"
+    },
+    {
+      "source": "outputs/ui-ux-audit/wizard-1100x760-en/wizard-devices.png",
+      "asset": "docs/customer-guide/assets-v5.2.12-source/ui-en/02-setup-printers.png",
+      "sha256": "54f79e051d109f82ac92b92eed010135b1fca75703fb79834f1ff95dab033d5a"
+    },
+    {
+      "source": "outputs/ui-ux-audit/wizard-1100x760-en/wizard-prices.png",
+      "asset": "docs/customer-guide/assets-v5.2.12-source/ui-en/03-setup-pricing.png",
+      "sha256": "8b3ebb86632b6ae3e677a1e422ce9afd0bf138eac666c82d3b2f19d11198ac72"
+    },
+    {
+      "source": "outputs/ui-ux-audit/wizard-1100x760-en/wizard-review.png",
+      "asset": "docs/customer-guide/assets-v5.2.12-source/ui-en/04-setup-review.png",
+      "sha256": "4b2738f554001d22586a46be0a299053141244db96c457f032244c40a07cb08a"
+    },
+    {
+      "source": "outputs/ui-ux-audit/pages-1440x900-en/overview.png",
+      "asset": "docs/customer-guide/assets-v5.2.12-source/ui-en/05-overview.png",
+      "sha256": "52069ec46f8c0fe2583ab4aa62b0e6dc3677b080c3c4f7da453689b7f58e887e"
+    },
+    {
+      "source": "outputs/ui-ux-audit/pages-1440x900-en/devices.png",
+      "asset": "docs/customer-guide/assets-v5.2.12-source/ui-en/06-devices.png",
+      "sha256": "0464fa5d9070c7e3ee990785ecfc23dd9d8d3c855ded75d38301ca86d391f5bc"
+    },
+    {
+      "source": "outputs/ui-ux-audit/pages-1440x900-en/reports.png",
+      "asset": "docs/customer-guide/assets-v5.2.12-source/ui-en/07-reports-overview.png",
+      "sha256": "28a6a5f9ed9e03cb6a1112a67ae5ef0d0f67c0da536d977bcca3e4684363789e"
+    },
+    {
+      "source": "outputs/ui-ux-audit/pages-1440x900-en/reports-tab-3.png",
+      "asset": "docs/customer-guide/assets-v5.2.12-source/ui-en/08-reports-usage.png",
+      "sha256": "84a4d0b8901207cdb365efa3f1cac0fb5e5826351fd5b703d4eff2c8d70d7e8e"
+    },
+    {
+      "source": "outputs/ui-ux-audit/pages-1440x900-en/reports-tab-4.png",
+      "asset": "docs/customer-guide/assets-v5.2.12-source/ui-en/09-reports-legacy.png",
+      "sha256": "9c4d61890dd395f40e1b8c063d2be73943f09c26ba9692928ff413e7d2ab9c84"
+    },
+    {
+      "source": "outputs/ui-ux-audit/pages-1440x900-en/settings.png",
+      "asset": "docs/customer-guide/assets-v5.2.12-source/ui-en/10-settings.png",
+      "sha256": "3c7436bdeadf9908f1227d0fae4bde36b6ef84f4f982153e7edf4818bf2539aa"
+    },
+    {
+      "source": "outputs/ui-ux-audit/pages-1440x900-en/settings-network-bottom.png",
+      "asset": "docs/customer-guide/assets-v5.2.12-source/ui-en/11-advanced-lan.png",
+      "sha256": "3a2371b1e0e7d2f0107e0fb69136dbd5e43ecee98f512b1169a803b040f1b2f1"
+    },
+    {
+      "source": "outputs/ui-ux-audit/pages-1440x900-en/settings-tab-3.png",
+      "asset": "docs/customer-guide/assets-v5.2.12-source/ui-en/12-advanced-tools.png",
+      "sha256": "8c14289e5f11cfd32e9cecde1adfb702a783bd79f523f4ae348a417a5d7ecbe9"
+    },
+    {
+      "source": "outputs/ui-ux-audit/pages-1440x900-en/manual.png",
+      "asset": "docs/customer-guide/assets-v5.2.12-source/ui-en/13-manual.png",
+      "sha256": "3c6104268006f69d57fa0315245abaafcb55f8e7af176c760cf34d2fa2b4ecef"
+    }
+  ]
+}

@@ -120,7 +120,15 @@ def inspect_counter(evidence, counter, *, slot, serial, start, end, calendar_tim
     return result
 
 
-def export_evidence_xlsx(path, projection, *, printer, serial, counter_label):
+def export_evidence_xlsx(path, projection, *, printer, serial, counter_label, cancelled=None, progress=None):
+    from concurrent.futures import CancelledError
+    from i18n import tr
+    def checkpoint(percent, text):
+        if cancelled is not None and cancelled.is_set():
+            raise CancelledError()
+        if progress:
+            progress(percent, text)
+    checkpoint(5, tr("สร้างสมุดงาน…", "Creating workbook…"))
     from openpyxl import Workbook
     from openpyxl.styles import Font
     from services.report_excel_export import _neutralize_untrusted_cell_string
@@ -138,15 +146,20 @@ def export_evidence_xlsx(path, projection, *, printer, serial, counter_label):
         summary.append([_neutralize_untrusted_cell_string(str(value))[0] for value in row])
     points = workbook.create_sheet("อ่านจริง")
     points.append(["เวลาอ่านจริง", "มิเตอร์สะสม", "Event IDs"])
-    for point in projection.points:
+    for index, point in enumerate(projection.points):
+        if index % 100 == 0:
+            checkpoint(10 + int(30 * index / max(1, len(projection.points))), tr("เขียนค่ามิเตอร์…", "Writing meter readings…"))
         points.append([point.at.isoformat(), float(point.value), ", ".join(point.evidence_ids)])
     intervals = workbook.create_sheet("ยอดตามช่วง")
     intervals.append(["เริ่ม", "ถึง", "ผลต่าง", "วันลงยอด", "วันที่ไม่มี Web", "รอตรวจ", "หมายเหตุ"])
-    for item in projection.intervals:
+    for index, item in enumerate(projection.intervals):
+        if index % 100 == 0:
+            checkpoint(40 + int(30 * index / max(1, len(projection.intervals))), tr("เขียนช่วงหลักฐาน…", "Writing evidence intervals…"))
         intervals.append([item.start.at.isoformat(), item.end.at.isoformat(), float(item.amount), item.allocation_day.isoformat(),
             ", ".join(day.isoformat() for day in item.empty_days), review_labels(item.holds), item.remark])
     graph = workbook.create_sheet("กราฟรายวัน")
     graph.append(["วันที่", "ยอดช่วงมีข้อมูล", "ยอดประมาณการ", "ยอดแสดง", "เป็นค่าประมาณ", "หมายเหตุ"])
+    checkpoint(75, tr("เขียนกราฟรายวัน…", "Writing daily graph data…"))
     for item in projection.daily_graph():
         graph.append([item.day.isoformat(), float(item.observed_interval_usage), float(item.estimated_usage),
                       float(item.total), "ประมาณการ" if item.estimated else "", "\n".join(item.remarks)])
@@ -159,4 +172,9 @@ def export_evidence_xlsx(path, projection, *, printer, serial, counter_label):
             cell.font = Font(bold=True)
         for column in "ABCDEFG":
             sheet.column_dimensions[column].width = 28 if column != "G" else 70
-    workbook.save(path)
+    checkpoint(85, tr("บีบอัดไฟล์ Excel…", "Compressing Excel file…"))
+    try:
+        workbook.save(path)
+    finally:
+        workbook.close()
+    checkpoint(90, tr("ตรวจไฟล์เสร็จแล้ว", "File writing complete"))

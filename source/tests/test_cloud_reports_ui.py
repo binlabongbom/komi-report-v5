@@ -6,6 +6,7 @@ from dataclasses import replace
 from datetime import date
 
 import pytest
+from PyQt6.QtCharts import QBarSeries
 from PyQt6.QtCore import QDate, QLocale, QPoint, Qt, QTimer
 from PyQt6.QtTest import QSignalSpy, QTest
 from PyQt6.QtWidgets import QApplication, QDateEdit, QPushButton, QTableView, QToolButton
@@ -493,7 +494,8 @@ def test_usage_starts_with_reference_meter_without_counting_it_as_usage_or_cost(
     # contain only actual usage periods.
     assert widget.overview_kpis["total_usage"].lbl_val.text() == "200"
     assert widget.overview_kpis["total_cost"].lbl_val.text() == "฿58.80"
-    assert all(series.count() == 1 for series in widget.usage_timeline_chart.chart().series())
+    assert all(points.count() == 1 for series in widget.usage_timeline_chart.chart().series()
+               for points in (series.barSets() if isinstance(series, QBarSeries) else [series]))
 
     widget.usage_granularity_buttons["D"].click()
     assert widget.usage_monthly_table.item(0, 0).text() == "Meter เริ่มต้น"
@@ -591,7 +593,8 @@ def test_usage_all_devices_checkboxes_filter_aggregate_but_keep_per_device_matri
     assert widget.usage_by_printer_table.item(
         0, 1 + metric_count + total_index
     ).text() == "80"
-    assert all(series.count() == 1 for series in widget.usage_timeline_chart.chart().series())
+    assert all(points.count() == 1 for series in widget.usage_timeline_chart.chart().series()
+               for points in (series.barSets() if isinstance(series, QBarSeries) else [series]))
     widget.close()
     app.processEvents()
 
@@ -766,7 +769,7 @@ def test_users_cards_separate_color_without_inventing_missing_counters(mode):
     for key, value in zip(("color_print", "bw_print", "color_copy", "bw_copy"), expected):
         card = widget.user_metric_cards[key]
         assert card._full_value == value
-        assert card.layout().getItemPosition(card.layout().indexOf(card.lbl_val))[2] == 2
+        assert card.layout().getItemPosition(card.layout().indexOf(card.lbl_val))[0] == 1
     assert widget.user_metric_cards["usage"]._full_value == ("4" if mode == "partial_users" else "3")
     assert widget.user_metric_cards["count"]._full_value == ("2" if mode == "partial_users" else "1")
     widget.show_error("test error")
@@ -795,7 +798,7 @@ def test_printer_cards_match_overview_and_preserve_scan_summary():
         widget.resize(width, 760)
         app.processEvents()
         cards = list(widget.printer_metric_cards.values())
-        assert len({card.y() for card in cards}) == 1
+        assert len({card.y() for card in cards}) in (1, 2, 3)
         assert len({card.height() for card in cards}) == 1
     widget.show_error("unavailable")
     assert all(card._full_value == "—" for card in widget.printer_metric_cards.values())

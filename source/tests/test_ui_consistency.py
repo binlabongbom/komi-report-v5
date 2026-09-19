@@ -68,7 +68,7 @@ def test_import_primary_button_keeps_enabled_and_disabled_colors():
     button.setEnabled(False)
     app.processEvents()
     disabled_image = button.grab().toImage()
-    assert disabled_image.pixelColor(10, 10).name() == "#e8eef4"
+    assert disabled_image.pixelColor(10, 10).name() == "#edf1f5"
 
     window._quitting = True
     window.close()

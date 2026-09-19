@@ -11,7 +11,7 @@ sys.path.insert(0, str(ROOT / "source"))
 sys.path.insert(0, str(ROOT / "source" / "tests"))
 
 from PyQt6.QtWidgets import QApplication
-from PyQt6.QtGui import QTextDocument, QPdfWriter, QPageSize, QFont, QTextCursor, QImage
+from PyQt6.QtGui import QTextDocument, QPdfWriter, QPageSize, QFont, QTextCursor, QImage, QTextFormat
 from PyQt6.QtCore import QUrl, QMarginsF, QSizeF
 from qt_render_environment import configure_offscreen_fonts
 
@@ -34,7 +34,14 @@ def render():
     content = content.replace("→", ">")
     doc.setMarkdown(content)
     block = doc.begin()
+    gallery = False
     while block.isValid():
+        if "Current screen reference" in block.text():
+            gallery = True
+        if gallery and block.blockFormat().headingLevel() == 3:
+            block_format = block.blockFormat()
+            block_format.setPageBreakPolicy(QTextFormat.PageBreakFlag.PageBreak_AlwaysBefore)
+            QTextCursor(block).setBlockFormat(block_format)
         it = block.begin()
         while not it.atEnd():
             frag = it.fragment()
@@ -49,7 +56,8 @@ def render():
                 fmt.setName(url.toString())
                 # Qt print() scales document coordinates from logical 96 dpi;
                 # image format sizes must use the same logical coordinates.
-                width = min(writer.width() * 96 / writer.resolution() * .97, img.width())
+                # Keep each Thai/English gallery pair together on its page.
+                width = min(writer.width() * 96 / writer.resolution() * (.90 if gallery else .97), img.width())
                 fmt.setWidth(width)
                 fmt.setHeight(width * img.height() / img.width())
                 cursor = QTextCursor(doc)

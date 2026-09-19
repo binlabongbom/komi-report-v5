@@ -10,6 +10,12 @@ sys.path[:0] = [str(ROOT/'source'), str(ROOT/'source/tests')]
 os.environ['QT_QPA_PLATFORM'] = 'offscreen'
 os.environ['KOMI_DISCOVERY_DISABLED'] = '1'
 
+def block_network(event, _values):
+    if event in ('socket.connect', 'socket.sendto', 'socket.bind'):
+        raise PermissionError('Synthetic guide capture blocks network operations')
+
+sys.addaudithook(block_network)
+
 from PyQt6.QtWidgets import QApplication
 from PyQt6.QtTest import QTest
 from qt_render_environment import configure_offscreen_fonts
@@ -33,6 +39,12 @@ def wait_for(predicate):
 def capture():
     app = QApplication.instance() or QApplication([])
     configure_offscreen_fonts(app)
+    from config import build_qss
+    from ui_consistency import install_button_system
+    from i18n import set_language
+    set_language('th')
+    install_button_system(app)
+    app.setStyleSheet(build_qss())
     target = ROOT/'docs/customer-guide/assets-v5.2.12-source'
     previous = database.get_db_path()
     with tempfile.TemporaryDirectory(prefix='komi-guide-synthetic-') as folder:
@@ -133,6 +145,44 @@ def capture():
             assert dialog.grab().save(str(target/'detail-amendment.png'))
             dialog.close()
             dialog.pool.shutdown(wait=True)
+            database.set_db_path(Path(folder)/'slot-review.db')
+            database.init_db()
+            from test_shared_slot_review import initial
+            from test_slot_epoch_store import read
+            from ui.slot_baseline_review import SlotBaselineDialog
+            initial()
+            read('USED', 50000, 18)
+            dialog = SlotBaselineDialog(DeviceConfigRepository().list())
+            dialog.reason.setText('เปลี่ยนเครื่องใน Slot เดิม · ข้อมูลจำลอง')
+            dialog.show()
+            dialog.load()
+            wait_for(lambda: dialog.future is None and dialog.preview is not None)
+            app.processEvents()
+            assert dialog.grab().save(str(target/'slot-baseline-preview.png'))
+            dialog.close()
+            dialog.pool.shutdown(wait=True)
+            database.set_db_path(Path(folder)/'price-review.db')
+            database.init_db()
+            from test_billing_repricing_batch import postings
+            from ui.billing_repricing_batch import BatchRepricingDialog
+            postings()
+            dialog = BatchRepricingDialog(today=date(2026, 7, 31))
+            dialog.reason.setText('ตรวจราคาตามวันบังคับใช้ · ข้อมูลจำลอง')
+            dialog.show()
+            dialog.load()
+            wait_for(lambda: dialog.future is None and dialog.preview is not None)
+            app.processEvents()
+            assert dialog.grab().save(str(target/'price-range-preview.png'))
+            dialog.close()
+            dialog.pool.shutdown(wait=True)
+            database.set_db_path(Path(folder)/'web-graph.db')
+            from ui.archive_settings import ArchiveSettingsPanel
+            panel = ArchiveSettingsPanel(today=date(2028, 1, 1))
+            panel.resize(1000, 350)
+            panel.show()
+            app.processEvents()
+            assert panel.grab().save(str(target/'archive-settings.png'))
+            panel.close()
         finally:
             database.set_db_path(previous)
     print(target)
