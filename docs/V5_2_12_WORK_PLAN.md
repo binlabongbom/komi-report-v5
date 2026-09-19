@@ -51,7 +51,40 @@ bf453738b934dcf5bea59dd8c70e191b52ba6b89 และ merge เข้า local main
 ยังไม่รัน installer/release build ไม่เผยแพร่ และเก็บการติดตั้งสองเครื่องจริงไว้หลัง build
 ตามเดิม การพร้อม build ไม่ได้หมายถึงเปิดใช้สมาชิกจริงหรือผู้อ่านร่วมที่เลื่อนไปเวอร์ชันหน้า
 
-### ขอบเขตเพิ่มล่าสุด: ตรวจ QSS และ UX ทุกหน้าปัจจุบัน — ตรวจเสร็จ 19 กันยายน 2569
+### ขอบเขตเพิ่มล่าสุด: ตรวจ Performance — ตรวจเสร็จ 19 กันยายน 2569
+
+คำถามต่อเนื่อง “แล้วด้าน performance หละ” ตรวจ source/ฐานจำลองจริงและบันทึกผลแล้ว
+ดู `docs/V5_2_12_PERFORMANCE_AUDIT.md` และ `qa/v5.2.12/performance-audit/`
+รอบนี้เพิ่มเครื่องมือ audit/หลักฐาน **ยังไม่ได้แก้โค้ดโปรแกรมหรือ build**
+พบ P1 5 กลุ่ม / P2 2 กลุ่ม ผลพร้อม build ของขอบเขตเดิมไม่ครอบคลุมข้อใหม่เหล่านี้
+
+- [x] วัด UI 41 ขั้น: 5 หน้าหลัก, Reports 5 แท็บ/เดือนและปี, สลับช่วงปี 5 รอบ
+  ฐานจำลอง 100 ผู้ใช้/3 เครื่อง/5 ปีที่ยังไม่ Archive; ต้นฉบับ read-only
+- [x] แยก query/aggregation, ทดสอบ Web evidence render/Excel/PDF ที่ไม่เกิน 4,096 events
+- [x] วัด Agent/Desktop idle และ active fixture ใหม่; ทดลองอายุกราฟแบบ source และชุดควบคุม
+- [x] บันทึกข้อจำกัด: offscreen/source, ไม่วัด Host/Web/เครื่องพิมพ์จริง;
+  UI measurement จบครบแต่ harness cleanup เคย exit 1 แก้ connection ของเครื่องมือแล้ว
+  และเก็บกวาดสำเนาชั่วคราว ชุด query/evidence/chart จบสะอาด ไม่ใช่ product crash
+- [ ] **P1-01 Overview:** กรองช่วงใน SQL + worker/snapshot; ปัจจุบัน refresh 57.22 วินาที,
+  peak 1,234 MiB จากการโหลดประวัติผู้ใช้ทั้งหมดก่อนกรอง
+- [ ] **P1-02 Settings:** ย้าย Archive stats ออกจาก constructor/UI thread;
+  เปิดครั้งแรก 33.03 วินาที, stats แยก 14.01 วินาที
+- [ ] **P1-03 Legacy:** index/aggregate Raw ครั้งเดียวใน worker; รายงานปี UI gap 21.46 วินาที
+  กลับแท็บที่ cache แล้วก็ยังใช้ 18.32–22.88 วินาที
+- [ ] **P1-04 Charts:** คืนกราฟเดิมทุกครั้งที่แทน; probe source destroyed 2/22
+  เทียบ control 22/22; ตรวจทั้ง lifecycle และ memory หลังสลับซ้ำ
+- [ ] **P1-05 Web evidence export:** worker/progress/cancel/atomic output;
+  PDF 4,096 จุดทำให้ UI เงียบ 18.90 วินาที แยกจาก Reports Excel ที่แก้ก่อนหน้า
+- [ ] **P2-06 Reports:** share snapshot/ลด Raw ซ้ำ/เตรียม model นอก UI;
+  Users ปีโหลด 18.81 วินาที, UI gap 1.06 วินาที
+- [ ] **P2-07 First navigation:** ลดงานสร้าง Devices/Manual ครั้งแรก (3.74/3.99 วินาที)
+  และ profile แยก QSS/รูป/layout ก่อนปรับ ไม่เหมารวมว่า QSS เป็นสาเหตุหลัก
+
+ลำดับแก้ที่เสนอ: Overview/Settings → Legacy/Charts → Web evidence export → Reports/first navigation
+แล้ววัดซ้ำ fixture เดิมพร้อมตรวจความถูกต้องและคู่มือ งาน Host ยังคงเลื่อนไปเวอร์ชันหน้า;
+การติดตั้ง A + VM105 ยังคงหลัง build; ไม่ตั้ง automation เพิ่ม
+
+### ขอบเขตเพิ่ม: ตรวจ QSS และ UX ทุกหน้าปัจจุบัน — ตรวจเสร็จ 19 กันยายน 2569
 
 คำสั่งล่าสุดให้ตรวจความไม่สอดคล้องและปัญหาการใช้งานทั้งหน้าจอ รอบนี้เป็นการตรวจ
 และบันทึกงาน ไม่ได้แก้ UI หรือเริ่ม build ดูรายละเอียดที่ `docs/V5_2_12_UI_UX_AUDIT.md`

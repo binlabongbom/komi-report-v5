@@ -184,6 +184,9 @@ Global selector `QMainWindow, QWidget` ลง background ให้ลูกท�
 
 ปุ่ม Excel/PDF ของ WebEvidenceDialog เรียกสร้างไฟล์โดยตรงหลังเลือก path และมีสถานะเมื่อเสร็จ/ล้มเหลว แต่ไม่มี worker หรือ progress แบบ Export ของ Reports ที่แก้แล้ว จึงมีความเสี่ยงหน้าจอไม่ตอบสนองเมื่อช่วงข้อมูลยาว **เป็นผลตรวจเส้นทางโค้ด ยังไม่ได้วัดเวลาค้างของ export นี้** และไม่หักล้างผล benchmark Reports เดิม
 
+ผลติดตามใน [Performance audit](V5_2_12_PERFORMANCE_AUDIT.md): วัดแล้วพบ PDF 4,096 จุดอ่าน
+หยุด UI ประมาณ 18.90 วินาที จัดเป็น P1-05 ในแผน Performance ใหม่ ข้อความข้างต้นเป็นสถานะ ณ รอบ QSS
+
 ใช้ export controller ที่ทำงานเบื้องหลังและรายงานความคืบหน้า/ยกเลิกอย่างปลอดภัย แล้ววัดกับข้อมูลยาวแยกจาก Reports ก่อนอ้างว่า export ทุกจุดไม่ค้าง
 
 โค้ด: [web_evidence_report.py:349](<C:/Users/User/.codex/worktrees/4897/KOMI Report V5/source/ui/web_evidence_report.py:349>)

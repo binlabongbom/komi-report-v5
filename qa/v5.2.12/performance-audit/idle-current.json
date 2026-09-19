@@ -1,0 +1,50 @@
+[
+  {
+    "before": {
+      "working_set_bytes": 104337408,
+      "private_bytes": 63295488,
+      "peak_working_set_bytes": 104337408,
+      "cpu_seconds": 3.53125
+    },
+    "after": {
+      "working_set_bytes": 104460288,
+      "private_bytes": 63295488,
+      "peak_working_set_bytes": 104460288,
+      "cpu_seconds": 3.53125
+    },
+    "elapsed_seconds": 5.014407399998163,
+    "one_core_cpu_percent": 0.0,
+    "mode": "desktop",
+    "pid": 19344,
+    "fixture": "empty DB; Web disabled; workers constructed but not started; offscreen",
+    "sampled_peak_working_set_bytes": 104460288,
+    "sampled_peak_private_bytes": 63295488,
+    "child_processes": 0,
+    "exit_code": 0,
+    "clean_shutdown": true
+  },
+  {
+    "before": {
+      "working_set_bytes": 74027008,
+      "private_bytes": 42008576,
+      "peak_working_set_bytes": 74027008,
+      "cpu_seconds": 2.84375
+    },
+    "after": {
+      "working_set_bytes": 74137600,
+      "private_bytes": 42008576,
+      "peak_working_set_bytes": 74137600,
+      "cpu_seconds": 2.859375
+    },
+    "elapsed_seconds": 5.001018800001475,
+    "one_core_cpu_percent": 0.31243633797168274,
+    "mode": "agent",
+    "pid": 14164,
+    "fixture": "empty DB; Web disabled; workers constructed but not started; offscreen",
+    "sampled_peak_working_set_bytes": 74137600,
+    "sampled_peak_private_bytes": 42008576,
+    "child_processes": 0,
+    "exit_code": 0,
+    "clean_shutdown": true
+  }
+]
