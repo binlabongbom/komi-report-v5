@@ -51,7 +51,21 @@ bf453738b934dcf5bea59dd8c70e191b52ba6b89 และ merge เข้า local main
 ยังไม่รัน installer/release build ไม่เผยแพร่ และเก็บการติดตั้งสองเครื่องจริงไว้หลัง build
 ตามเดิม การพร้อม build ไม่ได้หมายถึงเปิดใช้สมาชิกจริงหรือผู้อ่านร่วมที่เลื่อนไปเวอร์ชันหน้า
 
-### ขอบเขตเพิ่มล่าสุด: ตรวจ Performance — ตรวจเสร็จ 19 กันยายน 2569
+### บันทึกงาน UX และ Performance ลง GitHub — 19 กันยายน 2569
+
+เปิดและอ่านกลับตรวจครบ **19 issues: 2 งานรวม + 17 งานย่อย** ตามคำสั่งล่าสุด
+ดูรายการเทียบรหัส audit และวิธีใช้ที่ `docs/V5_2_12_GITHUB_ISSUES.md`
+
+- [x] [UX #18](https://github.com/binlabongbom/komi-report-v5/issues/18) ครอบคลุม UX-01–22
+- [x] [Performance #19](https://github.com/binlabongbom/komi-report-v5/issues/19) ครอบคลุม 7 กลุ่มปัญหา
+- [x] ทุกงานย่อยมีผลที่พบ พฤติกรรมหลังแก้ วิธีใช้งาน เกณฑ์ตรวจรับ จุดแก้ และหลักฐานเดิม
+- [x] UX-21 / PERF P1-05 ใช้ [#34](https://github.com/binlabongbom/komi-report-v5/issues/34) ร่วมกัน
+- งานย่อย #20–36 ยัง Open; **การเปิด issue ไม่ใช่การแก้เสร็จหรือผลตรวจผ่าน**
+  ต้องแนบ commit/PR และผลทดสอบก่อน–หลังตาม checklist ก่อนปิดงาน
+- คัดผลตรวจลง issue โดยไม่ push source; audit commit ยังไม่อยู่บน remote ณ ตอนเปิดงาน
+  ไม่สร้าง automation ไม่แก้ Host ไม่ build/release; A + VM105 ยังคงหลัง build
+
+### ขอบเขตเพิ่ม: ตรวจ Performance — ตรวจเสร็จ 19 กันยายน 2569
 
 คำถามต่อเนื่อง “แล้วด้าน performance หละ” ตรวจ source/ฐานจำลองจริงและบันทึกผลแล้ว
 ดู `docs/V5_2_12_PERFORMANCE_AUDIT.md` และ `qa/v5.2.12/performance-audit/`
