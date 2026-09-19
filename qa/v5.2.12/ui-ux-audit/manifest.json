@@ -1,0 +1,606 @@
+{
+  "date": "2026-09-19",
+  "source_revision": "64a512a9c1c25502b17726471a6fcd0e768bb247",
+  "synthetic": true,
+  "platform": "Qt offscreen with configured Windows fonts",
+  "capture_count": 262,
+  "style_inventory": {
+    "setStyleSheet_call_sites": 484,
+    "files_with_call_sites": 11,
+    "distinct_six_digit_hex_literals": 264,
+    "scope": "config.py, v5_pages.py, pages.py, app.py, widgets.py, source/ui/*.py; includes legacy paths and repeated state branches, not 484 independent screens"
+  },
+  "kpi_elision": [
+    {
+      "run": "pages-1024x640-th",
+      "values": [
+        {
+          "display": "1,080",
+          "full": "1,080",
+          "size": [
+            51,
+            32
+          ]
+        },
+        {
+          "display": "1,080",
+          "full": "1,080",
+          "size": [
+            51,
+            32
+          ]
+        },
+        {
+          "display": "1,080",
+          "full": "1,080",
+          "size": [
+            51,
+            32
+          ]
+        },
+        {
+          "display": "1,080",
+          "full": "1,080",
+          "size": [
+            51,
+            32
+          ]
+        },
+        {
+          "display": "4,320",
+          "full": "4,320",
+          "size": [
+            51,
+            32
+          ]
+        },
+        {
+          "display": "฿8…00",
+          "full": "฿8,640.00",
+          "size": [
+            53,
+            32
+          ]
+        }
+      ]
+    },
+    {
+      "run": "pages-1440x900-th",
+      "values": [
+        {
+          "display": "1,080",
+          "full": "1,080",
+          "size": [
+            83,
+            43
+          ]
+        },
+        {
+          "display": "1,080",
+          "full": "1,080",
+          "size": [
+            83,
+            43
+          ]
+        },
+        {
+          "display": "1,080",
+          "full": "1,080",
+          "size": [
+            83,
+            43
+          ]
+        },
+        {
+          "display": "1,080",
+          "full": "1,080",
+          "size": [
+            83,
+            43
+          ]
+        },
+        {
+          "display": "4,320",
+          "full": "4,320",
+          "size": [
+            83,
+            43
+          ]
+        },
+        {
+          "display": "฿8,….00",
+          "full": "฿8,640.00",
+          "size": [
+            93,
+            43
+          ]
+        }
+      ]
+    },
+    {
+      "run": "pages-900x600-en",
+      "values": [
+        {
+          "display": "1,080",
+          "full": "1,080",
+          "size": [
+            41,
+            32
+          ]
+        },
+        {
+          "display": "1,080",
+          "full": "1,080",
+          "size": [
+            41,
+            32
+          ]
+        },
+        {
+          "display": "1,080",
+          "full": "1,080",
+          "size": [
+            40,
+            32
+          ]
+        },
+        {
+          "display": "1,080",
+          "full": "1,080",
+          "size": [
+            41,
+            32
+          ]
+        },
+        {
+          "display": "4,320",
+          "full": "4,320",
+          "size": [
+            41,
+            32
+          ]
+        },
+        {
+          "display": "฿…0",
+          "full": "฿8,640.00",
+          "size": [
+            41,
+            32
+          ]
+        }
+      ]
+    }
+  ],
+  "runs": [
+    {
+      "folder": "pages-1024x640-th",
+      "language": "th",
+      "scale_factor": "1",
+      "requested_size": [
+        1024,
+        640
+      ],
+      "capture_count": 36,
+      "errors": [],
+      "network_attempts": [],
+      "screens": [
+          {"screen":"overview","actual_size":[1024,640],"tabs":[]},
+          {"screen":"devices","actual_size":[1024,640],"tabs":[]},
+          {"screen":"reports","actual_size":[1024,640],"tabs":[]},
+          {"screen":"reports-tab-0","actual_size":[1024,640],"tabs":[]},
+          {"screen":"reports-tab-0-bottom-0","actual_size":[1024,640],"tabs":[]},
+          {"screen":"reports-tab-1","actual_size":[1024,640],"tabs":[]},
+          {"screen":"reports-tab-1-bottom-1","actual_size":[1024,640],"tabs":[]},
+          {"screen":"reports-tab-2","actual_size":[1024,640],"tabs":[]},
+          {"screen":"reports-tab-2-bottom-2","actual_size":[1024,640],"tabs":[]},
+          {"screen":"reports-tab-3","actual_size":[1024,640],"tabs":[]},
+          {"screen":"reports-tab-3-tab-0","actual_size":[1024,640],"tabs":[]},
+          {"screen":"reports-tab-3-tab-1","actual_size":[1024,640],"tabs":[]},
+          {"screen":"reports-tab-4","actual_size":[1024,640],"tabs":[]},
+          {"screen":"reports-tab-4-tab-0","actual_size":[1024,640],"tabs":[]},
+          {"screen":"reports-tab-4-tab-1","actual_size":[1024,640],"tabs":[]},
+          {"screen":"reports-tab-4-tab-2","actual_size":[1024,640],"tabs":[]},
+          {"screen":"settings","actual_size":[1024,677],"tabs":[]},
+          {"screen":"settings-tab-0","actual_size":[1024,677],"tabs":[]},
+          {"screen":"settings-tab-0-bottom-2","actual_size":[1024,677],"tabs":[]},
+          {"screen":"settings-tab-1","actual_size":[1024,677],"tabs":[]},
+          {"screen":"settings-tab-1-bottom-2","actual_size":[1024,677],"tabs":[]},
+          {"screen":"settings-tab-2","actual_size":[1092,703],"tabs":[]},
+          {"screen":"settings-tab-2-tab-0","actual_size":[1092,703],"tabs":[]},
+          {"screen":"settings-tab-2-tab-1","actual_size":[1092,703],"tabs":[]},
+          {"screen":"settings-tab-2-tab-2","actual_size":[1092,703],"tabs":[]},
+          {"screen":"settings-tab-2-tab-3","actual_size":[1092,703],"tabs":[]},
+          {"screen":"settings-tab-3","actual_size":[1092,703],"tabs":[]},
+          {"screen":"settings-tab-3-bottom-2","actual_size":[1092,703],"tabs":[]},
+          {"screen":"billing-audit","actual_size":[1092,703],"tabs":[]},
+          {"screen":"manual","actual_size":[1092,703],"tabs":[]},
+          {"screen":"manual-bottom-0","actual_size":[1092,703],"tabs":[]},
+          {"screen":"manual-section-0","actual_size":[1092,703],"tabs":[]},
+          {"screen":"manual-section-1","actual_size":[1092,703],"tabs":[]},
+          {"screen":"manual-section-2","actual_size":[1092,703],"tabs":[]},
+          {"screen":"manual-section-3","actual_size":[1092,703],"tabs":[]},
+          {"screen":"manual-section-4","actual_size":[1092,703],"tabs":[]}
+      ]
+    },
+    {
+      "folder": "pages-1440x900-th",
+      "language": "th",
+      "scale_factor": "1",
+      "requested_size": [
+        1440,
+        900
+      ],
+      "capture_count": 32,
+      "errors": [],
+      "network_attempts": [],
+      "screens": [
+          {"screen":"overview","actual_size":[1440,900],"tabs":[]},
+          {"screen":"devices","actual_size":[1440,900],"tabs":[]},
+          {"screen":"reports","actual_size":[1440,900],"tabs":[]},
+          {"screen":"reports-tab-0","actual_size":[1440,900],"tabs":[]},
+          {"screen":"reports-tab-1","actual_size":[1440,900],"tabs":[]},
+          {"screen":"reports-tab-1-bottom-1","actual_size":[1440,900],"tabs":[]},
+          {"screen":"reports-tab-2","actual_size":[1440,900],"tabs":[]},
+          {"screen":"reports-tab-3","actual_size":[1440,900],"tabs":[]},
+          {"screen":"reports-tab-3-tab-0","actual_size":[1440,900],"tabs":[]},
+          {"screen":"reports-tab-3-tab-1","actual_size":[1440,900],"tabs":[]},
+          {"screen":"reports-tab-4","actual_size":[1440,900],"tabs":[]},
+          {"screen":"reports-tab-4-tab-0","actual_size":[1440,900],"tabs":[]},
+          {"screen":"reports-tab-4-tab-1","actual_size":[1440,900],"tabs":[]},
+          {"screen":"reports-tab-4-tab-2","actual_size":[1440,900],"tabs":[]},
+          {"screen":"settings","actual_size":[1440,900],"tabs":[]},
+          {"screen":"settings-tab-0","actual_size":[1440,900],"tabs":[]},
+          {"screen":"settings-tab-1","actual_size":[1440,900],"tabs":[]},
+          {"screen":"settings-tab-2","actual_size":[1440,900],"tabs":[]},
+          {"screen":"settings-tab-2-tab-0","actual_size":[1440,900],"tabs":[]},
+          {"screen":"settings-tab-2-tab-1","actual_size":[1440,900],"tabs":[]},
+          {"screen":"settings-tab-2-tab-2","actual_size":[1440,900],"tabs":[]},
+          {"screen":"settings-tab-2-tab-3","actual_size":[1440,900],"tabs":[]},
+          {"screen":"settings-tab-3","actual_size":[1440,900],"tabs":[]},
+          {"screen":"settings-tab-3-bottom-2","actual_size":[1440,900],"tabs":[]},
+          {"screen":"billing-audit","actual_size":[1440,900],"tabs":[]},
+          {"screen":"manual","actual_size":[1440,900],"tabs":[]},
+          {"screen":"manual-bottom-0","actual_size":[1440,900],"tabs":[]},
+          {"screen":"manual-section-0","actual_size":[1440,900],"tabs":[]},
+          {"screen":"manual-section-1","actual_size":[1440,900],"tabs":[]},
+          {"screen":"manual-section-2","actual_size":[1440,900],"tabs":[]},
+          {"screen":"manual-section-3","actual_size":[1440,900],"tabs":[]},
+          {"screen":"manual-section-4","actual_size":[1440,900],"tabs":[]}
+      ]
+    },
+    {
+      "folder": "pages-900x600-en",
+      "language": "en",
+      "scale_factor": "1.5",
+      "requested_size": [
+        900,
+        600
+      ],
+      "capture_count": 36,
+      "errors": [],
+      "network_attempts": [],
+      "screens": [
+          {"screen":"overview","actual_size":[900,600],"tabs":[]},
+          {"screen":"devices","actual_size":[900,600],"tabs":[]},
+          {"screen":"reports","actual_size":[900,600],"tabs":[]},
+          {"screen":"reports-tab-0","actual_size":[900,600],"tabs":[]},
+          {"screen":"reports-tab-0-bottom-0","actual_size":[900,600],"tabs":[]},
+          {"screen":"reports-tab-1","actual_size":[900,600],"tabs":[]},
+          {"screen":"reports-tab-1-bottom-1","actual_size":[900,600],"tabs":[]},
+          {"screen":"reports-tab-2","actual_size":[900,600],"tabs":[]},
+          {"screen":"reports-tab-2-bottom-2","actual_size":[900,600],"tabs":[]},
+          {"screen":"reports-tab-3","actual_size":[900,600],"tabs":[]},
+          {"screen":"reports-tab-3-tab-0","actual_size":[900,600],"tabs":[]},
+          {"screen":"reports-tab-3-tab-1","actual_size":[900,600],"tabs":[]},
+          {"screen":"reports-tab-4","actual_size":[900,600],"tabs":[]},
+          {"screen":"reports-tab-4-tab-0","actual_size":[900,600],"tabs":[]},
+          {"screen":"reports-tab-4-tab-1","actual_size":[900,600],"tabs":[]},
+          {"screen":"reports-tab-4-tab-2","actual_size":[900,600],"tabs":[]},
+          {"screen":"settings","actual_size":[1034,677],"tabs":[]},
+          {"screen":"settings-tab-0","actual_size":[1034,677],"tabs":[]},
+          {"screen":"settings-tab-0-bottom-2","actual_size":[1034,677],"tabs":[]},
+          {"screen":"settings-tab-1","actual_size":[1034,677],"tabs":[]},
+          {"screen":"settings-tab-1-bottom-2","actual_size":[1034,677],"tabs":[]},
+          {"screen":"settings-tab-2","actual_size":[1110,703],"tabs":[]},
+          {"screen":"settings-tab-2-tab-0","actual_size":[1110,703],"tabs":[]},
+          {"screen":"settings-tab-2-tab-1","actual_size":[1110,703],"tabs":[]},
+          {"screen":"settings-tab-2-tab-2","actual_size":[1110,703],"tabs":[]},
+          {"screen":"settings-tab-2-tab-3","actual_size":[1110,703],"tabs":[]},
+          {"screen":"settings-tab-3","actual_size":[1110,703],"tabs":[]},
+          {"screen":"settings-tab-3-bottom-2","actual_size":[1110,703],"tabs":[]},
+          {"screen":"billing-audit","actual_size":[1110,703],"tabs":[]},
+          {"screen":"manual","actual_size":[1110,703],"tabs":[]},
+          {"screen":"manual-bottom-0","actual_size":[1110,703],"tabs":[]},
+          {"screen":"manual-section-0","actual_size":[1110,703],"tabs":[]},
+          {"screen":"manual-section-1","actual_size":[1110,703],"tabs":[]},
+          {"screen":"manual-section-2","actual_size":[1110,703],"tabs":[]},
+          {"screen":"manual-section-3","actual_size":[1110,703],"tabs":[]},
+          {"screen":"manual-section-4","actual_size":[1110,703],"tabs":[]}
+      ]
+    },
+    {
+      "folder": "dialogs-900x600-th",
+      "language": "th",
+      "scale_factor": "1",
+      "requested_size": [
+        900,
+        600
+      ],
+      "capture_count": 38,
+      "errors": [],
+      "network_attempts": [],
+      "screens": [
+          {"screen":"export-period","actual_size":[520,363],"tabs":[]},
+          {"screen":"export-period-compact","actual_size":[520,363],"tabs":[]},
+          {"screen":"export-progress","actual_size":[460,288],"tabs":[]},
+          {"screen":"export-progress-compact","actual_size":[460,288],"tabs":[]},
+          {"screen":"web-access","actual_size":[470,289],"tabs":[]},
+          {"screen":"web-access-compact","actual_size":[470,289],"tabs":[]},
+          {"screen":"legacy-import","actual_size":[860,620],"tabs":[]},
+          {"screen":"legacy-import-compact","actual_size":[860,600],"tabs":[]},
+          {"screen":"all-counters","actual_size":[760,560],"tabs":[]},
+          {"screen":"all-counters-compact","actual_size":[760,560],"tabs":[]},
+          {"screen":"pinned-counters","actual_size":[760,560],"tabs":[]},
+          {"screen":"pinned-counters-compact","actual_size":[760,560],"tabs":[]},
+          {"screen":"parser-mapping","actual_size":[1120,700],"tabs":[]},
+          {"screen":"parser-mapping-compact","actual_size":[900,600],"tabs":[]},
+          {"screen":"slot-baseline","actual_size":[1000,680],"tabs":[]},
+          {"screen":"slot-baseline-compact","actual_size":[900,600],"tabs":[]},
+          {"screen":"shared-history","actual_size":[940,640],"tabs":[]},
+          {"screen":"shared-history-compact","actual_size":[900,600],"tabs":[]},
+          {"screen":"shared-confirmation","actual_size":[740,300],"tabs":[]},
+          {"screen":"shared-confirmation-compact","actual_size":[740,300],"tabs":[]},
+          {"screen":"web-evidence","actual_size":[1050,750],"tabs":[["กราฟรายวัน","มิเตอร์สะสมจริง","รายละเอียดและหมายเหตุ"]]},
+          {"screen":"web-evidence-compact","actual_size":[900,600],"tabs":[["กราฟรายวัน","มิเตอร์สะสมจริง","รายละเอียดและหมายเหตุ"]]},
+          {"screen":"batch-repricing","actual_size":[1200,650],"tabs":[]},
+          {"screen":"batch-repricing-compact","actual_size":[900,600],"tabs":[]},
+          {"screen":"manual-billing","actual_size":[560,533],"tabs":[]},
+          {"screen":"manual-billing-compact","actual_size":[560,533],"tabs":[]},
+          {"screen":"repricing","actual_size":[500,175],"tabs":[]},
+          {"screen":"repricing-compact","actual_size":[500,175],"tabs":[]},
+          {"screen":"web-amendment","actual_size":[1000,620],"tabs":[]},
+          {"screen":"web-amendment-compact","actual_size":[900,600],"tabs":[]},
+          {"screen":"detail-amendment","actual_size":[1000,620],"tabs":[]},
+          {"screen":"detail-amendment-compact","actual_size":[900,600],"tabs":[]},
+          {"screen":"counter-review","actual_size":[480,425],"tabs":[]},
+          {"screen":"counter-review-compact","actual_size":[480,425],"tabs":[]},
+          {"screen":"archive","actual_size":[327,216],"tabs":[]},
+          {"screen":"archive-compact","actual_size":[327,216],"tabs":[]},
+          {"screen":"billing-detail","actual_size":[860,680],"tabs":[]},
+          {"screen":"billing-detail-compact","actual_size":[860,600],"tabs":[]}
+      ]
+    },
+    {
+      "folder": "dialogs-900x600-en",
+      "language": "en",
+      "scale_factor": "1",
+      "requested_size": [
+        900,
+        600
+      ],
+      "capture_count": 38,
+      "errors": [],
+      "network_attempts": [],
+      "screens": [
+          {"screen":"export-period","actual_size":[520,363],"tabs":[]},
+          {"screen":"export-period-compact","actual_size":[520,363],"tabs":[]},
+          {"screen":"export-progress","actual_size":[460,288],"tabs":[]},
+          {"screen":"export-progress-compact","actual_size":[460,288],"tabs":[]},
+          {"screen":"web-access","actual_size":[470,309],"tabs":[]},
+          {"screen":"web-access-compact","actual_size":[470,309],"tabs":[]},
+          {"screen":"legacy-import","actual_size":[860,620],"tabs":[]},
+          {"screen":"legacy-import-compact","actual_size":[860,600],"tabs":[]},
+          {"screen":"all-counters","actual_size":[760,560],"tabs":[]},
+          {"screen":"all-counters-compact","actual_size":[760,560],"tabs":[]},
+          {"screen":"pinned-counters","actual_size":[760,560],"tabs":[]},
+          {"screen":"pinned-counters-compact","actual_size":[760,560],"tabs":[]},
+          {"screen":"parser-mapping","actual_size":[1120,700],"tabs":[]},
+          {"screen":"parser-mapping-compact","actual_size":[900,600],"tabs":[]},
+          {"screen":"slot-baseline","actual_size":[1000,680],"tabs":[]},
+          {"screen":"slot-baseline-compact","actual_size":[900,600],"tabs":[]},
+          {"screen":"shared-history","actual_size":[940,640],"tabs":[]},
+          {"screen":"shared-history-compact","actual_size":[900,600],"tabs":[]},
+          {"screen":"shared-confirmation","actual_size":[740,300],"tabs":[]},
+          {"screen":"shared-confirmation-compact","actual_size":[740,300],"tabs":[]},
+          {"screen":"web-evidence","actual_size":[1050,750],"tabs":[]},
+          {"screen":"web-evidence-compact","actual_size":[900,600],"tabs":[]},
+          {"screen":"batch-repricing","actual_size":[1200,650],"tabs":[]},
+          {"screen":"batch-repricing-compact","actual_size":[900,600],"tabs":[]},
+          {"screen":"manual-billing","actual_size":[560,533],"tabs":[]},
+          {"screen":"manual-billing-compact","actual_size":[560,533],"tabs":[]},
+          {"screen":"repricing","actual_size":[500,195],"tabs":[]},
+          {"screen":"repricing-compact","actual_size":[500,195],"tabs":[]},
+          {"screen":"web-amendment","actual_size":[1000,620],"tabs":[]},
+          {"screen":"web-amendment-compact","actual_size":[900,600],"tabs":[]},
+          {"screen":"detail-amendment","actual_size":[1000,620],"tabs":[]},
+          {"screen":"detail-amendment-compact","actual_size":[900,600],"tabs":[]},
+          {"screen":"counter-review","actual_size":[480,425],"tabs":[]},
+          {"screen":"counter-review-compact","actual_size":[480,425],"tabs":[]},
+          {"screen":"archive","actual_size":[388,236],"tabs":[]},
+          {"screen":"archive-compact","actual_size":[388,236],"tabs":[]},
+          {"screen":"billing-detail","actual_size":[860,680],"tabs":[]},
+          {"screen":"billing-detail-compact","actual_size":[860,600],"tabs":[]}
+      ]
+    },
+    {
+      "folder": "wizard-900x600-th",
+      "language": "th",
+      "scale_factor": "1",
+      "requested_size": [
+        900,
+        600
+      ],
+      "capture_count": 13,
+      "errors": [],
+      "network_attempts": [],
+      "screens": [
+          {"screen":"wizard-company","actual_size":[900,600],"tabs":[]},
+          {"screen":"wizard-secondary-manual","actual_size":[900,600],"tabs":[]},
+          {"screen":"wizard-secondary-not-found","actual_size":[900,600],"tabs":[]},
+          {"screen":"wizard-devices","actual_size":[900,600],"tabs":[]},
+          {"screen":"wizard-credentials","actual_size":[620,186],"tabs":[]},
+          {"screen":"wizard-advanced-scan","actual_size":[268,186],"tabs":[]},
+          {"screen":"wizard-manual-setup","actual_size":[650,289],"tabs":[]},
+          {"screen":"wizard-printer-names","actual_size":[720,317],"tabs":[]},
+          {"screen":"wizard-privacy","actual_size":[680,520],"tabs":[]},
+          {"screen":"wizard-prices","actual_size":[900,600],"tabs":[]},
+          {"screen":"wizard-prices-bottom-2","actual_size":[900,600],"tabs":[]},
+          {"screen":"wizard-review","actual_size":[900,600],"tabs":[]},
+          {"screen":"wizard-review-bottom-2","actual_size":[900,600],"tabs":[]}
+      ]
+    },
+    {
+      "folder": "wizard-900x600-en",
+      "language": "en",
+      "scale_factor": "1",
+      "requested_size": [
+        900,
+        600
+      ],
+      "capture_count": 8,
+      "errors": [],
+      "network_attempts": [],
+      "screens": [
+          {"screen":"wizard-company","actual_size":[900,600],"tabs":[]},
+          {"screen":"wizard-secondary-manual","actual_size":[900,600],"tabs":[]},
+          {"screen":"wizard-secondary-not-found","actual_size":[900,600],"tabs":[]},
+          {"screen":"wizard-devices","actual_size":[900,600],"tabs":[]},
+          {"screen":"wizard-prices","actual_size":[900,600],"tabs":[]},
+          {"screen":"wizard-prices-bottom-2","actual_size":[900,600],"tabs":[]},
+          {"screen":"wizard-review","actual_size":[900,600],"tabs":[]},
+          {"screen":"wizard-review-bottom-2","actual_size":[900,600],"tabs":[]}
+      ]
+    },
+    {
+      "folder": "controls-1024x640-th",
+      "language": "th",
+      "scale_factor": "1",
+      "requested_size": [
+        1024,
+        640
+      ],
+      "capture_count": 1,
+      "errors": [],
+      "network_attempts": [],
+      "screens": [
+          {"screen":"control-roles","actual_size":[200,377],"tabs":[]}
+      ]
+    },
+    {
+      "folder": "evidence-900x600-th",
+      "language": "th",
+      "scale_factor": "1",
+      "requested_size": [
+        900,
+        600
+      ],
+      "capture_count": 5,
+      "errors": [],
+      "network_attempts": [],
+      "screens": [
+          {"screen":"web-amendment-populated","actual_size":[1000,620],"tabs":[]},
+          {"screen":"web-amendment-populated-compact","actual_size":[900,600],"tabs":[]},
+          {"screen":"web-evidence-populated-0","actual_size":[900,600],"tabs":[["กราฟรายวัน","มิเตอร์สะสมจริง","รายละเอียดและหมายเหตุ"]]},
+          {"screen":"web-evidence-populated-1","actual_size":[900,600],"tabs":[["กราฟรายวัน","มิเตอร์สะสมจริง","รายละเอียดและหมายเหตุ"]]},
+          {"screen":"web-evidence-populated-2","actual_size":[900,600],"tabs":[["กราฟรายวัน","มิเตอร์สะสมจริง","รายละเอียดและหมายเหตุ"]]}
+      ]
+    },
+    {
+      "folder": "pages-1024x640-th-settings",
+      "language": "th",
+      "scale_factor": "1",
+      "requested_size": [
+        1024,
+        640
+      ],
+      "capture_count": 19,
+      "errors": [],
+      "network_attempts": [],
+      "screens": [
+          {"screen":"settings","actual_size":[1024,677],"tabs":[["ทั่วไป","การทำงานอัตโนมัติ","สถานะและประวัติ","ขั้นสูง"],["สถานะการอ่าน","ประวัติการอ่าน","ข้อมูลวันนี้","ตรวจสอบมิเตอร์"]]},
+          {"screen":"settings-tab-0","actual_size":[1024,677],"tabs":[["ทั่วไป","การทำงานอัตโนมัติ","สถานะและประวัติ","ขั้นสูง"],["สถานะการอ่าน","ประวัติการอ่าน","ข้อมูลวันนี้","ตรวจสอบมิเตอร์"]]},
+          {"screen":"settings-tab-0-bottom-2","actual_size":[1024,677],"tabs":[["ทั่วไป","การทำงานอัตโนมัติ","สถานะและประวัติ","ขั้นสูง"],["สถานะการอ่าน","ประวัติการอ่าน","ข้อมูลวันนี้","ตรวจสอบมิเตอร์"]]},
+          {"screen":"settings-tab-1","actual_size":[1024,677],"tabs":[["ทั่วไป","การทำงานอัตโนมัติ","สถานะและประวัติ","ขั้นสูง"],["สถานะการอ่าน","ประวัติการอ่าน","ข้อมูลวันนี้","ตรวจสอบมิเตอร์"]]},
+          {"screen":"settings-tab-1-bottom-2","actual_size":[1024,677],"tabs":[["ทั่วไป","การทำงานอัตโนมัติ","สถานะและประวัติ","ขั้นสูง"],["สถานะการอ่าน","ประวัติการอ่าน","ข้อมูลวันนี้","ตรวจสอบมิเตอร์"]]},
+          {"screen":"settings-tab-2","actual_size":[1092,703],"tabs":[["ทั่วไป","การทำงานอัตโนมัติ","สถานะและประวัติ","ขั้นสูง"],["สถานะการอ่าน","ประวัติการอ่าน","ข้อมูลวันนี้","ตรวจสอบมิเตอร์"]]},
+          {"screen":"settings-tab-2-tab-0","actual_size":[1092,703],"tabs":[["ทั่วไป","การทำงานอัตโนมัติ","สถานะและประวัติ","ขั้นสูง"],["สถานะการอ่าน","ประวัติการอ่าน","ข้อมูลวันนี้","ตรวจสอบมิเตอร์"]]},
+          {"screen":"settings-tab-2-tab-1","actual_size":[1092,703],"tabs":[["ทั่วไป","การทำงานอัตโนมัติ","สถานะและประวัติ","ขั้นสูง"],["สถานะการอ่าน","ประวัติการอ่าน","ข้อมูลวันนี้","ตรวจสอบมิเตอร์"]]},
+          {"screen":"settings-tab-2-tab-2","actual_size":[1092,703],"tabs":[["ทั่วไป","การทำงานอัตโนมัติ","สถานะและประวัติ","ขั้นสูง"],["สถานะการอ่าน","ประวัติการอ่าน","ข้อมูลวันนี้","ตรวจสอบมิเตอร์"]]},
+          {"screen":"settings-tab-2-tab-3","actual_size":[1092,703],"tabs":[["ทั่วไป","การทำงานอัตโนมัติ","สถานะและประวัติ","ขั้นสูง"],["สถานะการอ่าน","ประวัติการอ่าน","ข้อมูลวันนี้","ตรวจสอบมิเตอร์"]]},
+          {"screen":"settings-tab-3","actual_size":[1092,703],"tabs":[["ทั่วไป","การทำงานอัตโนมัติ","สถานะและประวัติ","ขั้นสูง"],["สถานะการอ่าน","ประวัติการอ่าน","ข้อมูลวันนี้","ตรวจสอบมิเตอร์"]]},
+          {"screen":"settings-tab-3-bottom-2","actual_size":[1092,703],"tabs":[["ทั่วไป","การทำงานอัตโนมัติ","สถานะและประวัติ","ขั้นสูง"],["สถานะการอ่าน","ประวัติการอ่าน","ข้อมูลวันนี้","ตรวจสอบมิเตอร์"]]},
+          {"screen":"billing-audit","actual_size":[1092,703],"tabs":[["ทั่วไป","การทำงานอัตโนมัติ","สถานะและประวัติ","ขั้นสูง"],["สถานะการอ่าน","ประวัติการอ่าน","ข้อมูลวันนี้","ตรวจสอบมิเตอร์"]]},
+          {"screen":"settings-schedule-expanded","actual_size":[1092,703],"tabs":[["ทั่วไป","การทำงานอัตโนมัติ","สถานะและประวัติ","ขั้นสูง"],["สถานะการอ่าน","ประวัติการอ่าน","ข้อมูลวันนี้","ตรวจสอบมิเตอร์"]]},
+          {"screen":"settings-schedule-expanded-bottom-2","actual_size":[1092,703],"tabs":[["ทั่วไป","การทำงานอัตโนมัติ","สถานะและประวัติ","ขั้นสูง"],["สถานะการอ่าน","ประวัติการอ่าน","ข้อมูลวันนี้","ตรวจสอบมิเตอร์"]]},
+          {"screen":"settings-network","actual_size":[1092,703],"tabs":[["ทั่วไป","การทำงานอัตโนมัติ","สถานะและประวัติ","ขั้นสูง"],["สถานะการอ่าน","ประวัติการอ่าน","ข้อมูลวันนี้","ตรวจสอบมิเตอร์"]]},
+          {"screen":"settings-network-port","actual_size":[1092,703],"tabs":[["ทั่วไป","การทำงานอัตโนมัติ","สถานะและประวัติ","ขั้นสูง"],["สถานะการอ่าน","ประวัติการอ่าน","ข้อมูลวันนี้","ตรวจสอบมิเตอร์"]]},
+          {"screen":"settings-network-bottom","actual_size":[1092,703],"tabs":[["ทั่วไป","การทำงานอัตโนมัติ","สถานะและประวัติ","ขั้นสูง"],["สถานะการอ่าน","ประวัติการอ่าน","ข้อมูลวันนี้","ตรวจสอบมิเตอร์"]]},
+          {"screen":"registration-notice","actual_size":[680,520],"tabs":[]}
+      ]
+    },
+    {
+      "folder": "pages-900x600-en-settings",
+      "language": "en",
+      "scale_factor": "1.5",
+      "requested_size": [
+        900,
+        600
+      ],
+      "capture_count": 19,
+      "errors": [],
+      "network_attempts": [],
+      "screens": [
+          {"screen":"settings","actual_size":[1034,677],"tabs":[["General","Automation","Status and history","Advanced"],["Reading status","Reading history","Today's data","Automation"]]},
+          {"screen":"settings-tab-0","actual_size":[1034,677],"tabs":[["General","Automation","Status and history","Advanced"],["Reading status","Reading history","Today's data","Automation"]]},
+          {"screen":"settings-tab-0-bottom-2","actual_size":[1034,677],"tabs":[["General","Automation","Status and history","Advanced"],["Reading status","Reading history","Today's data","Automation"]]},
+          {"screen":"settings-tab-1","actual_size":[1034,677],"tabs":[["General","Automation","Status and history","Advanced"],["Reading status","Reading history","Today's data","Automation"]]},
+          {"screen":"settings-tab-1-bottom-2","actual_size":[1034,677],"tabs":[["General","Automation","Status and history","Advanced"],["Reading status","Reading history","Today's data","Automation"]]},
+          {"screen":"settings-tab-2","actual_size":[1110,703],"tabs":[["General","Automation","Status and history","Advanced"],["Reading status","Reading history","Today's data","Automation"]]},
+          {"screen":"settings-tab-2-tab-0","actual_size":[1110,703],"tabs":[["General","Automation","Status and history","Advanced"],["Reading status","Reading history","Today's data","Automation"]]},
+          {"screen":"settings-tab-2-tab-1","actual_size":[1110,703],"tabs":[["General","Automation","Status and history","Advanced"],["Reading status","Reading history","Today's data","Automation"]]},
+          {"screen":"settings-tab-2-tab-2","actual_size":[1110,703],"tabs":[["General","Automation","Status and history","Advanced"],["Reading status","Reading history","Today's data","Automation"]]},
+          {"screen":"settings-tab-2-tab-3","actual_size":[1110,703],"tabs":[["General","Automation","Status and history","Advanced"],["Reading status","Reading history","Today's data","Automation"]]},
+          {"screen":"settings-tab-3","actual_size":[1110,703],"tabs":[["General","Automation","Status and history","Advanced"],["Reading status","Reading history","Today's data","Automation"]]},
+          {"screen":"settings-tab-3-bottom-2","actual_size":[1110,703],"tabs":[["General","Automation","Status and history","Advanced"],["Reading status","Reading history","Today's data","Automation"]]},
+          {"screen":"billing-audit","actual_size":[1110,703],"tabs":[["General","Automation","Status and history","Advanced"],["Reading status","Reading history","Today's data","Automation"]]},
+          {"screen":"settings-schedule-expanded","actual_size":[1110,703],"tabs":[["General","Automation","Status and history","Advanced"],["Reading status","Reading history","Today's data","Automation"]]},
+          {"screen":"settings-schedule-expanded-bottom-2","actual_size":[1110,703],"tabs":[["General","Automation","Status and history","Advanced"],["Reading status","Reading history","Today's data","Automation"]]},
+          {"screen":"settings-network","actual_size":[1110,703],"tabs":[["General","Automation","Status and history","Advanced"],["Reading status","Reading history","Today's data","Automation"]]},
+          {"screen":"settings-network-port","actual_size":[1110,703],"tabs":[["General","Automation","Status and history","Advanced"],["Reading status","Reading history","Today's data","Automation"]]},
+          {"screen":"settings-network-bottom","actual_size":[1110,703],"tabs":[["General","Automation","Status and history","Advanced"],["Reading status","Reading history","Today's data","Automation"]]},
+          {"screen":"registration-notice","actual_size":[680,520],"tabs":[]}
+      ]
+    },
+    {
+      "folder": "pages-1024x640-th-reports",
+      "language": "th",
+      "scale_factor": "1",
+      "requested_size": [
+        1024,
+        640
+      ],
+      "capture_count": 17,
+      "errors": [],
+      "network_attempts": [],
+      "screens": [
+          {"screen":"reports","actual_size":[1024,640],"tabs":[["Overview","Users","Printers","Usage","Legacy"],["ทุกเครื่อง","ตามเครื่อง"]]},
+          {"screen":"reports-tab-0","actual_size":[1024,640],"tabs":[["Overview","Users","Printers","Usage","Legacy"],["ทุกเครื่อง","ตามเครื่อง"]]},
+          {"screen":"reports-tab-0-bottom-1","actual_size":[1024,640],"tabs":[["Overview","Users","Printers","Usage","Legacy"],["ทุกเครื่อง","ตามเครื่อง"]]},
+          {"screen":"reports-tab-1","actual_size":[1024,640],"tabs":[["Overview","Users","Printers","Usage","Legacy"],["ทุกเครื่อง","ตามเครื่อง"]]},
+          {"screen":"reports-tab-1-bottom-2","actual_size":[1024,640],"tabs":[["Overview","Users","Printers","Usage","Legacy"],["ทุกเครื่อง","ตามเครื่อง"]]},
+          {"screen":"reports-tab-2","actual_size":[1024,640],"tabs":[["Overview","Users","Printers","Usage","Legacy"],["ทุกเครื่อง","ตามเครื่อง"]]},
+          {"screen":"reports-tab-2-bottom-3","actual_size":[1024,640],"tabs":[["Overview","Users","Printers","Usage","Legacy"],["ทุกเครื่อง","ตามเครื่อง"]]},
+          {"screen":"reports-tab-3","actual_size":[1024,640],"tabs":[["Overview","Users","Printers","Usage","Legacy"],["ทุกเครื่อง","ตามเครื่อง"]]},
+          {"screen":"reports-tab-3-tab-0","actual_size":[1024,640],"tabs":[["Overview","Users","Printers","Usage","Legacy"],["ทุกเครื่อง","ตามเครื่อง"]]},
+          {"screen":"reports-tab-3-tab-1","actual_size":[1024,640],"tabs":[["Overview","Users","Printers","Usage","Legacy"],["ทุกเครื่อง","ตามเครื่อง"]]},
+          {"screen":"reports-tab-4","actual_size":[1024,640],"tabs":[["Overview","Users","Printers","Usage","Legacy"],["ทุกเครื่อง","ตามเครื่อง"],["รายเครื่อง","ผู้ใช้","รายวัน"]]},
+          {"screen":"reports-tab-4-tab-0","actual_size":[1024,640],"tabs":[["Overview","Users","Printers","Usage","Legacy"],["ทุกเครื่อง","ตามเครื่อง"],["รายเครื่อง","ผู้ใช้","รายวัน"]]},
+          {"screen":"reports-tab-4-tab-1","actual_size":[1024,640],"tabs":[["Overview","Users","Printers","Usage","Legacy"],["ทุกเครื่อง","ตามเครื่อง"],["รายเครื่อง","ผู้ใช้","รายวัน"]]},
+          {"screen":"reports-tab-4-tab-2","actual_size":[1024,640],"tabs":[["Overview","Users","Printers","Usage","Legacy"],["ทุกเครื่อง","ตามเครื่อง"],["รายเครื่อง","ผู้ใช้","รายวัน"]]},
+          {"screen":"reports-loading","actual_size":[1024,640],"tabs":[["Overview","Users","Printers","Usage","Legacy"],["ทุกเครื่อง","ตามเครื่อง"],["รายเครื่อง","ผู้ใช้","รายวัน"]]},
+          {"screen":"reports-error","actual_size":[1024,640],"tabs":[["Overview","Users","Printers","Usage","Legacy"],["ทุกเครื่อง","ตามเครื่อง"],["รายเครื่อง","ผู้ใช้","รายวัน"]]},
+          {"screen":"reports-empty","actual_size":[1024,640],"tabs":[["Overview","Users","Printers","Usage","Legacy"],["ทุกเครื่อง","ตามเครื่อง"],["รายเครื่อง","ผู้ใช้","รายวัน"]]}
+      ]
+    }
+  ]
+}
