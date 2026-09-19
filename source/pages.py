@@ -205,12 +205,17 @@ class _FlowLayout(QLayout):
 class _ManualDocumentImage(QLabel):
     """Responsive screenshot shared by the in-app guide and Customer Guide."""
 
-    def __init__(self, pixmap: QPixmap, parent=None):
+    def __init__(self, pixmap: QPixmap | Path, parent=None):
         super().__init__(parent)
+        from PyQt6.QtGui import QImageReader
+        self._image_path = pixmap if isinstance(pixmap, Path) else None
+        size = QImageReader(str(pixmap)).size() if self._image_path else pixmap.size()
+        self._source_width = size.width()
         self._aspect_ratio = (
-            pixmap.height() / pixmap.width() if pixmap.width() else 0.75
+            size.height() / size.width() if size.width() > 0 else 0.75
         )
-        self.setPixmap(pixmap)
+        if self._image_path is None:
+            self.setPixmap(pixmap)
         self.setScaledContents(True)
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.setSizePolicy(
@@ -227,8 +232,16 @@ class _ManualDocumentImage(QLabel):
         return max(120, round(max(1, width) * self._aspect_ratio))
 
     def sizeHint(self):
-        width = min(900, max(640, self.pixmap().width()))
+        width = min(900, max(640, self._source_width))
         return QSize(width, self.heightForWidth(width))
+
+    def paintEvent(self, event):
+        # Scroll-area clipping means only pictures reaching the viewport are
+        # decoded. Header dimensions reserve identical geometry before load.
+        if self._image_path is not None:
+            path, self._image_path = self._image_path, None
+            self.setPixmap(QPixmap(str(path)))
+        super().paintEvent(event)
 
     def minimumSizeHint(self):
         return QSize(240, self.heightForWidth(240))
@@ -972,6 +985,10 @@ class PageOverviewV2(QWidget):
         self._ov_filter = "month"
         self._all_monthly: dict = {}
         self._overview_compact = True
+        from ui.background_read import LatestRead
+        self.summary_reader = LatestRead(self)
+        self.summary_reader.ready.connect(self._apply_summary)
+        self.summary_reader.failed.connect(self._summary_failed)
         self.setStyleSheet(build_overview_qss())
         self.setAccessibleName("ภาพรวมการใช้งานและสถานะเครื่องพิมพ์")
         self._build()
@@ -1014,6 +1031,10 @@ class PageOverviewV2(QWidget):
         self.overview_status.setObjectName("overview_status_line")
         self.overview_status.setWordWrap(True)
         layout.addWidget(self.overview_status)
+        self.overview_retry = btn(tr("ลองโหลดอีกครั้ง", "Retry loading"), "outline")
+        self.overview_retry.clicked.connect(self.refresh)
+        self.overview_retry.hide()
+        layout.addWidget(self.overview_retry, 0, Qt.AlignmentFlag.AlignLeft)
 
         recovery_actions = QHBoxLayout()
         recovery_actions.setSpacing(8)
@@ -1229,7 +1250,21 @@ class PageOverviewV2(QWidget):
         return f"A3 {fn(a3)}  |  A4 {fn(a4)}"
 
     def refresh(self) -> None:
-        summary = build_overview_summary(self._ov_filter)
+        self.overview_status.setText(tr("กำลังโหลดภาพรวม…", "Loading overview…"))
+        self.overview_retry.hide()
+        self.summary_reader.request(build_overview_summary, self._ov_filter)
+
+    def _summary_failed(self, error) -> None:
+        self.overview_status.setText(tr("โหลดภาพรวมไม่สำเร็จ · กดรีเฟรชเพื่อลองใหม่", "Overview could not be loaded. Refresh to retry."))
+        self.overview_status.setToolTip(error)
+        self.overview_retry.show()
+
+    def closeEvent(self, event) -> None:
+        self.summary_reader.cancel()
+        super().closeEvent(event)
+
+    def _apply_summary(self, summary) -> None:
+        self.overview_status.setToolTip("")
         self._all_monthly = summary.get("all_monthly") or {}
         metrics = summary.get("metrics") or {}
         quality = summary.get("quality") or {}
@@ -6391,7 +6426,7 @@ class PageManual(QWidget):
     def _step(self, num: int, text: str) -> QWidget:
         row = QWidget()
         row.setStyleSheet("background:transparent; border:0;")
-        lay = QHBoxLayout(row)
+        lay = QHBoxLayout()
         lay.setContentsMargins(0, 3, 0, 3)
         lay.setSpacing(10)
 
@@ -6410,6 +6445,7 @@ class PageManual(QWidget):
 
         lay.addWidget(badge, 0, Qt.AlignmentFlag.AlignTop)
         lay.addWidget(desc, 1)
+        row.setLayout(lay)
         return row
 
     # ── helper: สร้าง card พื้นขาว ────────────────────────
@@ -6420,7 +6456,7 @@ class PageManual(QWidget):
             "QFrame#manual_document_block { background:#FFFFFF; border:0; "
             "border-radius:0; padding:0; }"
         )
-        vl = QVBoxLayout(card)
+        vl = QVBoxLayout()
         vl.setContentsMargins(8, 8, 8, 12)
         vl.setSpacing(8)
         if title:
@@ -6434,6 +6470,7 @@ class PageManual(QWidget):
             vl.addWidget(t)
         for w in body_widgets:
             vl.addWidget(w)
+        card.setLayout(vl)
         return card
 
     # ── helper: ข้อความธรรมดา ────────────────────────────
@@ -6463,7 +6500,7 @@ class PageManual(QWidget):
         from ui.manual_screens import manual_screen_path
         image_path = self._manual_asset(manual_screen_path(index, english=english))
         pixmap = (
-            QPixmap(str(image_path))
+            image_path
             if self._manual_asset_available(image_path)
             else QPixmap()
         )
@@ -6477,7 +6514,7 @@ class PageManual(QWidget):
         image.setObjectName(
             f"manual_doc_image_{'en_' if english else ''}{index:02d}"
         )
-        if pixmap.isNull():
+        if isinstance(pixmap, QPixmap) and pixmap.isNull():
             image.setText(
                 "Screenshot is not available" if english else "ไม่พบภาพประกอบคู่มือ"
             )
@@ -6493,7 +6530,7 @@ class PageManual(QWidget):
         layout.addWidget(label)
         return block
 
-    def _insert_customer_guide_screenshots(self) -> None:
+    def _insert_customer_guide_screenshots(self, *, only_english=None) -> None:
         groups = (
             ((1, 2, 3, 4), ("ตั้งค่าบริษัทและฐานข้อมูล", "ค้นหาและเลือกเครื่องพิมพ์", "ตั้งราคาและรอบบิล", "ตรวจสอบก่อนเริ่มใช้งาน")),
             ((5, 6), ("ภาพรวมการใช้งาน", "ข้อมูลรายเครื่อง")),
@@ -6512,6 +6549,8 @@ class PageManual(QWidget):
             (self._thai_manual_sections, tuple(group[1] for group in groups), False),
             (self._english_manual_sections, english_captions, True),
         ):
+            if not sections or (only_english is not None and english != only_english):
+                continue
             for section, (indexes, _thai_captions), section_captions in zip(
                 sections,
                 groups,
@@ -6638,23 +6677,11 @@ class PageManual(QWidget):
         content_layout.setContentsMargins(12, 0, 12, 32)
         content_layout.setSpacing(30)
 
-        self._thai_manual_sections = [
-            self._tab_firstrun(),
-            self._tab_workflow(),
-            self._tab_history(),
-            self._tab_settings(),
-            self._tab_v5_system(),
-        ]
-        self._english_manual_sections = self._build_english_manual_sections()
-        self._insert_customer_guide_screenshots()
-        self._insert_updated_guide()
-        for section in (*self._thai_manual_sections, *self._english_manual_sections):
-            section.setSizePolicy(
-                QSizePolicy.Policy.Expanding,
-                QSizePolicy.Policy.Maximum,
-            )
-            content_layout.addWidget(section)
+        self._thai_manual_sections = []
+        self._english_manual_sections = []
+        self._manual_content_layout = content_layout
         content_layout.addStretch()
+        self._ensure_manual_language(get_language() == ENGLISH)
         self.manual_scroll.setWidget(self.manual_content)
         self.manual_scroll.verticalScrollBar().valueChanged.connect(
             self._update_manual_toc_highlight
@@ -6697,8 +6724,26 @@ class PageManual(QWidget):
         self._apply_i18n_visibility(get_language())
         self._update_manual_responsive_layout(self.width())
 
-    def _insert_updated_guide(self):
+    def _ensure_manual_language(self, english):
+        """Construct only the requested language, once, on the GUI thread."""
+        name = '_english_manual_sections' if english else '_thai_manual_sections'
+        if getattr(self, name):
+            return
+        sections = self._build_english_manual_sections() if english else [
+            self._tab_firstrun(), self._tab_workflow(), self._tab_history(),
+            self._tab_settings(), self._tab_v5_system(),
+        ]
+        setattr(self, name, sections)
+        self._insert_customer_guide_screenshots(only_english=english)
+        self._insert_updated_guide(only_english=english)
+        for section in sections:
+            section.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
+            self._manual_content_layout.insertWidget(max(0, self._manual_content_layout.count()-1), section)
+
+    def _insert_updated_guide(self, *, only_english=None):
         for sections, english in ((self._thai_manual_sections, False), (self._english_manual_sections, True)):
+            if not sections or (only_english is not None and english != only_english):
+                continue
             guide = self._manual_asset('customer-guide/KOMI_Report_5.2.12_Source_Guide.pdf')
             button = QPushButton('Open updated illustrated guide (Thai PDF)' if english else 'เปิดคู่มือฉบับปรับปรุงพร้อมภาพ (PDF)')
             button.setEnabled(self._manual_asset_available(guide))
@@ -6726,6 +6771,9 @@ class PageManual(QWidget):
     def _apply_i18n_visibility(self, language: str) -> None:
         self._manual_language = language
         english = language == "en"
+        for section in (self._thai_manual_sections if english else self._english_manual_sections):
+            section.hide()
+        self._ensure_manual_language(english)
         for section in self._thai_manual_sections:
             section.setVisible(not english)
         for section in self._english_manual_sections:

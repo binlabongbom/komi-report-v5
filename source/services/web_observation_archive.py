@@ -63,7 +63,9 @@ class WebObservationArchive:
             return conn.execute("SELECT id,year,event_count,relative_path,sha256 FROM web_observation_archives ORDER BY year,id").fetchall()
 
     def stats(self, *, today=None):
-        with closing(sqlite3.connect(self.path)) as conn:
+        from database import read_only_connection
+        with closing(read_only_connection(self.path)) as conn:
+            conn.execute("BEGIN")
             eligible = conn.execute("SELECT COUNT(*) FROM web_observations WHERE archive_id IS NULL AND observed_at<?",
                 (detail_cutoff(today or date.today()).isoformat(),)).fetchone()[0]
             archived, files = conn.execute("SELECT COALESCE(SUM(event_count),0),COUNT(*) FROM web_observation_archives").fetchone()

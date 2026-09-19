@@ -42,6 +42,7 @@ log = logging.getLogger(__name__)
 # ──────────────────────────────────────────────────────────
 _db_path = DB_PATH
 _report_read_path = ContextVar('report_read_path', default=None)
+_report_read_cancelled = ContextVar('report_read_cancelled', default=None)
 _read_cache_lock = threading.RLock()
 _all_readings_cache: dict[int, list] = {}
 _monthly_summary_cache: dict[int, dict] = {}
@@ -213,16 +214,18 @@ def get_db_path():
 
 
 @contextmanager
-def report_read_database(path):
+def report_read_database(path, *, cancelled=None):
     """Pin background report reads to one database without switching the app.
 
     Connections are read-only; settings bypass the application's shared cache.
     The context is private to the worker and is reset even after cancellation.
     """
     token = _report_read_path.set(Path(path).resolve())
+    cancel_token = _report_read_cancelled.set(cancelled)
     try:
         yield
     finally:
+        _report_read_cancelled.reset(cancel_token)
         _report_read_path.reset(token)
 
 
@@ -267,11 +270,21 @@ def copy_database_for_first_run(destination: Path) -> Path:
         raise
     return target
 
+def read_only_connection(path):
+    """A worker-safe read connection with cooperative SQL cancellation."""
+    scoped = Path(path).resolve()
+    conn = sqlite3.connect(scoped.as_uri() + '?mode=ro', uri=True, timeout=2)
+    cancelled = _report_read_cancelled.get()
+    if cancelled is not None:
+        conn.set_progress_handler(lambda: int(cancelled.is_set()), 1000)
+    return conn
+
+
 def _conn():
     """[V4.5] เปิด connection + เปิด foreign_keys + WAL mode"""
     scoped = _report_read_path.get()
     if scoped is not None:
-        return sqlite3.connect(scoped.as_uri() + '?mode=ro', uri=True, timeout=2)
+        return read_only_connection(scoped)
     Path(_db_path).parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(_db_path, timeout=30)
     conn.execute("PRAGMA foreign_keys = ON")

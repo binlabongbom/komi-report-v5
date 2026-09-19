@@ -14,7 +14,7 @@ import sqlite3
 import uuid
 import zlib
 
-from database import get_db_path
+from database import get_db_path, read_only_connection
 from services.billing_periods import billing_month_range, effective_billing_day
 from services.web_observation_archive import detail_cutoff, _digest
 
@@ -76,9 +76,29 @@ class ReportDetailArchive:
 
     def stats(self, *, today=None):
         cutoff = detail_cutoff(today or date.today()).isoformat()
-        with closing(sqlite3.connect(self.path)) as conn:
-            eligible = sum(conn.execute(f"SELECT COUNT(*) FROM {table} r WHERE r.record_date<? AND {_anchor_condition(kind)}",
-                (cutoff,)).fetchone()[0] for kind, table in TABLES.items())
+        with closing(read_only_connection(self.path)) as conn:
+            conn.execute("BEGIN")
+            # Display counts share the archive eligibility rules, but find the
+            # first/latest boundaries once per identity instead of probing each
+            # old row twice. Actual pruning still verifies every batch below.
+            eligible = 0
+            for kind, table in TABLES.items():
+                keys = ["device_slot", "subject_type", "subject_id"]
+                safety = "json_valid(r.source_json) AND json_extract(r.source_json,'$.counter_review') IS NULL"
+                if kind == "raw":
+                    keys = ["device_slot", "device_serial_snapshot", "canonical_field", "source_path", "subject_type", "subject_id"]
+                    safety = "r.record_date>b.first_day AND r.counter_review_json='null'"
+                columns = ",".join(keys)
+                match = " AND ".join(f"b.{key}=r.{key}" for key in keys)
+                # Materialize the small identity set and probe it from a
+                # single detail scan. SQLite otherwise chooses the raw index's
+                # slot/serial prefix and rereads years once per user.
+                query = f"""WITH bounds AS MATERIALIZED (
+                    SELECT {columns},MIN(record_date) first_day,MAX(record_date) last_day
+                    FROM {table} GROUP BY {columns})
+                    SELECT COUNT(*) FROM {table} r CROSS JOIN bounds b ON {match}
+                    WHERE r.record_date<? AND r.record_date<b.last_day AND {safety}"""
+                eligible += conn.execute(query, (cutoff,)).fetchone()[0]
             archived, files = conn.execute("SELECT COALESCE(SUM(row_count),0),COUNT(*) FROM report_detail_archives").fetchone()
         return {"eligible": eligible, "archived": archived, "files": files}
 
@@ -228,7 +248,7 @@ class ReportDetailArchive:
                 (archive_id, slot, start.isoformat(), end.isoformat(), identity, kind, subject_id, _json(bucket)))
 
     @staticmethod
-    def subject_summaries(conn, slots, *, only_period=None):
+    def subject_summaries(conn, slots, *, only_period=None, only_periods=None):
         if not slots:
             return {}
         filters = "device_slot IN (" + ",".join("?" for _ in slots) + ")"
@@ -236,6 +256,11 @@ class ReportDetailArchive:
         if only_period:
             filters += " AND period_start=? AND period_end=?"
             parameters += [value.isoformat() for value in only_period]
+        if only_periods is not None:
+            if not only_periods:
+                return {}
+            filters += " AND (" + " OR ".join("(period_start=? AND period_end=?)" for _ in only_periods) + ")"
+            parameters += [value.isoformat() for period in only_periods for value in period]
         buckets = {}
         selection = 'SELECT period_start,period_end,device_slot,device_identity,subject_type,subject_id,summary_json FROM '
         query = selection + 'archived_subject_periods WHERE ' + filters + ' UNION ALL ' + selection + 'report_revision_subject_periods WHERE ' + filters

@@ -4,9 +4,19 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PyQt6.QtCore import QPoint, Qt
 from PyQt6.QtWidgets import QApplication, QBoxLayout, QLabel, QWidget
+from PyQt6.QtTest import QTest
 
 import pages
 from pages import PageOverview
+
+
+def _refresh(page):
+    page.refresh()
+    for _ in range(400):
+        if not page.summary_reader.busy:
+            break
+        QTest.qWait(5)
+    assert not page.summary_reader.busy
 
 
 def _summary(
@@ -83,7 +93,7 @@ def test_overview_does_not_render_billing_quality_banner(monkeypatch):
     page = PageOverview(lambda: [None, None, None])
     page.show()
     app.processEvents()
-    page.refresh()
+    _refresh(page)
 
     assert not hasattr(page, "overview_quality")
     assert "Online 1/1 เครื่อง" in page.overview_status.text()
@@ -141,7 +151,7 @@ def test_overview_metric_cards_are_compact_and_style_a3_a4_details(monkeypatch):
     page.resize(1210, 1400)
     page.show()
     app.processEvents()
-    page.refresh()
+    _refresh(page)
 
     card = page.card_color_print
     margins = card.layout().contentsMargins()
@@ -178,7 +188,7 @@ def test_overview_marks_current_cache_as_provisional_and_exposes_actions(monkeyp
     page = PageOverview(lambda: [None, None, None])
     page.show()
     app.processEvents()
-    page.refresh()
+    _refresh(page)
 
     assert not hasattr(page, "overview_quality")
     assert page.stat_cards[0].lbl_val.text() == "42"
@@ -224,7 +234,7 @@ def test_overview_printer_rows_keep_status_and_all_toner_colours_visible(monkeyp
     page.resize(794, 1400)
     page.show()
     app.processEvents()
-    page.refresh()
+    _refresh(page)
     app.processEvents()
 
     row = page.printer_list_layout.itemAt(0).widget()

@@ -7,6 +7,29 @@ from PyQt6.QtWidgets import QApplication, QFrame, QLabel
 from pages import PageManual
 
 
+def test_manual_constructs_selected_language_only_and_reuses_it():
+    from i18n import get_language, set_language
+    previous = get_language()
+    set_language('en')
+    page = None
+    try:
+        page = PageManual()
+        assert len(page._english_manual_sections) == 5
+        assert not page._thai_manual_sections
+        english = tuple(page._english_manual_sections)
+        page._apply_i18n_visibility('th')
+        assert len(page._thai_manual_sections) == 5
+        thai = tuple(page._thai_manual_sections)
+        page._apply_i18n_visibility('en')
+        page._apply_i18n_visibility('th')
+        assert tuple(page._english_manual_sections) == english
+        assert tuple(page._thai_manual_sections) == thai
+    finally:
+        if page is not None:
+            page.close()
+        set_language(previous)
+
+
 def test_manual_is_one_continuous_page_with_clickable_right_toc():
     app = QApplication.instance() or QApplication([])
     page = PageManual()
@@ -93,7 +116,12 @@ def test_manual_uses_customer_guide_document_style_and_shared_screenshots():
         for index in range(1, 14)
     ]
     assert all(image is not None for image in images)
-    assert all(image.pixmap() is not None and not image.pixmap().isNull() for image in images)
+    assert any(image._image_path is not None for image in images), "Offscreen pictures should remain undecoded"
+    for image in images:
+        before = image.sizeHint()
+        image.grab()  # forces the same paint path as scrolling into view
+        assert image.pixmap() is not None and not image.pixmap().isNull()
+        assert image.sizeHint() == before, "Loading a picture must not move the document"
     assert all(image.hasHeightForWidth() for image in images)
 
     document_blocks = page.findChildren(QFrame, "manual_document_block")

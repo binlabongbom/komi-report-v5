@@ -430,7 +430,7 @@ def _build_v5_overview_summary(filter_key: str, *, now: datetime) -> dict:
         (record.period_start, record.period_end) for record in selected_records
     }
     subject_totals: dict[tuple[str, str, str], list] = {}
-    for subject in load_subject_history(slots, today=now.date()):
+    for subject in load_subject_history(slots, today=now.date(), only_periods=tuple(sorted(selected_ranges))):
         if (subject.period_start, subject.period_end) not in selected_ranges:
             continue
         subject_name = subject.subject_name

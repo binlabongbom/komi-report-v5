@@ -166,7 +166,7 @@ from services.registration_envelope import (
     runtime_platform,
 )
 from services.report_scope import report_slots
-from services.report_snapshot import load_report_snapshot
+from services.report_snapshot import load_report_snapshot, SnapshotDataCache
 from services.runtime_snapshots import RuntimeCounterRow, runtime_snapshots
 from services.secondary_setup import (
     SecondaryPeerCandidate,
@@ -6995,6 +6995,7 @@ class PageHistoryV5(PageHistory):
         self._snapshot_pool = ThreadPoolExecutor(max_workers=2, thread_name_prefix="komi-report")
         self._snapshot_jobs = {}
         self._snapshot_cache = {}
+        self._snapshot_data = SnapshotDataCache()
         self._snapshot_display_periods = {}
         self._snapshot_display_db = {}
         self._snapshot_generation = 0
@@ -7027,6 +7028,7 @@ class PageHistoryV5(PageHistory):
             return
         self._snapshot_generation += 1
         self._snapshot_cache.clear()
+        self._snapshot_data = SnapshotDataCache()
         for future, cancelled in self._snapshot_jobs.values():
             cancelled.set()
             future.cancel()
@@ -7107,7 +7109,7 @@ class PageHistoryV5(PageHistory):
         cancelled = Event()
         future = self._snapshot_pool.submit(
             load_report_snapshot, index, period, cache=self.cache, subject_cache=self.subject_cache,
-            repository=self.repository, cancelled=cancelled,
+            repository=self.repository, cancelled=cancelled, shared=self._snapshot_data, database_path=self._snapshot_db,
         )
         self._snapshot_jobs[key] = (future, cancelled)
 
@@ -7145,9 +7147,11 @@ class PageHistoryV5(PageHistory):
         self._snapshot_display_periods[index] = snapshot.data["period"]
         self._snapshot_display_db[index] = self._snapshot_db
         self.report_center.set_periods(snapshot.periods, snapshot.data["period"])
-        self.report_center.set_data(**snapshot.data, tab_index=index)
+        rendered = self.report_center.set_data(**snapshot.data, tab_index=index,
+            snapshot_token=(self._snapshot_generation, index, snapshot.data["period"]))
         self.report_center.set_loading(False)
-        apply_language(self.report_center)
+        if rendered:
+            apply_language(self.report_center)
 
     def _schedule_report_refresh(self, _index: int | None = None) -> None:
         # Coalesce rapid Legacy -> Main changes before touching SQLite/report aggregation.
@@ -11006,13 +11010,51 @@ class PageFleetSettings(QWidget):
             lambda _checked: self._mark_dirty("web")
         )
         self._web_status_timer = QTimer(self)
+        from ui.background_read import LatestRead
+        self._web_status_reader = LatestRead(self)
+        self._web_status_reader.ready.connect(self._refresh_web_status)
+        self._web_status_reader.failed.connect(self._web_status_failed)
+        self.web_service_status.installEventFilter(self)
         self._web_status_timer.setInterval(2000)
         self._web_status_timer.timeout.connect(self._refresh_web_status)
         self._web_status_timer.timeout.connect(self._refresh_registration_status)
         self._web_status_timer.timeout.connect(self._refresh_peer_sync_status)
-        self._web_status_timer.start()
         self.refresh_from_config()
         layout.addStretch()
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        self._sync_runtime_visibility()
+        self._refresh_registration_status()
+        self._refresh_peer_sync_status()
+
+    def hideEvent(self, event):
+        super().hideEvent(event)
+        self._sync_runtime_visibility()
+
+    def eventFilter(self, watched, event):
+        from PyQt6.QtCore import QEvent
+        if watched is self.web_service_status and event.type() in (QEvent.Type.Show, QEvent.Type.Hide):
+            QTimer.singleShot(0, self._sync_runtime_visibility)
+        return super().eventFilter(watched, event)
+
+    def _sync_runtime_visibility(self):
+        # The tabbed settings shell reparents the network card into Advanced.
+        # Observe that card as well as the original fleet container.
+        if self.isVisible() or self.web_service_status.isVisible():
+            self._web_status_timer.start()
+        else:
+            self._web_status_timer.stop()
+        if self.web_service_status.isVisible():
+            self._refresh_web_status()
+        else:
+            self._web_status_reader.cancel()
+
+    def _web_status_failed(self, detail):
+        self.web_service_status.setText(tr("ตรวจสถานะ Web ไม่สำเร็จ · กำลังรอลองใหม่", "Could not check Web status · Waiting to retry"))
+        self.web_service_status.setToolTip(detail)
+        self.open_web_button.setEnabled(False)
+        self.copy_web_button.setEnabled(False)
 
     @staticmethod
     def _task_card_shell() -> tuple[QFrame, QVBoxLayout]:
@@ -11768,7 +11810,13 @@ class PageFleetSettings(QWidget):
         return status.state in {"stopped", "failed"}
 
     def _refresh_web_status(self, status: WebServiceStatus | None = None) -> None:
-        current = status or self.web_service.status()
+        if status is None:
+            if self.web_service_status.isVisible() and not self._web_status_reader.busy:
+                self._web_status_reader.request(self.web_service.status)
+            return
+        self._web_status_reader.cancel()
+        self.web_service_status.setToolTip("")
+        current = status
         colours = {
             "running": ("#16875D", "#EDF8F2", "#B8DFC9", tr("● พร้อมใช้งาน", "● Ready")),
             "external": (
@@ -12500,6 +12548,11 @@ class BillingAuditDetailDialog(QDialog):
         layout.addWidget(buttons)
 
 
+def _load_billing_audit_view(limit, state, search):
+    return (audit_coverage(), count_audit_rows(state=state, search=search),
+            list_audit_rows(limit, state=state, search=search))
+
+
 class PageBillingAudit(QWidget):
     """Read-only, pageable proof of effective and intentionally held billing."""
 
@@ -12510,6 +12563,10 @@ class PageBillingAudit(QWidget):
         super().__init__(parent)
         self._loaded_limit = self.PAGE_SIZE
         self._rows: list[AuditRow] = []
+        from ui.background_read import LatestRead
+        self.audit_reader = LatestRead(self)
+        self.audit_reader.ready.connect(self._apply_audit_view)
+        self.audit_reader.failed.connect(self._audit_failed)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0) if embedded else layout.setContentsMargins(16, 12, 16, 12)
         layout.setSpacing(8)
@@ -12619,7 +12676,19 @@ class PageBillingAudit(QWidget):
         self.export_button.clicked.connect(self._export)
         self.table.itemSelectionChanged.connect(self._selection_changed)
         self.table.cellDoubleClicked.connect(self._show_detail)
+        self.coverage.setText(tr("เปิดหน้านี้เพื่อตรวจสอบรอบบิล", "Open this page to check billing history"))
+
+    def showEvent(self, event):
+        super().showEvent(event)
         self.refresh()
+
+    def hideEvent(self, event):
+        self.audit_reader.cancel()
+        super().hideEvent(event)
+
+    def _audit_failed(self, detail):
+        self.row_count.setText(tr("โหลดไม่สำเร็จ · กด Refresh เพื่อลองใหม่", "Load failed · Select Refresh to retry"))
+        self.row_count.setToolTip(detail)
 
     def _current_state(self) -> str | None:
         value = self.state_filter.currentData()
@@ -12633,8 +12702,7 @@ class PageBillingAudit(QWidget):
         self._loaded_limit += self.PAGE_SIZE
         self.refresh()
 
-    def _refresh_coverage(self) -> None:
-        coverage = audit_coverage()
+    def _refresh_coverage(self, coverage) -> None:
         self.coverage.setText(
             tr("มีผลต่อยอด {effective} วัน · Hold รอตรวจ {held} วัน · Reversal ยังไม่ครบคู่ {reversals} วัน · "
                "มีประวัติการแก้ไข {corrected} วัน\nข้อมูลเก่าก่อนใช้ Ledger {legacy} วัน · ข้อมูลใหม่ที่ควรมี Ledger แต่หาย {missing} วัน",
@@ -12653,11 +12721,16 @@ class PageBillingAudit(QWidget):
         self.coverage.setStyleSheet(f"{style}border-radius:6px;padding:10px 12px;font-weight:700;")
 
     def refresh(self) -> None:
-        self._refresh_coverage()
-        state = self._current_state()
-        search = self.search.text()
-        total = count_audit_rows(state=state, search=search)
-        self._rows = list_audit_rows(self._loaded_limit, state=state, search=search)
+        self.row_count.setText(tr("กำลังตรวจสอบรอบบิล…", "Checking billing history…"))
+        self.row_count.setToolTip("")
+        for control in (self.detail_button, self.reprice_button, self.manual_review_button, self.load_more_button):
+            control.setEnabled(False)
+        self.audit_reader.request(_load_billing_audit_view, self._loaded_limit, self._current_state(), self.search.text())
+
+    def _apply_audit_view(self, payload) -> None:
+        coverage, total, rows = payload
+        self._refresh_coverage(coverage)
+        self._rows = rows
         self.table.setRowCount(len(self._rows))
         state_colors = {
             "effective": QColor("#146C4A"),
@@ -12694,6 +12767,7 @@ class PageBillingAudit(QWidget):
         self.row_count.setText(f"แสดง {len(self._rows):,} จาก {total:,} รายการ")
         remaining = max(0, total - len(self._rows))
         self.load_more_button.setVisible(remaining > 0)
+        self.load_more_button.setEnabled(remaining > 0)
         self.load_more_button.setText(f"โหลดเพิ่ม ({remaining:,})" if remaining else "โหลดเพิ่ม")
         self.detail_button.setEnabled(False)
         self.reprice_button.setEnabled(False)
@@ -12705,9 +12779,10 @@ class PageBillingAudit(QWidget):
         return int(item.data(Qt.ItemDataRole.UserRole)) if item is not None else None
 
     def _selection_changed(self) -> None:
-        self.detail_button.setEnabled(self._selected_ledger_id() is not None)
-        self.reprice_button.setEnabled(self._selected_ledger_id() is not None)
-        self.manual_review_button.setEnabled(self._selected_ledger_id() is not None)
+        ready = not self.audit_reader.busy and self._selected_ledger_id() is not None
+        self.detail_button.setEnabled(ready)
+        self.reprice_button.setEnabled(ready)
+        self.manual_review_button.setEnabled(ready)
 
     def _manual_review(self) -> None:
         ledger_id = self._selected_ledger_id()

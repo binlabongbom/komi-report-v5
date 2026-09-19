@@ -27,7 +27,7 @@ os.environ['KOMI_DISCOVERY_DISABLED'] = '1'
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--mode', choices=('ui', 'queries', 'evidence', 'charts'), required=True)
+    parser.add_argument('--mode', choices=('ui', 'queries', 'evidence', 'charts', 'export'), required=True)
     parser.add_argument('--synthetic-db', type=Path)
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--days', type=int, choices=(30, 128), default=30)
@@ -110,7 +110,7 @@ def main():
     directory = Path(temporary.name)
     import database
     database.set_db_path(directory / 'synthetic.sqlite3')
-    if args.mode in ('ui', 'queries'):
+    if args.mode in ('ui', 'queries', 'export'):
         if args.synthetic_db is None:
             parser.error('--synthetic-db is required for ui/queries')
         source = args.synthetic_db.resolve(strict=True)
@@ -150,7 +150,8 @@ def main():
         step('main_window_construct_show', construct)
         window = holder['window']
         window._startup_refresh_pending = False
-        step('initial_refresh', window._refresh_all)
+        step('initial_refresh', window._refresh_all,
+             lambda: not window.pg_overview.summary_reader.busy)
 
         def reports_ready():
             page = window.pg_history
@@ -197,15 +198,78 @@ def main():
         for index in (0, 2, 3, 4):
             step(f'report_year_tab_{index}', lambda i=index: center.tabs.setCurrentIndex(i), reports_ready)
         result['year_all_tabs_data'] = report_rows()
+        raw_snapshots = [snapshot.data['raw_counter_records'] for snapshot in page._snapshot_cache.values()
+                         if snapshot.data.get('raw_counter_records')]
+        result['raw_snapshot_objects'] = len({id(rows) for rows in raw_snapshots})
         for cycle in range(5):
             for index in range(center.tabs.count()):
                 step(f'warm_cycle_{cycle}_tab_{index}', lambda i=index: center.tabs.setCurrentIndex(i), reports_ready)
         result['report_error'] = center.error_label.text() if center.error_label.isVisible() else ''
+        from ui.archive_settings import ArchiveSettingsPanel
+        archive_panel = ArchiveSettingsPanel()
+        archive_panel.resize(700, 450)
+        step('archive_metadata_first', archive_panel.show, lambda: not archive_panel.metadata_reader.busy)
+        step('archive_metadata_warm', archive_panel.refresh, lambda: not archive_panel.metadata_reader.busy)
+        result['archive_metadata'] = archive_panel.status.text()
+        archive_panel.metadata_reader.shutdown()
+        archive_panel.close()
+        archive_panel.deleteLater()
         window._quitting = True
         window.close()
         page._snapshot_pool.shutdown(wait=True, cancel_futures=True)
         window.deleteLater()
         QTest.qWait(100)
+    elif args.mode == 'export':
+        from datetime import date
+        from ui.report_export import ReportExportController
+        from PyQt6.QtWidgets import QWidget, QPushButton
+        from services.report_export_job import export_report_selection
+        from services.device_config import DeviceConfigRepository
+        from services.monthly_history import load_usage_history
+        from openpyxl import load_workbook
+        parent = QWidget()
+        button = QPushButton('Navigation response', parent)
+        parent.show()
+        controller = ReportExportController(parent)
+        errors, completed, phases, clicks = [], [], [], []
+        controller.failed.connect(errors.append)
+        controller.succeeded.connect(completed.append)
+        button.clicked.connect(lambda: clicks.append(time.perf_counter()))
+        timer.timeout.connect(button.click)
+        path = directory / 'full-year.xlsx'
+        database_path = database.get_db_path()
+        def job(*, cancelled, progress):
+            def phase(percent, message):
+                phases.append({'percent': percent, 'seconds': time.perf_counter()-begun, 'message': message})
+                progress(percent, message)
+            # Include all selection preparation, DB/Archive reads and writing.
+            from database import report_read_database
+            with report_read_database(database_path, cancelled=cancelled):
+                devices = DeviceConfigRepository().list(enabled_only=False)
+                monthly = load_usage_history([0, 1, 2], granularity='monthly')
+                return export_report_selection(path, date(2025, 9, 18), date(2026, 9, 17),
+                    database_path=database_path, devices=devices, monthly_records=monthly,
+                    cancelled=cancelled, progress=phase)
+        begun = time.perf_counter()
+        step('export_full_year_from_database', lambda: controller.start(job), lambda: not controller.busy)
+        assert not errors, errors
+        assert completed == [path]
+        with path.open('rb') as stream:
+            book = load_workbook(stream, read_only=True, data_only=True)
+            rows = list(book['มุมมองผู้ใช้'].iter_rows(min_row=5, values_only=True))
+            assert len(rows) == 100
+            totals = {row[0]: row[-2] for row in rows}
+            expected = {f'Fixture user {i}': (10 + i % 5) * 365 * 3 for i in range(100)}
+            assert totals == expected, (list(totals.items())[:2], list(expected.items())[:2])
+            result['validation'] = {'users': len(rows), 'totals_match': True,
+                'sheets': book.sheetnames, 'source_raw_rows': 109500, 'archive_state': 'hot five-year fixture; archive path checked separately'}
+            book.close()
+        result['export_phases'] = phases
+        result['navigation_clicks'] = len(clicks)
+        result['output_bytes'] = path.stat().st_size
+        controller.shutdown()
+        parent.close()
+        parent.deleteLater()
     elif args.mode == 'charts':
         import gc
         import weakref
@@ -302,8 +366,12 @@ def main():
         result['query_note'] = 'Service calls measured synchronously only for timing; production staged Reports executes these reads in workers.'
     else:
         from services.web_usage_projection import CounterPoint, CounterProjection, UsageInterval
-        from services.web_evidence_report import MAX_REPORT_EVENTS, export_evidence_xlsx
-        from ui.web_evidence_report import WebEvidenceDialog, projection_pdf
+        from services.web_evidence_report import MAX_REPORT_EVENTS
+        from services.web_evidence_export import export_web_evidence
+        from ui.web_evidence_report import WebEvidenceDialog
+        from ui.report_export import ReportExportController
+        from PyQt6.QtWidgets import QWidget, QPushButton
+        from functools import partial
         first = datetime(2025, 9, 18, 8, tzinfo=timezone(timedelta(hours=7)))
         points = []
         for day in range(args.days):
@@ -317,14 +385,22 @@ def main():
         path = directory / f'evidence.{args.format}'
         result['fixture'] = {'days': args.days, 'reads_per_day': 32, 'points': len(points),
                              'intervals': len(intervals), 'counters': 1, 'format': args.format}
+        parent = QWidget()
+        button = QPushButton('Navigate', parent)
+        parent.show()
+        controller = ReportExportController(parent)
+        errors, completed, clicks = [], [], []
+        controller.failed.connect(errors.append)
+        controller.succeeded.connect(completed.append)
+        button.clicked.connect(lambda: clicks.append(True))
+        timer.timeout.connect(button.click)
+        step(f'evidence_{args.format}_{args.days}days', lambda: controller.start(partial(
+            export_web_evidence, path, projection, kind=args.format,
+            printer='Fixture', serial='FIXTURE-0', counter_label='Total')), lambda: not controller.busy)
+        assert not errors, errors
+        assert completed == [path]
+        result['navigation_clicks'] = len(clicks)
         if args.format == 'xlsx':
-            dialog = WebEvidenceDialog((), database_path=database.get_db_path())
-            dialog.show()
-            dialog.projection = projection
-            step(f'evidence_render_{args.days}days', dialog.render_projection)
-            assert dialog.table.rowCount() == len(intervals)
-            step(f'evidence_xlsx_{args.days}days', lambda: export_evidence_xlsx(path, projection,
-                 printer='Fixture', serial='FIXTURE-0', counter_label='Total'))
             from openpyxl import load_workbook
             with path.open('rb') as stream:
                 book = load_workbook(stream, read_only=True)
@@ -332,13 +408,16 @@ def main():
                 assert book.worksheets[1].max_row == len(points) + 1
                 assert book.worksheets[2].max_row == len(intervals) + 1
                 book.close()
-            dialog.close()
-            dialog.deleteLater()
-            QTest.qWait(100)
         else:
-            step(f'evidence_pdf_{args.days}days', lambda: projection_pdf(path, projection, title='Synthetic evidence audit'))
             assert path.read_bytes().startswith(b'%PDF-')
             result['validation'] = 'PDF header and non-empty output; visual pagination not audited here'
+            import shutil
+            pdf_copy = args.output.with_suffix('.pdf')
+            shutil.copyfile(path, pdf_copy)
+            result['pdf_for_visual_check'] = str(pdf_copy)
+        controller.shutdown()
+        parent.close()
+        parent.deleteLater()
         result['output_bytes'] = path.stat().st_size
     result['complete'] = True
     save()

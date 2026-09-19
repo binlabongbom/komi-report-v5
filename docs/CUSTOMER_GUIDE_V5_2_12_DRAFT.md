@@ -220,6 +220,10 @@ ledger หรือเอกสารเรียกเก็บเดิม แ
 
 ## Archive และการสำรองข้อมูล
 
+เมื่อเปิดส่วนนี้ โปรแกรมจะแสดง **กำลังตรวจจำนวนข้อมูลเก่า** ระหว่างรอสามารถ
+เปลี่ยนหน้าได้ จำนวนจะแสดงเมื่ออ่านสำเร็จ ถ้าอ่านไม่สำเร็จให้กด **ตรวจจำนวนใหม่**
+เพื่อทดลองอีกครั้ง ปุ่มจัดเก็บจะใช้ได้เมื่อทราบจำนวนแล้ว
+
 ผล Web รายรอบและรายละเอียดรายวันของผู้ใช้/Raw Counter ที่เกิน 12 เดือนจัดเก็บแบบ
 บีบอัดแยกตามปี ระบบทำเมื่อว่างหลังเริ่ม runtime โดยให้การอ่านเครื่องพิมพ์ทำก่อน
 หรือสั่งได้ใน **ตั้งค่า → ขั้นสูง → จัดเก็บรายละเอียดประวัติเก่า**
@@ -271,6 +275,17 @@ Each computer keeps its own registration identity. A local save is not a deliver
 - **Archive:** data older than a year can be archived. Monthly summaries remain available; detailed historical Web evidence is loaded only when requested. Keep the archive with its database when making a backup.
 
 ## ภาพหน้าจอปัจจุบัน / Current screen reference
+
+การโหลดรายงานในรุ่นนี้: Overview แสดงสถานะโหลดและมีปุ่ม **ลองโหลดอีกครั้ง**
+เมื่ออ่านไม่สำเร็จ ส่วนรายงานที่กำลังเปลี่ยนช่วงจะแจ้งว่าตัวเลขเดิมเป็นของช่วงใด
+เปลี่ยนแท็บหรือช่วงใหม่ได้ขณะรอ โปรแกรมจะแสดงผลของช่วงล่าสุดที่เลือก
+หน้าตรวจสอบรอบบิลเริ่มอ่านเมื่อเปิดหน้านั้น และใช้ **Refresh** เพื่อลองใหม่ได้
+
+Loading reports: Overview shows loading and offers **Retry loading** after a failed
+read. When changing report dates, the notice identifies the previously displayed
+period until the new one is ready. You may change tabs or dates while waiting.
+Billing history loads when its page opens; use **Refresh** to retry. Archive counts
+load when the section opens; **Refresh counts** retries without starting archival.
 
 ภาพไทยและอังกฤษด้านล่างใช้ไฟล์ชุดเดียวกับคู่มือในแอป ข้อมูลบริษัท เครื่องพิมพ์ และผู้ใช้เป็นข้อมูลจำลอง
 The Thai and English screenshots below are shared with the in-app guide. Names are fixture data and are not translated.

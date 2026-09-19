@@ -74,6 +74,7 @@ def test_report_jobs_shutdown_only_on_actual_exit(monkeypatch, quitting):
         registration=SimpleNamespace(stop=lambda: None),
         web_service=SimpleNamespace(stop=lambda: None),
         hide=lambda: events.append("hidden"),
+        findChildren=lambda _: [SimpleNamespace(shutdown=lambda: events.append("read shutdown"))],
     )
     window._stop_ui_work = lambda: app.MainWindow._stop_ui_work(window)
     event = SimpleNamespace(
@@ -83,7 +84,7 @@ def test_report_jobs_shutdown_only_on_actual_exit(monkeypatch, quitting):
 
     app.MainWindow.closeEvent(window, event)
 
-    assert events == (["report shutdown", "polling stop", "accepted"] if quitting else ["hidden", "ignored"])
+    assert events == (["report shutdown", "read shutdown", "polling stop", "accepted"] if quitting else ["hidden", "ignored"])
 
 
 def test_prewarm_yields_between_users_and_printers_and_only_schedules_once(monkeypatch):

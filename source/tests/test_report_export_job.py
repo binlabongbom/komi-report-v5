@@ -189,7 +189,8 @@ def test_background_read_database_is_pinned_readonly_and_does_not_leak_settings(
             database.set_db_path(first)
 
 
-def test_export_job_reads_selected_user_and_raw_dates_from_database(tmp_path):
+@pytest.mark.parametrize('archived', [False, True])
+def test_export_job_reads_selected_user_and_raw_dates_from_database(tmp_path, archived):
     from services.report_export_job import export_report_selection, EmptyReportError
     from services.device_config import DeviceConfig, DeviceConfigRepository
     from services.pricing import PricingRepository, PriceList
@@ -210,6 +211,13 @@ def test_export_job_reads_selected_user_and_raw_dates_from_database(tmp_path):
                 VALUES(0,?,'counter.print.full_color.a4','A4','user','1','Fixture user',0,?,?,'TEST',?,?)''',
                 (day, pages, pages, day, day))
         post_daily_record(ledger_source)
+    if archived:
+        from services.report_detail_archive import ReportDetailArchive
+        archive = ReportDetailArchive()
+        batches = []
+        while batch := archive.archive_batch(today=date(2028, 7, 5)):
+            batches.append(batch)
+        assert sum(batch['events'] for batch in batches) == 3
     stages = []
     target = tmp_path/'selected.xlsx'
     selected = date(2026, 7, 2)

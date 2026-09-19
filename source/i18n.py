@@ -78,6 +78,17 @@ def tr(thai: str, english: str) -> str:
 # Exact labels used throughout the six main workspaces and the setup wizard.
 # Longer/dynamic messages are handled by the phrase replacements below.
 _EN: dict[str, str] = {
+    "ลองโหลดอีกครั้ง": "Retry loading",
+    "กำลังโหลดภาพรวม…": "Loading overview…",
+    "โหลดภาพรวมไม่สำเร็จ · กดรีเฟรชเพื่อลองใหม่": "Overview could not be loaded. Refresh to retry.",
+    "ตรวจจำนวนใหม่": "Refresh counts",
+    "เปิดส่วนนี้เพื่อตรวจจำนวนข้อมูลเก่า": "Open this section to count older records.",
+    "กำลังตรวจจำนวนข้อมูลเก่า…": "Counting older records…",
+    "อ่านรายการ Archive ไม่สำเร็จ · กดตรวจจำนวนใหม่เพื่อลองอีกครั้ง": "Archive metadata is unavailable. Refresh counts to retry.",
+    "เปิดหน้านี้เพื่อตรวจสอบรอบบิล": "Open this page to check billing history",
+    "กำลังตรวจสอบรอบบิล…": "Checking billing history…",
+    "โหลดไม่สำเร็จ · กด Refresh เพื่อลองใหม่": "Load failed · Select Refresh to retry",
+    "ตรวจสถานะ Web ไม่สำเร็จ · กำลังรอลองใหม่": "Could not check Web status · Waiting to retry",
     "ภาษา": "Language",
     "ภาษา / Language": "Language / ภาษา",
     "ไทย": "Thai",

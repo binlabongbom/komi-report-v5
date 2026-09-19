@@ -10,6 +10,12 @@
 ยัง Open สำหรับตรวจ source/หลักฐาน; code และ commit อยู่ local ไม่ push หรือ build
 Performance #19 ที่เหลือยังไม่ได้ถือว่าเสร็จจากงานนี้
 
+**อัปเดตหลังทำ #19 (19 กันยายน 2569):** ทำ source #30–36 และตรวจซ้ำ #33/#34 แล้ว
+ผลล่าสุด 281 test cases ผ่าน; Overview 51.05→1.95 วินาที, Legacy ปี 29.50→1.84 วินาที,
+warm tabs 0.13–0.15 วินาที, Export ปีรวม DB 69.69 วินาที/ยอดตรงครบ 100 ผู้ใช้
+รายละเอียดและข้อยกเว้น first construction: [ผลพัฒนา #19](V5_2_12_ISSUE_19_IMPLEMENTATION.md)
+ยัง Open สำหรับตรวจ source/หลักฐาน; ไม่มี build/push/Host changes
+
 ## งานรวมที่ใช้ติดตาม
 
 - [#18 — UX / UI / QSS](https://github.com/binlabongbom/komi-report-v5/issues/18): ครอบคลุม UX-01–22

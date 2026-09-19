@@ -37,6 +37,19 @@ bf453738b934dcf5bea59dd8c70e191b52ba6b89 และ merge เข้า local main
 
 ## สถานะก่อน build และงานเลื่อนไปเวอร์ชันหน้า
 
+### Performance #19 — source พร้อมตรวจ 19 กันยายน 2569
+
+ทำรายการ #30–36 ตามคำสั่ง “ทำ issue 19 ต่อเลย” แล้ว พร้อมผลล่าสุด 281 tests ผ่าน
+ย้าย Overview/Archive/Billing Audit ไปอ่านใน worker, เตรียม Raw/Users/Printers ก่อนวาด,
+แชร์ข้อมูลข้ามแท็บ, ลดการอ่าน latest counters และโหลดภาพคู่มือตามใช้
+ตรวจ chart lifecycle/Web export/Agent ซ้ำ พร้อม Export ปีรวมการอ่านฐานจริงของ fixture
+และปรับคู่มือ/ภาพ/PDF แล้ว ผลและข้อจำกัดอยู่ใน
+[รายงาน #19](V5_2_12_ISSUE_19_IMPLEMENTATION.md)
+ยังมี first construction 1–3 วินาทีและบางตารางเกินเป้า gap 100 ms ตามผลจริง
+ไม่ได้อ้างว่า source benchmark แทน packaged/Windows/network/long soak
+ไม่มี source blocker ใหม่จากรอบนี้; ตรวจรับ source ได้ก่อนคำสั่ง build แยก
+การติดตั้ง A + VM105 ยังทดสอบหลัง build และงาน Host ยังคงรุ่นหน้า
+
 ### ขอบเขตยืนยันล่าสุด 19 กันยายน 2569
 
 ผู้ใช้ยืนยันว่า **ฝั่ง Host เก็บไว้เวอร์ชันหน้า** งานที่ติดสัญญา API/สิทธิ์/ใบรับรอง

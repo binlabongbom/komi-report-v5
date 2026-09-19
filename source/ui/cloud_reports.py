@@ -40,6 +40,10 @@ from ui.numeric_inputs import NumericDateEdit as QDateEdit
 from ui.page_tabs import PageTabs as QTabWidget
 from ui.page_tabs import PageHeading
 from services.legacy_history_import import build_legacy_usage_intervals
+from services.report_models import (
+    RawCell, build_legacy_raw_tables, build_user_rows, build_printer_rows,
+    _combined, _record_total, _operation_total, _operation_available, _record_name,
+)
 from services.report_operation_breakdown import (
     breakdown_from_raw_records,
     raw_operation_label,
@@ -165,46 +169,9 @@ def _money(value: float | int) -> str:
     return f"{value:,.2f}"
 
 
-def _combined(record, name: str) -> float:
-    return float(getattr(record, name, 0) or 0) + float(
-        getattr(record, f"provisional_{name}", 0) or 0
-    )
-
-
-def _record_total(record) -> float:
-    explicit = _combined(record, "total")
-    if explicit:
-        return explicit
-    return sum(
-        _combined(record, name)
-        for name in ("a3_color", "a4_color", "a3_bw", "a4_bw")
-    )
-
-
-def _operation_total(record, operation: str) -> float:
-    return sum(
-        _combined(record, f"{operation}_{suffix}")
-        for suffix in ("a3_color", "a3_bw", "a4_color", "a4_bw", "other")
-    )
-
-
-def _operation_available(record, operation: str) -> bool:
-    return bool(getattr(record, f"{operation}_available", False)) or any(
-        _combined(record, f"{operation}_{suffix}")
-        for suffix in ("a3_color", "a3_bw", "a4_color", "a4_bw", "other")
-    )
-
-
 def _record_identity(record) -> str:
     identity = str(getattr(record, "device_identity", "") or "").strip()
     return identity or f"slot:{int(getattr(record, 'device_slot', 0))}"
-
-
-def _record_name(record, devices_by_slot: dict[int, object]) -> str:
-    snapshot = str(getattr(record, "device_name_snapshot", "") or "").strip()
-    slot = int(getattr(record, "device_slot", 0))
-    device = devices_by_slot.get(slot)
-    return snapshot or str(getattr(device, "name", "") or f"MFP {slot + 1}")
 
 
 def _chart_printer_name(value: str) -> str:
@@ -428,6 +395,9 @@ class CloudReportsWidget(QWidget):
         self._export_busy = False
         self._has_data = False
         self._data_tab: int | None = None
+        self._prepared_models = {}
+        self._rendered_tokens = {}
+        self._snapshot_token = None
         self._loaded_tabs: set[int] = set()
         self._data_revision = 0
         self._render_generation = 0
@@ -1488,10 +1458,14 @@ class CloudReportsWidget(QWidget):
         last_sync_at: str | None,
         usage_meter_baselines: Iterable | None = None,
         tab_index: int | None = None,
-    ) -> None:
+        prepared_models=None,
+        snapshot_token=None,
+    ) -> bool:
         if tab_index is not None and tab_index not in range(5):
             raise ValueError("Report tab index must be between 0 and 4")
         self._data_tab = tab_index
+        self._prepared_models = prepared_models or {}
+        self._snapshot_token = (snapshot_token, get_language(), self.include_waste_adjustment()) if snapshot_token is not None else None
         loaded_index = self.tabs.currentIndex() if tab_index is None else tab_index
         self._loaded_tabs.add(loaded_index)
         self._tab_loading.discard(loaded_index)
@@ -1517,10 +1491,18 @@ class CloudReportsWidget(QWidget):
             f"ข้อมูลล่าสุด {last_sync_at.replace('T', ' ')[:16]}" if last_sync_at else "ยังไม่มีเวลาซิงก์ล่าสุด"
         )
         self._data_revision += 1
+        if self._snapshot_token is not None and self._rendered_tokens.get(loaded_index) == self._snapshot_token:
+            if loaded_index in (0, 1):
+                self._build_user_rows()
+            if loaded_index in (0, 2):
+                self._build_printer_rows()
+            self._update_loading_visibility()
+            return False
         if not self._staged:
             self._build_user_rows()
             self._build_printer_rows()
         self._render_selected_tab(self.tabs.currentIndex())
+        return True
 
     def _render_selected_tab(self, index: int) -> None:
         self._cancel_render_tail()
@@ -1546,6 +1528,8 @@ class CloudReportsWidget(QWidget):
         )
         if 0 <= index < len(renderers):
             renderers[index]()
+            if self._pending_render_tail is None and self._snapshot_token is not None:
+                self._rendered_tokens[index] = self._snapshot_token
             self._layout_timer.start(0)
 
     def _cancel_render_tail(self) -> None:
@@ -1585,6 +1569,8 @@ class CloudReportsWidget(QWidget):
             self._render_tail_timer.start(0)
         else:
             charts()
+            if self._snapshot_token is not None:
+                self._rendered_tokens[index] = self._snapshot_token
             self._update_loading_visibility()
             self._layout_timer.start(0)
 
@@ -1643,51 +1629,6 @@ class CloudReportsWidget(QWidget):
             self._usage_selected_slots.discard(slot)
         self._render_usage()
 
-    @staticmethod
-    def _raw_type_key(record) -> tuple[str, str, str]:
-        """Return the exact source identity without merging model counters."""
-
-        return (
-            str(getattr(record, "canonical_field", "")),
-            str(getattr(record, "label", "")),
-            str(getattr(record, "source_path", "")),
-        )
-
-    @staticmethod
-    def _raw_display_label(
-        raw_type: tuple[str, str, str],
-        all_types: Iterable[tuple[str, str, str]],
-    ) -> str:
-        field, label, source_path = raw_type
-        base = label or field or "Unknown"
-        duplicate = sum(
-            1 for other in all_types if (other[1] or other[0] or "Unknown") == base
-        ) > 1
-        return f"{base} [{source_path}]" if duplicate and source_path else base
-
-    @staticmethod
-    def _raw_value(records: Iterable) -> str:
-        values = tuple(records)
-        if not values:
-            return "—"
-        total = _number(sum(float(getattr(item, "delta_value", 0.0)) for item in values))
-        if any(getattr(item, "needs_review", False) for item in values):
-            return f"{total} · {tr('รอตรวจสอบยอดมิเตอร์', 'Meter usage needs review')}"
-        return total
-
-    @staticmethod
-    def _raw_device_label(slot: int, records: Iterable, devices_by_slot: dict[int, object]) -> str:
-        snapshot = next(
-            (
-                str(getattr(item, "device_name_snapshot", "") or "").strip()
-                for item in records
-                if int(getattr(item, "device_slot", -1)) == slot
-                and str(getattr(item, "device_name_snapshot", "") or "").strip()
-            ),
-            "",
-        )
-        device = devices_by_slot.get(slot)
-        return f"Slot {slot + 1} · {snapshot or getattr(device, 'name', '') or f'MFP {slot + 1}'}"
 
     @staticmethod
     def _configure_raw_table(
@@ -1731,148 +1672,24 @@ class CloudReportsWidget(QWidget):
     def _render_legacy_raw(self) -> None:
         if self._staged and not self._can_render_tab(4):
             return
-        records = tuple(self._raw_counter_records)
-        devices_by_slot = {int(device.slot): device for device in self._devices}
-        slots = tuple(
-            sorted(
-                {int(getattr(item, "device_slot", 0)) for item in records}
-                | set(devices_by_slot)
-            )
-        )
-        device_labels = {
-            slot: self._raw_device_label(slot, records, devices_by_slot) for slot in slots
-        }
-        device_rows = tuple(item for item in records if not getattr(item, "subject_type", ""))
-        raw_types = tuple(
-            sorted(
-                {self._raw_type_key(item) for item in device_rows},
-                key=lambda item: (item[1].casefold(), item[0], item[2]),
-            )
-        )
-        machine_rows: list[tuple[str, ...]] = []
-        for raw_type in raw_types:
-            values = tuple(
-                self._raw_value(
-                    item
-                    for item in device_rows
-                    if int(item.device_slot) == slot
-                    and self._raw_type_key(item) == raw_type
-                )
-                for slot in slots
-            )
-            machine_rows.append(
-                (
-                    (
-                        "—"
-                        if raw_operation_label(raw_type[0], raw_type[1])
-                        == "ไม่พบข้อมูลแยกประเภท"
-                        else raw_operation_label(raw_type[0], raw_type[1])
-                    ),
-                    self._raw_display_label(raw_type, raw_types),
-                    *values,
-                )
-            )
-        self._configure_raw_table(
-            self.legacy_machine_table,
-            (
-                "กลุ่มงาน",
-                "ประเภท Counter (ชื่อจากเครื่อง)",
-                *(device_labels[slot] for slot in slots),
-            ),
-            tuple(machine_rows),
-            empty="ยังไม่มี Raw Counter ในช่วงวันที่เลือก",
-            text_columns=(0, 1),
-        )
-
-        subject_rows = tuple(item for item in records if getattr(item, "subject_type", ""))
-        subject_columns = tuple(
-            sorted(
-                {
-                    (int(item.device_slot), *self._raw_type_key(item))
-                    for item in subject_rows
-                },
-                key=lambda item: (item[0], item[2].casefold(), item[1]),
-            )
-        )
-        subjects = tuple(
-            sorted(
-                {
-                    (
-                        str(item.subject_type),
-                        str(item.subject_id),
-                        str(item.subject_name or item.subject_id),
-                    )
-                    for item in subject_rows
-                },
-                key=lambda item: (item[2].casefold(), item[0], item[1]),
-            )
-        )
-        user_rows: list[tuple[str, ...]] = []
-        for subject_type, subject_id, subject_name in subjects:
-            values = tuple(
-                self._raw_value(
-                    item
-                    for item in subject_rows
-                    if str(item.subject_type) == subject_type
-                    and str(item.subject_id) == subject_id
-                    and int(item.device_slot) == slot
-                    and self._raw_type_key(item) == (field, label, source_path)
-                )
-                for slot, field, label, source_path in subject_columns
-            )
-            user_rows.append((f"{subject_name} ({subject_type})", *values))
-        self._configure_raw_table(
-            self.legacy_user_table,
-            (
-                "ผู้ใช้ / Account",
-                *(
-                    f"{device_labels.get(slot, f'Slot {slot + 1}')} · "
-                    f"{raw_operation_label(field, label)} · "
-                    f"{self._raw_display_label((field, label, source_path), tuple((item[1], item[2], item[3]) for item in subject_columns))}"
-                    for slot, field, label, source_path in subject_columns
-                ),
-            ),
-            tuple(user_rows),
-            empty="ยังไม่มี Raw Counter แยกผู้ใช้ / Account ในช่วงวันที่เลือก",
-        )
-
-        days = tuple(sorted({item.record_date for item in device_rows}))
-        daily_columns = tuple(
-            sorted(
-                {(int(item.device_slot), *self._raw_type_key(item)) for item in device_rows},
-                key=lambda item: (item[0], item[2].casefold(), item[1]),
-            )
-        )
-        daily_rows = tuple(
-            (
-                day.strftime("%d/%m/%Y"),
-                *(
-                    self._raw_value(
-                        item
-                        for item in device_rows
-                        if item.record_date == day
-                        and int(item.device_slot) == slot
-                        and self._raw_type_key(item) == (field, label, source_path)
-                    )
-                    for slot, field, label, source_path in daily_columns
-                ),
-            )
-            for day in days
-        )
-        self._configure_raw_table(
-            self.legacy_daily_table,
-            (
-                "วันที่",
-                *(
-                    f"{device_labels.get(slot, f'Slot {slot + 1}')} · "
-                    f"{raw_operation_label(field, label)} · "
-                    f"{self._raw_display_label((field, label, source_path), tuple((item[1], item[2], item[3]) for item in daily_columns))}"
-                    for slot, field, label, source_path in daily_columns
-                ),
-            ),
-            daily_rows,
-            empty="ยังไม่มี Raw Counter รายวันในช่วงวันที่เลือก",
-        )
+        models = self._prepared_models.get("legacy_raw")
+        if models is None:
+            models = build_legacy_raw_tables(self._raw_counter_records, self._devices)
+        def display(value):
+            if value is None:
+                return "—"
+            if isinstance(value, RawCell):
+                suffix = " · " + tr("รอตรวจสอบยอดมิเตอร์", "Meter usage needs review") if value.needs_review else ""
+                return _number(value.total) + suffix
+            return value
+        for table, model, empty, text_columns in zip(
+            (self.legacy_machine_table, self.legacy_user_table, self.legacy_daily_table), models,
+            ("ยังไม่มี Raw Counter ในช่วงวันที่เลือก", "ยังไม่มี Raw Counter แยกผู้ใช้ / Account ในช่วงวันที่เลือก", "ยังไม่มี Raw Counter รายวันในช่วงวันที่เลือก"),
+            ((0, 1), (0,), (0,)),
+        ):
+            self._configure_raw_table(table, model.headers,
+                tuple(tuple(display(value) for value in row) for row in model.rows),
+                empty=empty, text_columns=text_columns)
 
     def _render_legacy_history(self) -> None:
         if self._staged and not self._can_render_tab(4):
@@ -1946,164 +1763,17 @@ class CloudReportsWidget(QWidget):
                 self.legacy_history_table.setItem(row_index, column, item)
 
     def _build_user_rows(self) -> None:
-        grouped: dict[str, dict] = {}
-        subject_group_keys: dict[tuple[str, str, int], str] = {}
-        for item in self._subjects:
-            subject_name = str(item.subject_name or "").strip()
-            slot = int(item.device_slot)
-            key = (
-                f"{item.subject_type}:name:{subject_name.casefold()}"
-                if subject_name and subject_name != str(item.subject_id)
-                else f"{item.subject_type}:slot:{slot}:id:{item.subject_id}"
-            )
-            subject_group_keys[(str(item.subject_type), str(item.subject_id), slot)] = key
-            row = grouped.setdefault(
-                key,
-                {
-                    "key": key,
-                    "name": subject_name or str(item.subject_id),
-                    "type": item.subject_type,
-                    "usage": 0.0,
-                    "print": 0.0,
-                    "copy": 0.0,
-                    "print_available": False,
-                    "copy_available": False,
-                    "latest": 0.0,
-                    "printers": defaultdict(float),
-                    "by_slot": defaultdict(
-                        lambda: {
-                            "print_a3_color": 0.0,
-                            "print_a3_bw": 0.0,
-                            "print_a4_color": 0.0,
-                            "print_a4_bw": 0.0,
-                            "print_other": 0.0,
-                            "copy_a3_color": 0.0,
-                            "copy_a3_bw": 0.0,
-                            "copy_a4_color": 0.0,
-                            "copy_a4_bw": 0.0,
-                            "copy_other": 0.0,
-                            "scan": 0.0,
-                            "total": 0.0,
-                            "cost": 0.0,
-                            "print_available": False,
-                            "copy_available": False,
-                            "scan_available": False,
-                            "cost_available": False,
-                        }
-                    ),
-                    "review": False,
-                },
-            )
-            identity = _record_identity(item)
-            row["usage"] += float(item.period_usage)
-            if item.latest_total is not None:
-                row["latest"] = max(row["latest"], float(item.latest_total))
-            row["printers"][identity] += float(item.period_usage)
-            row["by_slot"][slot]["total"] += float(item.period_usage)
-            row["review"] = row["review"] or bool(item.needs_review)
-
-        raw_groups: dict[tuple[str, str, int, str], list[object]] = defaultdict(list)
-        for item in self._raw_counter_records:
-            subject_type = str(getattr(item, "subject_type", "") or "")
-            subject_id = str(getattr(item, "subject_id", "") or "")
-            if not subject_type or not subject_id:
-                continue
-            serial = str(getattr(item, "device_serial_snapshot", "") or "").strip()
-            slot = int(item.device_slot)
-            identity = f"serial:{serial}" if serial else f"slot:{slot}"
-            raw_groups[(subject_type, subject_id, slot, identity)].append(item)
-        for (subject_type, subject_id, slot, identity), raw_records in raw_groups.items():
-            key = subject_group_keys.get((subject_type, subject_id, slot))
-            if key is None:
-                raw_name = str(getattr(raw_records[0], "subject_name", "") or "").strip()
-                key = (
-                    f"{subject_type}:name:{raw_name.casefold()}"
-                    if raw_name and raw_name != subject_id
-                    else f"{subject_type}:slot:{slot}:id:{subject_id}"
-                )
-            row = grouped.get(key)
-            if row is None:
-                continue
-            breakdown = breakdown_from_raw_records(raw_records)
-            slot_row = row["by_slot"][slot]
-            slot_row.setdefault("available_fields", set()).update(breakdown.available_fields)
-            for field in (
-                "print_a3_color",
-                "print_a3_bw",
-                "print_a4_color",
-                "print_a4_bw",
-                "print_other",
-                "copy_a3_color",
-                "copy_a3_bw",
-                "copy_a4_color",
-                "copy_a4_bw",
-                "copy_other",
-                "scan",
-            ):
-                slot_row[field] += float(getattr(breakdown, field))
-            slot_row["print_available"] = (
-                slot_row["print_available"] or breakdown.print_available
-            )
-            slot_row["copy_available"] = (
-                slot_row["copy_available"] or breakdown.copy_available
-            )
-            slot_row["scan_available"] = (
-                slot_row["scan_available"] or breakdown.scan_available
-            )
-            row["print"] += breakdown.print_total
-            row["copy"] += breakdown.copy_total
-            row["print_available"] = row["print_available"] or breakdown.print_available
-            row["copy_available"] = row["copy_available"] or breakdown.copy_available
-            if breakdown.print_available or breakdown.copy_available:
-                row["printers"][identity] = max(
-                    row["printers"].get(identity, 0.0),
-                    breakdown.print_total + breakdown.copy_total,
-                )
-        self._user_rows = sorted(grouped.values(), key=lambda item: item["usage"], reverse=True)
+        prepared = self._prepared_models.get("users")
+        self._user_rows = list(prepared if prepared is not None else build_user_rows(self._subjects, self._raw_counter_records))
         if self._selected_user and not any(row["key"] == self._selected_user for row in self._user_rows):
             self._selected_user = None
 
     def _build_printer_rows(self) -> None:
-        devices_by_slot = {int(device.slot): device for device in self._devices}
-        grouped: dict[str, dict] = {}
-        for record in self._records:
-            key = _record_identity(record)
-            slot = int(record.device_slot)
-            device = devices_by_slot.get(slot)
-            row = grouped.setdefault(
-                key,
-                {
-                    "key": key,
-                    "slot": slot,
-                    "name": _record_name(record, devices_by_slot),
-                    "device": device,
-                    "color": 0.0,
-                    "bw": 0.0,
-                    "print": 0.0,
-                    "copy": 0.0,
-                    "print_available": False,
-                    "copy_available": False,
-                    "scan": 0.0,
-                    "total": 0.0,
-                    "cost": 0.0,
-                    "review": False,
-                },
-            )
-            row["color"] += sum(_combined(record, name) for name in ("a3_color", "a4_color"))
-            row["bw"] += sum(_combined(record, name) for name in ("a3_bw", "a4_bw"))
-            row["print"] += _operation_total(record, "print")
-            row["copy"] += _operation_total(record, "copy")
-            row["print_available"] = row["print_available"] or _operation_available(
-                record, "print"
-            )
-            row["copy_available"] = row["copy_available"] or _operation_available(
-                record, "copy"
-            )
-            row["scan"] += _combined(record, "scan")
-            row["total"] += _record_total(record)
-            row["cost"] += self._record_cost(record)
-            row["review"] = row["review"] or bool(record.held_days or record.incomplete_days)
-        self._printer_rows = sorted(grouped.values(), key=lambda item: item["total"], reverse=True)
+        prepared = self._prepared_models.get("printers")
+        if prepared is None:
+            prepared = build_printer_rows(self._records, self._devices)
+        field = self._cost_field()
+        self._printer_rows = [dict(row, cost=row[field]) for row in prepared]
         if self._selected_printer and not any(row["key"] == self._selected_printer for row in self._printer_rows):
             self._selected_printer = None
 

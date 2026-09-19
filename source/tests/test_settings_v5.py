@@ -247,6 +247,9 @@ def test_fleet_settings_groups_fields_and_live_schedule(tmp_path, monkeypatch, f
         page.show()
         app.processEvents()
 
+        # This isolated Fleet widget has no mounted Advanced network card.
+        # Render the known status here; the embedded async lifecycle is tested separately.
+        page._refresh_web_status(fake_web_service.status())
         assert "DMS Printer" in page.device_summary.text()
         assert "SERIAL-1" not in page.device_summary.text()
         assert "192.0.2.10" not in page.device_summary.text()
@@ -412,6 +415,11 @@ def test_web_recovery_can_start_enabled_but_stopped_service_without_toggling(
         page = PageFleetSettings()
 
         assert page.web_service_enabled.isChecked()
+        page._set_active_editor('web')
+        page.layout().addWidget(page.web_program_card)
+        page.show()
+        from test_performance_issue19 import wait_until
+        wait_until(lambda: page.web_save_button.isEnabled())
         assert page.web_save_button.isEnabled()
         assert "ต้องแก้ไข" in page.web_task_summary.text()
         assert not page.has_unsaved_changes()

@@ -206,8 +206,8 @@ def test_narrow_overview_keeps_kpi_text_and_panels_inside_content(report_widget,
     assert widget.overview_page.width() <= scroll.viewport().width()
     cards = list(widget.overview_kpis.values())
     assert len(cards) == 6
-    assert len({_rect_in(card, widget.overview_page).y() for card in cards}) == 1, (
-        "All six KPI cards must share one row at compact report widths"
+    assert len({_rect_in(card, widget.overview_page).y() for card in cards}) == (2 if width == 800 else 3), (
+        "Compact KPI cards must wrap into the responsive grid introduced in issue #18"
     )
     for card in cards:
         assert widget.overview_page.rect().contains(_rect_in(card, widget.overview_page))
@@ -218,13 +218,10 @@ def test_narrow_overview_keeps_kpi_text_and_panels_inside_content(report_widget,
         for left, right in combinations(rects, 2):
             assert not left.intersects(right), "KPI labels and values must not overlap"
         title_rect, detail_rect, value_rect = rects
-        assert title_rect.bottom() < detail_rect.top()
+        assert title_rect.bottom() < value_rect.top() < detail_rect.top()
+        assert value_rect.bottom() < detail_rect.top()
         assert title_rect.left() == detail_rect.left()
-        left_column = title_rect.united(detail_rect)
-        assert value_rect.left() > left_column.right(), "Value must occupy the right column"
-        assert abs(value_rect.center().y() - left_column.center().y()) <= 1, (
-            "Value must be vertically centered beside the two left-hand rows"
-        )
+        assert title_rect.left() == value_rect.left()
         assert not card.lbl_title.wordWrap()
         assert not card.lbl_detail.wordWrap()
         for label in (card.lbl_title, card.lbl_val):

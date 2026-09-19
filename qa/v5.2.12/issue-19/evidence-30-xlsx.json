@@ -1,0 +1,54 @@
+{
+  "synthetic": true,
+  "mode": "evidence",
+  "started_at": "2026-09-19T19:11:00.464637",
+  "python": "3.14.7 (tags/v3.14.7:823f032, Aug  5 2026, 10:51:32) [MSC v.1944 64 bit (AMD64)]",
+  "platform": "win32",
+  "measurements": [
+    {
+      "name": "evidence_xlsx_30days",
+      "seconds_until_ready": 2.050226499999553,
+      "action_seconds": 0.030838099999527913,
+      "heartbeat_count": 188,
+      "max_event_loop_gap_ms": 30.86480000092706,
+      "gaps_above_100ms": 0,
+      "before": {
+        "working_set_bytes": 52436992,
+        "private_bytes": 28057600,
+        "peak_working_set_bytes": 52436992,
+        "cpu_seconds": 1.25
+      },
+      "after": {
+        "working_set_bytes": 78123008,
+        "private_bytes": 285147136,
+        "peak_working_set_bytes": 79478784,
+        "cpu_seconds": 2.96875
+      }
+    }
+  ],
+  "blocked_operations": [],
+  "complete": true,
+  "scope": "Source/offscreen; no Host, real network, Web service, installer or release build",
+  "qt_version": "6.11.0",
+  "pyqt_version": "6.11.0",
+  "copy_migration_init_seconds": 0.06846179999956803,
+  "copy_schema": 30,
+  "fixture": {
+    "days": 30,
+    "reads_per_day": 32,
+    "points": 960,
+    "intervals": 959,
+    "counters": 1,
+    "format": "xlsx"
+  },
+  "in_progress": null,
+  "navigation_clicks": 191,
+  "validation": {
+    "ขอบเขตข้อมูล": 8,
+    "อ่านจริง": 961,
+    "ยอดตามช่วง": 960,
+    "กราฟรายวัน": 31
+  },
+  "output_bytes": 52636,
+  "temporary_copy_cleaned": true
+}

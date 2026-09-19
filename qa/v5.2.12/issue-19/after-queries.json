@@ -1,0 +1,219 @@
+{
+  "synthetic": true,
+  "mode": "queries",
+  "started_at": "2026-09-19T19:27:22.179083",
+  "python": "3.14.7 (tags/v3.14.7:823f032, Aug  5 2026, 10:51:32) [MSC v.1944 64 bit (AMD64)]",
+  "platform": "win32",
+  "measurements": [
+    {
+      "name": "monthly_all_five_years",
+      "seconds_until_ready": 0.3693557000005967,
+      "action_seconds": 0.36935450000055425,
+      "heartbeat_count": 3,
+      "max_event_loop_gap_ms": 369.39910000000964,
+      "gaps_above_100ms": 1,
+      "before": {
+        "working_set_bytes": 49229824,
+        "private_bytes": 27783168,
+        "peak_working_set_bytes": 110481408,
+        "cpu_seconds": 12.234375
+      },
+      "after": {
+        "working_set_bytes": 57757696,
+        "private_bytes": 36122624,
+        "peak_working_set_bytes": 110481408,
+        "cpu_seconds": 12.59375
+      },
+      "details": {
+        "returned_rows": 183
+      }
+    },
+    {
+      "name": "subjects_30days",
+      "seconds_until_ready": 0.787314700000934,
+      "action_seconds": 0.7873110000000452,
+      "heartbeat_count": 3,
+      "max_event_loop_gap_ms": 787.3842000008153,
+      "gaps_above_100ms": 1,
+      "before": {
+        "working_set_bytes": 57765888,
+        "private_bytes": 36249600,
+        "peak_working_set_bytes": 110481408,
+        "cpu_seconds": 12.59375
+      },
+      "after": {
+        "working_set_bytes": 63959040,
+        "private_bytes": 41869312,
+        "peak_working_set_bytes": 110481408,
+        "cpu_seconds": 13.390625
+      },
+      "details": {
+        "returned_rows": 300
+      }
+    },
+    {
+      "name": "raw_30days",
+      "seconds_until_ready": 0.8576562000016565,
+      "action_seconds": 0.8576537000008102,
+      "heartbeat_count": 3,
+      "max_event_loop_gap_ms": 857.7093000003515,
+      "gaps_above_100ms": 1,
+      "before": {
+        "working_set_bytes": 63963136,
+        "private_bytes": 41992192,
+        "peak_working_set_bytes": 110481408,
+        "cpu_seconds": 13.40625
+      },
+      "after": {
+        "working_set_bytes": 65261568,
+        "private_bytes": 42991616,
+        "peak_working_set_bytes": 110481408,
+        "cpu_seconds": 14.25
+      },
+      "details": {
+        "returned_rows": 9000
+      }
+    },
+    {
+      "name": "subjects_365days",
+      "seconds_until_ready": 10.60314870000002,
+      "action_seconds": 10.603146000001288,
+      "heartbeat_count": 3,
+      "max_event_loop_gap_ms": 10603.189600000405,
+      "gaps_above_100ms": 1,
+      "before": {
+        "working_set_bytes": 65265664,
+        "private_bytes": 43122688,
+        "peak_working_set_bytes": 110481408,
+        "cpu_seconds": 14.25
+      },
+      "after": {
+        "working_set_bytes": 72122368,
+        "private_bytes": 50118656,
+        "peak_working_set_bytes": 287555584,
+        "cpu_seconds": 24.703125
+      },
+      "details": {
+        "returned_rows": 300
+      }
+    },
+    {
+      "name": "raw_365days",
+      "seconds_until_ready": 8.443765399999393,
+      "action_seconds": 8.443762699998842,
+      "heartbeat_count": 3,
+      "max_event_loop_gap_ms": 8443.812199999229,
+      "gaps_above_100ms": 1,
+      "before": {
+        "working_set_bytes": 72126464,
+        "private_bytes": 50249728,
+        "peak_working_set_bytes": 287555584,
+        "cpu_seconds": 24.703125
+      },
+      "after": {
+        "working_set_bytes": 86425600,
+        "private_bytes": 64073728,
+        "peak_working_set_bytes": 294658048,
+        "cpu_seconds": 33.125
+      },
+      "details": {
+        "returned_rows": 109500
+      }
+    },
+    {
+      "name": "archive_settings_stats",
+      "seconds_until_ready": 5.471687199998996,
+      "action_seconds": 5.4716841999998,
+      "heartbeat_count": 3,
+      "max_event_loop_gap_ms": 5471.727899999678,
+      "gaps_above_100ms": 1,
+      "before": {
+        "working_set_bytes": 86441984,
+        "private_bytes": 64258048,
+        "peak_working_set_bytes": 294658048,
+        "cpu_seconds": 33.125
+      },
+      "after": {
+        "working_set_bytes": 87191552,
+        "private_bytes": 65015808,
+        "peak_working_set_bytes": 294658048,
+        "cpu_seconds": 38.5
+      },
+      "details": {
+        "eligible": 876900,
+        "archived": 0,
+        "files": 0
+      }
+    },
+    {
+      "name": "overview_month_summary",
+      "seconds_until_ready": 2.8034283999986656,
+      "action_seconds": 2.803426999998919,
+      "heartbeat_count": 3,
+      "max_event_loop_gap_ms": 2803.4721999993053,
+      "gaps_above_100ms": 1,
+      "before": {
+        "working_set_bytes": 86822912,
+        "private_bytes": 64528384,
+        "peak_working_set_bytes": 294658048,
+        "cpu_seconds": 38.59375
+      },
+      "after": {
+        "working_set_bytes": 89010176,
+        "private_bytes": 63627264,
+        "peak_working_set_bytes": 294658048,
+        "cpu_seconds": 41.3125
+      },
+      "details": {
+        "top_users": 5
+      }
+    }
+  ],
+  "blocked_operations": [],
+  "complete": true,
+  "scope": "Source/offscreen; no Host, real network, Web service, installer or release build",
+  "qt_version": "6.11.0",
+  "pyqt_version": "6.11.0",
+  "fixture": {
+    "source": "C:\\Users\\User\\AppData\\Local\\Temp\\komi-five-year-299c6c6c88b44a69bb0503e207bacd20\\synthetic-history.sqlite3",
+    "original_opened_read_only": true,
+    "devices": [
+      [
+        0,
+        "FIXTURE-0",
+        "192.0.2.10"
+      ],
+      [
+        1,
+        "FIXTURE-1",
+        "192.0.2.11"
+      ],
+      [
+        2,
+        "FIXTURE-2",
+        "192.0.2.12"
+      ]
+    ],
+    "database_bytes": 435490816,
+    "row_counts": {
+      "daily_meter_records": 5478,
+      "daily_subject_records": 547800,
+      "daily_raw_counter_records": 547800
+    }
+  },
+  "copy_migration_init_seconds": 8.79914959999951,
+  "copy_schema": 30,
+  "in_progress": null,
+  "overview_subject_load": [
+    {
+      "seconds": 0.5548720000006142,
+      "rows": 300,
+      "kwargs": {
+        "today": "2026-09-19",
+        "only_periods": "((datetime.date(2026, 9, 1), datetime.date(2026, 9, 30)),)"
+      }
+    }
+  ],
+  "query_note": "Service calls measured synchronously only for timing; production staged Reports executes these reads in workers.",
+  "temporary_copy_cleaned": true
+}

@@ -106,6 +106,7 @@ def test_wizard_review_translates_templates_without_changing_customer_data():
 
 
 def test_billing_audit_status_translates_while_printer_name_is_preserved():
+    from test_performance_issue19 import wait_until
     from test_billing_audit_ui import _insert_direct_events
     from v5_pages import PageBillingAudit
     _insert_direct_events(1, printer_name="ภาพรวม")
@@ -113,6 +114,7 @@ def test_billing_audit_status_translates_while_printer_name_is_preserved():
     for language in ("en", "th", "en"):
         set_language(language)
         page.refresh()
+        wait_until(lambda: not page.audit_reader.busy)
         apply_language(page)
         assert page.table.item(0, 2).text() == "ภาพรวม"
         if language == "en":

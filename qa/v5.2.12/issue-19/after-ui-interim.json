@@ -1,0 +1,1218 @@
+{
+  "synthetic": true,
+  "mode": "ui",
+  "started_at": "2026-09-19T18:53:15.007212",
+  "python": "3.14.7 (tags/v3.14.7:823f032, Aug  5 2026, 10:51:32) [MSC v.1944 64 bit (AMD64)]",
+  "platform": "win32",
+  "measurements": [
+    {
+      "name": "main_window_construct_show",
+      "seconds_until_ready": 1.7005904999987251,
+      "action_seconds": 1.7005890000000363,
+      "heartbeat_count": 1,
+      "max_event_loop_gap_ms": 1700.639599999704,
+      "gaps_above_100ms": 1,
+      "before": {
+        "working_set_bytes": 69378048,
+        "private_bytes": 44838912,
+        "peak_working_set_bytes": 110108672,
+        "cpu_seconds": 14.171875
+      },
+      "after": {
+        "working_set_bytes": 106909696,
+        "private_bytes": 68440064,
+        "peak_working_set_bytes": 110108672,
+        "cpu_seconds": 15.78125
+      }
+    },
+    {
+      "name": "initial_refresh",
+      "seconds_until_ready": 2.478597400000581,
+      "action_seconds": 0.026876400001128786,
+      "heartbeat_count": 200,
+      "max_event_loop_gap_ms": 88.51560000039171,
+      "gaps_above_100ms": 0,
+      "before": {
+        "working_set_bytes": 106942464,
+        "private_bytes": 68575232,
+        "peak_working_set_bytes": 110108672,
+        "cpu_seconds": 15.84375
+      },
+      "after": {
+        "working_set_bytes": 122109952,
+        "private_bytes": 82694144,
+        "peak_working_set_bytes": 122568704,
+        "cpu_seconds": 18.28125
+      }
+    },
+    {
+      "name": "first_navigation_devices",
+      "seconds_until_ready": 0.2571611000003031,
+      "action_seconds": 0.25715499999932945,
+      "heartbeat_count": 1,
+      "max_event_loop_gap_ms": 257.2292999993806,
+      "gaps_above_100ms": 1,
+      "before": {
+        "working_set_bytes": 122114048,
+        "private_bytes": 82694144,
+        "peak_working_set_bytes": 122568704,
+        "cpu_seconds": 18.3125
+      },
+      "after": {
+        "working_set_bytes": 124665856,
+        "private_bytes": 84709376,
+        "peak_working_set_bytes": 124665856,
+        "cpu_seconds": 18.640625
+      }
+    },
+    {
+      "name": "first_navigation_reports",
+      "seconds_until_ready": 4.357047700001203,
+      "action_seconds": 0.005684699999619625,
+      "heartbeat_count": 127,
+      "max_event_loop_gap_ms": 544.0383999994083,
+      "gaps_above_100ms": 5,
+      "before": {
+        "working_set_bytes": 124682240,
+        "private_bytes": 84844544,
+        "peak_working_set_bytes": 124682240,
+        "cpu_seconds": 18.671875
+      },
+      "after": {
+        "working_set_bytes": 148627456,
+        "private_bytes": 107425792,
+        "peak_working_set_bytes": 149737472,
+        "cpu_seconds": 23.296875
+      }
+    },
+    {
+      "name": "first_navigation_settings",
+      "seconds_until_ready": 12.53498430000036,
+      "action_seconds": 0.011329900000419002,
+      "heartbeat_count": 2,
+      "max_event_loop_gap_ms": 12539.265200000955,
+      "gaps_above_100ms": 1,
+      "before": {
+        "working_set_bytes": 148627456,
+        "private_bytes": 107425792,
+        "peak_working_set_bytes": 149737472,
+        "cpu_seconds": 23.34375
+      },
+      "after": {
+        "working_set_bytes": 169279488,
+        "private_bytes": 128319488,
+        "peak_working_set_bytes": 169279488,
+        "cpu_seconds": 36.9375
+      }
+    },
+    {
+      "name": "first_navigation_manual",
+      "seconds_until_ready": 2.758428699999058,
+      "action_seconds": 0.010354899999583722,
+      "heartbeat_count": 3,
+      "max_event_loop_gap_ms": 2732.5755000001664,
+      "gaps_above_100ms": 1,
+      "before": {
+        "working_set_bytes": 169369600,
+        "private_bytes": 128319488,
+        "peak_working_set_bytes": 169369600,
+        "cpu_seconds": 37.359375
+      },
+      "after": {
+        "working_set_bytes": 178589696,
+        "private_bytes": 137334784,
+        "peak_working_set_bytes": 187211776,
+        "cpu_seconds": 40.484375
+      }
+    },
+    {
+      "name": "report_month_tab_0",
+      "seconds_until_ready": 0.0017642000002524583,
+      "action_seconds": 0.0017394999995303806,
+      "heartbeat_count": 3,
+      "max_event_loop_gap_ms": 10.996099999829312,
+      "gaps_above_100ms": 0,
+      "before": {
+        "working_set_bytes": 178692096,
+        "private_bytes": 137695232,
+        "peak_working_set_bytes": 187211776,
+        "cpu_seconds": 40.75
+      },
+      "after": {
+        "working_set_bytes": 178696192,
+        "private_bytes": 137695232,
+        "peak_working_set_bytes": 187211776,
+        "cpu_seconds": 40.75
+      }
+    },
+    {
+      "name": "report_month_tab_1",
+      "seconds_until_ready": 2.169556400000147,
+      "action_seconds": 0.2671788000006927,
+      "heartbeat_count": 76,
+      "max_event_loop_gap_ms": 350.9828000005655,
+      "gaps_above_100ms": 4,
+      "before": {
+        "working_set_bytes": 178696192,
+        "private_bytes": 137695232,
+        "peak_working_set_bytes": 187211776,
+        "cpu_seconds": 40.75
+      },
+      "after": {
+        "working_set_bytes": 185737216,
+        "private_bytes": 145608704,
+        "peak_working_set_bytes": 187211776,
+        "cpu_seconds": 43.0
+      }
+    },
+    {
+      "name": "report_month_tab_2",
+      "seconds_until_ready": 1.1377188000005845,
+      "action_seconds": 0.23064800000065588,
+      "heartbeat_count": 6,
+      "max_event_loop_gap_ms": 630.6511000002502,
+      "gaps_above_100ms": 2,
+      "before": {
+        "working_set_bytes": 185757696,
+        "private_bytes": 145743872,
+        "peak_working_set_bytes": 187211776,
+        "cpu_seconds": 43.015625
+      },
+      "after": {
+        "working_set_bytes": 189751296,
+        "private_bytes": 149790720,
+        "peak_working_set_bytes": 189751296,
+        "cpu_seconds": 44.1875
+      }
+    },
+    {
+      "name": "report_month_tab_3",
+      "seconds_until_ready": 0.5275261999995564,
+      "action_seconds": 0.01277239999944868,
+      "heartbeat_count": 13,
+      "max_event_loop_gap_ms": 382.1611000003031,
+      "gaps_above_100ms": 1,
+      "before": {
+        "working_set_bytes": 189763584,
+        "private_bytes": 149925888,
+        "peak_working_set_bytes": 189763584,
+        "cpu_seconds": 44.203125
+      },
+      "after": {
+        "working_set_bytes": 193212416,
+        "private_bytes": 153182208,
+        "peak_working_set_bytes": 193212416,
+        "cpu_seconds": 44.71875
+      }
+    },
+    {
+      "name": "report_month_tab_4",
+      "seconds_until_ready": 0.964742500000284,
+      "action_seconds": 0.11356609999893408,
+      "heartbeat_count": 10,
+      "max_event_loop_gap_ms": 577.6378999998997,
+      "gaps_above_100ms": 3,
+      "before": {
+        "working_set_bytes": 193232896,
+        "private_bytes": 153317376,
+        "peak_working_set_bytes": 193232896,
+        "cpu_seconds": 44.796875
+      },
+      "after": {
+        "working_set_bytes": 196190208,
+        "private_bytes": 156262400,
+        "peak_working_set_bytes": 196190208,
+        "cpu_seconds": 45.8125
+      }
+    },
+    {
+      "name": "report_year_users",
+      "seconds_until_ready": 19.45565759999954,
+      "action_seconds": 0.029185399998823414,
+      "heartbeat_count": 718,
+      "max_event_loop_gap_ms": 557.7745999999024,
+      "gaps_above_100ms": 20,
+      "before": {
+        "working_set_bytes": 196206592,
+        "private_bytes": 156262400,
+        "peak_working_set_bytes": 196206592,
+        "cpu_seconds": 45.828125
+      },
+      "after": {
+        "working_set_bytes": 342003712,
+        "private_bytes": 301821952,
+        "peak_working_set_bytes": 425381888,
+        "cpu_seconds": 65.8125
+      }
+    },
+    {
+      "name": "report_year_tab_0",
+      "seconds_until_ready": 2.663733299999876,
+      "action_seconds": 0.015132099999391357,
+      "heartbeat_count": 63,
+      "max_event_loop_gap_ms": 309.10799999946903,
+      "gaps_above_100ms": 4,
+      "before": {
+        "working_set_bytes": 342003712,
+        "private_bytes": 301821952,
+        "peak_working_set_bytes": 425381888,
+        "cpu_seconds": 65.828125
+      },
+      "after": {
+        "working_set_bytes": 349704192,
+        "private_bytes": 309010432,
+        "peak_working_set_bytes": 425381888,
+        "cpu_seconds": 68.59375
+      }
+    },
+    {
+      "name": "report_year_tab_2",
+      "seconds_until_ready": 0.6446671999983664,
+      "action_seconds": 0.02167629999894416,
+      "heartbeat_count": 15,
+      "max_event_loop_gap_ms": 281.6839999995864,
+      "gaps_above_100ms": 2,
+      "before": {
+        "working_set_bytes": 349704192,
+        "private_bytes": 309010432,
+        "peak_working_set_bytes": 425381888,
+        "cpu_seconds": 68.59375
+      },
+      "after": {
+        "working_set_bytes": 349696000,
+        "private_bytes": 309010432,
+        "peak_working_set_bytes": 425381888,
+        "cpu_seconds": 69.25
+      }
+    },
+    {
+      "name": "report_year_tab_3",
+      "seconds_until_ready": 1.1304885999998078,
+      "action_seconds": 0.008477100000163773,
+      "heartbeat_count": 54,
+      "max_event_loop_gap_ms": 485.58720000073663,
+      "gaps_above_100ms": 1,
+      "before": {
+        "working_set_bytes": 349696000,
+        "private_bytes": 309010432,
+        "peak_working_set_bytes": 425381888,
+        "cpu_seconds": 69.265625
+      },
+      "after": {
+        "working_set_bytes": 351723520,
+        "private_bytes": 310935552,
+        "peak_working_set_bytes": 425381888,
+        "cpu_seconds": 70.5
+      }
+    },
+    {
+      "name": "report_year_tab_4",
+      "seconds_until_ready": 2.0588051000013365,
+      "action_seconds": 0.008527500000127475,
+      "heartbeat_count": 144,
+      "max_event_loop_gap_ms": 161.67310000128055,
+      "gaps_above_100ms": 2,
+      "before": {
+        "working_set_bytes": 351723520,
+        "private_bytes": 310935552,
+        "peak_working_set_bytes": 425381888,
+        "cpu_seconds": 70.640625
+      },
+      "after": {
+        "working_set_bytes": 351727616,
+        "private_bytes": 310935552,
+        "peak_working_set_bytes": 425381888,
+        "cpu_seconds": 72.671875
+      }
+    },
+    {
+      "name": "warm_cycle_0_tab_0",
+      "seconds_until_ready": 0.25548799999887706,
+      "action_seconds": 0.011072299999796087,
+      "heartbeat_count": 11,
+      "max_event_loop_gap_ms": 128.10410000020056,
+      "gaps_above_100ms": 1,
+      "before": {
+        "working_set_bytes": 351727616,
+        "private_bytes": 310935552,
+        "peak_working_set_bytes": 425381888,
+        "cpu_seconds": 72.6875
+      },
+      "after": {
+        "working_set_bytes": 351731712,
+        "private_bytes": 310935552,
+        "peak_working_set_bytes": 425381888,
+        "cpu_seconds": 72.921875
+      }
+    },
+    {
+      "name": "warm_cycle_0_tab_1",
+      "seconds_until_ready": 0.13037359999907494,
+      "action_seconds": 0.0054959999997663544,
+      "heartbeat_count": 14,
+      "max_event_loop_gap_ms": 31.640300001527066,
+      "gaps_above_100ms": 0,
+      "before": {
+        "working_set_bytes": 351731712,
+        "private_bytes": 310935552,
+        "peak_working_set_bytes": 425381888,
+        "cpu_seconds": 72.9375
+      },
+      "after": {
+        "working_set_bytes": 351731712,
+        "private_bytes": 310935552,
+        "peak_working_set_bytes": 425381888,
+        "cpu_seconds": 72.984375
+      }
+    },
+    {
+      "name": "warm_cycle_0_tab_2",
+      "seconds_until_ready": 0.24037870000029216,
+      "action_seconds": 0.008771900000283495,
+      "heartbeat_count": 13,
+      "max_event_loop_gap_ms": 102.9553999997006,
+      "gaps_above_100ms": 1,
+      "before": {
+        "working_set_bytes": 351731712,
+        "private_bytes": 310935552,
+        "peak_working_set_bytes": 425381888,
+        "cpu_seconds": 73.0
+      },
+      "after": {
+        "working_set_bytes": 351731712,
+        "private_bytes": 310935552,
+        "peak_working_set_bytes": 425381888,
+        "cpu_seconds": 73.140625
+      }
+    },
+    {
+      "name": "warm_cycle_0_tab_3",
+      "seconds_until_ready": 0.14090680000117572,
+      "action_seconds": 0.006557800001246505,
+      "heartbeat_count": 13,
+      "max_event_loop_gap_ms": 44.018599999617436,
+      "gaps_above_100ms": 0,
+      "before": {
+        "working_set_bytes": 351731712,
+        "private_bytes": 310935552,
+        "peak_working_set_bytes": 425381888,
+        "cpu_seconds": 73.140625
+      },
+      "after": {
+        "working_set_bytes": 351731712,
+        "private_bytes": 310935552,
+        "peak_working_set_bytes": 425381888,
+        "cpu_seconds": 73.21875
+      }
+    },
+    {
+      "name": "warm_cycle_0_tab_4",
+      "seconds_until_ready": 0.13273190000109025,
+      "action_seconds": 0.0051264000012452016,
+      "heartbeat_count": 16,
+      "max_event_loop_gap_ms": 15.978599998561549,
+      "gaps_above_100ms": 0,
+      "before": {
+        "working_set_bytes": 351731712,
+        "private_bytes": 310935552,
+        "peak_working_set_bytes": 425381888,
+        "cpu_seconds": 73.21875
+      },
+      "after": {
+        "working_set_bytes": 351731712,
+        "private_bytes": 310935552,
+        "peak_working_set_bytes": 425381888,
+        "cpu_seconds": 73.25
+      }
+    },
+    {
+      "name": "warm_cycle_1_tab_0",
+      "seconds_until_ready": 0.259155899999314,
+      "action_seconds": 0.006649899998592446,
+      "heartbeat_count": 14,
+      "max_event_loop_gap_ms": 128.5427000002528,
+      "gaps_above_100ms": 1,
+      "before": {
+        "working_set_bytes": 351731712,
+        "private_bytes": 310935552,
+        "peak_working_set_bytes": 425381888,
+        "cpu_seconds": 73.25
+      },
+      "after": {
+        "working_set_bytes": 351731712,
+        "private_bytes": 310935552,
+        "peak_working_set_bytes": 425381888,
+        "cpu_seconds": 73.4375
+      }
+    },
+    {
+      "name": "warm_cycle_1_tab_1",
+      "seconds_until_ready": 0.1454303999998956,
+      "action_seconds": 0.008741100000406732,
+      "heartbeat_count": 13,
+      "max_event_loop_gap_ms": 46.85649999919406,
+      "gaps_above_100ms": 0,
+      "before": {
+        "working_set_bytes": 351731712,
+        "private_bytes": 310935552,
+        "peak_working_set_bytes": 425381888,
+        "cpu_seconds": 73.4375
+      },
+      "after": {
+        "working_set_bytes": 351731712,
+        "private_bytes": 310935552,
+        "peak_working_set_bytes": 425381888,
+        "cpu_seconds": 73.5
+      }
+    },
+    {
+      "name": "warm_cycle_1_tab_2",
+      "seconds_until_ready": 0.237904300000082,
+      "action_seconds": 0.00709629999983008,
+      "heartbeat_count": 13,
+      "max_event_loop_gap_ms": 111.45659999965574,
+      "gaps_above_100ms": 1,
+      "before": {
+        "working_set_bytes": 351731712,
+        "private_bytes": 310935552,
+        "peak_working_set_bytes": 425381888,
+        "cpu_seconds": 73.5
+      },
+      "after": {
+        "working_set_bytes": 351629312,
+        "private_bytes": 310755328,
+        "peak_working_set_bytes": 425381888,
+        "cpu_seconds": 73.671875
+      }
+    },
+    {
+      "name": "warm_cycle_1_tab_3",
+      "seconds_until_ready": 0.13467359999958717,
+      "action_seconds": 0.008494399999108282,
+      "heartbeat_count": 12,
+      "max_event_loop_gap_ms": 49.3518999992375,
+      "gaps_above_100ms": 0,
+      "before": {
+        "working_set_bytes": 351629312,
+        "private_bytes": 310755328,
+        "peak_working_set_bytes": 425381888,
+        "cpu_seconds": 73.671875
+      },
+      "after": {
+        "working_set_bytes": 351629312,
+        "private_bytes": 310755328,
+        "peak_working_set_bytes": 425381888,
+        "cpu_seconds": 73.765625
+      }
+    },
+    {
+      "name": "warm_cycle_1_tab_4",
+      "seconds_until_ready": 0.13989589999982854,
+      "action_seconds": 0.007274000001416425,
+      "heartbeat_count": 15,
+      "max_event_loop_gap_ms": 27.03789999941364,
+      "gaps_above_100ms": 0,
+      "before": {
+        "working_set_bytes": 351629312,
+        "private_bytes": 310755328,
+        "peak_working_set_bytes": 425381888,
+        "cpu_seconds": 73.765625
+      },
+      "after": {
+        "working_set_bytes": 351629312,
+        "private_bytes": 310755328,
+        "peak_working_set_bytes": 425381888,
+        "cpu_seconds": 73.8125
+      }
+    },
+    {
+      "name": "warm_cycle_2_tab_0",
+      "seconds_until_ready": 0.26272419999986596,
+      "action_seconds": 0.010227700000541518,
+      "heartbeat_count": 11,
+      "max_event_loop_gap_ms": 135.646300001099,
+      "gaps_above_100ms": 1,
+      "before": {
+        "working_set_bytes": 351629312,
+        "private_bytes": 310755328,
+        "peak_working_set_bytes": 425381888,
+        "cpu_seconds": 73.8125
+      },
+      "after": {
+        "working_set_bytes": 351629312,
+        "private_bytes": 310755328,
+        "peak_working_set_bytes": 425381888,
+        "cpu_seconds": 74.015625
+      }
+    },
+    {
+      "name": "warm_cycle_2_tab_1",
+      "seconds_until_ready": 0.14963910000005853,
+      "action_seconds": 0.008254600001237122,
+      "heartbeat_count": 14,
+      "max_event_loop_gap_ms": 46.54049999953713,
+      "gaps_above_100ms": 0,
+      "before": {
+        "working_set_bytes": 351629312,
+        "private_bytes": 310755328,
+        "peak_working_set_bytes": 425381888,
+        "cpu_seconds": 74.03125
+      },
+      "after": {
+        "working_set_bytes": 351629312,
+        "private_bytes": 310755328,
+        "peak_working_set_bytes": 425381888,
+        "cpu_seconds": 74.078125
+      }
+    },
+    {
+      "name": "warm_cycle_2_tab_2",
+      "seconds_until_ready": 0.2594779999999446,
+      "action_seconds": 0.010526199999731034,
+      "heartbeat_count": 12,
+      "max_event_loop_gap_ms": 125.96959999973478,
+      "gaps_above_100ms": 1,
+      "before": {
+        "working_set_bytes": 351629312,
+        "private_bytes": 310755328,
+        "peak_working_set_bytes": 425381888,
+        "cpu_seconds": 74.078125
+      },
+      "after": {
+        "working_set_bytes": 351629312,
+        "private_bytes": 310755328,
+        "peak_working_set_bytes": 425381888,
+        "cpu_seconds": 74.265625
+      }
+    },
+    {
+      "name": "warm_cycle_2_tab_3",
+      "seconds_until_ready": 0.14801489999990736,
+      "action_seconds": 0.008694599999216734,
+      "heartbeat_count": 15,
+      "max_event_loop_gap_ms": 36.436100001083105,
+      "gaps_above_100ms": 0,
+      "before": {
+        "working_set_bytes": 351629312,
+        "private_bytes": 310755328,
+        "peak_working_set_bytes": 425381888,
+        "cpu_seconds": 74.28125
+      },
+      "after": {
+        "working_set_bytes": 351629312,
+        "private_bytes": 310755328,
+        "peak_working_set_bytes": 425381888,
+        "cpu_seconds": 74.328125
+      }
+    },
+    {
+      "name": "warm_cycle_2_tab_4",
+      "seconds_until_ready": 0.13692649999939022,
+      "action_seconds": 0.007442100000844221,
+      "heartbeat_count": 15,
+      "max_event_loop_gap_ms": 23.06750000025204,
+      "gaps_above_100ms": 0,
+      "before": {
+        "working_set_bytes": 351629312,
+        "private_bytes": 310755328,
+        "peak_working_set_bytes": 425381888,
+        "cpu_seconds": 74.328125
+      },
+      "after": {
+        "working_set_bytes": 351629312,
+        "private_bytes": 310755328,
+        "peak_working_set_bytes": 425381888,
+        "cpu_seconds": 74.375
+      }
+    },
+    {
+      "name": "warm_cycle_3_tab_0",
+      "seconds_until_ready": 0.2649420000016107,
+      "action_seconds": 0.008048200001212535,
+      "heartbeat_count": 14,
+      "max_event_loop_gap_ms": 127.4730000004638,
+      "gaps_above_100ms": 1,
+      "before": {
+        "working_set_bytes": 351629312,
+        "private_bytes": 310755328,
+        "peak_working_set_bytes": 425381888,
+        "cpu_seconds": 74.375
+      },
+      "after": {
+        "working_set_bytes": 351629312,
+        "private_bytes": 310755328,
+        "peak_working_set_bytes": 425381888,
+        "cpu_seconds": 74.546875
+      }
+    },
+    {
+      "name": "warm_cycle_3_tab_1",
+      "seconds_until_ready": 0.14104130000123405,
+      "action_seconds": 0.00916980000147305,
+      "heartbeat_count": 13,
+      "max_event_loop_gap_ms": 48.62619999948947,
+      "gaps_above_100ms": 0,
+      "before": {
+        "working_set_bytes": 351629312,
+        "private_bytes": 310755328,
+        "peak_working_set_bytes": 425381888,
+        "cpu_seconds": 74.5625
+      },
+      "after": {
+        "working_set_bytes": 351629312,
+        "private_bytes": 310755328,
+        "peak_working_set_bytes": 425381888,
+        "cpu_seconds": 74.640625
+      }
+    },
+    {
+      "name": "warm_cycle_3_tab_2",
+      "seconds_until_ready": 0.25505040000098234,
+      "action_seconds": 0.009919300000547082,
+      "heartbeat_count": 13,
+      "max_event_loop_gap_ms": 125.68510000164679,
+      "gaps_above_100ms": 1,
+      "before": {
+        "working_set_bytes": 351629312,
+        "private_bytes": 310755328,
+        "peak_working_set_bytes": 425381888,
+        "cpu_seconds": 74.640625
+      },
+      "after": {
+        "working_set_bytes": 351629312,
+        "private_bytes": 310755328,
+        "peak_working_set_bytes": 425381888,
+        "cpu_seconds": 74.8125
+      }
+    },
+    {
+      "name": "warm_cycle_3_tab_3",
+      "seconds_until_ready": 0.13806919999842648,
+      "action_seconds": 0.007307399999262998,
+      "heartbeat_count": 12,
+      "max_event_loop_gap_ms": 49.83349999929487,
+      "gaps_above_100ms": 0,
+      "before": {
+        "working_set_bytes": 351629312,
+        "private_bytes": 310755328,
+        "peak_working_set_bytes": 425381888,
+        "cpu_seconds": 74.8125
+      },
+      "after": {
+        "working_set_bytes": 351629312,
+        "private_bytes": 310755328,
+        "peak_working_set_bytes": 425381888,
+        "cpu_seconds": 74.890625
+      }
+    },
+    {
+      "name": "warm_cycle_3_tab_4",
+      "seconds_until_ready": 0.14195900000049733,
+      "action_seconds": 0.007536999999501859,
+      "heartbeat_count": 16,
+      "max_event_loop_gap_ms": 21.86740000070131,
+      "gaps_above_100ms": 0,
+      "before": {
+        "working_set_bytes": 351629312,
+        "private_bytes": 310755328,
+        "peak_working_set_bytes": 425381888,
+        "cpu_seconds": 74.890625
+      },
+      "after": {
+        "working_set_bytes": 351629312,
+        "private_bytes": 310755328,
+        "peak_working_set_bytes": 425381888,
+        "cpu_seconds": 74.921875
+      }
+    },
+    {
+      "name": "warm_cycle_4_tab_0",
+      "seconds_until_ready": 0.2446884000000864,
+      "action_seconds": 0.009827500000028522,
+      "heartbeat_count": 13,
+      "max_event_loop_gap_ms": 111.36749999968742,
+      "gaps_above_100ms": 1,
+      "before": {
+        "working_set_bytes": 351629312,
+        "private_bytes": 310755328,
+        "peak_working_set_bytes": 425381888,
+        "cpu_seconds": 74.921875
+      },
+      "after": {
+        "working_set_bytes": 351629312,
+        "private_bytes": 310755328,
+        "peak_working_set_bytes": 425381888,
+        "cpu_seconds": 75.0625
+      }
+    },
+    {
+      "name": "warm_cycle_4_tab_1",
+      "seconds_until_ready": 0.1405403999997361,
+      "action_seconds": 0.006207300000824034,
+      "heartbeat_count": 14,
+      "max_event_loop_gap_ms": 32.33229999932519,
+      "gaps_above_100ms": 0,
+      "before": {
+        "working_set_bytes": 351629312,
+        "private_bytes": 310755328,
+        "peak_working_set_bytes": 425381888,
+        "cpu_seconds": 75.0625
+      },
+      "after": {
+        "working_set_bytes": 351629312,
+        "private_bytes": 310755328,
+        "peak_working_set_bytes": 425381888,
+        "cpu_seconds": 75.109375
+      }
+    },
+    {
+      "name": "warm_cycle_4_tab_2",
+      "seconds_until_ready": 0.24934810000013385,
+      "action_seconds": 0.010625900000377442,
+      "heartbeat_count": 13,
+      "max_event_loop_gap_ms": 120.15489999976126,
+      "gaps_above_100ms": 1,
+      "before": {
+        "working_set_bytes": 351629312,
+        "private_bytes": 310755328,
+        "peak_working_set_bytes": 425381888,
+        "cpu_seconds": 75.109375
+      },
+      "after": {
+        "working_set_bytes": 351629312,
+        "private_bytes": 310755328,
+        "peak_working_set_bytes": 425381888,
+        "cpu_seconds": 75.3125
+      }
+    },
+    {
+      "name": "warm_cycle_4_tab_3",
+      "seconds_until_ready": 0.13696759999947972,
+      "action_seconds": 0.010315800000171294,
+      "heartbeat_count": 12,
+      "max_event_loop_gap_ms": 44.962300000406685,
+      "gaps_above_100ms": 0,
+      "before": {
+        "working_set_bytes": 351629312,
+        "private_bytes": 310755328,
+        "peak_working_set_bytes": 425381888,
+        "cpu_seconds": 75.3125
+      },
+      "after": {
+        "working_set_bytes": 351629312,
+        "private_bytes": 310755328,
+        "peak_working_set_bytes": 425381888,
+        "cpu_seconds": 75.390625
+      }
+    },
+    {
+      "name": "warm_cycle_4_tab_4",
+      "seconds_until_ready": 0.13911469999948167,
+      "action_seconds": 0.008012600001165993,
+      "heartbeat_count": 15,
+      "max_event_loop_gap_ms": 23.29680000002554,
+      "gaps_above_100ms": 0,
+      "before": {
+        "working_set_bytes": 351629312,
+        "private_bytes": 310755328,
+        "peak_working_set_bytes": 425381888,
+        "cpu_seconds": 75.390625
+      },
+      "after": {
+        "working_set_bytes": 351629312,
+        "private_bytes": 310755328,
+        "peak_working_set_bytes": 425381888,
+        "cpu_seconds": 75.421875
+      }
+    },
+    {
+      "name": "archive_metadata_first",
+      "seconds_until_ready": 111.01420710000093,
+      "action_seconds": 0.013707400001294445,
+      "heartbeat_count": 11102,
+      "max_event_loop_gap_ms": 18.224199999167467,
+      "gaps_above_100ms": 0,
+      "before": {
+        "working_set_bytes": 351629312,
+        "private_bytes": 310755328,
+        "peak_working_set_bytes": 425381888,
+        "cpu_seconds": 75.4375
+      },
+      "after": {
+        "working_set_bytes": 354050048,
+        "private_bytes": 313061376,
+        "peak_working_set_bytes": 425381888,
+        "cpu_seconds": 189.75
+      }
+    },
+    {
+      "name": "archive_metadata_warm",
+      "seconds_until_ready": 0.0026695999986259267,
+      "action_seconds": 0.0026653999993868638,
+      "heartbeat_count": 3,
+      "max_event_loop_gap_ms": 11.058800000682822,
+      "gaps_above_100ms": 0,
+      "before": {
+        "working_set_bytes": 354054144,
+        "private_bytes": 313061376,
+        "peak_working_set_bytes": 425381888,
+        "cpu_seconds": 189.75
+      },
+      "after": {
+        "working_set_bytes": 354054144,
+        "private_bytes": 313061376,
+        "peak_working_set_bytes": 425381888,
+        "cpu_seconds": 189.765625
+      }
+    }
+  ],
+  "blocked_operations": [
+    "socket.connect",
+    "socket.connect",
+    "socket.connect",
+    "socket.connect",
+    "socket.connect",
+    "socket.connect"
+  ],
+  "complete": true,
+  "scope": "Source/offscreen; no Host, real network, Web service, installer or release build",
+  "qt_version": "6.11.0",
+  "pyqt_version": "6.11.0",
+  "fixture": {
+    "source": "C:\\Users\\User\\AppData\\Local\\Temp\\komi-five-year-299c6c6c88b44a69bb0503e207bacd20\\synthetic-history.sqlite3",
+    "original_opened_read_only": true,
+    "devices": [
+      [
+        0,
+        "FIXTURE-0",
+        "192.0.2.10"
+      ],
+      [
+        1,
+        "FIXTURE-1",
+        "192.0.2.11"
+      ],
+      [
+        2,
+        "FIXTURE-2",
+        "192.0.2.12"
+      ]
+    ],
+    "database_bytes": 435490816,
+    "row_counts": {
+      "daily_meter_records": 5478,
+      "daily_subject_records": 547800,
+      "daily_raw_counter_records": 547800
+    }
+  },
+  "copy_migration_init_seconds": 10.58630660000017,
+  "copy_schema": 30,
+  "viewport": [
+    1440,
+    900
+  ],
+  "in_progress": null,
+  "blocked_operation_sites": [
+    {
+      "event": "socket.connect",
+      "stack": [
+        {
+          "file": "C:\\Users\\User\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\concurrent\\futures\\thread.py",
+          "line": 73,
+          "function": "run"
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\ui\\background_read.py",
+          "line": 15,
+          "function": "_read"
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\services\\web_service.py",
+          "line": 260,
+          "function": "status"
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\services\\web_service.py",
+          "line": 99,
+          "function": "_port_open"
+        },
+        {
+          "file": "C:\\Users\\User\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\socket.py",
+          "line": 859,
+          "function": "create_connection"
+        }
+      ]
+    },
+    {
+      "event": "socket.connect",
+      "stack": [
+        {
+          "file": "C:\\Users\\User\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\concurrent\\futures\\thread.py",
+          "line": 73,
+          "function": "run"
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\ui\\background_read.py",
+          "line": 15,
+          "function": "_read"
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\services\\web_service.py",
+          "line": 261,
+          "function": "status"
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\services\\web_service.py",
+          "line": 99,
+          "function": "_port_open"
+        },
+        {
+          "file": "C:\\Users\\User\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\socket.py",
+          "line": 859,
+          "function": "create_connection"
+        }
+      ]
+    },
+    {
+      "event": "socket.connect",
+      "stack": [
+        {
+          "file": "C:\\Users\\User\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\concurrent\\futures\\thread.py",
+          "line": 86,
+          "function": "run"
+        },
+        {
+          "file": "C:\\Users\\User\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\concurrent\\futures\\thread.py",
+          "line": 73,
+          "function": "run"
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\ui\\background_read.py",
+          "line": 15,
+          "function": "_read"
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\services\\web_service.py",
+          "line": 277,
+          "function": "status"
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\services\\web_service.py",
+          "line": 108,
+          "function": "_lan_ip"
+        }
+      ]
+    },
+    {
+      "event": "socket.connect",
+      "stack": [
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\app.py",
+          "line": 1168,
+          "function": "closeEvent"
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\services\\web_service.py",
+          "line": 233,
+          "function": "stop"
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\services\\web_service.py",
+          "line": 260,
+          "function": "status"
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\services\\web_service.py",
+          "line": 99,
+          "function": "_port_open"
+        },
+        {
+          "file": "C:\\Users\\User\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\socket.py",
+          "line": 859,
+          "function": "create_connection"
+        }
+      ]
+    },
+    {
+      "event": "socket.connect",
+      "stack": [
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\app.py",
+          "line": 1168,
+          "function": "closeEvent"
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\services\\web_service.py",
+          "line": 233,
+          "function": "stop"
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\services\\web_service.py",
+          "line": 261,
+          "function": "status"
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\services\\web_service.py",
+          "line": 99,
+          "function": "_port_open"
+        },
+        {
+          "file": "C:\\Users\\User\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\socket.py",
+          "line": 859,
+          "function": "create_connection"
+        }
+      ]
+    },
+    {
+      "event": "socket.connect",
+      "stack": [
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\tools\\audit_performance_v5.py",
+          "line": 218,
+          "function": "main"
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\app.py",
+          "line": 1168,
+          "function": "closeEvent"
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\services\\web_service.py",
+          "line": 233,
+          "function": "stop"
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\services\\web_service.py",
+          "line": 277,
+          "function": "status"
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\services\\web_service.py",
+          "line": 108,
+          "function": "_lan_ip"
+        }
+      ]
+    }
+  ],
+  "report_tabs": [
+    "Overview",
+    "Users",
+    "Printers",
+    "Usage",
+    "Legacy"
+  ],
+  "year_users_data": {
+    "period": [
+      "2025-09-18",
+      "2026-09-17"
+    ],
+    "cache_entries": 1,
+    "selected_tab": 1,
+    "cached_snapshots": [
+      {
+        "key": "(1, ('2025-09-18', '2026-09-17'))",
+        "rows": {
+          "records": 0,
+          "daily_records": 0,
+          "usage_daily_records": 0,
+          "monthly_records": 183,
+          "subjects": 300,
+          "devices": 3,
+          "legacy_history": 0,
+          "raw_counter_records": 109500,
+          "usage_meter_baselines": 0,
+          "period": 2
+        }
+      }
+    ]
+  },
+  "year_all_tabs_data": {
+    "period": [
+      "2025-09-18",
+      "2026-09-17"
+    ],
+    "cache_entries": 5,
+    "selected_tab": 4,
+    "cached_snapshots": [
+      {
+        "key": "(1, ('2025-09-18', '2026-09-17'))",
+        "rows": {
+          "records": 0,
+          "daily_records": 0,
+          "usage_daily_records": 0,
+          "monthly_records": 183,
+          "subjects": 300,
+          "devices": 3,
+          "legacy_history": 0,
+          "raw_counter_records": 109500,
+          "usage_meter_baselines": 0,
+          "period": 2
+        }
+      },
+      {
+        "key": "(0, ('2025-09-18', '2026-09-17'))",
+        "rows": {
+          "records": 1095,
+          "daily_records": 1095,
+          "usage_daily_records": 5478,
+          "monthly_records": 183,
+          "subjects": 300,
+          "devices": 3,
+          "legacy_history": 0,
+          "raw_counter_records": 0,
+          "usage_meter_baselines": 0,
+          "period": 2
+        }
+      },
+      {
+        "key": "(2, ('2025-09-18', '2026-09-17'))",
+        "rows": {
+          "records": 1095,
+          "daily_records": 1095,
+          "usage_daily_records": 5478,
+          "monthly_records": 183,
+          "subjects": 0,
+          "devices": 3,
+          "legacy_history": 0,
+          "raw_counter_records": 0,
+          "usage_meter_baselines": 0,
+          "period": 2
+        }
+      },
+      {
+        "key": "(3, ('2025-09-18', '2026-09-17'))",
+        "rows": {
+          "records": 1095,
+          "daily_records": 1095,
+          "usage_daily_records": 5478,
+          "monthly_records": 183,
+          "subjects": 0,
+          "devices": 3,
+          "legacy_history": 0,
+          "raw_counter_records": 0,
+          "usage_meter_baselines": 3,
+          "period": 2
+        }
+      },
+      {
+        "key": "(4, ('2025-09-18', '2026-09-17'))",
+        "rows": {
+          "records": 0,
+          "daily_records": 0,
+          "usage_daily_records": 0,
+          "monthly_records": 183,
+          "subjects": 0,
+          "devices": 3,
+          "legacy_history": 0,
+          "raw_counter_records": 109500,
+          "usage_meter_baselines": 0,
+          "period": 2
+        }
+      }
+    ]
+  },
+  "raw_snapshot_objects": 1,
+  "report_error": "",
+  "archive_metadata": "รอจัดเก็บ 876,900 รายการ · จัดเก็บแล้ว 0 รายการ ใน 0 ไฟล์",
+  "temporary_copy_cleaned": true
+}

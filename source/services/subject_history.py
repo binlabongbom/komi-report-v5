@@ -606,12 +606,23 @@ def load_subject_history(
     period_start: date | None = None,
     period_end: date | None = None,
     only_period: tuple[date, date] | None = None,
+    only_periods: tuple[tuple[date, date], ...] | None = None,
 ) -> tuple[SubjectPeriodUsage, ...]:
     current = today or date.today()
     billing_day = get_billing_day()
+    if only_periods is not None:
+        if only_period is not None or period_start is not None or period_end is not None:
+            raise ValueError("Choose canonical periods or a custom date range")
+        if not only_periods:
+            return ()
+        if any(start > end for start, end in only_periods):
+            raise ValueError("Invalid canonical period")
     if only_period is not None and (period_start is not None or period_end is not None or only_period[0] > only_period[1]):
         raise ValueError("Choose a canonical period or a custom date range")
     source_start, source_end = only_period or (period_start, period_end)
+    if only_periods is not None:
+        source_start = min(start for start, _ in only_periods)
+        source_end = max(end for _, end in only_periods)
     frozen_periods = {}
     daily: list[tuple[SubjectDailyRecord, tuple[date, date] | None]] = []
     archived_buckets = {}
@@ -634,7 +645,7 @@ def load_subject_history(
             archive = ReportDetailArchive()
             documents = [{'row': dict(zip(SUBJECT_COLUMNS, row)), 'period': None} for row in rows]
             if period_start is None and period_end is None:
-                archived_buckets = archive.subject_summaries(conn, slots, only_period=only_period)
+                archived_buckets = archive.subject_summaries(conn, slots, only_period=only_period, only_periods=only_periods)
             else:
                 documents.extend(archive.details(conn, "subject", slots, start=source_start, end=source_end))
             from services.report_detail_amendment import effective_documents
@@ -669,7 +680,7 @@ def load_subject_history(
         )
 
     buckets = aggregate_subject_days(daily, billing_day, period_start=period_start,
-        period_end=period_end, only_period=only_period, buckets=archived_buckets)
+        period_end=period_end, only_period=only_period, only_periods=only_periods, buckets=archived_buckets)
     return subject_period_results(buckets)
 
 
@@ -708,8 +719,9 @@ def subject_record_from_row(row):
     )
 
 
-def aggregate_subject_days(daily, billing_day, *, period_start=None, period_end=None, only_period=None, buckets=None):
+def aggregate_subject_days(daily, billing_day, *, period_start=None, period_end=None, only_period=None, only_periods=None, buckets=None):
     buckets = {} if buckets is None else buckets
+    selected_periods = set(only_periods) if only_periods is not None else None
     for record, frozen_period in daily:
         if period_start is not None and record.record_date < period_start:
             continue
@@ -721,6 +733,8 @@ def aggregate_subject_days(daily, billing_day, *, period_start=None, period_end=
             else frozen_period or billing_month_range(record.record_date, billing_day)
         )
         if only_period is not None and (start, end) != only_period:
+            continue
+        if selected_periods is not None and (start, end) not in selected_periods:
             continue
         key = (
             start,

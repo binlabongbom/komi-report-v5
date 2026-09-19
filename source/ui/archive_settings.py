@@ -1,6 +1,8 @@
 """Bounded background archive maintenance with metadata-only initial display."""
 from concurrent.futures import ThreadPoolExecutor
 from threading import Event
+from datetime import date
+from pathlib import Path
 import logging
 
 from PyQt6.QtCore import QTimer
@@ -9,16 +11,25 @@ from i18n import tr
 from services.web_observation_archive import run_archive_batches
 from services.history_archive import HistoryArchive
 from ui.counter_review import plain
+from ui.background_read import LatestRead
+from database import get_db_path
 
 
 class ArchiveSettingsPanel(QWidget):
     def __init__(self, parent=None, *, archive=None, today=None):
         super().__init__(parent)
+        self._default_archive = archive is None
         self.archive = archive or HistoryArchive()
         self.today = today
         self.future = None
         self.cancelled = Event()
         self.pool = None
+        self._metadata_cache = None
+        self._metadata_revision = None
+        self._requested_revision = None
+        self.metadata_reader = LatestRead(self)
+        self.metadata_reader.ready.connect(self._metadata_ready)
+        self.metadata_reader.failed.connect(self._metadata_failed)
         layout = QVBoxLayout(self)
         layout.addWidget(plain(tr("จัดเก็บรายละเอียดประวัติเก่า", "Archive older history details")))
         layout.addWidget(plain(tr(
@@ -30,34 +41,80 @@ class ArchiveSettingsPanel(QWidget):
         layout.addWidget(self.message)
         buttons = QHBoxLayout()
         self.start_button = QPushButton(tr("จัดเก็บข้อมูลเก่า", "Archive older readings"))
+        self.start_button.setEnabled(False)
+        self.refresh_button = QPushButton(tr("ตรวจจำนวนใหม่", "Refresh counts"))
         self.cancel_button = QPushButton(tr("หยุดหลังจบชุดนี้", "Stop after this batch"))
         self.cancel_button.setEnabled(False)
         buttons.addWidget(self.start_button)
         buttons.addWidget(self.cancel_button)
+        buttons.addWidget(self.refresh_button)
         buttons.addStretch()
         layout.addLayout(buttons)
         self.start_button.clicked.connect(self.start)
         self.cancel_button.clicked.connect(self.cancelled.set)
+        self.refresh_button.clicked.connect(lambda: self.refresh(force=True))
         self.timer = QTimer(self)
         self.timer.setInterval(150)
         self.timer.timeout.connect(self._collect)
+        self.status.setText(tr("เปิดส่วนนี้เพื่อตรวจจำนวนข้อมูลเก่า", "Open this section to count older records."))
+
+    def _revision(self):
+        path = Path(get_db_path()).resolve()
+        stamps = []
+        for file in (path, Path(str(path) + "-wal")):
+            try:
+                stat = file.stat()
+                stamps.append((stat.st_size, stat.st_mtime_ns))
+            except FileNotFoundError:
+                stamps.append(None)
+        return (str(path), self.today or date.today(), *stamps)
+
+    def showEvent(self, event):
+        super().showEvent(event)
         self.refresh()
 
-    def refresh(self):
-        try:
-            state = self.archive.stats(today=self.today)
-        except Exception:
-            logging.getLogger(__name__).exception("Cannot load archive metadata")
-            self.status.setText(tr("อ่านรายการ Archive ไม่สำเร็จ กรุณาตรวจฐานข้อมูล", "Archive metadata is unavailable. Check the database."))
-            self.start_button.setEnabled(False)
+    def hideEvent(self, event):
+        self.metadata_reader.cancel()
+        super().hideEvent(event)
+
+    def refresh(self, *, force=False):
+        revision = self._revision()
+        if self.future is not None:
             return
+        if not force and revision == self._metadata_revision and self._metadata_cache is not None:
+            self._show_metadata(self._metadata_cache)
+            return
+        if not force and self.metadata_reader.busy and revision == self._requested_revision:
+            return
+        if self._default_archive:
+            self.archive = HistoryArchive(revision[0])
+        self._requested_revision = revision
+        self.start_button.setEnabled(False)
+        self.status.setText(tr("กำลังตรวจจำนวนข้อมูลเก่า…", "Counting older records…"))
+        self.metadata_reader.request(self.archive.stats, today=self.today)
+
+    def _metadata_failed(self, error):
+        self.status.setText(tr("อ่านรายการ Archive ไม่สำเร็จ · กดตรวจจำนวนใหม่เพื่อลองอีกครั้ง", "Archive metadata is unavailable. Refresh counts to retry."))
+        self.status.setToolTip(error)
+        self.start_button.setEnabled(False)
+
+    def _metadata_ready(self, state):
+        if self._requested_revision != self._revision():
+            self.refresh(force=True)
+            return
+        self._metadata_revision = self._requested_revision
+        self._metadata_cache = state
+        self.status.setToolTip("")
+        self._show_metadata(state)
+
+    def _show_metadata(self, state):
         self.status.setText(tr(
             f"รอจัดเก็บ {state['eligible']:,} รายการ · จัดเก็บแล้ว {state['archived']:,} รายการ ใน {state['files']:,} ไฟล์",
             f"Pending: {state['eligible']:,} records · Archived: {state['archived']:,} records in {state['files']:,} files"))
         self.start_button.setEnabled(bool(state["eligible"]) and self.future is None)
 
     def start(self):
-        if self.future is not None:
+        if self.future is not None or self.metadata_reader.busy:
             return
         if self.pool is None:
             self.pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="komi-archive")
@@ -66,6 +123,7 @@ class ArchiveSettingsPanel(QWidget):
         self.cancelled.clear()
         self.start_button.setEnabled(False)
         self.cancel_button.setEnabled(True)
+        self.refresh_button.setEnabled(False)
         self.message.setText(tr("กำลังตรวจสอบและจัดเก็บข้อมูล…", "Verifying and archiving readings…"))
         self.future = self.pool.submit(run_archive_batches, self.archive, self.cancelled, today=self.today)
         self.timer.start()
@@ -84,4 +142,5 @@ class ArchiveSettingsPanel(QWidget):
             self.message.setText(tr(f"จัดเก็บแล้ว {result['events']:,} รายการในครั้งนี้", f"Archived {result['events']:,} records in this run"))
         self.future = None
         self.cancel_button.setEnabled(False)
-        self.refresh()
+        self.refresh_button.setEnabled(True)
+        self.refresh(force=True)

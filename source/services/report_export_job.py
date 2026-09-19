@@ -25,7 +25,7 @@ def export_report_selection(target, start, end, *, database_path, devices=(), mo
         raise ValueError('วันที่เริ่มต้นต้องไม่เกินวันที่สิ้นสุด')
     # Lazy import keeps openpyxl initialization off the GUI thread, too.
     from services.report_excel_export import CloudReportsExportData, export_cloud_reports_xlsx
-    with report_read_database(database_path):
+    with report_read_database(database_path, cancelled=cancelled):
         step(5, 'กำลังอ่านยอดรายเครื่อง…')
         slots = report_slots()
         daily = tuple(row for row in load_usage_history(slots, granularity='daily', cache=DailyCacheStore())

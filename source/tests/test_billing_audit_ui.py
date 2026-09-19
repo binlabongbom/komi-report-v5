@@ -106,6 +106,8 @@ def test_billing_audit_ui_shows_effective_correction_and_open_hold_lifecycle():
     page.resize(1200, 760)
     page.show()
     app.processEvents()
+    from test_performance_issue19 import wait_until
+    wait_until(lambda: not page.audit_reader.busy)
 
     assert page.table.rowCount() == 4
     events = [page.table.item(row, 3).text() for row in range(page.table.rowCount())]
@@ -117,6 +119,7 @@ def test_billing_audit_ui_shows_effective_correction_and_open_hold_lifecycle():
 
     page.state_filter.setCurrentIndex(page.state_filter.findData("open_hold"))
     app.processEvents()
+    wait_until(lambda: not page.audit_reader.busy)
     assert page.table.rowCount() == 1
     assert "HOLD · Hold รอตรวจ" in page.table.item(0, 3).text()
 
@@ -146,16 +149,20 @@ def test_billing_audit_load_more_search_and_export_include_over_100_rows(tmp_pat
     page.resize(1200, 760)
     page.show()
     app.processEvents()
+    from test_performance_issue19 import wait_until
+    wait_until(lambda: not page.audit_reader.busy)
 
     assert page.table.rowCount() == 100
     assert "100 จาก 105" in page.row_count.text()
     assert page.load_more_button.isVisible()
     page._load_more()
+    wait_until(lambda: not page.audit_reader.busy)
     assert page.table.rowCount() == 105
     assert "105 จาก 105" in page.row_count.text()
 
     page.search.setText("audit-104")
     page._reset_and_refresh()
+    wait_until(lambda: not page.audit_reader.busy)
     assert page.table.rowCount() == 1
     assert "Audit Printer 104" == page.table.item(0, 2).text()
 

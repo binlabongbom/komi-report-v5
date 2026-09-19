@@ -23,6 +23,9 @@ def test_background_payload_matches_existing_report_semantics(monkeypatch, index
         monkeypatch.setattr(module, "load_imported_legacy_history", lambda: ("legacy",))
         monkeypatch.setattr(module, "load_usage_meter_baselines", lambda *args: ("baseline",))
     monkeypatch.setattr(report_snapshot, "get_billing_day", lambda: 30)
+    monkeypatch.setattr(report_snapshot, "build_user_rows", lambda *a, **kw: ("users-model",))
+    monkeypatch.setattr(report_snapshot, "build_legacy_raw_tables", lambda *a, **kw: ("raw-model",))
+    monkeypatch.setattr(report_snapshot, "build_printer_rows", lambda *a, **kw: ("printer-model",))
     monkeypatch.setattr(v5_pages, "apply_language", lambda *args: None)
     captured = {}
     center = SimpleNamespace(tabs=SimpleNamespace(currentIndex=lambda:index), current_period=lambda:selected,
@@ -34,7 +37,11 @@ def test_background_payload_matches_existing_report_semantics(monkeypatch, index
           repository=SimpleNamespace(list=lambda **kwargs:devices),cancelled=Event())
     # Original monthly list is intentionally normalized to immutable tuple by the worker.
     captured["monthly_records"]=tuple(captured["monthly_records"])
-    assert result.data == captured
+    assert {key: value for key, value in result.data.items() if key != "prepared_models"} == captured
+    expected = {"users": ("users-model",)} if index in {0, 1} else {"legacy_raw": ("raw-model",)} if index == 4 else {}
+    if index in {0, 2}:
+        expected['printers'] = ('printer-model',)
+    assert result.data["prepared_models"] == expected
 
 
 def test_cancelled_snapshot_does_not_start_database_reads(monkeypatch):

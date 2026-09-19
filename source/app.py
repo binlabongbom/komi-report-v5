@@ -1084,6 +1084,9 @@ class MainWindow(QMainWindow):
         shutdown_reports = getattr(getattr(self, "pg_history", None), "shutdown_report_loading", None)
         if callable(shutdown_reports):
             shutdown_reports()
+        from ui.background_read import LatestRead
+        for reader in self.findChildren(LatestRead):
+            reader.shutdown()
 
     def _exit_application(self):
         if self._quitting:
