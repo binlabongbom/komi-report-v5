@@ -29,6 +29,16 @@
 ภาพนี้ใช้สมาชิกและคิวจำลองเพื่อแสดงความหมายของแต่ละสถานะ การเชื่อมสมาชิกและ
 ส่งข้อมูลผ่าน HTTPS ทดสอบแล้วด้วยฐานจำลอง ขั้นตอนเปิดเชื่อมสมาชิกจริงยังอยู่ระหว่างพัฒนาในรุ่นนี้
 
+**เมื่อการเชื่อมต่อมีปัญหา:** กด **ค้นหาและเชื่อมต่อสมาชิกเดิมอีกครั้ง** เพื่อค้นหาที่อยู่
+และลองเชื่อมต่อสมาชิกที่เคยยืนยันแล้ว ปุ่มนี้ไม่เพิ่มสมาชิกใหม่และไม่เปลี่ยนสิทธิ์บริษัท
+ปุ่มตรวจสถานะยังอ่านเฉพาะสถานะ ส่วนการค้นหาจะทำเมื่อกดปุ่มเชื่อมต่อโดยตรง
+ถ้ากุญแจสมาชิกหายหรือไม่ตรงกับฐานข้อมูล ระบบแสดงสาเหตุและหยุดเชื่อมต่อไว้
+ไม่สร้างกุญแจใหม่แทนสมาชิกเดิมโดยเงียบ ๆ การคืนเฉพาะฐานข้อมูลจึงอาจยังไม่พอ
+เมื่อกู้กุญแจเดิมกลับมาได้แล้ว กดเชื่อมต่ออีกครั้งได้โดยไม่ต้องรีสตาร์ตโปรแกรม
+กรณีกู้กุญแจเดิมไม่ได้ ขั้นตอนอนุมัติสมาชิกใหม่ยังอยู่ระหว่างพัฒนา ไม่ควรลบข้อมูลเพื่อทดลองแก้
+
+![สถานะแสดงกุญแจสมาชิกหายด้วยข้อมูลจำลอง](customer-guide/assets-v5.2.12-source/network-recovery.png)
+
 ## ส่งออกรายงานเป็น Excel
 
 ในหน้ารายงาน กด **ส่งออก Excel** ที่มุมขวาบน ปุ่มนี้ใช้ได้จากทุกแท็บ
@@ -285,6 +295,7 @@ Each computer keeps its own registration identity. A local save is not a deliver
 - **Full remarks and export:** select a remarks row and use Read full remarks, or double-click it. Both Excel and PDF export in the background with progress and cancellation. If a destination file is open, close it or choose a different filename and retry. The file uses the selection captured when export began.
 - **Billing review:** select a row, review its printer, dates, amounts and hold reason. Expand Technical details only when needed; Copy evidence keeps the complete original text. Enter the required reason before confirming. Original entries are retained. Reviewing or confirming a meter baseline does not silently approve earlier invoices.
 - **Settings:** General, Automation, Status and history, and Advanced use the same navigation. Small windows scroll rather than expanding beyond the available area. Initial setup access and read-only Web reports are separate controls.
+- **Reconnect:** use **Find and reconnect existing members** to retry discovery and connections for already approved members. **Check status again** only reads status. Missing or mismatched keys show a specific recovery message; the peer loader does not replace the old identity silently. Restoring a database alone may not restore OS-vault keys. After restoring the original keys, retry without restarting. Recovery that requires a new member approval is still unfinished.
 - **Pinned counters:** saved choices remain visible and selected when a printer has not supplied counters. Uncheck unwanted entries. Removing all saved entries requires explicit confirmation.
 - **Background agent:** closing the desktop window leaves the agent running in the system tray. Use the agent's Exit action to stop it completely. Opening the desktop again reconnects to the local data.
 - **Archive:** data older than a year can be archived. Monthly summaries remain available; detailed historical Web evidence is loaded only when requested. Keep the archive with its database when making a backup.

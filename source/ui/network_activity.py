@@ -45,6 +45,10 @@ class NetworkActivityPanel(QWidget):
         self.refresh_button.clicked.connect(self.refresh)
         title.addWidget(self.refresh_button)
         layout.addLayout(title)
+        self.reconnect_button = btn(tr('ค้นหาและเชื่อมต่อสมาชิกเดิมอีกครั้ง', 'Find and reconnect existing members'), 'outline')
+        self.reconnect_button.clicked.connect(self._reconnect)
+        self.reconnect_button.setEnabled(False)
+        layout.addWidget(self.reconnect_button, 0, Qt.AlignmentFlag.AlignLeft)
         self.summary = QLabel("ยังไม่มีสถานะการเชื่อมต่อสมาชิก")
         self.summary.setTextFormat(Qt.TextFormat.PlainText)
         self.summary.setWordWrap(True)
@@ -121,6 +125,16 @@ class NetworkActivityPanel(QWidget):
         if self.isVisible():
             self._timer.start(100)
 
+    def _reconnect(self):
+        runtime = getattr(self.polling, 'peer_network_runtime', None)
+        if runtime is None or getattr(runtime, '_future', None) is not None:
+            return
+        self.reconnect_button.setEnabled(False)
+        # This explicitly requests discovery/retry; merely displaying status
+        # does not probe peers or periodically transfer settings.
+        self.polling.network_recovered()
+        self.schedule_refresh()
+
     def refresh(self):
         if not self.isVisible():
             return
@@ -185,8 +199,21 @@ class NetworkActivityPanel(QWidget):
                 message = (tr("สมาชิกในรายการ {total} คอม", "{total} listed computers").format(total=total) if total else
                            tr("ยังไม่มีสมาชิกที่ยืนยันการเชื่อมต่อ · ไม่ได้หมายความว่าไม่มีคอมอื่นในเครือข่าย", "No verified member connections yet. This does not mean there are no other computers on the network."))
                 runtime = getattr(self.polling, 'peer_network_runtime', None)
+                busy = runtime is not None and getattr(runtime, '_future', None) is not None
+                enrolled = runtime is not None and runtime.state != 'not_enrolled'
+                self.reconnect_button.setEnabled(enrolled and not busy)
+                if busy:
+                    message += tr('\nกำลังตรวจการเชื่อมต่อสมาชิกเดิม…', '\nChecking existing member connections…')
                 if runtime is not None and runtime.state == 'unavailable':
-                    message += tr("\nเริ่มบริการสมาชิกไม่สำเร็จ · ตรวจสิทธิ์ การตั้งค่าเครือข่าย หรือพอร์ตที่ใช้งาน", "\nUnable to start member connections. Check enrollment, network settings or the listener port.")
+                    reasons = {
+                        'identity_missing': tr('ไม่พบกุญแจสมาชิกเดิมหรือกุญแจเสียหาย · ต้องกู้กุญแจเดิมหรือเชื่อมสมาชิกใหม่โดยยืนยันสิทธิ์ก่อน', 'The original member key is missing or damaged. Restore it or complete an approved enrollment recovery.'),
+                        'identity_changed': tr('กุญแจไม่ตรงกับสมาชิกเดิม · หยุดการเชื่อมต่อไว้เพื่อรอยืนยันการกู้สมาชิก', 'The key does not match the original member. Connections are stopped pending approved recovery.'),
+                        'installation_mismatch': tr('ฐานข้อมูลนี้เป็นของการติดตั้งอื่น · ต้องยืนยันการกู้สมาชิกก่อนเชื่อมต่อ', 'This database belongs to another installation. Approved recovery is required before connecting.'),
+                        'group_secret_missing': tr('ไม่พบกุญแจกลุ่มเดิมในระบบหรือกุญแจเสียหาย · การคืนเฉพาะฐานข้อมูลยังเชื่อมสมาชิกไม่ได้', 'The original group key is missing or damaged in the OS vault. Restoring only the database does not restore member access.'),
+                        'vault_unavailable': tr('เปิดที่เก็บกุญแจของระบบไม่ได้ · ตรวจบัญชีผู้ใช้ระบบแล้วลองเชื่อมต่ออีกครั้ง', 'The OS key vault is unavailable. Check the OS user account and retry the connection.'),
+                        'member_removed': tr('เครื่องนี้ถูกถอดจากสมาชิกแล้ว · ต้องยืนยันสิทธิ์ก่อนเข้าร่วมอีกครั้ง', 'This computer has been removed. Approval is required before it can rejoin.'),
+                    }
+                    message += '\n' + reasons.get(runtime.error, tr('เริ่มบริการสมาชิกไม่สำเร็จ · ตรวจสิทธิ์ การตั้งค่าเครือข่าย หรือพอร์ตที่ใช้งาน', 'Unable to start member connections. Check enrollment, network settings or the listener port.'))
                 if total > 100:
                     message += tr(" · หน้าที่ {page}", " · Page {page}").format(page=self._page + 1)
                 message += tr("\nการตั้งค่ารอตรวจ {count} รายการ", "\nSettings awaiting review: {count}").format(count=data['settings_reviews'])

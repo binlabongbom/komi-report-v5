@@ -17,7 +17,7 @@ from threading import Event
 from PyQt6.QtCore import QObject, QFileSystemWatcher, QTimer, Qt, pyqtSignal
 
 from services.peer_network import PeerNetworkNode
-from services.peer_transport_factory import PeerTransportFactory, local_membership
+from services.peer_transport_factory import PeerTransportFactory, PeerRecoveryRequired, local_membership
 
 log = logging.getLogger(__name__)
 DEFAULT_PEER_PORT = 37853
@@ -86,6 +86,7 @@ class PeerNetworkRuntime(QObject):
         discover, self._discover_requested = self._discover_requested, False
         self._future = self._pool.submit(self._prepare, self._digest, discover)
         self._future.add_done_callback(self._completed)
+        self.changed.emit()
 
     def _prepare(self, previous_digest, discover=False):
         if self._stopped.is_set():
@@ -137,13 +138,14 @@ class PeerNetworkRuntime(QObject):
         try:
             result = future.result()
             if result is None:
-                self.state = 'not_enrolled'
+                self.state, self.error = 'not_enrolled', ''
             elif not result.get('unchanged'):
                 self._pending = result
                 self._install_pending()
         except Exception as error:
             self.state = 'unavailable'
-            self.error = ('authorization' if isinstance(error, PermissionError) else
+            self.error = (error.code if isinstance(error, PeerRecoveryRequired) else
+                          'authorization' if isinstance(error, PermissionError) else
                           'configuration' if isinstance(error, ValueError) else 'transport')
             log.warning('Peer enrollment runtime unavailable (%s)', self.error)
         self.changed.emit()

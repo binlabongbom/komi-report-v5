@@ -51,6 +51,8 @@ class InstallationIdentity:
 def load_or_create_installation_identity(
     vault: RegistrationSecretStore,
     installation_id: str,
+    *,
+    create_if_missing: bool = True,
 ) -> InstallationIdentity:
     candidate = installation_id.strip()
     if not candidate:
@@ -66,6 +68,8 @@ def load_or_create_installation_identity(
         except (TypeError, ValueError) as err:
             raise ValueError("installation private key is invalid") from err
     else:
+        if not create_if_missing:
+            raise PermissionError("installation private key is missing; recovery is required")
         private_key = Ed25519PrivateKey.generate()
         raw_private = private_key.private_bytes(
             encoding=serialization.Encoding.Raw,

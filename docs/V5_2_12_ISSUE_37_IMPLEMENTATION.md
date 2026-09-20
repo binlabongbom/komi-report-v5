@@ -190,6 +190,38 @@ already covered. Warning: the existing Starlette/AnyIO deprecation.
 This completes historical-origin transport, not reinstallation/key recovery,
 global revocation or the end-user enrollment Wizard.
 
+### Retry and recovery diagnostics
+
+The peer membership loader now requires an existing signing key for an enrolled
+database. Missing, damaged or mismatched keys, a database from another
+installation, inaccessible OS vault and a restored removal each fail with a
+non-secret reason. It does not replace the enrolled key or group capability.
+Initial identity creation outside an enrolled group keeps its existing behavior.
+
+Network settings distinguishes the read-only status refresh from **Find and
+reconnect existing members**. Explicit retry runs the existing bounded discovery
+and reconnect flow off the GUI thread and does not enroll a new computer. Once
+the original vault key is restored, retry can start the peer listener without
+restarting the application. The UI shows why a key/identity recovery is required.
+
+Regression: **36 passed, 1 warning in 40.16 s**,
+`qa/v5.2.12/issue37-recovery-regression.xml`. A real mutual-TLS renewal test
+checks that a newer signed contact restores access while a replayed old leaf is
+rejected even when its old trust anchor remains loaded. Other cases cover no
+key replacement, database-copy isolation, vault errors and explicit-only retry.
+The first intermediate run exposed an invalid test fixture trying to remove its
+own identity through the peer API; the final test correctly simulates a restored
+local removal record, without weakening that API restriction.
+
+TH/EN recovery instructions, a synthetic screenshot and the **26-page** source
+guide PDF are updated; changed Thai/English PDF pages were rendered and checked.
+Guide/translation checks: **12 passed in 10.71 s**,
+`qa/v5.2.12/issue37-recovery-guide-regression.xml`.
+
+This is original-key restore/retry and TLS-leaf renewal, not an approval flow for
+reinstalling after permanent key loss or changing the installation signing key.
+Those flows and the company authority boundary remain unfinished.
+
 ## What the user can actually do at this checkpoint
 
 The existing installation Wizard still performs its approved initial setup

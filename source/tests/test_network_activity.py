@@ -170,3 +170,42 @@ def test_async_english_status_is_complete_and_member_name_is_preserved():
         panel.close()
         panel._pool.shutdown(wait=True)
         set_language("th")
+
+
+def test_recovery_message_and_explicit_retry_do_not_turn_status_into_network_polling():
+    from i18n import set_language
+    set_language('en')
+    app = QApplication.instance() or QApplication([])
+    class PeerRuntime(QObject):
+        changed = pyqtSignal()
+        state, error, _future = 'unavailable', 'identity_missing', None
+    runtime = Runtime([])
+    runtime.peer_network_runtime = PeerRuntime()
+    calls = []
+    def reconnect():
+        calls.append('reconnect')
+        runtime.peer_network_runtime._future = object()
+        runtime.peer_network_runtime.changed.emit()
+    runtime.network_recovered = reconnect
+    panel = NetworkActivityPanel()
+    panel.bind_runtime(runtime)
+    panel.show()
+    try:
+        until(lambda: 'original member key' in panel.summary.text())
+        assert panel.reconnect_button.isEnabled()
+        panel.refresh_button.click()
+        until(lambda: panel._future is None)
+        assert calls == []
+        panel.reconnect_button.click()
+        panel.reconnect_button.click()
+        until(lambda: 'Checking existing' in panel.summary.text())
+        assert calls == ['reconnect'] and not panel.reconnect_button.isEnabled()
+        runtime.peer_network_runtime._future = None
+        runtime.peer_network_runtime.error = 'vault_unavailable'
+        runtime.peer_network_runtime.changed.emit()
+        until(lambda: 'OS key vault is unavailable' in panel.summary.text())
+        assert panel.reconnect_button.isEnabled()
+    finally:
+        panel.close()
+        panel._pool.shutdown(wait=True)
+        set_language('th')

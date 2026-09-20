@@ -29,3 +29,13 @@ def test_installation_identity_fails_closed_when_vault_material_is_invalid():
         assert "invalid" in str(err).casefold()
     else:
         raise AssertionError("invalid private key must fail closed")
+
+
+def test_existing_only_load_does_not_create_a_new_identity():
+    import pytest
+    vault = SessionRegistrationSecretStore()
+    with pytest.raises(PermissionError, match='recovery'):
+        load_or_create_installation_identity(vault, 'restored', create_if_missing=False)
+    assert vault.load(installation_private_key_reference('restored')) is None
+    created = load_or_create_installation_identity(vault, 'restored')
+    assert load_or_create_installation_identity(vault, 'restored', create_if_missing=False) == created

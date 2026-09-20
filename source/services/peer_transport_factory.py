@@ -1,5 +1,6 @@
 """TLS material and clients for enrolled LAN contacts, without global trust."""
 import hashlib
+import json
 from pathlib import Path
 import ssl
 from threading import RLock
@@ -11,18 +12,56 @@ from services.installation_identity import load_or_create_installation_identity
 from services.registration_vault import platform_registration_secret_store
 
 
+class PeerRecoveryRequired(PermissionError):
+    """Non-secret reason for stopping enrollment rather than replacing identity."""
+    def __init__(self, code):
+        self.code = code
+        super().__init__(code)
+
+
 def local_membership(*, path=None, vault=None):
     from database import get_db_path
     from contextlib import closing
     import sqlite3
-    path = path or get_db_path()
-    with closing(sqlite3.connect(path)) as conn:
+    from komi_snmp_profiler.credential_store import CredentialStoreError
+    path = Path(path or get_db_path()).resolve()
+    with closing(sqlite3.connect(path.as_uri() + '?mode=rw', uri=True)) as conn:
         row = conn.execute("SELECT value FROM settings WHERE key='installation_id'").fetchone()
+        group_row = conn.execute('SELECT document FROM lan_peer_group WHERE singleton=1').fetchone()
+        own = conn.execute('SELECT document,revoked FROM lan_peer_members WHERE member_id=?',
+                           (row[0] if row else '',)).fetchone()
+        origins = conn.execute('SELECT document FROM lan_evidence_origins WHERE member_id=?',
+                               (row[0] if row else '',)).fetchall()
     if not row or not row[0]:
         raise PermissionError('Local installation setup is incomplete')
-    vault = vault if vault is not None else platform_registration_secret_store()
-    identity = load_or_create_installation_identity(vault, row[0])
-    return PeerMembership(path=path, identity=identity, vault=vault)
+    group = json.loads(group_row[0]) if group_row else None
+    if group and group.get('local_installation_id') != row[0]:
+        raise PeerRecoveryRequired('installation_mismatch')
+    if own and own[1]:
+        raise PeerRecoveryRequired('member_removed')
+    try:
+        vault = vault if vault is not None else platform_registration_secret_store()
+        # A restored DB must not silently generate a replacement key under the
+        # old member ID. Initial setup retains its existing creation behavior.
+        try:
+            identity = load_or_create_installation_identity(vault, row[0],
+                create_if_missing=not bool(group or own or origins))
+        except (PermissionError, ValueError) as error:
+            raise PeerRecoveryRequired('identity_missing') from error
+        for (raw,) in origins + ([(own[0],)] if own else []):
+            if json.loads(raw)['document']['public_key'] != identity.public_key_base64url:
+                raise PeerRecoveryRequired('identity_changed')
+        access = PeerMembership(path=path, identity=identity, vault=vault)
+        if group:
+            try:
+                access._secret(group)
+            except (PermissionError, ValueError) as error:
+                raise PeerRecoveryRequired('group_secret_missing') from error
+            for (raw,) in origins + ([(own[0],)] if own else []):
+                access._checked_contact(json.loads(raw), require_current=False)
+        return access
+    except CredentialStoreError as error:
+        raise PeerRecoveryRequired('vault_unavailable') from error
 
 
 class PeerTransportFactory:
