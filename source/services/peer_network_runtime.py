@@ -95,8 +95,9 @@ class PeerNetworkRuntime(QObject):
             if not present or not conn.execute('SELECT 1 FROM lan_peer_group').fetchone():
                 return None
             rows = conn.execute('SELECT document,revoked FROM lan_peer_members ORDER BY member_id').fetchall()
+            origins = conn.execute('SELECT document FROM lan_evidence_origins ORDER BY member_id').fetchall()
             group = conn.execute('SELECT document FROM lan_peer_group').fetchone()[0]
-        digest = hashlib.sha256(json.dumps([group, rows], sort_keys=True).encode()).hexdigest()
+        digest = hashlib.sha256(json.dumps([group, rows, origins], sort_keys=True).encode()).hexdigest()
         if digest == previous_digest and not discover:
             return {'unchanged': True}
         access = self.membership_loader(path=self.path)
@@ -116,7 +117,8 @@ class PeerNetworkRuntime(QObject):
         members = [p['document']['member_id'] for p in contacts if access.authorize_session(p['document']['member_id'])]
         with closing(sqlite3.connect(self.path)) as conn:
             rows = conn.execute('SELECT document,revoked FROM lan_peer_members ORDER BY member_id').fetchall()
-        digest = hashlib.sha256(json.dumps([group, rows], sort_keys=True).encode()).hexdigest()
+            origins = conn.execute('SELECT document FROM lan_evidence_origins ORDER BY member_id').fetchall()
+        digest = hashlib.sha256(json.dumps([group, rows, origins], sort_keys=True).encode()).hexdigest()
         return {'access': access, 'factory': factory, 'context': factory.context(server=True),
                 'members': members, 'digest': digest}
 

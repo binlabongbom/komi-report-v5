@@ -110,6 +110,7 @@ _USAGE_RESET_SEQUENCES = (
 )
 
 _FACTORY_RESET_TABLES = (
+    'lan_evidence_origins',
     'lan_peer_members',
     'lan_peer_group',
     "peer_billing_deliveries",

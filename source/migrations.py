@@ -12,7 +12,7 @@ from contextlib import closing
 from datetime import datetime
 from pathlib import Path
 
-CURRENT_SCHEMA_VERSION = 32
+CURRENT_SCHEMA_VERSION = 33
 
 
 class UnsupportedSchemaVersionError(RuntimeError):
@@ -24,6 +24,7 @@ class SchemaDriftError(RuntimeError):
 
 
 _REQUIRED_SCHEMA: dict[str, frozenset[str]] = {
+    'lan_evidence_origins': frozenset({'member_id', 'origin', 'document'}),
     'shared_report_days': frozenset({'epoch_id', 'record_date', 'document_json', 'device_json'}),
     'shared_report_months': frozenset({'epoch_id', 'record_date', 'document_json', 'device_json'}),
     'shared_report_events': frozenset({'epoch_id', 'event_id'}),
@@ -820,6 +821,12 @@ def _migration_032_shared_report_days(connection):
     connection.execute('CREATE INDEX idx_web_observation_instant ON web_observations(julianday(observed_at),event_id)')
 
 
+def _migration_033_lan_evidence_origins(connection):
+    # Provenance does not confer session/reader/certificate authorization.
+    connection.execute('''CREATE TABLE lan_evidence_origins (
+        member_id TEXT PRIMARY KEY, origin TEXT NOT NULL UNIQUE, document TEXT NOT NULL)''')
+
+
 MIGRATIONS: tuple[tuple[int, str, object], ...] = (
     (8, "record_schema_history_and_reporting_indexes", _migration_008_record_schema_history),
     (9, "add_legacy_usage_history_import_provenance", _migration_009_legacy_history_import),
@@ -846,6 +853,7 @@ MIGRATIONS: tuple[tuple[int, str, object], ...] = (
     (30, "add_immutable_report_detail_revisions", _migration_030_report_detail_revisions),
     (31, 'add_local_lan_member_enrollment', _migration_031_lan_peer_membership),
     (32, 'add_compact_shared_report_evidence', _migration_032_shared_report_days),
+    (33, 'retain_peer_evidence_origins_without_session_access', _migration_033_lan_evidence_origins),
 )
 
 

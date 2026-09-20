@@ -194,6 +194,7 @@ def _seed_lan_membership(vault):
     access.initialize_primary('Synthetic LAN')
     with _open() as conn:
         conn.execute("INSERT INTO web_observation_state VALUES('origin','lan-origin') ON CONFLICT(key) DO UPDATE SET value=excluded.value")
+        conn.execute("INSERT INTO lan_evidence_origins VALUES('retired-fixture','retired-origin','{}')")
     return access
 
 
@@ -203,6 +204,7 @@ def test_usage_reset_preserves_lan_membership_and_observation_identity():
     invitation = access.invitation()
     reset_usage_data()
     assert access.invitation() == invitation
+    assert _table_count('lan_evidence_origins') == 1
     with _open(commit=False) as conn:
         assert conn.execute("SELECT value FROM web_observation_state WHERE key='origin'").fetchone() == ('lan-origin',)
 
@@ -226,9 +228,11 @@ def test_factory_reset_removes_lan_keys_atomically_with_group(fail):
         assert access.invitation() == original
         assert {ref: vault.load(ref) for ref in secrets} == secrets
         assert _table_count('lan_peer_group') == 1
+        assert _table_count('lan_evidence_origins') == 1
     else:
         factory_reset_v5(registration_secret_store=vault)
         assert _table_count('lan_peer_group') == _table_count('lan_peer_members') == 0
+        assert _table_count('lan_evidence_origins') == 0
         assert all(vault.load(ref) is None for ref in secrets)
         assert _table_count('web_observation_state') == 0
 

@@ -133,6 +133,9 @@ class PeerHTTPSClient:
     def contacts(self, *, after='', limit=32):
         return self.call('peer.contacts', {'after': after, 'limit': limit})
 
+    def origins(self, *, after='', limit=32):
+        return self.call('peer.origins', {'after': after, 'limit': limit})
+
     def page(self, request, *, limit=32):
         return self.call('history.page', {'request': request, 'limit': limit})
 

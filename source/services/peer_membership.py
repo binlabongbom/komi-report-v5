@@ -185,7 +185,7 @@ class PeerMembership:
         return {**signed, 'proof': hmac.new(key, _json(signed).encode(), hashlib.sha256).hexdigest()}
 
     @staticmethod
-    def _validate_contact(document):
+    def _validate_contact(document, *, require_current=True):
         if (not isinstance(document, dict) or set(document) != {'format', 'group_id', 'member_id',
                 'origin', 'public_key', 'certificate', 'url', 'generation'} or document['format'] != CONTACT):
             raise ValueError('Invalid peer contact')
@@ -205,7 +205,7 @@ class PeerMembership:
             raise ValueError('Invalid peer address')
         cert = x509.load_pem_x509_certificate(pem.encode('ascii'))
         now = datetime.now(UTC)
-        if not cert.not_valid_before_utc <= now < cert.not_valid_after_utc:
+        if require_current and not cert.not_valid_before_utc <= now < cert.not_valid_after_utc:
             raise ValueError('Peer certificate is expired or not yet valid')
         try:
             if cert.extensions.get_extension_for_class(x509.BasicConstraints).value.ca:
@@ -224,7 +224,7 @@ class PeerMembership:
         with self._connection(write=True) as conn:
             return self._accept_checked_contact(conn, packet, fingerprint)
 
-    def _checked_contact(self, packet):
+    def _checked_contact(self, packet, *, require_current=True):
         if not isinstance(packet, dict) or set(packet) != {'document', 'signature', 'proof'}:
             raise ValueError('Invalid peer enrollment proof')
         group = self.group()
@@ -233,7 +233,7 @@ class PeerMembership:
         if not hmac.compare_digest(_hex(packet['proof']), hmac.new(key, _json(signed).encode(), hashlib.sha256).hexdigest()):
             raise PermissionError('Peer does not possess this group capability')
         document = packet['document']
-        fingerprint = self._validate_contact(document)
+        fingerprint = self._validate_contact(document, require_current=require_current)
         if document['group_id'] != group['group_id']:
             raise PermissionError('Peer belongs to another group')
         try:
@@ -244,6 +244,35 @@ class PeerMembership:
         if document['member_id'] == self.member_id and document['public_key'] != self.identity.public_key_base64url:
             raise PermissionError('Installation identity collision')
         return packet, fingerprint
+
+    @staticmethod
+    def _remember_origin(conn, packet):
+        """Remember verified historical provenance; never enroll a session.
+
+        A certificate may have expired since the evidence was collected. The
+        installation signature and group proof are still required by the caller.
+        Bind origin and signing identity against both active and retained records.
+        """
+        doc = packet['document']
+        for table in ('lan_peer_members', 'lan_evidence_origins'):
+            rows = conn.execute(f'SELECT document FROM {table} WHERE member_id=? OR origin=?',
+                                (doc['member_id'], doc['origin'])).fetchall()
+            for (raw,) in rows:
+                previous = json.loads(raw)['document']
+                if any(previous[k] != doc[k] for k in ('member_id', 'origin', 'public_key')):
+                    raise PermissionError('Conflicting historical installation identity')
+        old = conn.execute('SELECT document FROM lan_evidence_origins WHERE member_id=?', (doc['member_id'],)).fetchone()
+        if old:
+            previous = json.loads(old[0])['document']
+            if previous['generation'] > doc['generation']:
+                return
+            if previous['generation'] == doc['generation']:
+                if _json(packet) != old[0]:
+                    raise PermissionError('Conflicting historical contact generation')
+                return
+        conn.execute('''INSERT INTO lan_evidence_origins VALUES(?,?,?)
+            ON CONFLICT(member_id) DO UPDATE SET document=excluded.document''',
+            (doc['member_id'], doc['origin'], _json(packet)))
 
     @staticmethod
     def _accept_checked_contact(conn, packet, fingerprint):
@@ -257,7 +286,12 @@ class PeerMembership:
                     (document['generation'] == previous['generation'] and _json(packet) != old[0])):
                 raise PermissionError('Stale or conflicting peer contact')
             if _json(packet) == old[0]:
+                PeerMembership._remember_origin(conn, packet)
                 return document['member_id']
+        historical = conn.execute('SELECT document FROM lan_evidence_origins WHERE member_id=?', (document['member_id'],)).fetchone()
+        if historical and json.loads(historical[0])['document']['generation'] > document['generation']:
+            raise PermissionError('Stale peer contact; newer historical identity is retained')
+        PeerMembership._remember_origin(conn, packet)
         conn.execute('''INSERT INTO lan_peer_members(member_id,origin,fingerprint,document) VALUES(?,?,?,?)
             ON CONFLICT(member_id) DO UPDATE SET fingerprint=excluded.fingerprint,document=excluded.document''',
             (document['member_id'], document['origin'], fingerprint, _json(packet)))
@@ -312,7 +346,9 @@ class PeerMembership:
         # History can relay evidence from another approved member, including a
         # removed one. Removal blocks future sessions, not historical records.
         with self._connection() as conn:
-            origin = conn.execute('SELECT 1 FROM lan_peer_members WHERE origin=?', (p['origin'],)).fetchone()
+            origin = conn.execute('''SELECT 1 FROM lan_peer_members WHERE origin=?
+                UNION ALL SELECT 1 FROM lan_evidence_origins WHERE origin=? LIMIT 1''',
+                (p['origin'], p['origin'])).fetchone()
         return bool(origin) and type(p['slot']) is int and p['slot'] in range(3)
 
     def authorize_epoch(self, member, epoch):

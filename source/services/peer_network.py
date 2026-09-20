@@ -93,10 +93,10 @@ class PeerNetworkNode:
     def dispatch(self, member, operation, data):
         if not self.authorize_session(member):
             raise PermissionError('Peer session is not authorized')
-        if operation == 'peer.contacts':
+        if operation in {'peer.contacts', 'peer.origins'}:
             if set(data) != {'after', 'limit'}:
                 raise ValueError('Invalid contact request')
-            return self.contacts.page(member, **data)
+            return self.contacts.page(member, **data, historical=operation == 'peer.origins')
         if operation == 'peer.wake':
             value = data.get('boot_id')
             if (set(data) != {'boot_id'} or not isinstance(value, str) or len(value) != 32

@@ -38,7 +38,8 @@ def test_runtime_session_delivers_all_queues_over_tls_without_duplicate_accounti
     # already issued daily accounting whose allocation will be amended.
     with sqlite3.connect(b) as conn:
         conn.execute('PRAGMA foreign_keys=ON')
-        for table in ('slot_meter_maxima', 'slot_meter_assignments', 'slot_meter_epoch_state',
+        for table in ('shared_report_days', 'shared_report_months', 'shared_report_events',
+                      'slot_meter_maxima', 'slot_meter_assignments', 'slot_meter_epoch_state',
                       'slot_meter_heads', 'slot_meter_epoch_outbox', 'slot_meter_epochs',
                       'web_observation_outbox', 'web_observations'):
             conn.execute('DELETE FROM ' + table)

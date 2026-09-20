@@ -1,6 +1,7 @@
 # #37 — LAN membership and runtime integration
 
-Updated 20 September 2026. Runtime checkpoint: local `main` at `6d74476`.
+Updated 20 September 2026. Runtime checkpoint: local `main` at `6d74476`;
+ordinary reports/Archive/manual checkpoint: `624a617` (not pushed).
 Issue remains **open; not ready to build**. This work does not defer Sync to a
 later release and does not change the Host.
 
@@ -135,6 +136,37 @@ deferred to the next release. The final guide still depends on finished flows.
 - The UI and English translations no longer claim these features were moved
   to the next version. Network status shows actual attached members and errors.
 
+### Historical member provenance, schema 33
+
+The enrolled TLS session now pulls paged historical origin proofs before Web
+catch-up. Each proof retains its installation signature and group proof, with
+consistent origin/member/public-key binding. An old certificate can identify
+historical evidence after expiry, but it cannot authorize TLS sessions, reading
+or settings access. The separate provenance table is not an active roster.
+
+A can relay C's saved observations to B after A locally removes C. B learns
+their provenance without enrolling C. Relay does not propagate local removal
+as a global revocation either; an independently active membership on B remains
+under B's current policy. Historical generations cannot silently replace a
+newer endpoint or resurrect a locally removed member. Invalid pages roll back.
+
+Runtime watches provenance changes as well as the active roster so existing
+peers learn a newly relayed origin before its evidence. Usage reset keeps this
+provenance with membership; Factory Reset removes it atomically. Existing
+databases receive an additive migration; old membership records are exported
+directly without needing a fabricated historical approval.
+
+Source regression: **51 passed, 1 warning in 126.45 s**,
+`qa/v5.2.12/issue37-origin-regression.xml`, including real mutual-TLS historical
+relay, expired certificates, no session revival, tampering/identity collisions,
+atomic rollback, bounded resume, runtime changes, migrations and reset. A stale
+test that simulated losing the journal now also deletes the rebuildable report
+index first, consistent with its foreign keys; the production reset path was
+already covered. Warning: the existing Starlette/AnyIO deprecation.
+
+This completes historical-origin transport, not reinstallation/key recovery,
+global revocation or the end-user enrollment Wizard.
+
 ## What the user can actually do at this checkpoint
 
 The existing installation Wizard still performs its approved initial setup
@@ -166,8 +198,8 @@ usage and settings continuously.
    Preserve the reviewed correction workflow and price/Slot boundaries.
 4. Finish enrollment/recovery UX and policies. Address recovery currently needs
    the local report Web service to answer discovery/contact requests. Revocation
-   is local; recovery/key rotation and sharing historical identities of removed
-   members need completion. There is no global revocation authority implied by
+   is local; recovery/key rotation need completion. Historical identities of
+   removed members now relay without session access. No global revocation authority is implied by
    the LAN group secret.
 5. Finish source integration tests for the complete first-install flow, restore
    and address/certificate changes across three processes, including dropped
