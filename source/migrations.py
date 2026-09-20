@@ -12,7 +12,7 @@ from contextlib import closing
 from datetime import datetime
 from pathlib import Path
 
-CURRENT_SCHEMA_VERSION = 30
+CURRENT_SCHEMA_VERSION = 31
 
 
 class UnsupportedSchemaVersionError(RuntimeError):
@@ -24,6 +24,8 @@ class SchemaDriftError(RuntimeError):
 
 
 _REQUIRED_SCHEMA: dict[str, frozenset[str]] = {
+    'lan_peer_group': frozenset({'singleton', 'document'}),
+    'lan_peer_members': frozenset({'member_id', 'origin', 'fingerprint', 'document', 'revoked'}),
     "peer_billing_amendments": frozenset({"sequence", "amendment_id", "document_json", "results_json"}),
     "peer_billing_deliveries": frozenset({"member_id", "amendment_id", "acknowledged_at", "retry_at", "attempts", "error_code"}),
     "report_detail_revisions": frozenset({"id", "amendment_id", "kind", "device_slot", "serial", "counter_key", "record_date", "row_json", "period_start", "period_end"}),
@@ -791,6 +793,14 @@ def create_detail_revision_guards(connection):
             BEGIN SELECT RAISE(ABORT, 'report detail revisions are append-only'); END''')
 
 
+def _migration_031_lan_peer_membership(connection):
+    connection.execute('CREATE TABLE lan_peer_group (singleton INTEGER PRIMARY KEY CHECK(singleton=1), document TEXT NOT NULL)')
+    connection.execute('''CREATE TABLE lan_peer_members (
+        member_id TEXT PRIMARY KEY, origin TEXT NOT NULL UNIQUE,
+        fingerprint TEXT NOT NULL UNIQUE, document TEXT NOT NULL,
+        revoked INTEGER NOT NULL DEFAULT 0 CHECK(revoked IN (0,1)))''')
+
+
 MIGRATIONS: tuple[tuple[int, str, object], ...] = (
     (8, "record_schema_history_and_reporting_indexes", _migration_008_record_schema_history),
     (9, "add_legacy_usage_history_import_provenance", _migration_009_legacy_history_import),
@@ -815,6 +825,7 @@ MIGRATIONS: tuple[tuple[int, str, object], ...] = (
     (28, "add_atomic_web_history_catchup_progress", _migration_028_web_catchup),
     (29, "add_atomic_billing_amendment_delivery", _migration_029_billing_amendments),
     (30, "add_immutable_report_detail_revisions", _migration_030_report_detail_revisions),
+    (31, 'add_local_lan_member_enrollment', _migration_031_lan_peer_membership),
 )
 
 

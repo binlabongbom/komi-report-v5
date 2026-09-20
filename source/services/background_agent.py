@@ -148,7 +148,7 @@ class BackgroundAgent(QObject):
                      QNetworkInformation.Reachability.Online}
         if reachability in connected and previous not in connected:
             self.registration.network_recovered()
-            self.polling.peer_history.network_recovered()
+            self.polling.network_recovered()
 
     def _apply_collection_gate(self, _status: str = "") -> None:
         if self._stopping:

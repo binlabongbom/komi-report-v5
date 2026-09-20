@@ -12,6 +12,24 @@ from services.shared_reader import ReaderAuthority, SharedReaderCoordinator
 from test_reader_jobs import fixture
 
 
+def test_offline_roster_cannot_exhaust_budget_before_checking_available_local_reader(tmp_path):
+    elections, _, _, _, _, _, _, scope, _, _ = cluster(tmp_path)
+    elapsed, calls = [0.0], []
+    election = elections['C']  # Last in the old sequential candidate order.
+    def offline(member, requested):
+        calls.append(member)
+        elapsed[0] += 8
+        raise TimeoutError('Synthetic offline member')
+    election.probe = offline
+    selected = election.select(scope[0], timeout=15, clock=lambda: elapsed[0])
+    assert selected.member_id == 'C'
+    assert calls == ['A', 'A']
+    assert election.partial(0)
+    assert election.owns(scope[0])
+    election.invalidate()
+    assert not election.partial(0)
+
+
 def cluster(tmp_path):
     _, now, scope, origins, args = fixture()
     elections, authorities, clients, paths = {}, {}, {}, {}
@@ -105,9 +123,11 @@ def test_partition_may_read_twice_but_heals_to_one_authority_and_fences_loser(tm
     a = clients["A"].request(scope[0], "partition-a", manual=False)
     b = clients["B"].request(scope[0], "partition-b", manual=False)
     assert (a.authority, b.authority) == ("A", "B")
+    assert elections['A'].partial(0) and elections['B'].partial(0)
     blocked.clear()
     assert clients["B"].request(scope[0], "reconnected", manual=False) is None
     assert elections["B"].owner(scope[0]) == "A"
+    assert not elections['B'].partial(0)
     with pytest.raises(PermissionError, match="no longer owns"):
         authorities["B"].status("B", b.job["job_id"], scope[0])
     assert clients["C"].request(scope[0], "manual", manual=True).job["job_id"] == a.job["job_id"]
@@ -153,7 +173,9 @@ def test_cancellation_budget_and_lifecycle_change_publish_no_decision(tmp_path):
     with pytest.raises(CancelledError):
         election.select(scope[0], cancelled=lambda: True)
     assert calls == []
-    ticks = iter([0, 0, 0, 100])
+    # Expiry before any verified presence cannot publish an owner. Expiry
+    # after finding a ready local reader is covered by the offline-roster case.
+    ticks = iter([0, 100])
     with pytest.raises(ReaderUnavailable, match="budget"):
         election.select(scope[0], clock=lambda: next(ticks))
     original = election.probe

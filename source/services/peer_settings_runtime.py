@@ -17,6 +17,7 @@ class PeerSettingsRuntime(QObject):
         self.polling = polling
         self.inbox = PeerSettingsInbox(authorize=authorize, authorize_epoch=authorize_epoch)
         self.path = get_db_path()
+        self._known_devices = self._devices()
         self._busy = self._stopped = False
         self._notified = set()
         self._wake.connect(self.process, Qt.ConnectionType.QueuedConnection)
@@ -27,11 +28,15 @@ class PeerSettingsRuntime(QObject):
         self._wake.emit()
 
     def _devices(self):
-        return {d.slot: (d.host, d.serial, d.enabled) for d in self.polling.repository.list()}
+        from database import _open
+        with _open(commit=False) as conn:
+            epochs = dict(conn.execute('SELECT device_slot,epoch_id FROM slot_meter_heads'))
+        return {d.slot: (d.host, d.serial, d.enabled, epochs.get(d.slot)) for d in self.polling.repository.list()}
 
     def _refresh(self, before):
         from services.runtime_snapshots import runtime_snapshots
         after = self._devices()
+        self._known_devices = after
         for slot in before.keys() | after.keys():
             if before.get(slot) != after.get(slot):
                 self.polling.states.pop(slot, None)
@@ -56,7 +61,7 @@ class PeerSettingsRuntime(QObject):
         self._busy = True
         try:
             changed = False
-            before = self._devices()
+            before = self._known_devices
             for row in self.inbox.pending():
                 try:
                     result = self.inbox.apply_descendant(row['member'], row['head'])
@@ -70,7 +75,7 @@ class PeerSettingsRuntime(QObject):
                     if row['head'] not in self._notified:
                         self._notified.add(row['head'])
                         self.failed.emit('การตั้งค่าที่รับมาต้องตรวจสิทธิ์ ฐาน Slot หรือข้อขัดแย้งก่อนใช้')
-            if changed:
+            if changed or before != self._devices():
                 self._refresh(before)
         except Exception:
             self.failed.emit('ยังใช้การตั้งค่าที่รับมาไม่สำเร็จ รายการยังอยู่ในประวัติรอตรวจ')

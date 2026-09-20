@@ -55,7 +55,7 @@ class PeerSyncSession(PeerHistorySession):
     while a bounded quantum made progress. Failure in one outgoing queue does
     not block another queue. No local clock wins a settings conflict.
     """
-    def __init__(self, *, authorize_settings, authorize_amendment, **kwargs):
+    def __init__(self, *, authorize_settings, authorize_amendment, boot_id=None, contacts=None, **kwargs):
         super().__init__(**kwargs)
         path = self.history.store.path
         self.settings = PeerSettingsTransfer(authorize=authorize_settings, path=path)
@@ -64,22 +64,56 @@ class PeerSyncSession(PeerHistorySession):
         self._reconnect = True
         self._amendment_cursor = None
         self._delivery_lock = Lock()
+        self._state_lock = Lock()
+        self.boot_id = boot_id
+        self._wake_id = boot_id
+        self._announced = False
+        self.contacts = contacts
 
-    def reconnected(self):
-        self._reconnect = True
+    def reconnected(self, *, announce=True):
+        with self._state_lock:
+            self._reconnect = True
+            if announce and self.boot_id is not None:
+                import uuid
+                self._wake_id = uuid.uuid4().hex
+                self._announced = False
 
     def run(self, *, cancelled=lambda: False, **budgets):
         if not self._delivery_lock.acquire(blocking=False):
             raise RuntimeError('This peer synchronization session is already running')
         try:
             return self._run(cancelled=cancelled, **budgets)
+        except Exception:
+            # A failed startup/manifest must not consume the obligation to
+            # recheck receipts on the next bounded retry.
+            with self._state_lock:
+                self._reconnect = True
+            raise
         finally:
             self._delivery_lock.release()
 
     def _run(self, *, cancelled, **budgets):
-        reconnect, self._reconnect = self._reconnect, False
+        with self._state_lock:
+            announce = self.boot_id is not None and not self._announced
+            wake_id = self._wake_id
+            reconnect, self._reconnect = self._reconnect, False
+        if announce:
+            if cancelled():
+                raise CancelledError()
+            if self.authorize_session(self.member) is not True:
+                raise PermissionError('Peer session is no longer authorized')
+            receipt = self.transport.wake(wake_id)
+            if receipt != {'accepted': True} or self.authorize_session(self.member) is not True:
+                raise PermissionError('Peer did not authorize the startup notification')
+            with self._state_lock:
+                if self._wake_id == wake_id:
+                    self._announced = True
         if reconnect:
             self._amendment_cursor = 0
+            if self.contacts is not None:
+                self.contacts.reset()
+        if self.contacts is not None and self.contacts.run(cancelled=cancelled):
+            return SyncResult('pending', 0, 0, 0, 0, 0, 0, True, ())
         received = super().run(cancelled=cancelled, **budgets)
         if received.status == 'cancelled':
             return received

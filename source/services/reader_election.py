@@ -38,6 +38,7 @@ class ReaderElection:
         self.boot_id = uuid.uuid4().hex
         self._lock = RLock()
         self._owners = {}
+        self._partial = {}
         self._generation = 0
 
     def _authorize(self, member_id, scope):
@@ -70,8 +71,10 @@ class ReaderElection:
         with self._lock:
             if slot is None:
                 self._owners.clear()
+                self._partial.clear()
             else:
                 self._owners.pop(slot, None)
+                self._partial.pop(slot, None)
             self._generation += 1
 
     def select(self, scope, *, cancelled=lambda: False, timeout=15, clock=monotonic):
@@ -88,29 +91,36 @@ class ReaderElection:
             if cancelled():
                 from concurrent.futures import CancelledError
                 raise CancelledError()
-            if clock() >= deadline:
-                raise ReaderUnavailable("Reader selection time budget exhausted")
+            return clock() < deadline
         self._authorize(self.member_id, scope)
         with self._lock:
             generation = self._generation
         candidates = set(self.members(scope.slot)) | {self.member_id}
         for member in candidates:
             _text(member)
-        found = []
-        for member in sorted(candidates):
-            check()
+        found, exhausted, unreachable = [], False, False
+        # Observe this PC before spending the budget on offline members. A
+        # large approved roster must not stop an available local collector.
+        ordered = [self.member_id] + sorted(candidates - {self.member_id})
+        for member in ordered:
+            if not check():
+                exhausted = True
+                break
             self._authorize(member, scope)
             response = None
             for _ in range(2):
-                check()
+                if not check():
+                    exhausted = True
+                    break
                 try:
                     response = (self.presence(self.member_id, scope) if member == self.member_id
                                 else self.probe(member, scope))
                     break
                 except (TimeoutError, ConnectionError):
-                    check()
+                    pass
             self._authorize(member, scope)
             if response is None:
+                unreachable = True
                 continue
             if (not isinstance(response, ReaderPresence) or response.member_id != member
                     or response.scope.document() != scope.document()
@@ -120,10 +130,14 @@ class ReaderElection:
             _text(response.boot_id)
             if response.ready:
                 found.append(response)
-        check()
+        if cancelled():
+            from concurrent.futures import CancelledError
+            raise CancelledError()
         self._authorize(self.member_id, scope)
         if not found:
             self.invalidate(scope.slot)
+            if exhausted:
+                raise ReaderUnavailable("Reader selection time budget exhausted")
             raise ReaderUnavailable("No verified reader is ready")
         incumbents = [item for item in found if item.incumbent]
         chosen = min(incumbents or found, key=lambda item: item.member_id)
@@ -132,7 +146,13 @@ class ReaderElection:
             if generation != self._generation:
                 raise ReaderUnavailable("Reader lifecycle changed during selection")
             self._owners[scope.slot] = (scope.document(), chosen.member_id, chosen.boot_id)
+            self._partial[scope.slot] = exhausted or unreachable
         return chosen
+
+    def partial(self, slot):
+        """Status only: incomplete probing may mean partitioned coordination."""
+        with self._lock:
+            return self._partial.get(slot, False)
 
     def owns(self, scope):
         """Local fence, checked inside the durable grant transaction."""

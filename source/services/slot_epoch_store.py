@@ -182,6 +182,8 @@ class SlotEpochStore:
         self._assign(conn, epoch, self._event(conn, preview["baseline_event_id"]))
         conn.execute("INSERT INTO slot_meter_heads VALUES(?,?) ON CONFLICT(device_slot) DO UPDATE SET epoch_id=excluded.epoch_id",
             (preview["slot"], epoch["id"]))
+        from services.slot_runtime import invalidate_device_runtime
+        invalidate_device_runtime(conn, preview['slot'])
         conn.execute("INSERT INTO slot_meter_epoch_outbox VALUES(?)", (epoch["id"],))
         return epoch["id"]
 

@@ -68,15 +68,25 @@ class PeerHTTPSClient:
         if not isinstance(operation, str) or not operation or len(operation) > 64 or not isinstance(data, dict):
             raise ValueError('Invalid peer operation')
         # No proxy, redirect, HTTP fallback or transport-level write retry.
-        conn = http.client.HTTPSConnection(self.host, self.port, context=self.context, timeout=self.timeout)
+        # An offline LAN computer must not consume a long RPC processing budget
+        # merely connecting. Reader grants can legitimately take longer while
+        # their authority checks other members, so bound those phases separately.
+        conn = http.client.HTTPSConnection(self.host, self.port, context=self.context, timeout=min(2, self.timeout))
         deadline = monotonic() + self.timeout
+        def remaining():
+            budget = deadline - monotonic()
+            if budget <= 0:
+                raise TimeoutError('Peer request deadline expired')
+            return budget
         try:
             conn.connect()
             fingerprint = hashlib.sha256(conn.sock.getpeercert(binary_form=True)).hexdigest()
             if self.authorize(self.member, fingerprint) is not True:
                 raise PermissionError('Peer certificate does not identify an authorized member')
             sock = conn.sock
+            sock.settimeout(remaining())
             conn.request('POST', PATH, body, {'Content-Type': 'application/json', 'Connection': 'close'})
+            sock.settimeout(remaining())
             response = conn.getresponse()
             if response.status == 403:
                 raise PermissionError('Peer rejected authorization')
@@ -116,6 +126,12 @@ class PeerHTTPSClient:
 
     def manifest(self, *, after=0):
         return self.call('history.manifest', {'after': after})
+
+    def wake(self, boot_id):
+        return self.call('peer.wake', {'boot_id': boot_id})
+
+    def contacts(self, *, after='', limit=32):
+        return self.call('peer.contacts', {'after': after, 'limit': limit})
 
     def page(self, request, *, limit=32):
         return self.call('history.page', {'request': request, 'limit': limit})
@@ -286,16 +302,38 @@ class PeerHTTPSServer(ThreadingHTTPServer):
         self.tls_context, self.resolve_member, self.dispatch = context, resolve_member, dispatch
         self.peer_timeout = timeout
         self._capacity = threading.BoundedSemaphore(16)
+        self._active_lock = threading.Lock()
+        self._active_requests = 0
+        self._idle = threading.Event()
+        self._idle.set()
         super().__init__(address, _Handler)
+
+    @property
+    def active_requests(self):
+        with self._active_lock:
+            return self._active_requests
+
+    def wait_requests(self):
+        self._idle.wait()
+
+    def _request_finished(self):
+        with self._active_lock:
+            self._active_requests -= 1
+            if not self._active_requests:
+                self._idle.set()
+        self._capacity.release()
 
     def process_request(self, request, address):
         if not self._capacity.acquire(blocking=False):
             self.shutdown_request(request)
             return
+        with self._active_lock:
+            self._active_requests += 1
+            self._idle.clear()
         try:
             super().process_request(request, address)
         except BaseException:
-            self._capacity.release()
+            self._request_finished()
             raise
 
     def process_request_thread(self, request, address):
@@ -308,11 +346,28 @@ class PeerHTTPSServer(ThreadingHTTPServer):
             pass
         finally:
             self.shutdown_request(request)
-            self._capacity.release()
+            self._request_finished()
 
 
 class _Handler(BaseHTTPRequestHandler):
     protocol_version = 'HTTP/1.0'
+
+    def handle_one_request(self):
+        import socket
+        def expire():
+            try:
+                self.connection.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                pass
+        # Bound headers as well as the body; resetting a socket timeout by
+        # trickling a header must not hold the runtime ownership lock forever.
+        self._input_timer = threading.Timer(self.server.peer_timeout, expire)
+        self._input_timer.daemon = True
+        self._input_timer.start()
+        try:
+            super().handle_one_request()
+        finally:
+            self._input_timer.cancel()
 
     def log_message(self, *_):
         pass  # Never emit certificates, financial bodies or peer errors to stdout.
@@ -357,6 +412,7 @@ class _Handler(BaseHTTPRequestHandler):
                     or not isinstance(document['operation'], str) or len(document['operation']) > 64
                     or not isinstance(document['data'], dict)):
                 raise ValueError('Invalid peer request')
+            self._input_timer.cancel()  # Reader arbitration has its own deadline.
             if self.server.resolve_member(fingerprint) != member:
                 raise PermissionError('Peer membership changed')
             result = self.server.dispatch(member, document['operation'], document['data'])

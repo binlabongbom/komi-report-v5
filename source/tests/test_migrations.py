@@ -117,6 +117,29 @@ def test_v29_upgrade_preserves_existing_delivery_receipts_and_accounting(tmp_pat
         assert apply_migrations(conn) == []
 
 
+def test_v31_upgrade_adds_membership_without_changing_accounting_or_identity(tmp_path):
+    from migrations import MIGRATIONS
+    path = tmp_path / 'existing-v30.sqlite3'
+    with sqlite3.connect(path) as conn:
+        conn.execute('CREATE TABLE schema_migrations(version INTEGER PRIMARY KEY,name TEXT,applied_at TEXT)')
+        conn.execute('CREATE TABLE daily_meter_records(record_date TEXT,device_slot INTEGER)')
+        conn.execute('CREATE TABLE daily_subject_records(device_slot INTEGER,subject_type TEXT,subject_id TEXT,record_date TEXT)')
+        conn.execute('CREATE TABLE billing_ledger(id INTEGER PRIMARY KEY,amount INTEGER)')
+        conn.execute('INSERT INTO billing_ledger VALUES(1,12345)')
+        for version, name, migrate in MIGRATIONS:
+            if version <= 30:
+                migrate(conn)
+                conn.execute('INSERT INTO schema_migrations VALUES(?,?,?)', (version, name, 'fixture'))
+        conn.execute("INSERT INTO web_observation_state VALUES('origin','keep-origin')")
+        conn.execute('PRAGMA user_version=30')
+        assert apply_migrations(conn) == list(range(31, CURRENT_SCHEMA_VERSION + 1))
+        assert conn.execute('SELECT * FROM billing_ledger').fetchall() == [(1, 12345)]
+        assert conn.execute('SELECT value FROM web_observation_state WHERE key=?', ('origin',)).fetchone() == ('keep-origin',)
+        assert conn.execute('SELECT COUNT(*) FROM lan_peer_group').fetchone()[0] == 0
+        assert conn.execute('SELECT COUNT(*) FROM lan_peer_members').fetchone()[0] == 0
+        assert apply_migrations(conn) == []
+
+
 def test_raw_history_identity_migration_preserves_rows_and_allows_slot_replacement(tmp_path):
     path = tmp_path / "komi-v17.sqlite3"
     with sqlite3.connect(path) as connection:

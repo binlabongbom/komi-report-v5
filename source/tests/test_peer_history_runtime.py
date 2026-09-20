@@ -241,7 +241,7 @@ def test_agent_recovery_transition_wakes_both_services_without_periodic_polling(
     calls = []
     owner = SimpleNamespace(_stopping=False, _last_network_reachability=values.Disconnected,
         registration=SimpleNamespace(network_recovered=lambda: calls.append("host")),
-        polling=SimpleNamespace(peer_history=SimpleNamespace(network_recovered=lambda: calls.append("peer"))))
+        polling=SimpleNamespace(network_recovered=lambda: calls.append("peer")))
     for value in (values.Local, values.Site, values.Online):
         BackgroundAgent._network_reachability_changed(owner, value)
     assert calls == ["host", "peer"]

@@ -105,6 +105,8 @@ _USAGE_RESET_SEQUENCES = (
 )
 
 _FACTORY_RESET_TABLES = (
+    'lan_peer_members',
+    'lan_peer_group',
     "peer_billing_deliveries",
     "report_detail_revisions",
     "report_revision_subject_periods",
@@ -977,6 +979,19 @@ def _registration_secret_references(
     ).fetchone()
     if runtime and runtime[0] and str(runtime[0]).strip():
         installation_ids.add(str(runtime[0]).strip())
+
+    group = connection.execute('SELECT document FROM lan_peer_group WHERE singleton=1').fetchone()
+    if group:
+        try:
+            document = json.loads(group[0])
+            identity, group_id = document['local_installation_id'], document['group_id']
+            if (isinstance(identity, str) and identity.strip() and len(identity) <= 256
+                    and isinstance(group_id, str) and len(group_id) == 64
+                    and all(c in '0123456789abcdef' for c in group_id)):
+                installation_ids.add(identity)
+                references.add(f'komi-report-v5:lan:{identity}:{group_id}')
+        except (TypeError, ValueError, KeyError):
+            pass  # A corrupt document cannot name arbitrary OS vault entries.
 
     for installation_id in installation_ids:
         references.add(installation_token_reference(installation_id))

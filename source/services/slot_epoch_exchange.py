@@ -156,4 +156,6 @@ class SlotEpochExchange:
             raise ValueError("Apply the reviewed shared printer settings before adoption")
         conn.execute("INSERT INTO slot_meter_heads VALUES(?,?) ON CONFLICT(device_slot) DO UPDATE SET epoch_id=excluded.epoch_id",
             (slot, epoch_id))
+        from services.slot_runtime import invalidate_device_runtime
+        invalidate_device_runtime(conn, slot)
         return epoch_id

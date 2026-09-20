@@ -84,6 +84,23 @@ class PeerDiscoveryResponse(ApiModel):
     version: str
 
 
+class PeerContactDocument(ApiModel):
+    format: Literal['komi.lan.member.v1']
+    group_id: str = Field(pattern='^[0-9a-f]{64}$')
+    member_id: str = Field(min_length=1, max_length=256)
+    origin: str = Field(min_length=1, max_length=256)
+    public_key: str = Field(min_length=43, max_length=44)
+    certificate: str = Field(min_length=1, max_length=16384)
+    url: str = Field(min_length=1, max_length=300)
+    generation: int = Field(ge=1, lt=2**63)
+
+
+class PeerContactResponse(ApiModel):
+    document: PeerContactDocument
+    signature: str = Field(min_length=86, max_length=88)
+    proof: str = Field(pattern='^[0-9a-f]{64}$')
+
+
 class PeerPriceOut(ApiModel):
     a3_color: float
     a3_bw: float
@@ -647,6 +664,20 @@ def peer_discovery() -> dict:
     """Minimal LAN beacon used by a Secondary Desktop."""
 
     return primary_discovery_payload()
+
+
+@app.get('/api/v1/peer/contact', response_model=PeerContactResponse)
+def peer_public_contact() -> dict:
+    """Public installation proof for already-enrolled LAN address recovery."""
+    from database import get_db_path
+    from services.peer_contact_discovery import public_contact
+    try:
+        packet = public_contact(get_db_path())
+    except (ValueError, TypeError, KeyError):
+        packet = None
+    if packet is None:
+        raise HTTPException(status_code=404, detail='Peer contact unavailable')
+    return packet
 
 
 def _peer_requester_ip(request: Request) -> str:

@@ -70,6 +70,7 @@ class SharedWebRead:
             if row["phase"] == "reading" and row.pop("deadline") <= now:
                 row["phase"] = "expired"
             row.pop("deadline", None)
+            row['coordination_partial'] = self.router.election.partial(row['slot'])
         return rows
 
     def scheduled_owner(self, slot, *, cancelled=lambda: False):

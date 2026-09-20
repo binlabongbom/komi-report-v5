@@ -124,6 +124,20 @@ test("paged peer history reaches capability validation without opening other pee
   assert.equal(denied.status, 401);
 });
 
+test("public signed peer contact permits only its exact read endpoint", async () => {
+  const { NextRequest } = await import("next/server");
+  const { default: proxy } = await import("../proxy");
+  const allowed = await proxy(new NextRequest("https://komi.local/api/v1/peer/contact"));
+  assert.equal(allowed.headers.get("x-middleware-next"), "1");
+  for (const request of [
+    new NextRequest("https://komi.local/api/v1/peer/contact", { method: "POST" }),
+    new NextRequest("https://komi.local/api/v1/peer/contact/private-key"),
+    new NextRequest("https://komi.local/api/v1/peer/enroll"),
+  ]) {
+    assert.equal((await proxy(request)).status, 401);
+  }
+});
+
 test("passwordless proxy redirects stale login to reports while retaining explicit admin login", async () => {
   const { NextRequest } = await import("next/server");
   const { default: proxy } = await import("../proxy");

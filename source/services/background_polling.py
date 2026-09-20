@@ -67,11 +67,14 @@ class BackgroundPollingCoordinator(QObject):
         # never suppresses local collection or authorizes shared observations.
         self.shared_reads = shared_reads
         self.peer_settings = None
+        self.peer_network = None
+        self.peer_web_view = None
         self.clock = clock or (lambda: datetime.now().astimezone())
         self.machine = PollingStateMachine()
         self.snmp_interval = timedelta(minutes=5)
         self.executor = ThreadPoolExecutor(max_workers=3, thread_name_prefix="komi-meter")
         self.states: dict[int, DevicePollState] = {}
+        self._poll_scopes = {}
         self.last_poll: dict[int, datetime] = {}
         self.active: set[int] = set()
         self._futures: dict[int, Future] = {}
@@ -90,6 +93,8 @@ class BackgroundPollingCoordinator(QObject):
         self.timer.timeout.connect(self.tick)
         from services.peer_history_runtime import PeerHistoryRuntime
         self.peer_history = peer_history if peer_history is not None else PeerHistoryRuntime(self)
+        from services.peer_network_runtime import PeerNetworkRuntime
+        self.peer_network_runtime = PeerNetworkRuntime(self)
         from services.archive_maintenance import ArchiveMaintenance
         self.archive_maintenance = ArchiveMaintenance(self, busy=self._archive_busy)
 
@@ -111,6 +116,44 @@ class BackgroundPollingCoordinator(QObject):
         self.peer_settings.notify()
         return self.peer_settings
 
+    def bind_peer_network(self, node, *, address, context, members):
+        """Install the enrolled network as one unit on the Qt owner thread.
+
+        Enrollment must wait for existing local meter jobs to finish. A failed
+        bind leaves the local collector intact and does not attach half a set
+        of sessions. Desktop and Agent both use this same owner boundary.
+        """
+        from pathlib import Path
+        from services.peer_network import PeerNetworkNode
+        if not isinstance(node, PeerNetworkNode):
+            raise TypeError('An authenticated peer network is required')
+        if Path(node.path).resolve() != Path(self.observations.path).resolve():
+            raise ValueError('Peer network belongs to another database')
+        if self._stopped or self.active_slots() or self.peer_network is not None:
+            raise RuntimeError('Wait for idle collection before binding peer membership')
+        sessions = [node.session(member) for member in sorted(set(members)) if member != node.member_id]
+        try:
+            bound = node.start(address, context=context)
+            self.bind_verified_settings(authorize=node.authorize_settings, authorize_epoch=node.authorize_epoch)
+            for session in sessions:
+                self.peer_history.attach(session)
+        except BaseException:
+            for session in sessions:
+                self.peer_history.detach(session.member)
+            if self.peer_settings is not None:
+                self.peer_settings.stop()
+                self.peer_settings = None
+            node.stop(wait=True)
+            raise
+        self.peer_network = node
+        self.shared_reads = node.shared_reads
+        from services.peer_web_view import PeerWebViewRuntime
+        self.peer_web_view = PeerWebViewRuntime(self)
+        node.on_data = self.peer_web_view.notify
+        self.peer_web_view.notify()
+        self.activity_changed.emit()
+        return bound
+
     def start(self) -> None:
         if self._stopped:
             raise RuntimeError("background polling cannot start after shutdown")
@@ -118,6 +161,7 @@ class BackgroundPollingCoordinator(QObject):
             return
         self._started = True
         self.peer_history.start()
+        self.peer_network_runtime.start()
         self.archive_maintenance.start()
         if self.is_paused:
             log.info("background polling start deferred while paused: %s", self._paused_reason)
@@ -213,6 +257,13 @@ class BackgroundPollingCoordinator(QObject):
                 remaining = sum(not future.done() for future in self._futures.values())
                 for future in list(self._futures.values()):
                     future.cancel()
+        # Close incoming requests and fence in-flight grants before releasing
+        # process ownership. Repeated stop(wait=True) drains the same listener.
+        remaining += self.peer_network_runtime.stop(wait=wait)
+        if self.peer_web_view is not None:
+            remaining += self.peer_web_view.stop(wait=wait)
+        if self.peer_network is not None:
+            remaining += self.peer_network.stop(wait=wait)
         self.executor.shutdown(wait=wait, cancel_futures=True)
         if self.peer_settings is not None:
             self.peer_settings.stop()
@@ -224,6 +275,10 @@ class BackgroundPollingCoordinator(QObject):
             extra={"event": "polling_stopped", "operation": "shutdown", "remaining_polls": remaining},
         )
         return remaining
+
+    def network_recovered(self):
+        self.peer_network_runtime.network_recovered()
+        self.peer_history.network_recovered()
 
     def tick(self) -> None:
         if self._stopped or self.is_paused:
@@ -614,11 +669,23 @@ class BackgroundPollingCoordinator(QObject):
 
         return decision, snmp_error, probe_result
 
+    def _align_poll_scope(self, device):
+        from services.slot_runtime import polling_scope
+        scope = polling_scope(device)
+        with self._lock:
+            previous = self._poll_scopes.get(device.slot, scope)
+            self._poll_scopes[device.slot] = scope
+            if previous != scope:
+                self.states[device.slot] = DevicePollState()
+                self.last_poll.pop(device.slot, None)
+                runtime_snapshots.clear(device.slot)
+
     def _poll_device(self, device: DeviceConfig, force_web: bool) -> bool:
         # A future queued before deactivation may start after pause() raced
         # with ThreadPoolExecutor. Do not let it issue its first SNMP/Web read.
         if self.is_paused:
             return False
+        self._align_poll_scope(device)
         prepared = None
         if self.shared_reads is not None:
             import uuid
@@ -767,8 +834,9 @@ class BackgroundPollingCoordinator(QObject):
                     at=now,
                 )
             observed_serial = (probe_result.serial if probe_result is not None else "") or device.serial
+            saved_event = shared_result.event if shared_result is not None else None
             if observed_serial and shared_result is None:
-                self.observations.record(device.slot, reading, serial=observed_serial,
+                saved_event = self.observations.record(device.slot, reading, serial=observed_serial,
                     printer_name=device.name,
                     epoch_id=read_epoch_id,
                     at=datetime.fromisoformat(reading.collected_at.replace("Z", "+00:00")))
@@ -777,7 +845,8 @@ class BackgroundPollingCoordinator(QObject):
                     device_slot=device.slot, device_name=device.name, host=device.host,
                     target="web_observations", value="Missing printer Serial",
                     detail="Local report only; no shareable Web observation queued", status="warning", at=now)
-            ram_snapshot = runtime_snapshots.update(device.slot, reading)
+            ram_snapshot = runtime_snapshots.update(device.slot, reading, serial=observed_serial,
+                epoch_id=read_epoch_id, event_id=saved_event['id'] if saved_event else '')
             subject_state = self.subject_cache.update_reading(device.slot, reading, at=now)
             try:
                 raw_counter_count = self.raw_counter_history.update_reading(

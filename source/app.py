@@ -986,7 +986,7 @@ class MainWindow(QMainWindow):
         }
         if reachability in connected and previous not in connected:
             self.registration.network_recovered()
-            self.polling.peer_history.network_recovered()
+            self.polling.network_recovered()
 
     def _device_updated(self, _slot: int):
         if self._quitting:

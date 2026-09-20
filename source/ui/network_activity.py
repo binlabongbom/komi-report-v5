@@ -94,12 +94,20 @@ class NetworkActivityPanel(QWidget):
         if self.polling is polling:
             return
         if self.polling is not None:
-            for signal in (self.polling.peer_history.changed, self.polling.activity_changed, self.polling.device_updated):
+            for signal in self._runtime_signals(self.polling):
                 signal.disconnect(self.schedule_refresh)
         self.polling = polling
-        for signal in (polling.peer_history.changed, polling.activity_changed, polling.device_updated):
+        for signal in self._runtime_signals(polling):
             signal.connect(self.schedule_refresh)
         self.schedule_refresh()
+
+    @staticmethod
+    def _runtime_signals(polling):
+        signals = [polling.peer_history.changed, polling.activity_changed, polling.device_updated]
+        network = getattr(polling, 'peer_network_runtime', None)
+        if network is not None:
+            signals.append(network.changed)
+        return signals
 
     def showEvent(self, event):
         super().showEvent(event)
@@ -170,8 +178,15 @@ class NetworkActivityPanel(QWidget):
                             phase=phases.get(job['phase'], tr("รอตรวจ", "Needs review")), at=_date(job['observed_at'])) for job in jobs)
                         or tr("ยังไม่มีคำขออ่านร่วม", "No shared read requests")))
                     self.shared_read.setProperty("i18n_data", True)  # Names inside the rendered status are data.
+                    if any(job.get('coordination_partial') for job in jobs):
+                        self.shared_read.setText(self.shared_read.text() + tr(
+                            "\nติดต่อสมาชิกไม่ครบในเวลาที่กำหนด · อาจมีการอ่านซ้อนในเครือข่ายที่ขาดกัน",
+                            "\nSome members could not be checked in time. Disconnected network segments may read independently."))
                 message = (tr("สมาชิกในรายการ {total} คอม", "{total} listed computers").format(total=total) if total else
-                           tr("รุ่นนี้ยังไม่เปิดการเชื่อมสมาชิกอัตโนมัติ · เก็บไว้เวอร์ชันถัดไป · ไม่ได้หมายความว่าไม่มีคอมอื่นในเครือข่าย", "Automatic membership is deferred to the next version. This does not mean there are no other computers on the network."))
+                           tr("ยังไม่มีสมาชิกที่ยืนยันการเชื่อมต่อ · ไม่ได้หมายความว่าไม่มีคอมอื่นในเครือข่าย", "No verified member connections yet. This does not mean there are no other computers on the network."))
+                runtime = getattr(self.polling, 'peer_network_runtime', None)
+                if runtime is not None and runtime.state == 'unavailable':
+                    message += tr("\nเริ่มบริการสมาชิกไม่สำเร็จ · ตรวจสิทธิ์ การตั้งค่าเครือข่าย หรือพอร์ตที่ใช้งาน", "\nUnable to start member connections. Check enrollment, network settings or the listener port.")
                 if total > 100:
                     message += tr(" · หน้าที่ {page}", " · Page {page}").format(page=self._page + 1)
                 message += tr("\nการตั้งค่ารอตรวจ {count} รายการ", "\nSettings awaiting review: {count}").format(count=data['settings_reviews'])

@@ -36,7 +36,7 @@ class PeerHistoryRuntime(QObject):
     _finished = pyqtSignal(object, object)
     _local_committed = pyqtSignal()
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, *, path=None):
         super().__init__(parent)
         self._members = {}
         self._queue = deque()
@@ -47,7 +47,9 @@ class PeerHistoryRuntime(QObject):
         self._finished.connect(self._complete, Qt.ConnectionType.QueuedConnection)
         from database import get_db_path
         from services.peer_change_events import subscribe
-        self._unsubscribe = subscribe(get_db_path(), self._notify_local)
+        from pathlib import Path
+        self.path = Path(path or get_db_path()).resolve()
+        self._unsubscribe = subscribe(self.path, self._notify_local)
         self._local_committed.connect(self.local_changed, Qt.ConnectionType.QueuedConnection)
 
     def _notify_local(self):
@@ -96,6 +98,26 @@ class PeerHistoryRuntime(QObject):
         if state is not None:
             state.cancelled.set()
             self.changed.emit()
+
+    def peer_reconnected(self, member):
+        """An authenticated peer startup wakes delivery once, without echoing it.
+
+        Recheck durable ACKs because the peer may have restored an old DB. Do
+        not announce another reconnect back: that would form an endless loop.
+        """
+        if self._stopped or not self._started:
+            return
+        state = self._members.get(member)
+        if state is None:
+            return
+        from services.peer_delivery import PeerSyncSession
+        if isinstance(state.session, PeerSyncSession):
+            state.session.reconnected(announce=False)
+        if state.future is not None:
+            state.wake_again = True
+        else:
+            self._enqueue(state)
+        self._dispatch()
 
     def start(self):
         if self._started or self._stopped:
