@@ -1,0 +1,74 @@
+{
+  "users": 100,
+  "days": 365,
+  "index_seconds": 40.903,
+  "subject_two_periods_seconds": 7.197,
+  "subject_rows": 200,
+  "raw_year_seconds": 7.518,
+  "raw_rows": 36865,
+  "overview_snapshot_seconds": 3.198,
+  "overview_users": 100,
+  "database_bytes": 34955264,
+  "export_seconds": 49.636,
+  "ui_probe_clicks": 2271,
+  "ui_max_gap_ms": 630.3,
+  "ui_largest_gaps": [
+    {
+      "ms": 630.3,
+      "progress_before": 40,
+      "sample": 1153
+    },
+    {
+      "ms": 625.0,
+      "progress_before": 94,
+      "sample": 2234
+    },
+    {
+      "ms": 508.2,
+      "progress_before": 40,
+      "sample": 1217
+    },
+    {
+      "ms": 449.1,
+      "progress_before": 35,
+      "sample": 524
+    },
+    {
+      "ms": 365.5,
+      "progress_before": 35,
+      "sample": 407
+    }
+  ],
+  "gc_max_pause_ms": 619.1,
+  "progress_values": [
+    0,
+    5,
+    20,
+    35,
+    40,
+    46,
+    55,
+    56,
+    57,
+    58,
+    59,
+    60,
+    61,
+    62,
+    63,
+    64,
+    65,
+    66,
+    67,
+    68,
+    69,
+    70,
+    76,
+    82,
+    88,
+    94
+  ],
+  "export_bytes": 1081706,
+  "verified_excel_users": 100,
+  "verified_excel_evidence_rows": 36865
+}

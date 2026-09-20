@@ -2097,7 +2097,7 @@ class CloudReportsWidget(QWidget):
                     _number(row["copy"]) if row["copy_available"] else "—",
                     _number(row["scan"]),
                     _number(row["total"]),
-                    _money(row["cost"]),
+                    _money(row["cost"]) if row.get('cost_available', True) else '—',
                 )
             )
         printers_signal_blocker = QSignalBlocker(self.printers_table)

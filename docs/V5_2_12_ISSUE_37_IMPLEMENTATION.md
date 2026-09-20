@@ -85,6 +85,29 @@ in-app report instructions, Archive screenshot and 25-page PDF, and visually
 checked the changed pages. Removed the incorrect claim that shared work was
 deferred to the next release. The final guide still depends on finished flows.
 
+### Full-year Excel and unavailable money follow-up
+
+`tools/benchmark_shared_report_history.py --ui-export` now runs the actual Qt
+export controller and worker, probes clicks/timer delivery, then opens the file
+and verifies 100 users and 36,865 evidence rows. All data is synthetic. The
+export took **53.402 s**, producing 1,081,731 bytes. Progress advanced through
+99 before completion; 2,513 probe clicks were processed. The maximum measured
+event-loop gap was **362.1 ms**, down from **630.3 ms** in the instrumented
+before run. The earlier uninstrumented run reached 1,010.2 ms.
+
+Materialized report rows no longer retain duplicate request-cache projections
+while the workbook is being created. Cancellation/yield checkpoints also cover
+detail notes. This reduces observed cyclic-GC pauses without changing global GC
+policy. It does not make the export instantaneous or guarantee a latency limit
+on customer hardware. One sample/day is not a 15-minute collection-size test.
+Raw before/after measurements: `qa/v5.2.12/issue37-shared-year-export-before.json`
+and `qa/v5.2.12/issue37-shared-year-export.json`.
+
+Unpriced shared usage now shows unavailable money in the printer table and
+blank money cells with review status in Excel, rather than a misleading zero or
+"ready" status. Known zero prices remain numeric zero. Focused report/Excel/Qt
+regression: **101 passed in 80.22 s**, `qa/v5.2.12/issue37-export-followup-regression.xml`.
+
 ## Implemented and exercised with synthetic installations
 
 - Schema 31 stores one local group and signed member contacts. Group capability

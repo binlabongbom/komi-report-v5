@@ -102,6 +102,7 @@ class DailyCategoryCost:
     a3_color: float = 0.0
     a3_bw: float = 0.0
     unallocated: float = 0.0
+    available: bool = True
 
     @property
     def total(self) -> float:
@@ -198,6 +199,7 @@ def build_daily_category_costs(
                 device_identity=_record_identity(record),
                 record_date=day,
                 unallocated=unallocated,
+                available=_cost_available(record),
                 **allocated,
             )
         )
@@ -260,6 +262,7 @@ def _write_report_workbook(target, report):
         notes = workbook.create_sheet('หมายเหตุรายละเอียด')
         notes.append(['Slot', 'Serial', 'วันลงยอด', 'ตัวนับ', 'รหัสผู้ใช้/บัญชี', 'อ่านสำเร็จจริงล่าสุด', 'หมายเหตุ'])
         for record in detail_notes:
+            _checkpoint()
             values = [record.device_slot + 1, record.device_serial_snapshot, record.record_date.isoformat(),
                       record.canonical_field, record.subject_id, record.last_success or 'ไม่มีจุดอ่านในวันนี้', '\n'.join(record.remarks)]
             notes.append([_neutralize_untrusted_cell_string(v)[0] if isinstance(v, str) else v for v in values])
@@ -274,6 +277,7 @@ def _write_report_workbook(target, report):
         notes = workbook.create_sheet('หมายเหตุฉบับแก้ไข' if all_amended else 'หมายเหตุรายงาน')
         notes.append(["Slot", "Serial", "เริ่มช่วง", "สิ้นสุดช่วง", "หมายเหตุ"])
         for record in noted_records:
+            _checkpoint()
             notes.append([record.device_slot + 1,
                 _neutralize_untrusted_cell_string(record.device_serial_snapshot)[0],
                 record.period_start.isoformat(), record.period_end.isoformat(),
@@ -634,7 +638,7 @@ def _operation_cost(
     operation_field: str,
     category_field: str,
 ) -> float | None:
-    if not category_field:
+    if not category_field or not all(_cost_available(record) for record in records):
         return None
     costs_by_day: defaultdict[date, float] = defaultdict(float)
     for cost in costs:
@@ -688,7 +692,7 @@ def _subject_costs(subject_records, device_key, evidence):
             suffix = field.split('_', 1)[1]
             denominator = (getattr(device, 'print_' + suffix, 0.0) +
                            getattr(device, 'copy_' + suffix, 0.0)) if device else 0.0
-            if daily_cost is None or denominator <= 0:
+            if daily_cost is None or not daily_cost.available or denominator <= 0:
                 missing.add(field)
             else:
                 amounts[field] += float(getattr(daily_cost, category) or 0.0) * pages / denominator
@@ -777,7 +781,8 @@ def _write_machine_sheet(
                 _operation_total(device_records, "print") if print_available else None,
                 _operation_total(device_records, "copy") if copy_available else None,
                 sum(_usage_total(record) for record in device_records),
-                sum(_combined(record, cost_field) for record in device_records),
+                sum(_combined(record, cost_field) for record in device_records)
+                if all(_cost_available(record) for record in device_records) else None,
                 _review_status(device_records),
             )
         )
@@ -978,6 +983,7 @@ def _write_daily_sheet(
         row: list[object] = [day]
         daily_usage = 0.0
         daily_cost = 0.0
+        daily_cost_available = True
         for device in devices:
             record = record_index.get((day, device.key))
             if record is None:
@@ -1012,7 +1018,8 @@ def _write_daily_sheet(
                     )
                 )
             usage_total = _usage_total(record)
-            selected_cost = _combined(record, cost_field)
+            available_cost = _cost_available(record)
+            selected_cost = _combined(record, cost_field) if available_cost else None
             row.extend(
                 (
                     _combined(record, "scan"),
@@ -1023,8 +1030,9 @@ def _write_daily_sheet(
                 )
             )
             daily_usage += usage_total
-            daily_cost += selected_cost
-        row.extend((daily_usage, daily_cost))
+            daily_cost += selected_cost or 0
+            daily_cost_available &= available_cost
+        row.extend((daily_usage, daily_cost if daily_cost_available else None))
         _write_row(worksheet, row_index, row, currency_columns=currency_columns)
         worksheet.cell(row_index, 1).number_format = "dd/mm/yyyy"
     if not days:
@@ -1098,8 +1106,14 @@ def _usage_total(record: MonthlyUsage) -> float:
     return sum(_combined(record, field) for field, _label in CATEGORY_FIELDS)
 
 
+def _cost_available(record):
+    return not record.provisional_days or record.provisional_cost_available
+
+
 def _review_status(records: tuple[MonthlyUsage, ...]) -> str:
-    return "ตรวจสอบ" if any(record.held_days or record.incomplete_days for record in records) else "พร้อมใช้"
+    if any(record.held_days or record.incomplete_days or not _cost_available(record) for record in records):
+        return 'ตรวจสอบ'
+    return 'ยอดชั่วคราว' if any(record.provisional_days for record in records) else 'พร้อมใช้'
 
 
 def _period_text(period: tuple[str, str] | None) -> str:

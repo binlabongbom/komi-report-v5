@@ -291,6 +291,7 @@ def build_printer_rows(records, devices):
                 "total": 0.0,
                 "net_cost": 0.0,
                 "gross_cost": 0.0,
+                "cost_available": True,
                 "review": False,
             },
         )
@@ -308,5 +309,6 @@ def build_printer_rows(records, devices):
         row["total"] += _record_total(record)
         row["net_cost"] += _combined(record, "net_cost")
         row["gross_cost"] += _combined(record, "gross_cost")
-        row["review"] = row["review"] or bool(record.held_days or record.incomplete_days)
+        row["cost_available"] &= not record.provisional_days or record.provisional_cost_available
+        row["review"] = row["review"] or bool(record.held_days or record.incomplete_days) or not row['cost_available']
     return freeze(sorted(grouped.values(), key=lambda item: item["total"], reverse=True))

@@ -300,11 +300,19 @@ def test_received_history_exports_actual_allocation_and_missing_read_remark(tmp_
         notes = list(workbook['หมายเหตุรายละเอียด'].values)
         assert any(row[2] == '2026-09-20' and row[5] == 'ไม่มีจุดอ่านในวันนี้' and 'ยอดสะสมช่วงขาดการอ่าน' in row[6] for row in notes[1:])
         assert 'หมายเหตุรายงาน' in workbook.sheetnames
+        machine = workbook['การใช้งานรายเครื่อง']
+        assert machine.cell(5, machine.max_column - 1).value is None
+        assert machine.cell(5, machine.max_column).value == 'ตรวจสอบ'
+        daily = workbook['มุมมองรายวัน']
+        assert daily.cell(5, daily.max_column).value is None
         rows = list(workbook['Legacy-รายวัน'].values)
         sunday = next(row for row in rows if isinstance(row[0], datetime) and row[0].date() == date(2026, 9, 20))
         assert 301 in sunday and 150.5 not in sunday
     finally:
         workbook.close()
+    from services.report_models import build_printer_rows
+    models = build_printer_rows(usage, tuple(DeviceConfigRepository().list()))
+    assert models and all(not r['cost_available'] and r['review'] for r in models)
 
 
 def test_archived_index_is_explicit_cancellable_and_resumes_without_duplicate_usage(monkeypatch):

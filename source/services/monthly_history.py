@@ -533,6 +533,7 @@ def load_usage_history(
         bucket['remarks'].update(note for r in values for note in r.remarks)
         bucket['remarks'].add('ยอดจากหลักฐานร่วมที่ยังไม่ได้ลงบัญชี')
         if flags:
+            bucket['incomplete'] += 1
             bucket['remarks'].add(review_labels(flags))
         if any(r.estimated for r in values):
             bucket['remarks'].add('ค่าเฉลี่ยประมาณการเฉพาะวันที่ไม่มีข้อมูล Web')
