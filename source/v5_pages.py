@@ -7263,6 +7263,8 @@ class PageHistoryV5(PageHistory):
             records=selected_records,
             daily_records=daily_records,
             usage_daily_records=usage_daily_records,
+            chart_daily_records=(tuple(load_usage_history(report_slots(), granularity='daily',
+                cache=self.cache, graph=True)) if active_tab in {0, 3} else usage_daily_records),
             monthly_records=getattr(self, "_report_records", ()),
             subjects=subjects,
             devices=devices,

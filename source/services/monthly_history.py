@@ -320,6 +320,7 @@ def load_usage_history(
     granularity: HistoryGranularity = "monthly",
     today: date | None = None,
     cache: DailyCacheStore | None = None,
+    graph: bool = False,
 ) -> tuple[MonthlyUsage, ...]:
     current = today or date.today()
     cache_store = cache or DailyCacheStore()
@@ -327,6 +328,7 @@ def load_usage_history(
     buckets: dict[tuple[int, str, date, date], dict] = {}
     finalized: set[tuple[int, date]] = set()
     ledger_days = _load_ledger_days(slots)
+    posted_values = {}
 
     if slots:
         placeholders = ",".join("?" for _ in slots)
@@ -452,6 +454,8 @@ def load_usage_history(
                 hold_day(slot, day, incomplete, ledger)
             else:
                 add_day(slot, day, deltas, incomplete, ledger)
+                for field, amount in deltas.items():
+                    posted_values[slot, day, field] = posted_values.get((slot, day, field), 0.0) + amount
         else:
             hold_day(slot, day, incomplete, ledger)
         finalized.add((slot, day))
@@ -463,11 +467,13 @@ def load_usage_history(
         hold_day(slot, day, bool(incomplete), source_json=source_json)
         finalized.add((slot, day))
 
+    closed_days = set(finalized)
     for slot in slots:
         if (slot, current) in finalized:
             continue
         state = cache_store.load(slot, current)
         if state and state.get("delta"):
+            finalized.add((slot, current))
             # Safe current-day evidence is visible as provisional usage/cost,
             # but remains outside the append-only Billing Ledger until rollover.
             if _cache_meter_is_safe(state):
@@ -484,6 +490,52 @@ def load_usage_history(
                     False,
                     identity=_identity_snapshot(state, slot),
                 )
+
+    # Imported evidence can fill a missing report even before this PC has ever
+    # collected locally. It remains explicitly provisional until accounting
+    # reconciliation creates an original/reviewed ledger entry. A gap spanning
+    # an existing closed day cannot add a second allocation on an empty day.
+    from services.shared_report_history import load_shared_counter_days
+    from services.web_evidence_report import review_labels
+    with _open(commit=False) as conn:
+        shared = load_shared_counter_days(conn, slots, kind='device', graph=graph)
+    shared_days = {}
+    for row in shared:
+        if any((row.slot, day) in finalized for day in row.covered_days):
+            if row.delta and any((row.slot, day) in closed_days for day in row.covered_days) and (
+                    posted_values.get((row.slot, row.day, row.field)) != float(row.delta)):
+                start, end = history_period_range(row.day, billing_day, granularity)
+                bucket = bucket_for(row.slot, (f'serial:{row.serial}', row.metadata['printer_name'], row.serial), start, end)
+                bucket['remarks'].add('พบหลักฐาน Web เพิ่มในช่วงรายงานที่ปิดแล้ว กรุณาตรวจฉบับแก้ไขก่อนเปลี่ยนยอดเดิม')
+            continue
+        shared_days.setdefault((row.slot, row.epoch_id, row.day), []).append(row)
+    for (slot, epoch, day), values in shared_days.items():
+        if not any(r.delta for r in values):
+            continue  # An absolute opening meter is a reference, not a usage row.
+        first = values[0]
+        deltas = {r.field: float(r.delta) for r in values}
+        flags = {flag for r in values for flag in r.issues}
+        if not all(r.billing_safe for r in values):
+            flags.add('shared_evidence_not_reconciled')
+        state = {'device_identity': {'serial': first.serial, 'name': first.metadata['printer_name']},
+                 'source': {'counter_sources': {r.field: r.metadata for r in values}}}
+        start, end = history_period_range(day, billing_day, granularity)
+        bucket = bucket_for(slot, _identity_snapshot(state, slot), start, end)
+        # Show conserved page deltas with provenance. Unknown price boundaries
+        # and counter review flags do not acquire a made-up billable cost.
+        for key, value in deltas.items():
+            bucket['provisional_counters'][key] = bucket['provisional_counters'].get(key, 0.0) + value
+        gross, net, available = (0.0, 0.0, False) if flags else _provisional_cost(slot, day, deltas, state)
+        bucket['provisional_gross_cost'] += gross
+        bucket['provisional_net_cost'] += net
+        bucket['provisional_days'] += 1
+        bucket['provisional_cost_available'] &= available
+        bucket['remarks'].update(note for r in values for note in r.remarks)
+        bucket['remarks'].add('ยอดจากหลักฐานร่วมที่ยังไม่ได้ลงบัญชี')
+        if flags:
+            bucket['remarks'].add(review_labels(flags))
+        if any(r.estimated for r in values):
+            bucket['remarks'].add('ค่าเฉลี่ยประมาณการเฉพาะวันที่ไม่มีข้อมูล Web')
 
     result: list[MonthlyUsage] = []
     for (slot, device_identity, start, end), bucket in buckets.items():

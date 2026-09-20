@@ -12,7 +12,7 @@ from contextlib import closing
 from datetime import datetime
 from pathlib import Path
 
-CURRENT_SCHEMA_VERSION = 31
+CURRENT_SCHEMA_VERSION = 32
 
 
 class UnsupportedSchemaVersionError(RuntimeError):
@@ -24,6 +24,9 @@ class SchemaDriftError(RuntimeError):
 
 
 _REQUIRED_SCHEMA: dict[str, frozenset[str]] = {
+    'shared_report_days': frozenset({'epoch_id', 'record_date', 'document_json', 'device_json'}),
+    'shared_report_months': frozenset({'epoch_id', 'record_date', 'document_json', 'device_json'}),
+    'shared_report_events': frozenset({'epoch_id', 'event_id'}),
     'lan_peer_group': frozenset({'singleton', 'document'}),
     'lan_peer_members': frozenset({'member_id', 'origin', 'fingerprint', 'document', 'revoked'}),
     "peer_billing_amendments": frozenset({"sequence", "amendment_id", "document_json", "results_json"}),
@@ -801,6 +804,22 @@ def _migration_031_lan_peer_membership(connection):
         revoked INTEGER NOT NULL DEFAULT 0 CHECK(revoked IN (0,1)))''')
 
 
+def _migration_032_shared_report_days(connection):
+    # Compact first/high/last counter points, independent of arrival order.
+    # Existing evidence is indexed in bounded background batches after upgrade.
+    connection.execute('''CREATE TABLE shared_report_days (
+        epoch_id TEXT NOT NULL REFERENCES slot_meter_epochs(id), record_date TEXT NOT NULL,
+        document_json TEXT NOT NULL, device_json TEXT NOT NULL, PRIMARY KEY(epoch_id,record_date))''')
+    connection.execute('''CREATE TABLE shared_report_months (
+        epoch_id TEXT NOT NULL REFERENCES slot_meter_epochs(id), record_date TEXT NOT NULL,
+        document_json TEXT NOT NULL, device_json TEXT NOT NULL, PRIMARY KEY(epoch_id,record_date))''')
+    connection.execute('''CREATE TABLE shared_report_events (
+        epoch_id TEXT NOT NULL REFERENCES slot_meter_epochs(id),
+        event_id TEXT NOT NULL REFERENCES web_observations(event_id),
+        PRIMARY KEY(epoch_id,event_id))''')
+    connection.execute('CREATE INDEX idx_web_observation_instant ON web_observations(julianday(observed_at),event_id)')
+
+
 MIGRATIONS: tuple[tuple[int, str, object], ...] = (
     (8, "record_schema_history_and_reporting_indexes", _migration_008_record_schema_history),
     (9, "add_legacy_usage_history_import_provenance", _migration_009_legacy_history_import),
@@ -826,6 +845,7 @@ MIGRATIONS: tuple[tuple[int, str, object], ...] = (
     (29, "add_atomic_billing_amendment_delivery", _migration_029_billing_amendments),
     (30, "add_immutable_report_detail_revisions", _migration_030_report_detail_revisions),
     (31, 'add_local_lan_member_enrollment', _migration_031_lan_peer_membership),
+    (32, 'add_compact_shared_report_evidence', _migration_032_shared_report_days),
 )
 
 

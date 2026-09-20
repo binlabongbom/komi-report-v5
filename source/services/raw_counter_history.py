@@ -413,7 +413,7 @@ def load_raw_counter_history(
         documents = effective_documents(connection, 'raw', documents, slots, start=period_start, end=period_end)
         rows = [tuple(item['row'][key] for key in columns) for item in documents]
     rows.sort(key=lambda row: (row[1], row[0], row[5], row[7], row[2]))
-    return tuple(
+    original = tuple(
         RawCounterDailyRecord(
             device_slot=int(row[0]),
             record_date=date.fromisoformat(str(row[1])),
@@ -442,3 +442,9 @@ def load_raw_counter_history(
         )
         for row in rows
     )
+    from services.shared_report_history import raw_records
+    with _open(commit=False) as connection:
+        selected_slots = list(slots) if slots is not None else [r[0] for r in connection.execute('SELECT slot FROM devices')]
+        shared = raw_records(connection, selected_slots, start=period_start, end=period_end, existing=original)
+    return tuple(sorted((*original, *shared), key=lambda r: (
+        r.record_date, r.device_slot, r.subject_type, r.subject_name, r.canonical_field)))

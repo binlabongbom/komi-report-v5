@@ -97,6 +97,12 @@ class BackgroundPollingCoordinator(QObject):
         self.peer_network_runtime = PeerNetworkRuntime(self)
         from services.archive_maintenance import ArchiveMaintenance
         self.archive_maintenance = ArchiveMaintenance(self, busy=self._archive_busy)
+        self.archive_maintenance.reports_indexed.connect(self._shared_reports_indexed)
+
+    def _shared_reports_indexed(self):
+        from services.report_scope import report_slots
+        for slot in report_slots():
+            self.device_updated.emit(slot)
 
     def _archive_busy(self):
         with self._lock:

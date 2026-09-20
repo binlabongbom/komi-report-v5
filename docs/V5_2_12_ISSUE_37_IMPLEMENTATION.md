@@ -1,8 +1,88 @@
 # #37 — LAN membership and runtime integration
 
-Updated 20 September 2026. Working source based on local `main` at `35442d1`.
+Updated 20 September 2026. Runtime checkpoint: local `main` at `6d74476`.
 Issue remains **open; not ready to build**. This work does not defer Sync to a
 later release and does not change the Host.
+
+## Follow-up: ordinary shared report projections
+
+Implemented after the runtime checkpoint:
+
+- Schema 32 adds rebuildable daily/monthly evidence summaries. A reviewed Web
+  assignment and its summaries commit together, before a transport receipt.
+  Original Web events still retain every scheduled/manual read. The summaries
+  retain actual first/maximum/last points and their event IDs, without copying
+  every user's counter for every reading into a second full journal.
+- Repeated deliveries do not increment sample counts or usage. Reordered reads
+  produce the same maximum/deltas. Neighbor checks preserve decreases hidden
+  between daily extrema. Reviewed replacement epochs do not import a used
+  printer's physical opening meter as new usage.
+- Ordinary Users, Raw/Legacy, usage history, report snapshots and Excel now read
+  received Web history even when the receiving PC has no local daily cache.
+  Missing originals are derived report rows; the original daily tables are not
+  populated with fabricated reads. Printer usage not posted to the ledger is
+  explicitly provisional, with no estimated money when counter checks or
+  price/billing boundaries are unresolved.
+- Gap totals appear on the day before reading resumes, with a remark and no
+  fabricated successful-read timestamp. Charts have a separate data series
+  averaged over wholly missing Web days, retain decimals and an estimate label.
+  Tables/Excel retain the actual allocation rather than chart averages.
+- Existing daily/archived detail and issued ledger entries take priority. A
+  resumed-day record outside the selected window still blocks a second gap
+  allocation inside that window. A conflicting closed financial allocation is
+  marked for review; the existing explicit amendment path preserves originals.
+- Bounded requests use monthly context outside the selected calendar months,
+  plus actual prior/next points and the prior maximum. They do not decode all
+  old daily summaries or open archived Web payloads. Calculation uses the root
+  epoch's recorded fixed UTC offset on every PC, not each computer's timezone.
+- Python projection loops honor worker cancellation and yield periodically to
+  Qt. Request-local reuse avoids repeating device projections across views.
+  Historical receipts invalidate reports even if the live maximum is unchanged.
+- Upgrade indexing runs in bounded idle batches before ordinary archival and
+  on peer runtime startup. Completed indexing is not rescanned on every receipt.
+  No old archive file is opened automatically. Newly archived journal payloads
+  leave the compact reporting summaries available.
+- Archive settings now offers **Fill reports from archived history** explicitly.
+  The background job verifies archived payloads and indexes bounded atomic
+  batches; cancellation/retry resumes without duplicate usage. Opening the
+  panel only reads metadata. Known unindexed Web dates are flagged and are not
+  falsely treated as dates without any reading.
+
+**Limits still open:** This is usage/report integration, not automatic creation
+of new original financial ledger postings or remote repair of legacy originals.
+Existing issued revisions remain explicit. Pre-existing archived events can now
+be indexed with the explicit Archive action; automatic startup deliberately does
+not open those files. `devices.last_total`/Host meter
+telemetry is unchanged. First-install enrollment, recovery and final manuals
+remain separate unfinished work; do not describe #37 as ready to build.
+
+New source tests cover duplicate/permuted arrivals, an added historical read,
+weekend allocation versus fractional graph values, hidden counter decreases,
+cross-offset clocks, used-printer replacement, transaction rollback, rebuild,
+archive-free report reads, monthly context versus a complete projection, worker
+cancellation, actual Qt chart/table separation, ordinary Excel contents and two
+independent databases. These are synthetic source tests, not installation tests.
+
+Repeatable benchmark: `tools/benchmark_shared_report_history.py`, temporary
+synthetic DB only, 100 users / one printer / 365 days / one reading per day.
+Latest measurement: indexing 42.786 s for the complete dataset; two selected
+subject periods spanning the year 8.692 s / 200 rows; full-year Raw read 7.701 s /
+36,865 rows; December Overview snapshot 2.407 s / 100 users; DB 34,930,688 bytes.
+The earlier Overview measurement before compact monthly context was 7.854 s.
+These are worker preparation timings, not Excel writing or GUI responsiveness
+measurements. One reading/day exercises daily index size, not the database size
+of a deployed 15-minute collector. Timing varies by machine and concurrent work.
+
+Report/runtime/accounting regression: **260 passed, 1 warning in 178.11 s**,
+`qa/v5.2.12/issue37-shared-reports-regression.xml`. Follow-up after the explicit
+Archive workflow: **49 passed in 22.79 s**,
+`qa/v5.2.12/issue37-shared-archive-regression.xml`. These runs overlap.
+The warning is the existing Starlette/AnyIO deprecation.
+Guide/translation/Archive UI checks: **15 passed in 11.30 s**,
+`qa/v5.2.12/issue37-guide-regression.xml`. Updated the TH/EN source guide,
+in-app report instructions, Archive screenshot and 25-page PDF, and visually
+checked the changed pages. Removed the incorrect claim that shared work was
+deferred to the next release. The final guide still depends on finished flows.
 
 ## Implemented and exercised with synthetic installations
 
@@ -79,15 +159,11 @@ usage and settings continuously.
    before starting peer sessions; do not create an unrelated local settings root
    or infer a used printer's starting meter. Include review, cancellation,
    retry, conflicting groups and manual IP in the actual user flow.
-3. Complete ordinary report/history integration. Imported Web events currently
-   populate evidence/maxima and live views. They **do not populate the legacy
-   daily/subject/raw report tables or billed history by themselves**. Implement
-   a deterministic projection/reconciliation path with event provenance,
-   duplicate and out-of-order handling, missing-day allocation/graph remarks,
-   dated prices, Slot boundaries and explicit revisions for closed reports.
-   Do not simply replay old serials into the active printer's mutable cache.
-   `devices.last_total`/Host meter telemetry is also not updated by the new live
-   view projection. No test here claims those downstream paths are complete.
+3. Complete the remaining accounting/legacy reconciliation. Ordinary derived
+   reports and explicit old-archive indexing are now integrated as described
+   above. They do not create new original financial ledger postings, silently
+   replace legacy closed rows or update `devices.last_total`/Host telemetry.
+   Preserve the reviewed correction workflow and price/Slot boundaries.
 4. Finish enrollment/recovery UX and policies. Address recovery currently needs
    the local report Web service to answer discovery/contact requests. Revocation
    is local; recovery/key rotation and sharing historical identities of removed

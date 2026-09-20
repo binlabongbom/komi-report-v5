@@ -7,8 +7,15 @@ class HistoryArchive:
     def __init__(self, database_path=None):
         self.archives = (WebObservationArchive(database_path), ReportDetailArchive(database_path))
         self.next_kind = 0
+        self._report_index_ready = False
 
     def archive_batch(self, *, today=None):
+        if not self._report_index_ready:
+            from services.shared_report_index import backfill_batch
+            indexed = backfill_batch(self.archives[0].path)
+            if indexed:
+                return {'events': 0, 'indexed': indexed}
+            self._report_index_ready = True
         # Alternate kinds so years of Web rounds cannot starve daily history.
         for _ in self.archives:
             archive = self.archives[self.next_kind]

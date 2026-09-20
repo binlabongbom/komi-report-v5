@@ -268,11 +268,12 @@ def _write_report_workbook(target, report):
             notes.column_dimensions[column].width = 26
         notes.column_dimensions['D'].width = 40
         notes.column_dimensions['G'].width = 100
-    amended = [record for record in records if record.remarks]
-    if amended:
-        notes = workbook.create_sheet("หมายเหตุฉบับแก้ไข")
+    noted_records = [record for record in records if record.remarks]
+    if noted_records:
+        all_amended = all(any(note.startswith('ฉบับแก้ไข') for note in r.remarks) for r in noted_records)
+        notes = workbook.create_sheet('หมายเหตุฉบับแก้ไข' if all_amended else 'หมายเหตุรายงาน')
         notes.append(["Slot", "Serial", "เริ่มช่วง", "สิ้นสุดช่วง", "หมายเหตุ"])
-        for record in amended:
+        for record in noted_records:
             notes.append([record.device_slot + 1,
                 _neutralize_untrusted_cell_string(record.device_serial_snapshot)[0],
                 record.period_start.isoformat(), record.period_end.isoformat(),

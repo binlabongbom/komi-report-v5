@@ -43,6 +43,8 @@ log = logging.getLogger(__name__)
 _db_path = DB_PATH
 _report_read_path = ContextVar('report_read_path', default=None)
 _report_read_cancelled = ContextVar('report_read_cancelled', default=None)
+_report_read_components = ContextVar('report_read_components', default=None)
+_report_read_yield_at = ContextVar('report_read_yield_at', default=0.0)
 _read_cache_lock = threading.RLock()
 _all_readings_cache: dict[int, list] = {}
 _monthly_summary_cache: dict[int, dict] = {}
@@ -65,6 +67,9 @@ _USAGE_RESET_TABLES = (
     "report_revision_subject_periods",
     "peer_billing_amendments",
     "web_catchup_progress",
+    "shared_report_days",
+    "shared_report_months",
+    "shared_report_events",
     "slot_meter_epoch_outbox",
     "slot_meter_maxima",
     "slot_meter_epoch_state",
@@ -112,6 +117,9 @@ _FACTORY_RESET_TABLES = (
     "report_revision_subject_periods",
     "peer_billing_amendments",
     "web_catchup_progress",
+    "shared_report_days",
+    "shared_report_months",
+    "shared_report_events",
     "slot_meter_epoch_outbox",
     "slot_meter_maxima",
     "slot_meter_epoch_state",
@@ -224,11 +232,35 @@ def report_read_database(path, *, cancelled=None):
     """
     token = _report_read_path.set(Path(path).resolve())
     cancel_token = _report_read_cancelled.set(cancelled)
+    cache_token = _report_read_components.set({})
+    yield_token = _report_read_yield_at.set(0.0)
     try:
         yield
     finally:
         _report_read_cancelled.reset(cancel_token)
+        _report_read_components.reset(cache_token)
+        _report_read_yield_at.reset(yield_token)
         _report_read_path.reset(token)
+
+
+def report_read_checkpoint():
+    """Make Python projection loops as cancellable/responsive as SQLite reads."""
+    event = _report_read_cancelled.get()
+    if event is None:
+        return
+    from concurrent.futures import CancelledError
+    from time import monotonic, sleep
+    if event.is_set():
+        raise CancelledError()
+    now = monotonic()
+    if now - _report_read_yield_at.get() >= .02:
+        sleep(.001)
+        _report_read_yield_at.set(monotonic())
+
+
+def report_read_components():
+    """Optional request-local cache, discarded when the report worker exits."""
+    return _report_read_components.get()
 
 
 def copy_database_for_first_run(destination: Path) -> Path:

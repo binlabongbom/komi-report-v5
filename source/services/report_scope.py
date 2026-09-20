@@ -19,6 +19,7 @@ def report_slots() -> list[int]:
                UNION SELECT device_slot FROM daily_meter_records
                UNION SELECT device_slot FROM daily_subject_records
                UNION SELECT device_slot FROM archived_subject_periods
+               UNION SELECT device_slot FROM slot_meter_heads
                ORDER BY 1"""
         ).fetchall()
     return [int(row[0]) for row in rows]

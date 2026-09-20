@@ -4,13 +4,15 @@ from datetime import date
 import logging
 from threading import Event
 
-from PyQt6.QtCore import QObject, QTimer
+from PyQt6.QtCore import QObject, QTimer, pyqtSignal
 from services.history_archive import HistoryArchive
 
 log = logging.getLogger(__name__)
 
 
 class ArchiveMaintenance(QObject):
+    reports_indexed = pyqtSignal()
+
     def __init__(self, parent=None, *, archive=None, busy=lambda: False, today=date.today):
         super().__init__(parent)
         self.archive = archive or HistoryArchive()
@@ -21,6 +23,7 @@ class ArchiveMaintenance(QObject):
         self.cancelled = Event()
         self.started = False
         self.completed_day = None
+        self._indexed_since_refresh = False
         self.timer = QTimer(self)
         self.timer.setSingleShot(True)
         self.timer.timeout.connect(self.tick)
@@ -57,6 +60,12 @@ class ArchiveMaintenance(QObject):
                 pipeline_log.append(stage="DB", action="History archive failed", target="archives",
                     value="ข้อมูลชุดที่ไม่ผ่านยังอยู่ในฐานข้อมูล", detail="ตรวจพื้นที่และสิทธิ์โฟลเดอร์ก่อนลองใหม่ในหน้าตั้งค่า", status="error")
             else:
+                batch = result.get('batch')
+                if batch and batch.get('indexed'):
+                    self._indexed_since_refresh = True
+                elif not result.get('deferred') and self._indexed_since_refresh:
+                    self._indexed_since_refresh = False
+                    self.reports_indexed.emit()
                 if not result.get("deferred") and result.get("batch") is None:
                     self.completed_day = today
         if self.completed_day == today:

@@ -1,12 +1,13 @@
 # KOMI Report 5.2.12 — คู่มือ source ระหว่างพัฒนา
 
-เอกสารวันที่ 19 กันยายน 2569 ยังไม่ใช่คู่มือชุดติดตั้งหรือการอนุมัติ build
+เอกสารวันที่ 20 กันยายน 2569 ยังไม่ใช่คู่มือชุดติดตั้งหรือการอนุมัติ build
 ภาพเป็นหน้าจอที่รันจาก source ด้วยข้อมูลจำลอง ไม่มีข้อมูลลูกค้าจริง
 ใช้คู่มือนี้ตรวจส่วนที่พัฒนาแล้ว ส่วนที่ยังไม่เปิดใช้ระบุท้ายเอกสาร
 
-**ขอบเขตรุ่นนี้:** ใช้ Host เดิม ไม่แก้ฝั่ง Host การเชื่อมสมาชิกอัตโนมัติและผู้อ่านร่วม
-ที่ต้องพึ่งสิทธิ์สมาชิกจาก Host เก็บไว้เวอร์ชันหน้า รุ่นนี้ยังไม่เปิดใช้ Sync ใหม่กับหลายคอมจริง
-การตั้งค่า การอ่าน และการแก้รายงานในคอมนี้ยังใช้งานตามขั้นตอนด้านล่าง
+**ขอบเขตรุ่นนี้:** ใช้ Host เดิม ไม่แก้ฝั่ง Host การเชื่อมสมาชิก Sync ต่อเนื่อง
+และผู้อ่านร่วมยังเป็นงานของ 5.2.12 ระบบรับส่งผ่าน HTTPS และรายงานจากหลักฐานร่วม
+ทดสอบจาก source แล้ว ส่วน Wizard เชื่อมสมาชิกครั้งแรกและการกู้สมาชิกยังพัฒนาไม่ครบ
+การรับค่าตอนติดตั้งในหน้าปัจจุบันยังเป็นสำเนาครั้งเดียว จึงยังไม่ใช่ขั้นตอนเปิด Sync ต่อเนื่อง
 
 ## การตั้งค่าเครือข่าย
 
@@ -26,7 +27,7 @@
 ![สถานะเครือข่ายด้วยข้อมูลจำลอง](customer-guide/assets-v5.2.12-source/network-activity.png)
 
 ภาพนี้ใช้สมาชิกและคิวจำลองเพื่อแสดงความหมายของแต่ละสถานะ การเชื่อมสมาชิกและ
-ส่งข้อมูลผ่าน HTTPS ทดสอบแล้วด้วยฐานจำลอง การเปิดเชื่อมสมาชิกจริงเก็บไว้เวอร์ชันหน้า
+ส่งข้อมูลผ่าน HTTPS ทดสอบแล้วด้วยฐานจำลอง ขั้นตอนเปิดเชื่อมสมาชิกจริงยังอยู่ระหว่างพัฒนาในรุ่นนี้
 
 ## ส่งออกรายงานเป็น Excel
 
@@ -44,7 +45,7 @@ popup จะแสดง **กำลังยกเลิก** จนงาน�
 
 ![ความคืบหน้าระหว่างส่งออกจริงด้วยข้อมูลจำลอง](customer-guide/assets-v5.2.12-source/reports-excel-progress.png)
 
-เมื่อเสร็จระบบแจ้งตำแหน่งไฟล์ รายงานมี 6 แผ่นหลัก และแผ่นหมายเหตุเมื่อมีฉบับแก้ไข
+เมื่อเสร็จระบบแจ้งตำแหน่งไฟล์ รายงานมี 6 แผ่นหลัก และแผ่นหมายเหตุเมื่อมีช่วงขาดข้อมูลหรือฉบับแก้ไข
 ไฟล์ใช้ช่วงวันที่และฐานข้อมูลที่เลือกตอนเริ่มส่งออก หากยกเลิกหรือเกิดข้อผิดพลาด
 ระบบไม่แทนไฟล์เดิมด้วยไฟล์ที่เขียนไม่ครบ หากแจ้งว่าเขียนไฟล์ไม่ได้ ให้ปิดไฟล์นั้น
 ใน Excel หรือเลือกชื่อ/โฟลเดอร์ใหม่ แล้วส่งออกอีกครั้ง
@@ -64,7 +65,8 @@ popup จะแสดง **กำลังยกเลิก** จนงาน�
 กด Tab เพื่อเลื่อนไปตามปุ่ม กรอบสีฟ้าบอกตำแหน่ง keyboard focus
 หน้าตรวจรอบบิลแสดงรายการเป็นหลัก เลือกแถวเพื่อเปิดรายละเอียด เครื่องพิมพ์ วันที่ และยอดก่อน/หลัง
 หลักฐานทางเทคนิคอยู่ในส่วนที่กดขยายและคัดลอกได้ ต้องกรอกเหตุผลในช่องที่มีป้ายกำกับก่อนยืนยัน
-ค่าที่บันทึกมีผลบนคอมนี้ รุ่นนี้ยังไม่ส่งการเปลี่ยนแปลงให้คอมอื่นอัตโนมัติ การรับค่าตอนติดตั้งเป็นสำเนาครั้งเดียว
+ค่าที่บันทึกมีผลบนคอมนี้ การส่งต่อทำเมื่อเชื่อมสมาชิกต่อเนื่องแล้วและต้องตรวจสถานะยืนยันรับ
+การรับค่าตอนติดตั้งเป็นสำเนาครั้งเดียว ยังไม่สร้างสมาชิกต่อเนื่องใน Wizard ปัจจุบัน
 หากยังอ่าน Counter ไม่ได้ รายการที่เคยเลือกจะคงอยู่ การเอาทุกตัวออกต้องยืนยันอีกครั้ง
 
 ## ตรวจประวัติและช่วงขาดการอ่าน
@@ -128,7 +130,7 @@ ledger หรือเอกสารเรียกเก็บเดิม แ
 - เปิด Archive เฉพาะช่วงที่ขอตรวจได้ แต่ไม่เขียนทับหลักฐานเก่า และยังไม่แก้รายละเอียดผู้ใช้/Raw Counter ที่จัดเก็บแล้ว
 - ฉบับแก้ไขและคิวส่งบันทึกพร้อมกัน สมาชิกปลายทางตรวจหลักฐานและบัญชีเดิมของตนก่อนรับ
   ถ้าหลักฐานยังขาดหรือบัญชีต่างกัน รายการจะคงรอส่ง การส่งซ้ำไม่เพิ่มบัญชีซ้ำ
-  การเปิดใช้กับสมาชิกจริงและการเชื่อมสิทธิ์จาก Host เก็บไว้เวอร์ชันหน้า
+  ขั้นตอนเชื่อมสมาชิกจริงยังต้องพัฒนาในรุ่นนี้ ส่วนงานแก้ Host แยกไว้เวอร์ชันหน้า
 
 ## ตรวจฐานมิเตอร์ของ Slot
 
@@ -144,7 +146,7 @@ ledger หรือเอกสารเรียกเก็บเดิม แ
 ![ตรวจฐานเครื่องทดแทนจากข้อมูลจำลอง](customer-guide/assets-v5.2.12-source/slot-baseline-preview.png)
 
 ฐานและประวัติการตั้งค่าจะบันทึกพร้อมกัน การยืนยันนี้ไม่อนุมัติยอดเรียกเก็บที่รอตรวจ
-และยังไม่ยืนยันว่าเครื่องอื่นได้รับข้อมูลแล้ว การเปิดส่งจริงระหว่างสมาชิกเก็บไว้เวอร์ชันหน้า
+และยังไม่ยืนยันว่าเครื่องอื่นได้รับข้อมูลแล้ว ตรวจการยืนยันรับในหน้าการตั้งค่าเครือข่ายเมื่อเชื่อมสมาชิกต่อเนื่องแล้ว
 
 ## อ่านข้อมูลเดี๋ยวนี้
 
@@ -154,8 +156,8 @@ ledger หรือเอกสารเรียกเก็บเดิม แ
 ส่วนนี้ทดสอบการประสานงานภายในคอมแล้ว และทดสอบ source จำลองสามคอมแยกฐาน:
 เลือกผู้อ่านตามรอบอัตโนมัติ คงผู้ทำงานเดิม รับช่วงเมื่อเครื่องดับ และให้ผู้กดพร้อมกัน
 รับผลจากงานเดียวกัน โดยใช้เวลาอ่านจริง ไม่แสดงข้อมูลเก่าเป็นผลสำเร็จใหม่
-การเปิดใช้กับหลายคอมจริงเก็บไว้เวอร์ชันหน้า พร้อมการยืนยันสิทธิ์สมาชิก
-จึงยังไม่ถือว่าการทดสอบติดตั้งหรือใช้งานเครือข่ายจริงผ่าน
+ขั้นตอนเปิดใช้กับหลายคอมจริงยังต้องพัฒนาให้ครบในรุ่นนี้
+ผล source จึงยังไม่ถือว่าการทดสอบติดตั้งหรือใช้งานเครือข่ายจริงผ่าน
 
 ## ประวัติการตั้งค่าและราคา
 
@@ -238,6 +240,19 @@ ledger หรือเอกสารเรียกเก็บเดิม แ
 - พื้นที่ว่างในฐานข้อมูลนำกลับมาใช้ได้ ขนาดไฟล์บนดิสก์อาจไม่ลดทันที
 - การล้างข้อมูลใช้งานไม่ลบไฟล์ Archive เก่าหรือสำเนาสำรองบนดิสก์อัตโนมัติ
 
+หากประวัติ Web เก่าถูกจัดเก็บก่อนมีสรุปรายงานร่วม กด **เติมรายงานจากประวัติที่จัดเก็บแล้ว**
+เพื่ออ่านไฟล์เก่าและเติมสรุปเฉพาะส่วนที่ขาด การเปิดหน้านี้เฉย ๆ ไม่เริ่มอ่านไฟล์ Archive
+งานทำเบื้องหลัง กด **หยุดหลังจบชุดนี้** ได้ และกดเติมอีกครั้งเพื่อทำต่อโดยไม่เพิ่มยอดซ้ำ
+เมื่อเสร็จ รีเฟรชหน้ารายงาน หากแจ้งว่าเติมไม่สำเร็จ ให้ตรวจไฟล์ **archives** และสิทธิ์อ่านแล้วลองใหม่
+รายการที่เสร็จแล้วคงอยู่ หลักฐานและบัญชีเดิมไม่ถูกเขียนทับ
+
+รายงาน Users/Raw/Usage และ Excel ใช้หลักฐานร่วมที่เติมแล้วได้ แม้คอมนี้ไม่ได้เป็นผู้อ่านเครื่องพิมพ์
+ตารางลงยอดช่วงขาดข้อมูลวันก่อนกลับมาอ่าน พร้อมหมายเหตุและไม่สร้างเวลาอ่านปลอม
+กราฟเฉลี่ยเฉพาะวันที่ไม่มี Web โดยแสดงทศนิยมและคำว่าประมาณการ เช่น 301 หน้าเป็น 150.5 สองวัน
+Excel ใช้ยอดจัดสรรจริง 301 หน้า ไม่ใช้ค่าเฉลี่ยในกราฟแทนยอดจริง
+ยอดที่ยังไม่ลงบัญชีแสดงเป็นยอดชั่วคราว; หากหลักฐานราคา/ตัวนับไม่ครบ จะไม่สร้างยอดเงินประมาณการ
+วันที่ปิดยอดแล้วรักษาบัญชีเดิม หากหลักฐานใหม่ต่างกันต้องใช้ขั้นตอนตรวจฉบับแก้ไข
+
 รายงานรายเดือนใช้สรุปผู้ใช้ในฐานหลัก ไม่ต้องเปิดไฟล์เก่า เมื่อเลือกดูรายละเอียด
 หรือช่วงวันที่เฉพาะ ระบบจึงเปิด Archive ที่เกี่ยวข้อง ค่าตั้งต้น ค่าล่าสุด และรายการ
 ที่ยังรอตรวจมิเตอร์ยังอยู่ในฐานหลักเพื่ออ่านต่อได้ บัญชียอดเรียกเก็บเดิมยังคงอยู่
@@ -247,12 +262,12 @@ ledger หรือเอกสารเรียกเก็บเดิม แ
 แก้การแบ่งยอดด้านบนได้ รายละเอียดผู้ใช้/Raw Counter ใช้ขั้นตอนตรวจแก้รายละเอียด
 การคำนวณราคาใหม่ของ ledger เดิมยังทำได้ เพราะหลักฐานมิเตอร์รายวันของเครื่องไม่ได้ย้ายออก
 
-## เวอร์ชันถัดไปและการตรวจหลัง build
+## งานที่ยังไม่ครบในรุ่นนี้และการตรวจหลัง build
 
-- เวอร์ชันถัดไป: เชื่อมวิธียืนยันสมาชิกบริษัทและสาม Slot กับการรับ/ส่งและผู้อ่านร่วม
-  โค้ด HTTPS/คิวส่งพร้อมทดสอบด้วยฐานจำลอง ไม่ใช่หลักฐานว่าต่อสิทธิ์ของ Host จริงแล้ว
-- ตรวจเปลี่ยนเครื่อง/reset และฉบับแก้ไขผ่านสมาชิกจริงหลังมีวิธียืนยันสิทธิ์
-- หน้าสถานะและคิวฉบับแก้ไขมีแล้ว การเปิดรับสมาชิกจริงเก็บไว้เวอร์ชันหน้า
+- รุ่นนี้ยังเหลือ Wizard เชื่อมสมาชิกต่อเนื่อง การกู้สมาชิก และการเชื่อมบัญชี/ข้อมูลเดิมให้ครบ
+  ผล HTTPS/คิวส่งจากฐานจำลองยังไม่ใช่ผลติดตั้งจริงหรือหลักฐานสิทธิ์บริษัทจาก Host
+- ขอบเขตการป้องกันบริษัทเปิดหลายกลุ่มใน LAN ที่แยกขาดกันยังต้องได้ข้อสรุป
+- ตรวจเปลี่ยนเครื่อง/reset ฉบับแก้ไข และผู้อ่านร่วมผ่านขั้นตอนสมาชิกจริงเมื่อพัฒนาครบ
 - หลัง build: ตรวจ Agent ของแพ็กเกจจริง รวมบริการลูกภายใต้ workload และสองคอมจริง
 - งานที่ติด Host รวม trust path ของการลงทะเบียน/ใบรับรอง เก็บไว้เวอร์ชันหน้า
 - ภาพการติดตั้งและการใช้งานสองคอมจริงหลัง build ใช้ตรวจคู่มือฉบับส่งมอบอีกครั้ง
@@ -260,7 +275,7 @@ ledger หรือเอกสารเรียกเก็บเดิม แ
 ## English workflow reference
 
 This source guide documents version 5.2.12 before installer testing. All screenshots use synthetic data.
-Initial setup sharing is a one-time copy. Later settings changes, membership and shared-reader coordination are not automatically distributed in this release.
+Continuous membership, settings synchronization and shared-reader coordination remain in the 5.2.12 scope. Their HTTPS runtime and shared reports have source tests; first enrollment in the Wizard and member recovery are unfinished. The current Wizard still makes a one-time setup copy and does not enroll continuous members.
 Each computer keeps its own registration identity. A local save is not a delivery acknowledgement.
 
 - **Setup:** select the company, test the chosen printers and assign slots, review dated prices and billing day, then confirm the summary. During secondary setup, allow access on the sending computer and search again if discovery finds nothing.
@@ -273,6 +288,8 @@ Each computer keeps its own registration identity. A local save is not a deliver
 - **Pinned counters:** saved choices remain visible and selected when a printer has not supplied counters. Uncheck unwanted entries. Removing all saved entries requires explicit confirmation.
 - **Background agent:** closing the desktop window leaves the agent running in the system tray. Use the agent's Exit action to stop it completely. Opening the desktop again reconnects to the local data.
 - **Archive:** data older than a year can be archived. Monthly summaries remain available; detailed historical Web evidence is loaded only when requested. Keep the archive with its database when making a backup.
+- **Fill older reports:** in Archive settings, choose **Fill reports from archived history** to index previously archived Web evidence. Opening the page only reads counts. The job runs in the background; **Stop after this batch** preserves completed work and retry resumes without duplicate usage. Refresh reports afterward. Missing files or read permissions require correction and retry; original evidence and closed accounts are preserved.
+- **Shared reports:** Users, Raw and Usage reports and Excel can show received Web evidence without a local reading cache. The table allocates a missing-period total to the day before readings resume and shows a remark, with no invented reading time. Charts average only days without Web evidence and mark estimates, including decimals. Excel retains actual allocated totals. Unposted usage is provisional; closed billing remains unchanged until an explicit reviewed correction.
 
 ## ภาพหน้าจอปัจจุบัน / Current screen reference
 

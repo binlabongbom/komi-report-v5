@@ -6759,6 +6759,8 @@ class PageManual(QWidget):
                 self._txt('Each computer keeps its own identity and shares the same three printer Slots. Replacing a used printer starts from its reviewed meter baseline.' if english else
                     'แต่ละคอมมีตัวตนของตนเองและใช้ Slot เครื่องพิมพ์สามช่องชุดเดียวกัน เมื่อเปลี่ยนเป็นเครื่องมือสอง ยอดจะนับต่อจากฐานที่ตรวจยืนยันแล้ว')]))
             sections[2].layout().insertWidget(1, self._card('Missing history and revised reports' if english else 'ช่วงขาดข้อมูลและรายงานฉบับแก้ไข', [
+                self._txt('Users, Raw, Usage and Excel include received Web history. Tables allocate gap totals to the day before readings resume, with a remark and no invented reading time. Unposted usage is provisional; closed accounts retain their originals.' if english else
+                    'Users, Raw, Usage และ Excel รวมประวัติ Web ที่รับมาแล้ว ตารางลงยอดช่วงขาดวันก่อนกลับมาอ่าน พร้อมหมายเหตุและไม่สร้างเวลาอ่านปลอม ยอดที่ยังไม่ลงบัญชีเป็นยอดชั่วคราว บัญชีปิดแล้วเก็บต้นฉบับไว้'),
                 self._txt('A 301-page gap over two entirely missing days is shown as an estimated 150.5 pages per day. The graph never determines invoice amounts.' if english else
                     'ช่วงขาด 301 หน้าในสองวันที่ไม่มีข้อมูลทั้งวัน กราฟแสดงเฉลี่ยประมาณการวันละ 150.5 หน้า ไม่ใช้ค่าเฉลี่ยกราฟคิดเงิน'),
                 self._txt('Review Web evidence before confirming revised allocation. Originals remain intact and delivery awaits verified receipts. Old user/Raw details are not rewritten by this action.' if english else
@@ -6766,7 +6768,9 @@ class PageManual(QWidget):
                 self._txt('Use Review details for Web-derived user/Raw amendments. Review historical amounts in Billing Audit to approve held money; original meter warnings remain.' if english else
                     'ใช้ตรวจแก้รายละเอียดเพื่อออกฉบับผู้ใช้/Raw จากหลักฐาน Web ส่วนตรวจและแก้ยอดในหน้ารอบบิลใช้อนุมัติเงินที่พักไว้ โดยเก็บคำเตือนมิเตอร์เดิม'),
                 self._txt('Details older than twelve months can be archived. Monthly summaries remain available; older files open only when requested.' if english else
-                    'รายละเอียดเกิน 12 เดือนเก็บเป็น Archive ได้ สรุปรายเดือนยังเรียกดูได้ และเปิดไฟล์เก่าเฉพาะเมื่อขอดูรายละเอียด')]))
+                    'รายละเอียดเกิน 12 เดือนเก็บเป็น Archive ได้ สรุปรายเดือนยังเรียกดูได้ และเปิดไฟล์เก่าเฉพาะเมื่อขอดูรายละเอียด'),
+                self._txt('In Archive settings, use Fill reports from archived history to index older evidence on request. Stop after this batch preserves completed work; retry resumes without duplicate usage. Refresh reports afterward. Original evidence and closed totals are preserved.' if english else
+                    'ในหน้าจัดเก็บประวัติ กดเติมรายงานจากประวัติที่จัดเก็บแล้วเพื่ออ่านหลักฐานเก่าเมื่อสั่ง หยุดหลังจบชุดนี้ได้ และทำต่อโดยไม่เพิ่มยอดซ้ำ จากนั้นรีเฟรชรายงาน หลักฐานและยอดปิดแล้วคงเดิม')]))
 
     def _apply_i18n_visibility(self, language: str) -> None:
         self._manual_language = language

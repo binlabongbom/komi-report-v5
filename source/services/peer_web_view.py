@@ -1,7 +1,7 @@
 """Present committed shared Web snapshots without rereading the printer.
 
-This refreshes live Web/User views only. It never rewrites closed daily records,
-invoice rows or archives, and never fabricates a successful Web time from SNMP.
+This refreshes live Web/User views and invalidates shared report projections.
+It never rewrites closed records or fabricates a successful Web time from SNMP.
 """
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing
@@ -47,6 +47,12 @@ def latest_shared_views(path):
     return result
 
 
+def refresh_shared_reports_and_views(path, *, backfill=True):
+    from services.shared_report_index import backfill_batch
+    indexed = backfill_batch(path) if backfill else 0
+    return latest_shared_views(path), indexed == 32
+
+
 class PeerWebViewRuntime(QObject):
     _wake = pyqtSignal()
     _finished = pyqtSignal(object)
@@ -57,6 +63,7 @@ class PeerWebViewRuntime(QObject):
         self.polling, self.path = polling, Path(get_db_path()).resolve()
         self._pool = self._future = None
         self._pending = self._stopped = False
+        self._backfill_needed = True
         self._wake.connect(self._schedule, Qt.ConnectionType.QueuedConnection)
         self._finished.connect(self._apply, Qt.ConnectionType.QueuedConnection)
         polling.peer_history.history_received.connect(self.notify)
@@ -79,7 +86,7 @@ class PeerWebViewRuntime(QObject):
         self._pending = False
         if self._pool is None:
             self._pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix='komi-peer-view')
-        self._future = self._pool.submit(latest_shared_views, self.path)
+        self._future = self._pool.submit(refresh_shared_reports_and_views, self.path, backfill=self._backfill_needed)
         self._future.add_done_callback(self._completed)
 
     def _completed(self, future):
@@ -102,7 +109,10 @@ class PeerWebViewRuntime(QObject):
             self._pending = True
             return
         try:
-            rows = future.result()
+            rows, more = future.result()
+            self._backfill_needed = more
+            self._pending |= more
+            refreshed = set()
             for row in rows:
                 # Configuration application runs on this same Qt owner thread.
                 # A delayed worker result cannot overwrite a newly adopted Slot.
@@ -117,6 +127,13 @@ class PeerWebViewRuntime(QObject):
                     epoch_id=row['epoch_id'], event_id=row['event_id'], preserve_newer=True)
                 if snapshot is not before:
                     self.polling.device_updated.emit(row['slot'])
+                    refreshed.add(row['slot'])
+            # A newly received historical event can change reports while the
+            # maximum/live snapshot remains identical. Invalidate those views too.
+            with closing(sqlite3.connect(self.path)) as conn:
+                slots = [r[0] for r in conn.execute('SELECT device_slot FROM slot_meter_heads')]
+            for slot in set(slots) - refreshed:
+                self.polling.device_updated.emit(slot)
         except (ValueError, PermissionError, OSError, sqlite3.Error):
             # Committed evidence remains available for review/recovery. A view
             # refresh is not permission to re-read or modify financial records.

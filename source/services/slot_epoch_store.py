@@ -242,5 +242,7 @@ class SlotEpochStore:
                         flags = set(json.loads(state[0])) | {"late_parent_evidence"}
                         conn.execute("UPDATE slot_meter_epoch_state SET version=version+1,issues_json=? WHERE epoch_id=?", (_json(sorted(flags)), child))
         conn.execute("INSERT INTO slot_meter_assignments VALUES(?,?)", (event["id"], epoch["id"]))
+        from services.shared_report_index import index_event
+        index_event(conn, epoch, event)
         conn.execute("UPDATE slot_meter_epoch_state SET version=version+1,issues_json=? WHERE epoch_id=?", (_json(sorted(issues)), epoch["id"]))
         return True

@@ -679,6 +679,17 @@ def load_subject_history(
             for item in state.get("subjects", {}).values()
         )
 
+    from services.shared_report_history import subject_records
+    with _open(commit=False) as conn:
+        shared = subject_records(conn, slots, start=source_start, end=source_end,
+                                 existing=[record for record, _ in daily])
+    for record in shared:
+        period = frozen_periods.get((record.device_slot, record.record_date))
+        effective = period or billing_month_range(record.record_date, billing_day)
+        archived_key = (*effective, record.device_slot, record.device_identity, record.subject_type, record.subject_id)
+        if archived_key not in archived_buckets:
+            daily.append((record, period))
+
     buckets = aggregate_subject_days(daily, billing_day, period_start=period_start,
         period_end=period_end, only_period=only_period, only_periods=only_periods, buckets=archived_buckets)
     return subject_period_results(buckets)

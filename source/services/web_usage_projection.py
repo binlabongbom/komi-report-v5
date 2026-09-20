@@ -161,8 +161,26 @@ def project_counter(events, *, slot: int, serial: str, epoch_id: str,
                    for at, group in sorted(by_time.items()))
     if any(len({value for value, _ in group}) > 1 for group in by_time.values()):
         issues.add("same_time_counter_conflict")
+    revision_data = {"epoch": epoch_id, "slot": slot, "serial": serial,
+                     "counter": (counter.field, counter.subject_type, counter.subject_id),
+                     "events": sorted(unique), "calendar_points": [p.at.isoformat() for p in points],
+                     "billing_day": billing_day, "price_dates": [d.isoformat() for d in changes]}
+    return project_points(points, epoch_id=epoch_id, web_days=web_days, issues=issues,
+        billing_day=billing_day, price_change_dates=changes, revision_data=revision_data)
+
+
+def project_points(points, *, epoch_id, web_days, issues, billing_day, price_change_dates, revision_data, opening_high=None):
+    """Internal reducer for validated journal points and their compact daily index.
+
+    Points must be sorted, unique by timestamp and carry original evidence IDs.
+    Only the journal/index adapters may call this; network input uses validate_event.
+    """
+    issues = set(issues)
+    changes = price_change_dates
     intervals = []
     high = points[0].value if points else Fraction()
+    if opening_high is not None:
+        high = max(high, opening_high)
     counter_review = False
     for left, right in zip(points, points[1:]):
         if right.value < high:
@@ -176,7 +194,7 @@ def project_counter(events, *, slot: int, serial: str, epoch_id: str,
         holds = set()
         if counter_review:
             holds.add("counter_baseline_review_required")
-        if len(schemas) > 1:
+        if "normalization_schema_changed" in issues:
             holds.add("normalization_schema_changed")
         if "same_time_counter_conflict" in issues:
             holds.add("same_time_counter_conflict")
@@ -190,9 +208,5 @@ def project_counter(events, *, slot: int, serial: str, epoch_id: str,
             holds.add("selected_counter_missing_on_observed_days")
         allocation = right.at.date() - timedelta(days=1) if empty_days else right.at.date()
         intervals.append(UsageInterval(left, right, amount, allocation, empty_days, tuple(sorted(holds))))
-    revision_data = {"epoch": epoch_id, "slot": slot, "serial": serial,
-                     "counter": (counter.field, counter.subject_type, counter.subject_id),
-                     "events": sorted(unique), "calendar_points": [p.at.isoformat() for p in points],
-                     "billing_day": billing_day, "price_dates": [d.isoformat() for d in changes]}
     revision = hashlib.sha256(json.dumps(revision_data, sort_keys=True).encode()).hexdigest()
     return CounterProjection(epoch_id, revision, points, tuple(intervals), tuple(sorted(issues)))

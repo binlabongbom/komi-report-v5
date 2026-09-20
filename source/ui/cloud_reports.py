@@ -419,6 +419,8 @@ class CloudReportsWidget(QWidget):
         self._records: tuple = ()
         self._daily_records: tuple = ()
         self._usage_daily_records: tuple = ()
+        self._chart_daily_records: tuple = ()
+        self._selected_chart_days: tuple = ()
         self._monthly_records: tuple = ()
         self._subjects: tuple = ()
         self._devices: tuple = ()
@@ -534,6 +536,11 @@ class CloudReportsWidget(QWidget):
         self.error_label.setWordWrap(True)
         self.error_label.hide()
         root.addWidget(self.error_label)
+        self.report_note_label = QLabel('')
+        self.report_note_label.setObjectName('cloud_subtitle')
+        self.report_note_label.setWordWrap(True)
+        self.report_note_label.hide()
+        root.addWidget(self.report_note_label)
         self.loading_panel = QWidget()
         loading_layout = QHBoxLayout(self.loading_panel)
         loading_layout.setContentsMargins(0, 0, 0, 0)
@@ -1449,6 +1456,7 @@ class CloudReportsWidget(QWidget):
         records: Iterable,
         daily_records: Iterable,
         usage_daily_records: Iterable | None = None,
+        chart_daily_records: Iterable | None = None,
         monthly_records: Iterable | None = None,
         subjects: Iterable,
         devices: Iterable,
@@ -1477,11 +1485,28 @@ class CloudReportsWidget(QWidget):
         self._usage_daily_records = (
             tuple(usage_daily_records) if usage_daily_records is not None else self._daily_records
         )
+        self._chart_daily_records = tuple(chart_daily_records) if chart_daily_records is not None else self._usage_daily_records
+        self._selected_chart_days = tuple(r for r in self._chart_daily_records
+            if period is None or (str(r.period_start) <= period[1] and str(r.period_end) >= period[0]))
         self._monthly_records = tuple(monthly_records) if monthly_records is not None else self._records
         self._subjects = tuple(subjects)
         self._devices = tuple(devices)
         self._legacy_history = tuple(legacy_history or ())
         self._raw_counter_records = tuple(raw_counter_records or ())
+        notes = {note for record in (*self._records, *self._subjects, *self._raw_counter_records)
+                 for note in (*getattr(record, 'remarks', ()), *getattr(record, 'warnings', ()))}
+        report_notes = []
+        if any('ยอดสะสมช่วงขาดการอ่าน' in note for note in notes):
+            report_notes.append(tr('ช่วงขาดข้อมูล: ตารางลงยอดวันก่อนกลับมาอ่านได้ กราฟเฉลี่ยเฉพาะวันที่ไม่มีข้อมูล Web',
+                'Missing readings: tables allocate usage to the day before reading resumes; charts average only days with no Web data.'))
+        if any('รายงานที่ปิดแล้ว' in note for note in notes):
+            report_notes.append(tr('พบหลักฐานเพิ่มเติมในรายงานที่ปิดแล้ว ต้องตรวจฉบับแก้ไขก่อนเปลี่ยนยอดเดิม',
+                'Additional evidence overlaps a closed report. Review an amendment before changing its recorded totals.'))
+        if any('ยังไม่ได้ลงบัญชี' in note for note in notes):
+            report_notes.append(tr('ยอดหลักฐานร่วมที่ยังไม่ได้ลงบัญชีแสดงเป็นยอดชั่วคราว',
+                'Shared usage that has not been posted to the ledger is shown as provisional.'))
+        self.report_note_label.setText('\n'.join(report_notes))
+        self.report_note_label.setVisible(bool(report_notes))
         self._usage_meter_baselines = tuple(usage_meter_baselines or ())
         self._legacy_usage_records = build_legacy_usage_intervals(self._legacy_history)
         self._period = period
@@ -2397,7 +2422,17 @@ class CloudReportsWidget(QWidget):
         )
         if all_baselines_by_slot:
             self._style_baseline_row(self.usage_by_printer_table)
-        chronological = [row for _period, row in sorted(totals_by_period.items())]
+        chart_totals = {}
+        estimated = False
+        for record in self._usage_records(granularity, graph=True):
+            if int(getattr(record, 'device_slot', 0)) not in self._usage_selected_slots:
+                continue
+            value_label, period_key = self._usage_period(record, granularity)
+            row = chart_totals.setdefault(period_key, {'period': value_label, **{name: 0.0 for name in usage_fields}})
+            for field, value in self._usage_values(record).items():
+                row[field] += value
+            estimated |= any('ค่าเฉลี่ยประมาณการ' in note for note in getattr(record, 'remarks', ()))
+        chronological = [row for _period, row in sorted(chart_totals.items())]
         replace_chart(self.usage_timeline_chart,
             self._multi_line_chart(
                 tuple(row["period"] for row in chronological),
@@ -2421,6 +2456,9 @@ class CloudReportsWidget(QWidget):
                 ),
             )
         )
+        if estimated:
+            self.usage_timeline_chart.chart().setTitle(tr('วันที่ไม่มีข้อมูล Web แสดงค่าเฉลี่ยประมาณการ',
+                                                        'Days without Web readings show estimated averages'))
         apply_language(self)
 
     @staticmethod
@@ -2429,8 +2467,9 @@ class CloudReportsWidget(QWidget):
             return "—"
         return _money(value) if field == "cost" else _number(value)
 
-    def _usage_records(self, granularity: str) -> tuple:
-        v5_records = self._usage_daily_records if granularity == "D" else self._monthly_records
+    def _usage_records(self, granularity: str, *, graph=False) -> tuple:
+        daily = self._chart_daily_records if graph else self._usage_daily_records
+        v5_records = daily if granularity == "D" else self._monthly_records
         cutoff_records = self._usage_daily_records or self._monthly_records
         first_v5_by_slot: dict[int, date] = {}
         for record in cutoff_records:
@@ -2538,7 +2577,7 @@ class CloudReportsWidget(QWidget):
         grouped: dict[str, dict[str, float]] = defaultdict(
             lambda: {"print": 0.0, "copy": 0.0}
         )
-        for record in self._daily_records:
+        for record in self._selected_chart_days:
             if identity and _record_identity(record) != identity:
                 continue
             start = str(record.period_start)
@@ -2560,7 +2599,7 @@ class CloudReportsWidget(QWidget):
             lambda: defaultdict(lambda: {"print": 0.0, "copy": 0.0})
         )
         all_dates: set[str] = set()
-        for record in self._daily_records:
+        for record in self._selected_chart_days:
             start = str(record.period_start)
             label = start[5:] if len(start) >= 10 else start
             all_dates.add(label)
@@ -2611,6 +2650,11 @@ class CloudReportsWidget(QWidget):
             series.setName(name)
             series.setColor(QColor(color))
             series.setPointsVisible(True)
+            from PyQt6.QtWidgets import QToolTip
+            from PyQt6.QtGui import QCursor
+            series.hovered.connect(lambda point, entered, name=name: QToolTip.showText(QCursor.pos(),
+                f'{name}: {point.y():,.2f}' if not point.y().is_integer() else f'{name}: {point.y():,.0f}')
+                if entered else QToolTip.hideText())
             for index, value in enumerate(values):
                 series.append(float(index), float(value))
                 maximum = max(maximum, float(value))
@@ -2621,7 +2665,7 @@ class CloudReportsWidget(QWidget):
         axis_x.setLabelsAngle(-45)
         axis_y = QValueAxis()
         axis_y.setRange(0, max(1.0, maximum * 1.18))
-        axis_y.setLabelFormat("%.0f")
+        axis_y.setLabelFormat('%.2f' if any(not float(v).is_integer() for _, values, _ in series_data for v in values) else '%.0f')
         axis_y.setTickCount(4)
         axis_y.applyNiceNumbers()
         axis_font = QFont()
@@ -2666,6 +2710,11 @@ class CloudReportsWidget(QWidget):
             bar = QBarSet(name)
             bar.append([float(value) for value in values])
             bar.setColor(QColor(color))
+            from PyQt6.QtWidgets import QToolTip
+            from PyQt6.QtGui import QCursor
+            bar.hovered.connect(lambda entered, index, values=values, name=name: QToolTip.showText(QCursor.pos(),
+                f'{name}: {values[index]:,.2f}' if not float(values[index]).is_integer() else f'{name}: {values[index]:,.0f}')
+                if entered else QToolTip.hideText())
             maximum = max(maximum, *(float(value) for value in values), 0.0)
             series.append(bar)
         chart.addSeries(series)
@@ -2673,7 +2722,7 @@ class CloudReportsWidget(QWidget):
         axis_x.append(list(categories))
         axis_y = QValueAxis()
         axis_y.setRange(0, max(1.0, maximum * 1.18))
-        axis_y.setLabelFormat("%.0f")
+        axis_y.setLabelFormat('%.2f' if any(not float(v).is_integer() for _, values, _ in series_data for v in values) else '%.0f')
         axis_y.setTickCount(4)
         axis_y.applyNiceNumbers()
         axis_font = QFont()

@@ -17,7 +17,7 @@ def test_background_payload_matches_existing_report_semantics(monkeypatch, index
     devices = [SimpleNamespace(last_success_at="2026-09-08T12:00:00")]
     for module in (v5_pages, report_snapshot):
         monkeypatch.setattr(module, "report_slots", lambda: [0])
-        monkeypatch.setattr(module, "load_usage_history", lambda slots,granularity,cache: monthly if granularity=="monthly" else daily)
+        monkeypatch.setattr(module, "load_usage_history", lambda slots,granularity,cache,**kwargs: monthly if granularity=="monthly" else daily)
         monkeypatch.setattr(module, "load_subject_history", lambda *args, **kwargs: subjects)
         monkeypatch.setattr(module, "load_raw_counter_history", lambda *args, **kwargs: ("raw",))
         monkeypatch.setattr(module, "load_imported_legacy_history", lambda: ("legacy",))

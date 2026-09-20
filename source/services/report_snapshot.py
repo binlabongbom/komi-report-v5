@@ -106,6 +106,8 @@ def _load_report_snapshot(index, selected, *, cache, subject_cache, repository, 
     checkpoint()
     start, end = map(date.fromisoformat, selected)
     daily = tuple(record for record in usage_daily if record.period_start <= end and record.period_end >= start)
+    chart_daily = read('daily_graph', lambda: tuple(load_usage_history(
+        slots, granularity='daily', cache=cache, graph=True))) if index in {0, 3} else usage_daily
     selected_monthly = tuple(record for record in monthly if key(record) == selected)
     subject_range = {"period_start": start, "period_end": end} if not canonical else {"only_period": (start, end)}
     subjects = read("subjects", lambda: tuple(
@@ -129,6 +131,7 @@ def _load_report_snapshot(index, selected, *, cache, subject_cache, repository, 
     last_sync = max((str(device.last_success_at) for device in devices if getattr(device, "last_success_at", None)), default=None)
     return ReportSnapshot(tuple(periods), MappingProxyType(dict(
         records=selected_monthly or daily, daily_records=daily, usage_daily_records=usage_daily,
+        chart_daily_records=chart_daily,
         monthly_records=monthly, subjects=subjects, devices=devices, legacy_history=legacy,
         raw_counter_records=raw, usage_meter_baselines=baselines, period=selected, last_sync_at=last_sync,
         prepared_models=MappingProxyType(models),
