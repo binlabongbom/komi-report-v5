@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import uuid
+from functools import lru_cache
 from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
@@ -53,10 +54,20 @@ def _identity_snapshot(value: object, slot: int) -> tuple[str, str, str]:
 
 def _source_identity(source_json: object, slot: int) -> tuple[str, str, str]:
     try:
-        source = json.loads(source_json) if isinstance(source_json, str) else source_json
+        source = _parsed_source_json(source_json) if isinstance(source_json, str) else source_json
     except json.JSONDecodeError:
         source = {}
     return _identity_snapshot(source, slot)
+
+
+@lru_cache(maxsize=4096)
+def _parsed_source_json(raw: str) -> object:
+    return json.loads(raw)
+
+
+@lru_cache(maxsize=4096)
+def _parsed_warnings_json(raw: str) -> tuple[str, ...]:
+    return tuple(json.loads(raw))
 
 
 @dataclass(frozen=True)
@@ -350,6 +361,12 @@ class SubjectDailyCacheStore:
         state = self.load(slot, day)
         if not state:
             return ()
+        from services.group_meter_scope import group_epoch_covers_day
+        with _open(commit=False) as conn:
+            if group_epoch_covers_day(conn, slot, day):
+                # A member's local opening is not the group-wide user opening.
+                # Keep the original cache for review and shared report fallback.
+                return ()
         now = datetime.now().astimezone().isoformat(timespec="seconds")
         records: list[SubjectDailyRecord] = []
         expected = {
@@ -659,7 +676,14 @@ def load_subject_history(
                 daily.append((record, period))
 
     cache_store = cache or SubjectDailyCacheStore()
+    from services.group_meter_scope import group_epoch_covers_day
+    with _open(commit=False) as conn:
+        grouped_current_slots = {
+            slot for slot in slots if group_epoch_covers_day(conn, slot, current)
+        }
     for slot in slots:
+        if slot in grouped_current_slots:
+            continue
         if (source_start is not None and current < source_start) or (source_end is not None and current > source_end):
             continue
         state = cache_store.load(slot, current)
@@ -701,12 +725,12 @@ SUBJECT_COLUMNS = ("device_slot", "record_date", "subject_type", "subject_id", "
 
 
 def subject_record_from_row(row):
-    device_identity, device_name, device_serial = _source_identity(row[15], int(row[0]))
     try:
-        raw = json.loads(row[15] or '{}')
-        audit = raw.get('report_amendment', {}) if isinstance(raw, dict) else {}
+        raw = _parsed_source_json(row[15] or '{}')
     except (TypeError, ValueError):
-        audit = {}
+        raw = {}
+    device_identity, device_name, device_serial = _identity_snapshot(raw, int(row[0]))
+    audit = raw.get('report_amendment', {}) if isinstance(raw, dict) else {}
     remarks = ('ฉบับแก้ไขจากหลักฐาน Web', *audit.get('remarks', ())) if audit else ()
     return SubjectDailyRecord(
         device_slot=int(row[0]),
@@ -723,7 +747,7 @@ def subject_record_from_row(row):
         first_success=row[11],
         last_success=row[12],
         incomplete=bool(row[13]),
-        warnings=tuple(json.loads(row[14] or "[]")) + remarks,
+        warnings=_parsed_warnings_json(row[14] or "[]") + remarks,
         device_identity=device_identity,
         device_name_snapshot=device_name,
         device_serial_snapshot=device_serial,

@@ -468,11 +468,20 @@ def load_usage_history(
         finalized.add((slot, day))
 
     closed_days = set(finalized)
+    from services.group_meter_scope import group_epoch_covers_day
+    with _open(commit=False) as conn:
+        grouped_current_slots = {
+            slot for slot in slots if group_epoch_covers_day(conn, slot, current)
+        }
     for slot in slots:
         if (slot, current) in finalized:
             continue
         state = cache_store.load(slot, current)
         if state and state.get("delta"):
+            if slot in grouped_current_slots:
+                # Local openings differ across members. The group epoch and
+                # journal are the common source; keep local cache as evidence.
+                continue
             finalized.add((slot, current))
             # Safe current-day evidence is visible as provisional usage/cost,
             # but remains outside the append-only Billing Ledger until rollover.

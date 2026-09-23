@@ -111,6 +111,7 @@ def tls_server(tmp_path, request):
         yield SimpleNamespace(
             url=f"https://127.0.0.1:{server.server_port}",
             context_factory=context_factory, received=received, valid=scenario == "valid",
+            scenario=scenario, ca_pem=ca.public_bytes(serialization.Encoding.PEM).decode("ascii"),
         )
     finally:
         server.shutdown()

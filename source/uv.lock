@@ -409,6 +409,7 @@ dependencies = [
     { name = "pyqt6-charts" },
     { name = "pyqtgraph" },
     { name = "pysnmp" },
+    { name = "truststore" },
     { name = "uvicorn" },
 ]
 
@@ -437,6 +438,7 @@ requires-dist = [
     { name = "pysnmp", specifier = ">=7.1,<8" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.6" },
+    { name = "truststore", specifier = "==0.10.4" },
     { name = "uvicorn", specifier = ">=0.34,<1" },
 ]
 provides-extras = ["dev"]

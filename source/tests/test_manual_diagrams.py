@@ -3,8 +3,46 @@ import os
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PyQt6.QtWidgets import QApplication, QFrame, QLabel
+from PyQt6.QtTest import QTest
 
 from pages import PageManual
+
+
+def test_deferred_manual_shows_first_section_then_completes_document():
+    app = QApplication.instance() or QApplication([])
+    page = PageManual(lazy=True)
+    assert len(page._thai_manual_sections) == 1
+    page.show()
+    for _ in range(30):
+        if len(page._thai_manual_sections) == 5:
+            break
+        QTest.qWait(100)
+    assert len(page._thai_manual_sections) == 5
+    assert page.findChild(QLabel, 'manual_doc_image_13') is not None
+    page.close()
+    app.processEvents()
+
+
+def test_deferred_manual_builds_thai_after_switching_from_english():
+    from i18n import get_language, set_language
+    app = QApplication.instance() or QApplication([])
+    previous = get_language()
+    page = None
+    try:
+        set_language('en')
+        page = PageManual(lazy=True)
+        page._apply_i18n_visibility('th')
+        assert len(page._thai_manual_sections) == 1
+        for _ in range(30):
+            if len(page._thai_manual_sections) == 5:
+                break
+            QTest.qWait(100)
+        assert len(page._thai_manual_sections) == 5
+    finally:
+        if page is not None:
+            page.close()
+            app.processEvents()
+        set_language(previous)
 
 
 def test_manual_constructs_selected_language_only_and_reuses_it():

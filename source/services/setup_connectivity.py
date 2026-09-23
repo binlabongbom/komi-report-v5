@@ -15,10 +15,11 @@ from datetime import datetime
 from time import perf_counter
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
-from urllib.request import HTTPRedirectHandler, Request, build_opener
+from urllib.request import HTTPRedirectHandler, HTTPSHandler, Request, build_opener
 
 from komi_version import APP_VERSION
-from services.registration_errors import classify_network_error, error_message
+from services.registration_errors import classify_network_error, error_message, tls_verification_detail
+from services.host_tls import create_host_tls_context, host_tls_backend
 
 DEFAULT_SETUP_BASE_URL = "https://www.dmskm.com"
 SETUP_API_PATHS = (
@@ -56,6 +57,7 @@ class SetupConnectivityReport:
             f"App version: {APP_VERSION}",
             f"Time: {self.started_at}",
             f"OS: {platform.system()} {platform.release()}",
+            f"TLS verifier: {host_tls_backend()}",
             f"Target: {self.base_url}",
             f"Result: {'PASS' if self.ok else 'FAILED'}",
             "",
@@ -82,7 +84,7 @@ class _NoRedirect(HTTPRedirectHandler):
 
 
 def _request_status(request: Request, timeout: float) -> int:
-    opener = build_opener(_NoRedirect())
+    opener = build_opener(_NoRedirect(), HTTPSHandler(context=create_host_tls_context()))
     try:
         with opener.open(request, timeout=timeout) as response:  # noqa: S310
             return int(response.status)
@@ -170,6 +172,8 @@ def check_setup_connectivity(
             code = classify_network_error(error)
             ok = False
             detail = error_message(code)[1]
+            if code == "tls_certificate_error":
+                detail += tls_verification_detail(error)
         return SetupConnectivityCheck(
             name=name,
             target=target,

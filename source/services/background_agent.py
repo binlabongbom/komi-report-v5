@@ -118,7 +118,7 @@ class BackgroundAgent(QObject):
             try:
                 ensure_pairing_default(
                     get_cfg("installation_id", ""),
-                    primary=get_cfg("desktop_role", "primary") != "secondary",
+                    continuous=True,
                 )
             except PeerSyncAuthorizationError:
                 log.warning("Peer Sync authorization requires local review")

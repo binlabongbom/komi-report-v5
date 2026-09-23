@@ -21,6 +21,7 @@ export default async function proxy(request: NextRequest) {
     path === "/icon.svg" ||
     path === "/api/v1/peer/discovery" ||
     (path === "/api/v1/peer/contact" && request.method === "GET") ||
+    (path === "/api/v3/peer/enrollment" && request.method === "POST") ||
     path === "/api/v1/peer/claim" ||
     path === "/api/v1/peer/setup-snapshot" ||
     path === "/api/v2/peer/settings-history" ||

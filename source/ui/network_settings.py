@@ -127,15 +127,15 @@ def build_network_settings(self, program_body):
     peer_sync_layout = QHBoxLayout(peer_sync)
     peer_sync_layout.setContentsMargins(0, 8, 0, 8)
     peer_sync_copy = QVBoxLayout()
-    peer_sync_title = section_title("ส่งค่าตอนติดตั้งครั้งแรก", "Share initial setup settings")
+    peer_sync_title = section_title("รับสมาชิกและใช้ข้อมูลร่วมกัน", "Member access and shared data")
     self.peer_sync_status = QLabel()
     self.peer_sync_status.setWordWrap(True)
     self.peer_sync_status.setAccessibleName("สถานะการอนุญาตรับการตั้งค่า")
     peer_sync_copy.addWidget(peer_sync_title)
     peer_sync_copy.addWidget(self.peer_sync_status)
     setup_note = QLabel(tr(
-        "รับค่าครั้งเดียวระหว่างติดตั้ง · การเปลี่ยนค่าภายหลังยังไม่ส่งต่ออัตโนมัติ",
-        "One-time copy during setup. Later changes are not sent automatically.",
+        "เปิดรับสมาชิกตลอดโดยอัตโนมัติ · เครื่องใหม่เลือกเข้ากลุ่มใน Wizard ได้ ไม่ต้องกดเปิดรับซ้ำที่ต้นทาง",
+        "Joining is enabled automatically and stays open. New computers join through the Wizard without repeated approval on this computer.",
     ))
     setup_note.setWordWrap(True)
     peer_sync_copy.addWidget(setup_note)
@@ -143,17 +143,25 @@ def build_network_settings(self, program_body):
     self.peer_sync_mode = QComboBox()
     self.peer_sync_mode.setProperty("i18n_items", True)
     self.peer_sync_mode.addItem("ปิด", "off")
-    self.peer_sync_mode.addItem("เปิด 5 นาที", "temporary")
     self.peer_sync_mode.addItem("เปิดตลอด", "always")
     self.peer_sync_mode.setAccessibleName("ระยะเวลาอนุญาตรับการตั้งค่า")
     peer_sync_layout.addWidget(self.peer_sync_mode)
-    self.peer_sync_authorize_button = btn(tr("ใช้สิทธิ์รับค่าติดตั้ง", "Apply setup access"), "outline")
+    self.peer_sync_authorize_button = btn(tr("บันทึกสิทธิ์เข้ากลุ่ม", "Save member access"), "outline")
     self.peer_sync_authorize_button.setAccessibleName(
         "ใช้การตั้งค่าสิทธิ์ให้คอมพิวเตอร์อื่นรับการตั้งค่า"
     )
     self.peer_sync_authorize_button.clicked.connect(self._authorize_peer_sync)
     peer_sync_layout.addWidget(self.peer_sync_authorize_button)
     program_body.addWidget(peer_sync)
+    from ui.peer_enrollment_approval import EnrollmentApprovalDialog
+    self.enroll_member_button = btn(tr('รายละเอียดการเข้าร่วมกลุ่ม', 'About joining a group'), 'outline')
+    def approve_member():
+        dialog = EnrollmentApprovalDialog(self)
+        dialog.finished.connect(self._refresh_peer_sync_status)
+        dialog.open()
+        self._enrollment_approval_dialog = dialog
+    self.enroll_member_button.clicked.connect(approve_member)
+    program_body.addWidget(self.enroll_member_button, 0, Qt.AlignmentFlag.AlignLeft)
     from ui.shared_settings_history import show_shared_settings_history
     self.shared_history_button = btn(tr("ประวัติการตั้งค่าร่วม", "Shared settings history"), "outline")
     self.shared_history_button.clicked.connect(lambda: show_shared_settings_history(self))

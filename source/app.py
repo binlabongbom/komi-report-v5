@@ -450,6 +450,8 @@ class MainWindow(QMainWindow):
         self.polling = BackgroundPollingCoordinator(parent=self)
         self.web_service = web_service_manager()
         self.polling.device_updated.connect(self._device_updated)
+        self.polling.activity_changed.connect(self._refresh_sidebar_role)
+        self.polling.peer_network_runtime.changed.connect(self._refresh_sidebar_role)
         self.polling.reading_saved.connect(lambda _slot: self._schedule_refresh_all())
         self.polling.reading_saved.connect(self.registration.meter_observed)
         self.polling.shared_settings_applied.connect(self._refresh_all)
@@ -673,7 +675,7 @@ class MainWindow(QMainWindow):
                 offline_license_public_keys=self.offline_license_public_keys,
             )
         )
-        self.pg_manual   = _DeferredPage(PageManual)
+        self.pg_manual   = _DeferredPage(lambda: PageManual(lazy=True))
 
         pages = [
             self.pg_overview,
@@ -862,7 +864,7 @@ class MainWindow(QMainWindow):
         if get_cfg("web_service_enabled", "1") != "0":
             try:
                 ensure_pairing_default(get_cfg("installation_id", ""),
-                                       primary=get_cfg("desktop_role", "primary") != "secondary")
+                                       continuous=True)
             except PeerSyncAuthorizationError:
                 log.warning("Peer Sync authorization requires local administrator review")
             status = self.web_service.start()
@@ -945,8 +947,7 @@ class MainWindow(QMainWindow):
             self._set_collection_actions_enabled(
                 not bool(getattr(self.polling, "active", ()))
             )
-            self.status_lbl.setText("เปิดใช้งาน · ดูประวัติและอ่านข้อมูลใหม่ได้")
-            self.status_lbl.setToolTip(f"Registration: {reason}")
+            MainWindow._refresh_sidebar_role(self)
             if getattr(self, "_startup_poll_pending", False):
                 self._schedule_startup_poll()
             return
@@ -959,6 +960,24 @@ class MainWindow(QMainWindow):
         )
         self.status_lbl.setText(status)
         self.status_lbl.setToolTip(f"Registration: {reason}")
+
+    def _refresh_sidebar_role(self) -> None:
+        if getattr(self, '_quitting', False):
+            return
+        if not getattr(self, '_background_started', False):
+            self.status_lbl.setText(tr('สถานะ\nกำลังตรวจสอบบทบาท', 'Status\nChecking role'))
+            return
+        eligible, reason = self._registration_usage_eligibility()
+        if not eligible:
+            self.status_lbl.setText(tr('สถานะ\nกำลังตรวจสอบสิทธิ์การอ่าน', 'Status\nChecking read access')
+                if reason == 'status_check_pending' else
+                tr('สถานะ\nหยุดอ่านข้อมูล · ดูประวัติได้', 'Status\nReading paused · History available'))
+            self.status_lbl.setToolTip(f'Registration: {reason}')
+            return
+        from services.sidebar_reader_role import reader_role_text
+        label, detail = reader_role_text(self.polling)
+        self.status_lbl.setText(tr('สถานะ\n', 'Status\n') + label)
+        self.status_lbl.setToolTip(detail)
 
     def _install_network_recovery_monitor(self) -> None:
         """Wake V5.2 only on an OS-observed connectivity recovery transition."""
@@ -999,9 +1018,7 @@ class MainWindow(QMainWindow):
         if self.polling.is_paused:
             self._set_collection_actions_enabled(False)
             return
-        devices = DeviceConfigRepository().list(enabled_only=True)
-        online = sum(device.connection_status == "online" for device in devices)
-        self.status_lbl.setText(f"Background active\nOnline {online}/{len(devices)}")
+        MainWindow._refresh_sidebar_role(self)
 
     def _show_main_window(self):
         """Show the desktop workspace at the maximum usable screen size."""
@@ -1028,9 +1045,7 @@ class MainWindow(QMainWindow):
         # Rebuild charts and status strings that are painted outside ordinary
         # Qt text widgets (for example the Overview Y-axis title).
         self._refresh_visible_page()
-        self.status_lbl.setToolTip(
-            tr("ภาษาที่เลือกจะถูกใช้เมื่อเปิดโปรแกรมครั้งถัดไปด้วย", "The selected language will also be used at the next launch")
-        )
+        MainWindow._refresh_sidebar_role(self)
 
     def _settings_page_with_draft(self):
         page = self._page_widgets[self._settings_index]
@@ -1281,30 +1296,7 @@ class MainWindow(QMainWindow):
         if callable(invalidate):
             invalidate()
         self._refresh_visible_page()
-        # อัปเดตข้อความด้านล่าง sidebar ให้แสดงวันที่ล่าสุดของข้อมูลในฐานข้อมูล
-        _latest = get_latest_read_date()
-        if _latest:
-            try:
-                _dt = datetime.strptime(_latest, "%Y-%m-%d %H:%M:%S")
-            except ValueError:
-                try:
-                    _dt = datetime.strptime(_latest, "%Y-%m-%d")
-                except ValueError:
-                    _dt = None
-            if _dt:
-                _thai_months = {1:"ม.ค.",2:"ก.พ.",3:"มี.ค.",4:"เม.ย.",5:"พ.ค.",6:"มิ.ย.",
-                                7:"ก.ค.",8:"ส.ค.",9:"ก.ย.",10:"ต.ค.",11:"พ.ย.",12:"ธ.ค."}
-                _date_str = (
-                    f"{_dt.day} {_thai_months[_dt.month]} {_dt.year + 543} "
-                    f"{_dt:%H:%M} น."
-                )
-                self.status_lbl.setText(f"{tr('อ่านล่าสุด', 'Last read')}\n{_date_str}")
-            else:
-                self.status_lbl.setText(f"{tr('อ่านล่าสุด', 'Last read')}\n{_latest}")
-        else:
-            self.status_lbl.setText(
-                tr("ยังไม่มีประวัติการอ่าน", "No reading history yet")
-            )
+        MainWindow._refresh_sidebar_role(self)
         if self._background_started:
             eligible, _reason = self._registration_usage_eligibility()
             if not eligible:

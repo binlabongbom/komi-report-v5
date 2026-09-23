@@ -2,6 +2,7 @@ from datetime import date, datetime, UTC
 from pathlib import Path
 import json
 import sqlite3
+from unittest.mock import patch
 
 import pytest
 
@@ -51,7 +52,10 @@ def setup(archived=False):
         current = reading(day, value)
         stamp = datetime.fromisoformat(current.collected_at)
         cache.update_reading(0, current, at=stamp)
-        cache.finalize(0, stamp.date())
+        # Represent immutable subject rows created by an older installation
+        # before group-day local finalization was disabled.
+        with patch('services.group_meter_scope.group_epoch_covers_day', return_value=False):
+            cache.finalize(0, stamp.date())
         raw.update_reading(0, current, at=stamp)
     files = archive_all(ReportDetailArchive()) if archived else []
     return ReportDetailAmendment(), (0, epoch, date(2024, 1, 5), date(2024, 1, 8), UTC, COUNTER), files

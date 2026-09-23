@@ -168,7 +168,9 @@ def test_startup_waits_for_configured_services_and_fresh_status_then_dispatches_
         window._refresh_all()
         window.show()
         _settle()
-    assert executor.requests == [(0, True), (1, True)]
+    # The independent 250 ms scheduled tick can fire while the window paints
+    # on a slower VM. Only forced reads belong to this startup one-shot.
+    assert [request for request in executor.requests if request[1]] == [(0, True), (1, True)]
     events = [record for record in caplog.records if getattr(record, "event", "") == "startup_sync_requested"]
     assert len(events) == 1
 

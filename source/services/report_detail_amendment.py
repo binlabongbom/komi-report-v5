@@ -67,6 +67,8 @@ def without_superseded(conn, kind, documents):
 
 def effective_documents(conn, kind, documents, slots=None, *, start=None, end=None, include_revisions=True):
     revisions = current_revisions(conn, kind, slots, start=start, end=end, include_rows=include_revisions)
+    if not revisions:
+        return documents
     return [item for item in documents if _key(kind, item['row']) not in revisions] + (list(revisions.values()) if include_revisions else [])
 
 

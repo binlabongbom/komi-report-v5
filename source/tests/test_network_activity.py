@@ -78,6 +78,33 @@ def row(member="A", status="pending"):
             "last_success": ""}
 
 
+def test_panel_displays_names_for_members_and_shared_jobs_keeps_id_in_tooltip(monkeypatch):
+    import ui.network_activity as module
+    original = module.load_network_activity
+    def named(path, members):
+        data = original(path, members)
+        data['computers'] = {'A': 'HOST-PC', 'B': 'READER-PC'}
+        return data
+    monkeypatch.setattr(module, 'load_network_activity', named)
+    app = QApplication.instance() or QApplication([])
+    runtime = Runtime([row('B')])
+    class Shared:
+        def snapshot(self):
+            return [{'slot': 0, 'authority': 'A', 'reader': 'B', 'phase': 'complete', 'observed_at': ''}]
+    runtime.shared_reads = Shared()
+    panel = NetworkActivityPanel()
+    panel.bind_runtime(runtime)
+    panel.show()
+    try:
+        until(lambda: panel.table.rowCount() == 1)
+        assert panel.table.item(0, 0).text() == 'READER-PC'
+        assert panel.table.item(0, 0).toolTip() == 'READER-PC\nB'
+        assert 'ผู้ประสาน HOST-PC · ผู้อ่าน READER-PC' in panel.shared_read.text()
+    finally:
+        panel.close()
+        panel._pool.shutdown(wait=True)
+
+
 def test_panel_uses_actual_state_keeps_failed_transfer_and_empty_state_honest():
     app = QApplication.instance() or QApplication([])
     runtime = Runtime([row("<b>A</b>")])

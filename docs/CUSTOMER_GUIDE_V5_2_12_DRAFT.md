@@ -1,13 +1,31 @@
 # KOMI Report 5.2.12 — คู่มือ source ระหว่างพัฒนา
 
-เอกสารวันที่ 20 กันยายน 2569 ยังไม่ใช่คู่มือชุดติดตั้งหรือการอนุมัติ build
+เอกสารวันที่ 22 กันยายน 2569 ยังไม่ใช่คู่มือชุดติดตั้งหรือการอนุมัติ build
 ภาพเป็นหน้าจอที่รันจาก source ด้วยข้อมูลจำลอง ไม่มีข้อมูลลูกค้าจริง
 ใช้คู่มือนี้ตรวจส่วนที่พัฒนาแล้ว ส่วนที่ยังไม่เปิดใช้ระบุท้ายเอกสาร
 
 **ขอบเขตรุ่นนี้:** ใช้ Host เดิม ไม่แก้ฝั่ง Host การเชื่อมสมาชิก Sync ต่อเนื่อง
 และผู้อ่านร่วมยังเป็นงานของ 5.2.12 ระบบรับส่งผ่าน HTTPS และรายงานจากหลักฐานร่วม
-ทดสอบจาก source แล้ว ส่วน Wizard เชื่อมสมาชิกครั้งแรกและการกู้สมาชิกยังพัฒนาไม่ครบ
-การรับค่าตอนติดตั้งในหน้าปัจจุบันยังเป็นสำเนาครั้งเดียว จึงยังไม่ใช่ขั้นตอนเปิด Sync ต่อเนื่อง
+มีขั้นตอนเข้ากลุ่มผ่าน Wizard และเริ่มสมาชิกใหม่เมื่อกู้กุญแจไม่ได้แล้วใน source
+ต้นทางเปิดรับสมาชิกตลอดโดยอัตโนมัติ เครื่องใหม่เลือกกลุ่มใน Wizard แล้ว Sync ต่อเนื่องได้
+ไม่ต้องมีคนกดเปิดอนุญาตซ้ำที่ต้นทาง และไม่มีเวลาจำกัด 5 นาทีสำหรับการเปิดรับสมาชิก
+การลงบัญชีจากประวัติร่วมต้องตรวจและยืนยันก่อน ไม่เปลี่ยนรายการปิดแล้วอัตโนมัติ
+
+## เพิ่มสมาชิกและตรวจยอดใหม่
+
+1. ต้นทางเปิดรับสมาชิกไว้ตลอดเมื่อเริ่ม Desktop/Agent โดยอัตโนมัติ ต้องมีผลอ่าน Web และฐานที่ตรวจแล้วครบทุก Slot
+2. เครื่องใหม่เลือกฐานใน Wizard ค้นหาหรือกรอก IP ตรวจบริษัท แล้วกด **เข้าร่วมและใช้การตั้งค่าร่วมกัน**
+3. ทดสอบเครื่องพิมพ์และกรอกรหัสบนเครื่องใหม่เอง ตรวจค่าที่รับมา กดบันทึกและลงทะเบียนตามปกติ
+4. หากเครือข่ายขาดช่วงหลังบันทึกแล้ว ระบบจะแสดงเข้ากลุ่มยังไม่ครบ ตรวจว่าต้นทางออนไลน์ แล้วกดค้นหาและเชื่อมต่อสมาชิกเดิมอีกครั้ง ไม่ต้องเปิดอนุญาตซ้ำ
+5. เมื่อมีประวัติร่วม หน้าตรวจรอบบิลมีปุ่ม **ตรวจยอดจากประวัติร่วมก่อนลงบัญชี** เลือก Slot/วันที่ ตรวจยอด กรอกเหตุผล แล้วยืนยันรายการที่พร้อม
+
+วันที่มีบัญชีหรือข้อมูลเดิมอยู่แล้วต้องตรวจฉบับแก้ไข การยืนยันครั้งใหม่ไม่เขียนทับรายการเดิม
+ไม่สร้างเวลาหรือจำนวนครั้งอ่านปลอมสำหรับวันที่ขาด Web และการส่งหลักฐานไม่ใช่การลงบัญชีอัตโนมัติ
+ดูขั้นตอนและเกณฑ์รับงานเครื่องจริงใน [คู่มือทดสอบ LAN](V5_2_12_LAN_TEST_RUNBOOK.md)
+
+![หน้าต่างอนุญาตสมาชิกใหม่ ข้อมูลจำลอง](customer-guide/assets-v5.2.12-source/enrollment-approval.png)
+
+![ตรวจยอดก่อนลงบัญชี ข้อมูลจำลอง](customer-guide/assets-v5.2.12-source/shared-accounting.png)
 
 ## การตั้งค่าเครือข่าย
 
@@ -27,7 +45,7 @@
 ![สถานะเครือข่ายด้วยข้อมูลจำลอง](customer-guide/assets-v5.2.12-source/network-activity.png)
 
 ภาพนี้ใช้สมาชิกและคิวจำลองเพื่อแสดงความหมายของแต่ละสถานะ การเชื่อมสมาชิกและ
-ส่งข้อมูลผ่าน HTTPS ทดสอบแล้วด้วยฐานจำลอง ขั้นตอนเปิดเชื่อมสมาชิกจริงยังอยู่ระหว่างพัฒนาในรุ่นนี้
+ส่งข้อมูลผ่าน HTTPS ทดสอบด้วยฐานจำลอง ขั้นตอนด้านล่างใช้ทดสอบ source ก่อนตรวจแพ็กเกจจริง
 
 **เมื่อการเชื่อมต่อมีปัญหา:** กด **ค้นหาและเชื่อมต่อสมาชิกเดิมอีกครั้ง** เพื่อค้นหาที่อยู่
 และลองเชื่อมต่อสมาชิกที่เคยยืนยันแล้ว ปุ่มนี้ไม่เพิ่มสมาชิกใหม่และไม่เปลี่ยนสิทธิ์บริษัท
@@ -35,7 +53,12 @@
 ถ้ากุญแจสมาชิกหายหรือไม่ตรงกับฐานข้อมูล ระบบแสดงสาเหตุและหยุดเชื่อมต่อไว้
 ไม่สร้างกุญแจใหม่แทนสมาชิกเดิมโดยเงียบ ๆ การคืนเฉพาะฐานข้อมูลจึงอาจยังไม่พอ
 เมื่อกู้กุญแจเดิมกลับมาได้แล้ว กดเชื่อมต่ออีกครั้งได้โดยไม่ต้องรีสตาร์ตโปรแกรม
-กรณีกู้กุญแจเดิมไม่ได้ ขั้นตอนอนุมัติสมาชิกใหม่ยังอยู่ระหว่างพัฒนา ไม่ควรลบข้อมูลเพื่อทดลองแก้
+กรณีกู้กุญแจเดิมไม่ได้ ให้ทีมติดตั้งใช้ปุ่ม **เริ่มสมาชิกใหม่โดยเก็บฐานเดิม**
+เลือกชื่อฐานใหม่ สร้างฐาน แล้วกดใช้ฐานใหม่และปิดโปรแกรม เปิดครั้งถัดไปจะเริ่ม Wizard
+ฐานและ Archive เดิมยังอยู่ การติดตั้งใหม่ต้องลงทะเบียนและเข้ากลุ่มใหม่ ไม่รับตัวตนเดิมมาใช้
+หากค้นหากลุ่มไม่พบ ให้ทีมติดตั้งช่วยค้นหาหรือกรอก IP ของสมาชิกที่ออนไลน์
+
+![สร้างฐานใหม่โดยเก็บฐานเดิม ข้อมูลจำลอง](customer-guide/assets-v5.2.12-source/clean-reinstallation.png)
 
 ![สถานะแสดงกุญแจสมาชิกหายด้วยข้อมูลจำลอง](customer-guide/assets-v5.2.12-source/network-recovery.png)
 
@@ -76,7 +99,8 @@ popup จะแสดง **กำลังยกเลิก** จนงาน�
 หน้าตรวจรอบบิลแสดงรายการเป็นหลัก เลือกแถวเพื่อเปิดรายละเอียด เครื่องพิมพ์ วันที่ และยอดก่อน/หลัง
 หลักฐานทางเทคนิคอยู่ในส่วนที่กดขยายและคัดลอกได้ ต้องกรอกเหตุผลในช่องที่มีป้ายกำกับก่อนยืนยัน
 ค่าที่บันทึกมีผลบนคอมนี้ การส่งต่อทำเมื่อเชื่อมสมาชิกต่อเนื่องแล้วและต้องตรวจสถานะยืนยันรับ
-การรับค่าตอนติดตั้งเป็นสำเนาครั้งเดียว ยังไม่สร้างสมาชิกต่อเนื่องใน Wizard ปัจจุบัน
+Wizard มีขั้นตอนเข้าร่วมสมาชิกต่อเนื่อง ส่วนปุ่ม Secondary Sync เดิมยังเป็นสิทธิ์รับค่าครั้งเดียว
+การยืนยันรับค่าครั้งเดียวไม่ถือเป็นการอนุญาตสมาชิกใหม่
 หากยังอ่าน Counter ไม่ได้ รายการที่เคยเลือกจะคงอยู่ การเอาทุกตัวออกต้องยืนยันอีกครั้ง
 
 ## ตรวจประวัติและช่วงขาดการอ่าน
@@ -140,7 +164,7 @@ ledger หรือเอกสารเรียกเก็บเดิม แ
 - เปิด Archive เฉพาะช่วงที่ขอตรวจได้ แต่ไม่เขียนทับหลักฐานเก่า และยังไม่แก้รายละเอียดผู้ใช้/Raw Counter ที่จัดเก็บแล้ว
 - ฉบับแก้ไขและคิวส่งบันทึกพร้อมกัน สมาชิกปลายทางตรวจหลักฐานและบัญชีเดิมของตนก่อนรับ
   ถ้าหลักฐานยังขาดหรือบัญชีต่างกัน รายการจะคงรอส่ง การส่งซ้ำไม่เพิ่มบัญชีซ้ำ
-  ขั้นตอนเชื่อมสมาชิกจริงยังต้องพัฒนาในรุ่นนี้ ส่วนงานแก้ Host แยกไว้เวอร์ชันหน้า
+  ใช้ขั้นตอนเข้าร่วมกลุ่มด้านบนก่อนส่งข้อมูลระหว่างสมาชิก ส่วนงานแก้ Host แยกไว้เวอร์ชันหน้า
 
 ## ตรวจฐานมิเตอร์ของ Slot
 
@@ -166,7 +190,7 @@ ledger หรือเอกสารเรียกเก็บเดิม แ
 ส่วนนี้ทดสอบการประสานงานภายในคอมแล้ว และทดสอบ source จำลองสามคอมแยกฐาน:
 เลือกผู้อ่านตามรอบอัตโนมัติ คงผู้ทำงานเดิม รับช่วงเมื่อเครื่องดับ และให้ผู้กดพร้อมกัน
 รับผลจากงานเดียวกัน โดยใช้เวลาอ่านจริง ไม่แสดงข้อมูลเก่าเป็นผลสำเร็จใหม่
-ขั้นตอนเปิดใช้กับหลายคอมจริงยังต้องพัฒนาให้ครบในรุ่นนี้
+ขั้นตอนเปิดใช้กับหลายคอมต้องตรวจตามคู่มือทดสอบ LAN บนแพ็กเกจจริงอีกครั้ง
 ผล source จึงยังไม่ถือว่าการทดสอบติดตั้งหรือใช้งานเครือข่ายจริงผ่าน
 
 ## ประวัติการตั้งค่าและราคา
@@ -200,7 +224,7 @@ ledger หรือเอกสารเรียกเก็บเดิม แ
 เมื่อเปลี่ยนรอบบิลของข้อมูลที่ Archive แล้ว ระบบจะตรวจไฟล์เดิมและปรับสรุปรายเดือน
 ในครั้งเดียวกับรายการแก้ไข โดยเก็บไฟล์ Archive เดิมไว้ หากอ่านไฟล์ไม่ได้จะไม่บันทึก
 ระหว่างกำลังบันทึกให้รอผลก่อนปิดหน้าต่าง การแก้ไขอยู่บนคอมเครื่องนี้พร้อมคิวส่ง
-การส่งให้สมาชิกจริงจะใช้งานผ่านระบบสมาชิกต่อเนื่องที่ยังพัฒนาในรุ่นนี้
+การส่งให้สมาชิกใช้งานผ่านระบบสมาชิกต่อเนื่อง เมื่อ Wizard ยืนยันการเข้าร่วมครบแล้ว
 
 ## ตรวจยอด Hold หรือปรับเงินที่ปิดวันแล้ว
 
@@ -274,10 +298,10 @@ Excel ใช้ยอดจัดสรรจริง 301 หน้า ไม�
 
 ## งานที่ยังไม่ครบในรุ่นนี้และการตรวจหลัง build
 
-- รุ่นนี้ยังเหลือ Wizard เชื่อมสมาชิกต่อเนื่อง การกู้สมาชิก และการเชื่อมบัญชี/ข้อมูลเดิมให้ครบ
+- Wizard เข้าร่วมกลุ่ม ฐานใหม่หลังสูญกุญแจ และการตรวจยอดประวัติร่วมมีใน source แล้ว
   ผล HTTPS/คิวส่งจากฐานจำลองยังไม่ใช่ผลติดตั้งจริงหรือหลักฐานสิทธิ์บริษัทจาก Host
-- ขอบเขตการป้องกันบริษัทเปิดหลายกลุ่มใน LAN ที่แยกขาดกันยังต้องได้ข้อสรุป
-- ตรวจเปลี่ยนเครื่อง/reset ฉบับแก้ไข และผู้อ่านร่วมผ่านขั้นตอนสมาชิกจริงเมื่อพัฒนาครบ
+- ทีมติดตั้งรับผิดชอบกรณีติดตั้งใหม่ไม่พบกลุ่มเดิมหรือ LAN แยกขาดกัน
+- ตรวจเปลี่ยนเครื่อง/reset ฉบับแก้ไข และผู้อ่านร่วมบนแพ็กเกจจริงตามคู่มือทดสอบ LAN
 - หลัง build: ตรวจ Agent ของแพ็กเกจจริง รวมบริการลูกภายใต้ workload และสองคอมจริง
 - งานที่ติด Host รวม trust path ของการลงทะเบียน/ใบรับรอง เก็บไว้เวอร์ชันหน้า
 - ภาพการติดตั้งและการใช้งานสองคอมจริงหลัง build ใช้ตรวจคู่มือฉบับส่งมอบอีกครั้ง
@@ -285,17 +309,17 @@ Excel ใช้ยอดจัดสรรจริง 301 หน้า ไม�
 ## English workflow reference
 
 This source guide documents version 5.2.12 before installer testing. All screenshots use synthetic data.
-Continuous membership, settings synchronization and shared-reader coordination remain in the 5.2.12 scope. Their HTTPS runtime and shared reports have source tests; first enrollment in the Wizard and member recovery are unfinished. The current Wizard still makes a one-time setup copy and does not enroll continuous members.
+The source Wizard now joins continuous members with joining enabled persistently on the source and group selection in the recipient Wizard, preserving settings and meter-baseline history. Permanently lost keys use a new installation in a separate database, keeping the old database and archives. Shared-history accounting requires explicit review. Package installation and physical PC + VM105 acceptance remain a separate test stage; these are not claimed as passed.
 Each computer keeps its own registration identity. A local save is not a delivery acknowledgement.
 
-- **Setup:** select the company, test the chosen printers and assign slots, review dated prices and billing day, then confirm the summary. During secondary setup, allow access on the sending computer and search again if discovery finds nothing.
+- **Setup:** select the company, test the chosen printers and assign slots, review dated prices and billing day, then confirm the summary. Joining stays enabled on the sending computer without repeated approval. Search again or enter its IP if discovery finds nothing.
 - **Overview and reports:** select a date range and review full totals. Cards reflow on smaller windows. A dash means data is unavailable; a measured zero remains zero. Single-point charts use bars. Numbered user labels correspond to the detailed table; hover for the full name.
 - **Reports Excel:** use the single Export Excel button in the Reports header. Choose dates and a destination. Progress shows the stage and elapsed time, not a promised time remaining. You can keep using the report. Cancel, Escape or closing the popup requests cancellation and preserves the previous destination file.
 - **Web evidence:** choose the printer, start/end dates, counter and meter epoch, then load saved evidence. The first reading is a baseline. Daily estimates divide the missing-period difference over days without any Web reading; 301 pages across two days displays 150.5 per day. Estimated graph values are not added again to billing.
 - **Full remarks and export:** select a remarks row and use Read full remarks, or double-click it. Both Excel and PDF export in the background with progress and cancellation. If a destination file is open, close it or choose a different filename and retry. The file uses the selection captured when export began.
 - **Billing review:** select a row, review its printer, dates, amounts and hold reason. Expand Technical details only when needed; Copy evidence keeps the complete original text. Enter the required reason before confirming. Original entries are retained. Reviewing or confirming a meter baseline does not silently approve earlier invoices.
 - **Settings:** General, Automation, Status and history, and Advanced use the same navigation. Small windows scroll rather than expanding beyond the available area. Initial setup access and read-only Web reports are separate controls.
-- **Reconnect:** use **Find and reconnect existing members** to retry discovery and connections for already approved members. **Check status again** only reads status. Missing or mismatched keys show a specific recovery message; the peer loader does not replace the old identity silently. Restoring a database alone may not restore OS-vault keys. After restoring the original keys, retry without restarting. Recovery that requires a new member approval is still unfinished.
+- **Reconnect:** use **Find and reconnect existing members** to retry discovery and connections for already approved members. **Check status again** only reads status. Missing or mismatched keys show a specific recovery message; the peer loader does not replace the old identity silently. Restoring a database alone may not restore OS-vault keys. After restoring the original keys, retry without restarting. If the original keys cannot be restored, choose Start a new member and keep the old database, create a separate file, switch and relaunch the Wizard. The installation team handles group discovery and selection; normal Host registration still applies.
 - **Pinned counters:** saved choices remain visible and selected when a printer has not supplied counters. Uncheck unwanted entries. Removing all saved entries requires explicit confirmation.
 - **Background agent:** closing the desktop window leaves the agent running in the system tray. Use the agent's Exit action to stop it completely. Opening the desktop again reconnects to the local data.
 - **Archive:** data older than a year can be archived. Monthly summaries remain available; detailed historical Web evidence is loaded only when requested. Keep the archive with its database when making a backup.

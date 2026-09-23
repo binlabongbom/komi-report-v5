@@ -17,7 +17,7 @@ import { SystemView, UsageView } from "./report-views";
 
 type ViewId = "overview" | "users" | "printers" | "usage" | "system";
 type DateRange = { start: string; end: string };
-type PageResponse<T> = { items: T[]; next_offset: number | null };
+type PageResponse<T> = { items: T[]; next_offset: number | null; snapshot_token?: string };
 type Health = { status: string; device_count: number; online_count: number };
 type AccessMode = { authenticated: boolean; reportPasswordless: boolean };
 
@@ -63,10 +63,14 @@ function reportUrl(path: string, range: DateRange | null, extra: Record<string, 
 async function allPages<T>(path: string, range: DateRange | null, extra: Record<string, string> = {}) {
   const items: T[] = [];
   let offset = 0;
+  let snapshotToken: string | undefined;
   for (;;) {
-    const page = await json<PageResponse<T>>(reportUrl(path, range, { ...extra, limit: "100", offset: String(offset) }));
+    const page = await json<PageResponse<T>>(reportUrl(path, range, {
+      ...extra, limit: "500", offset: String(offset), ...(snapshotToken ? { snapshot_token: snapshotToken } : {}),
+    }));
     items.push(...page.items);
     if (page.next_offset == null) return items;
+    snapshotToken = page.snapshot_token;
     offset = page.next_offset;
   }
 }

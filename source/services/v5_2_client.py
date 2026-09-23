@@ -15,7 +15,9 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Literal, Protocol
 from urllib.error import HTTPError, URLError
-from urllib.request import HTTPRedirectHandler, Request, build_opener
+from urllib.request import HTTPRedirectHandler, HTTPSHandler, Request, build_opener
+
+from services.host_tls import create_host_tls_context
 
 from services.v5_2_contract import SCHEMA_VERSION, TelemetryPolicy
 from services.v5_2_outbox import V52OutboxOperation, request_fingerprint
@@ -75,7 +77,7 @@ class UrllibV52Transport:
             return None
 
     def __init__(self) -> None:
-        self._opener = build_opener(self._NoRedirect())
+        self._opener = build_opener(self._NoRedirect(), HTTPSHandler(context=create_host_tls_context()))
 
     def request(
         self,

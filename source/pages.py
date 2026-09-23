@@ -22,7 +22,7 @@ from PyQt6.QtWidgets import (
     QDialog, QDialogButtonBox, QLayout, QSizePolicy,
     QBoxLayout
 )
-from PyQt6.QtCore  import Qt, pyqtSignal, pyqtSlot, QRect, QRectF, QPoint, QSize, QMargins, QUrl, QThread
+from PyQt6.QtCore  import Qt, pyqtSignal, pyqtSlot, QRect, QRectF, QPoint, QSize, QMargins, QUrl, QThread, QTimer
 from PyQt6.QtGui   import QColor, QBrush, QPainter, QPainterPath, QPen, QDesktopServices, QFont, QPixmap
 
 from ui.chart_lifecycle import replace_chart
@@ -6405,8 +6405,10 @@ class PageManual(QWidget):
     def _manual_font(cls, size: int, bold: bool = False) -> QFont:
         return fnt(cls._manual_point_size(size), bold=bold)
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, *, lazy: bool = False):
         super().__init__(parent)
+        self._lazy = lazy
+        self._thai_manual_next = 0
         # องค์ประกอบที่ไม่ได้กำหนดฟอนต์เฉพาะ จะ inherit ขนาดคู่มือที่ลดแล้ว
         self.setFont(self._manual_font(F_LG))
         self._build()
@@ -6530,7 +6532,7 @@ class PageManual(QWidget):
         layout.addWidget(label)
         return block
 
-    def _insert_customer_guide_screenshots(self, *, only_english=None) -> None:
+    def _insert_customer_guide_screenshots(self, *, only_english=None, only_index=None) -> None:
         groups = (
             ((1, 2, 3, 4), ("ตั้งค่าบริษัทและฐานข้อมูล", "ค้นหาและเลือกเครื่องพิมพ์", "ตั้งราคาและรอบบิล", "ตรวจสอบก่อนเริ่มใช้งาน")),
             ((5, 6), ("ภาพรวมการใช้งาน", "ข้อมูลรายเครื่อง")),
@@ -6551,12 +6553,11 @@ class PageManual(QWidget):
         ):
             if not sections or (only_english is not None and english != only_english):
                 continue
-            for section, (indexes, _thai_captions), section_captions in zip(
-                sections,
-                groups,
-                captions,
-                strict=True,
-            ):
+            for section_index, (section, (indexes, _thai_captions), section_captions) in enumerate(zip(
+                sections, groups, captions,
+            )):
+                if only_index is not None and section_index != only_index:
+                    continue
                 layout = section.layout()
                 insert_at = max(1, layout.count() - 1)
                 for index, caption in zip(indexes, section_captions, strict=True):
@@ -6729,18 +6730,41 @@ class PageManual(QWidget):
         name = '_english_manual_sections' if english else '_thai_manual_sections'
         if getattr(self, name):
             return
-        sections = self._build_english_manual_sections() if english else [
-            self._tab_firstrun(), self._tab_workflow(), self._tab_history(),
-            self._tab_settings(), self._tab_v5_system(),
-        ]
+        if not english and self._lazy:
+            sections = [self._tab_firstrun()]
+            self._thai_manual_next = 1
+        else:
+            sections = self._build_english_manual_sections() if english else [
+                self._tab_firstrun(), self._tab_workflow(), self._tab_history(),
+                self._tab_settings(), self._tab_v5_system(),
+            ]
         setattr(self, name, sections)
         self._insert_customer_guide_screenshots(only_english=english)
         self._insert_updated_guide(only_english=english)
         for section in sections:
             section.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
             self._manual_content_layout.insertWidget(max(0, self._manual_content_layout.count()-1), section)
+        if not english and self._lazy:
+            QTimer.singleShot(30, self._append_next_thai_section)
 
-    def _insert_updated_guide(self, *, only_english=None):
+    def _append_next_thai_section(self) -> None:
+        builders = (self._tab_firstrun, self._tab_workflow, self._tab_history,
+                    self._tab_settings, self._tab_v5_system)
+        index = self._thai_manual_next
+        if not 1 <= index < len(builders):
+            return
+        section = builders[index]()
+        self._thai_manual_sections.append(section)
+        self._insert_customer_guide_screenshots(only_english=False, only_index=index)
+        self._insert_updated_guide(only_english=False, only_index=index)
+        section.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
+        self._manual_content_layout.insertWidget(max(0, self._manual_content_layout.count()-1), section)
+        section.setVisible(self._manual_language != ENGLISH)
+        self._thai_manual_next += 1
+        if self._thai_manual_next < len(builders):
+            QTimer.singleShot(30, self._append_next_thai_section)
+
+    def _insert_updated_guide(self, *, only_english=None, only_index=None):
         for sections, english in ((self._thai_manual_sections, False), (self._english_manual_sections, True)):
             if not sections or (only_english is not None and english != only_english):
                 continue
@@ -6748,17 +6772,20 @@ class PageManual(QWidget):
             button = QPushButton('Open updated illustrated guide (Thai PDF)' if english else 'เปิดคู่มือฉบับปรับปรุงพร้อมภาพ (PDF)')
             button.setEnabled(self._manual_asset_available(guide))
             button.clicked.connect(lambda _=False, path=guide: QDesktopServices.openUrl(QUrl.fromLocalFile(str(path))))
-            sections[0].layout().insertWidget(1, self._card('Updated guide' if english else 'คู่มือหน้าจอที่ปรับปรุง', [
+            if len(sections) > 0 and only_index in (None, 0):
+                sections[0].layout().insertWidget(1, self._card('Updated guide' if english else 'คู่มือหน้าจอที่ปรับปรุง', [
                 self._txt('Network settings, Slot baselines, revised reports and Archive. Check the Network settings page for current member connection status.' if english else
                     'รวมการตั้งค่าเครือข่าย ฐาน Slot รายงานฉบับแก้ไข และ Archive ตรวจสถานะสมาชิกที่เชื่อมต่อได้ในหน้าการตั้งค่าเครือข่าย'), button]))
-            sections[3].layout().insertWidget(1, self._card('Network settings and shared changes' if english else 'การตั้งค่าเครือข่ายและค่าร่วมกัน', [
+            if len(sections) > 3 and only_index in (None, 3):
+                sections[3].layout().insertWidget(1, self._card('Network settings and shared changes' if english else 'การตั้งค่าเครือข่ายและค่าร่วมกัน', [
                 self._txt('Settings > Advanced > Network settings shows actual work and durable receipt queues. A completed send is not proof that the peer saved it.' if english else
                     'ตั้งค่า > ขั้นสูง > การตั้งค่าเครือข่าย แสดงงานที่กำลังทำและคิวรอยืนยันรับ การส่งข้อความสำเร็จยังไม่ใช่หลักฐานว่าปลายทางบันทึกแล้ว'),
                 self._txt('Configuration history is retained locally. Continuous synchronization and shared reading require verified membership; copying initial setup alone does not establish it.' if english else
                     'ประวัติการตั้งค่าเก็บไว้ในคอมนี้ การ Sync ต่อเนื่องและผู้อ่านร่วมต้องเชื่อมสมาชิกที่ยืนยันแล้ว การรับค่าติดตั้งครั้งเดียวยังไม่ใช่การเชื่อมสมาชิก'),
                 self._txt('Each computer keeps its own identity and shares the same three printer Slots. Replacing a used printer starts from its reviewed meter baseline.' if english else
                     'แต่ละคอมมีตัวตนของตนเองและใช้ Slot เครื่องพิมพ์สามช่องชุดเดียวกัน เมื่อเปลี่ยนเป็นเครื่องมือสอง ยอดจะนับต่อจากฐานที่ตรวจยืนยันแล้ว')]))
-            sections[2].layout().insertWidget(1, self._card('Missing history and revised reports' if english else 'ช่วงขาดข้อมูลและรายงานฉบับแก้ไข', [
+            if len(sections) > 2 and only_index in (None, 2):
+                sections[2].layout().insertWidget(1, self._card('Missing history and revised reports' if english else 'ช่วงขาดข้อมูลและรายงานฉบับแก้ไข', [
                 self._txt('Users, Raw, Usage and Excel include received Web history. Tables allocate gap totals to the day before readings resume, with a remark and no invented reading time. Unposted usage is provisional; closed accounts retain their originals.' if english else
                     'Users, Raw, Usage และ Excel รวมประวัติ Web ที่รับมาแล้ว ตารางลงยอดช่วงขาดวันก่อนกลับมาอ่าน พร้อมหมายเหตุและไม่สร้างเวลาอ่านปลอม ยอดที่ยังไม่ลงบัญชีเป็นยอดชั่วคราว บัญชีปิดแล้วเก็บต้นฉบับไว้'),
                 self._txt('A 301-page gap over two entirely missing days is shown as an estimated 150.5 pages per day. The graph never determines invoice amounts.' if english else
@@ -6815,6 +6842,9 @@ class PageManual(QWidget):
         )
 
     def _scroll_to_manual_section(self, index: int) -> None:
+        if self._lazy and self._manual_language != ENGLISH:
+            while index >= len(self._thai_manual_sections) and self._thai_manual_next < 5:
+                self._append_next_thai_section()
         sections = self._active_manual_sections()
         if not (0 <= index < len(sections)):
             return

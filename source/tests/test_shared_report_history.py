@@ -11,6 +11,7 @@ import pytest
 
 import database
 from services.device_config import DeviceConfig, DeviceConfigRepository
+from services.daily_cache import DailyCacheStore
 from services.monthly_history import load_usage_history
 from services.raw_counter_history import RawCounterHistoryStore, load_raw_counter_history
 from services.shared_report_history import load_shared_counter_days
@@ -74,6 +75,41 @@ def test_reordered_duplicates_preserve_real_manual_reads_and_one_total(order):
         assert conn.execute('SELECT COUNT(*) FROM billing_ledger').fetchone()[0] == 0
 
 
+def test_group_current_day_uses_same_epoch_from_different_local_openings(tmp_path):
+    at = datetime(2026, 9, 18, 10, tzinfo=UTC)
+    anchor, epoch = setup(at, value=100)
+    receive(event_at(anchor, epoch, 150, at + timedelta(minutes=30)), epoch)
+    early = DailyCacheStore(tmp_path / 'early')
+    late = DailyCacheStore(tmp_path / 'late')
+    early_subjects = SubjectDailyCacheStore(tmp_path / 'early-subjects')
+    late_subjects = SubjectDailyCacheStore(tmp_path / 'late-subjects')
+    early.update_reading(0, reading(90, at - timedelta(minutes=10)), at=at - timedelta(minutes=10))
+    early.update_reading(0, reading(160, at + timedelta(hours=1)), at=at + timedelta(hours=1))
+    late.update_reading(0, reading(125, at + timedelta(minutes=15)), at=at + timedelta(minutes=15))
+    late.update_reading(0, reading(160, at + timedelta(hours=1)), at=at + timedelta(hours=1))
+    for cache, opening_at, opening in (
+        (early_subjects, at - timedelta(minutes=10), 90),
+        (late_subjects, at + timedelta(minutes=15), 125),
+    ):
+        cache.update_reading(0, reading(opening, opening_at), at=opening_at)
+        cache.update_reading(0, reading(160, at + timedelta(hours=1)), at=at + timedelta(hours=1))
+
+    day = at.date()
+    for cache in (early, late):
+        usage = load_usage_history([0], granularity='daily', today=day, cache=cache)
+        assert sum(row.provisional_total for row in usage) == 50
+        assert cache.finalize(0, day) is None
+        assert cache.path(0, day).exists()
+    for cache in (early_subjects, late_subjects):
+        users = load_subject_history([0], today=day, cache=cache)
+        assert sum(row.period_usage for row in users) == 50
+        assert cache.finalize(0, day) == ()
+        assert cache.path(0, day).exists()
+    with database._open(commit=False) as conn:
+        assert conn.execute('SELECT COUNT(*) FROM billing_ledger').fetchone()[0] == 0
+        assert conn.execute('SELECT COUNT(*) FROM daily_subject_records').fetchone()[0] == 0
+
+
 def test_weekend_allocation_and_fractional_graph_conserve_usage_without_fake_reads():
     anchor, epoch = setup()
     monday = event_at(anchor, epoch, 401, datetime(2026, 9, 21, 9, tzinfo=UTC))
@@ -107,10 +143,9 @@ def test_late_historical_read_changes_allocation_not_total_and_keeps_latest_live
 
 
 def test_closed_legacy_resumed_row_blocks_duplicate_gap_even_outside_selected_range(tmp_path):
-    anchor, epoch = setup()
     monday_at = datetime(2026, 9, 21, 9, tzinfo=UTC)
-    receive(event_at(anchor, epoch, 401, monday_at), epoch)
-    # Existing closed daily detail already accounts for this gap on Monday.
+    # Simulate a pre-existing closed local row created before group enrollment.
+    DeviceConfigRepository().replace_all([DeviceConfig(0, 'Shared printer', '192.0.2.10', serial='REPORT-A')])
     raw = RawCounterHistoryStore()
     raw.update_reading(0, reading(100, monday_at), at=monday_at)
     raw.update_reading(0, reading(401, monday_at + timedelta(minutes=1)), at=monday_at + timedelta(minutes=1))
@@ -118,6 +153,8 @@ def test_closed_legacy_resumed_row_blocks_duplicate_gap_even_outside_selected_ra
     subjects.update_reading(0, reading(100, monday_at), at=monday_at)
     subjects.update_reading(0, reading(401, monday_at + timedelta(minutes=1)), at=monday_at + timedelta(minutes=1))
     subjects.finalize(0, monday_at.date())
+    anchor, epoch = setup()
+    receive(event_at(anchor, epoch, 401, monday_at), epoch)
     assert not load_raw_counter_history([0], period_start=date(2026, 9, 20), period_end=date(2026, 9, 20))
     assert not load_subject_history([0], period_start=date(2026, 9, 20), period_end=date(2026, 9, 20))
     with database._open(commit=False) as conn:

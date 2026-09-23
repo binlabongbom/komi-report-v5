@@ -53,7 +53,7 @@ def main():
             database.init_db()
             panel = NetworkActivityPanel()
             panel.bind_runtime(SyntheticRuntime())
-            panel.resize(1000, 345)
+            panel.resize(1000, 480)
             panel.show()
             deadline = monotonic()+10
             while 'ไม่พบกุญแจสมาชิกเดิม' not in panel.summary.text() and monotonic() < deadline:

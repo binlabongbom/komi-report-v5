@@ -14,7 +14,7 @@ from services.shared_settings_document import PRICE_KEYS, from_connection, valid
 # These local values may be saved by setup but must never enter peer history.
 LOCAL_KEYS = {"snmp_interval_minutes", "db_path", "installation_id", "v52_registration_mode",
               "desktop_role", "primary_peer_url", "primary_peer_certificate_sha256",
-              "primary_installation_id"}
+              "primary_installation_id", "peer_enrollment_pending"}
 SHARED_KEYS = {"company_name", "client_first_started_at", "pricing_mode", "billing_day",
                "waste_paper_pct", "work_start", "work_end", "sync_schedule_windows"}
 

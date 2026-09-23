@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import secrets
+import threading
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import datetime
@@ -56,8 +57,17 @@ class DeviceConfig:
 
 class DeviceConfigRepository:
     def __init__(self, credential_store: CredentialStore | None = None) -> None:
-        self.credential_store = credential_store or platform_credential_store()
+        self._credential_store = credential_store
+        self._credential_store_lock = threading.Lock()
         self._migration_checked = False
+
+    @property
+    def credential_store(self) -> CredentialStore:
+        if self._credential_store is None:
+            with self._credential_store_lock:
+                if self._credential_store is None:
+                    self._credential_store = platform_credential_store()
+        return self._credential_store
 
     @staticmethod
     def _credential_reference(connection, slot: int) -> str:

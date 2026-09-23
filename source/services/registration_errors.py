@@ -12,6 +12,33 @@ NETWORK_CODES = frozenset({"offline", "dns_error", "connection_timeout", "connec
 SUPPORT_CODES = NETWORK_CODES | frozenset({"registration_pending", "proxy_auth_required", "host_redirect", "rate_limited", "host_unavailable", "offline_edition"})
 
 
+def tls_verification_detail(error: BaseException) -> str:
+    """Only numeric verifier codes and fixed labels; never raw exception text."""
+    seen: set[int] = set()
+    while isinstance(error, URLError) and isinstance(error.reason, BaseException):
+        if id(error) in seen:
+            return ""
+        seen.add(id(error))
+        error = error.reason
+    if not isinstance(error, ssl.SSLCertVerificationError):
+        return ""
+    number = getattr(error, "verify_code", None)
+    if type(number) is not int:
+        return ""
+    number &= 0xFFFFFFFF
+    labels = {
+        9: "certificate_not_yet_valid", 10: "certificate_expired",
+        18: "untrusted_self_signed", 19: "untrusted_chain",
+        20: "issuer_not_found", 21: "incomplete_chain", 23: "certificate_revoked",
+        62: "hostname_mismatch", 64: "hostname_mismatch",
+        0x800B0101: "certificate_outside_validity_period",
+        0x800B0109: "untrusted_root", 0x800B010A: "incomplete_chain",
+        0x800B010C: "certificate_revoked", 0x800B010F: "hostname_mismatch",
+        0x800B0111: "explicitly_distrusted", 0x80092013: "revocation_check_offline",
+    }
+    return f" | Verify code: {number} (0x{number:X}) | {labels.get(number, 'certificate_validation_failed')}"
+
+
 def classify_network_error(error: BaseException) -> str:
     reason = error
     seen: set[int] = set()

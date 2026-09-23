@@ -16,6 +16,7 @@ def _reason(value):
     known = {
         "setup_settings_saved": tr("บันทึกเครื่องพิมพ์และการตั้งค่า", "Printer and setup settings saved"),
         "slot_baseline_reviewed": tr("ยืนยันฐานมิเตอร์ของ Slot", "Slot meter baseline reviewed"),
+        "slot_baseline_initialized": tr("สร้างฐานมิเตอร์เริ่มต้นอัตโนมัติ", "Initial meter baselines created automatically"),
         "billing_settings_saved": tr("เปลี่ยนรอบบิลหรือส่วนลด", "Billing or discount changed"),
         "schedule_settings_saved": tr("เปลี่ยนตารางอ่านข้อมูล", "Reading schedule changed"),
         "local_settings_baseline": tr("ค่าก่อนเริ่มบันทึกประวัติ", "Settings before audit history"),

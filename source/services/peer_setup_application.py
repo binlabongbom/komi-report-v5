@@ -5,6 +5,8 @@ scope from independently trusted material. They must not perform network I/O
 inside the transaction. No default production provider is supplied here.
 """
 from dataclasses import dataclass
+from contextlib import contextmanager, closing
+import sqlite3
 from datetime import UTC, date, datetime
 import hashlib
 import json
@@ -45,10 +47,23 @@ class PeerSetupPreview:
 
 
 class PeerSetupApplication:
-    def __init__(self, *, authorize, authorize_epoch):
+    def __init__(self, *, authorize, authorize_epoch, path=None):
         if not callable(authorize) or not callable(authorize_epoch):
             raise TypeError("Verified company/settings and epoch authorizers are required")
         self.authorize, self.authorize_epoch = authorize, authorize_epoch
+        self.path = Path(path).resolve() if path is not None else None
+
+    @contextmanager
+    def _connection(self, *, write=False):
+        if self.path is None:
+            with (config_write_transaction() if write else _open(commit=False)) as conn:
+                yield conn
+        else:
+            with closing(sqlite3.connect(self.path.as_uri() + '?mode=rw', uri=True)) as conn, conn:
+                conn.execute('PRAGMA foreign_keys=ON')
+                if write:
+                    conn.execute('BEGIN IMMEDIATE')
+                yield conn
 
     def _allowed(self, member, revision, payload):
         if (not isinstance(member, str) or not member.strip() or len(member) > 256
@@ -74,7 +89,7 @@ class PeerSetupApplication:
     def preview(self, member, remote_head, *, reason, resolve_conflict=False):
         if type(resolve_conflict) is not bool or not isinstance(reason, str) or not 1 <= len(reason.strip()) <= 300:
             raise ValueError("A bounded review reason and explicit conflict choice are required")
-        with _open(commit=False) as conn:
+        with self._connection() as conn:
             conn.execute("BEGIN")
             database_path = str(Path(conn.execute("PRAGMA database_list").fetchone()[2]).resolve())
             state = _state(conn)
@@ -109,14 +124,14 @@ class PeerSetupApplication:
     def commit(self, preview):
         if (not isinstance(preview, PeerSetupPreview) or type(preview.resolve_conflict) is not bool
                 or not isinstance(preview.reason, str) or not 1 <= len(preview.reason.strip()) <= 300
-                or preview.database_path != str(Path(get_db_path()).resolve())):
+                or preview.database_path != str(self.path or Path(get_db_path()).resolve())):
             raise ValueError("Invalid or relocated peer settings review")
         requested = json.loads(preview.after_json)
         validate(requested)
         receipt_key = "peer_setup_review:" + hashlib.sha256(_json(preview.__dict__).encode()).hexdigest()
         history = SettingsHistory()
         exchange = SlotEpochExchange(authorize=self.authorize_epoch, path=preview.database_path)
-        with config_write_transaction() as conn:
+        with self._connection(write=True) as conn:
             if str(Path(conn.execute("PRAGMA database_list").fetchone()[2]).resolve()) != preview.database_path:
                 raise ValueError("Settings database changed after review")
             self._allowed(preview.member, preview.remote_head, requested)
@@ -165,7 +180,7 @@ class PeerSetupApplication:
                 exchange.adopt_in_transaction(conn, preview.member, reference["epoch_id"],
                     expected_head=old_heads.get(reference["slot"]))
             self._allowed(preview.member, preview.remote_head, requested)
-            if (str(Path(get_db_path()).resolve()) != preview.database_path or from_connection(conn) != requested):
+            if (str(self.path or Path(get_db_path()).resolve()) != preview.database_path or from_connection(conn) != requested):
                 raise ValueError("Saved setup differs from the reviewed shared configuration")
             if fast_forward:
                 revision = preview.remote_head

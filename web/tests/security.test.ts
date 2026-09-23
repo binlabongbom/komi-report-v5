@@ -138,6 +138,17 @@ test("public signed peer contact permits only its exact read endpoint", async ()
   }
 });
 
+test("continuous enrollment reaches approval validation only on the exact POST route", async () => {
+  const { NextRequest } = await import("next/server");
+  const { default: proxy } = await import("../proxy");
+  const url = "https://komi.local/api/v3/peer/enrollment";
+  assert.equal((await proxy(new NextRequest(url, { method: "POST" }))).headers.get("x-middleware-next"), "1");
+  for (const request of [new NextRequest(url), new NextRequest(url, { method: "DELETE" }),
+    new NextRequest(url + "/finish", { method: "POST" })]) {
+    assert.equal((await proxy(request)).status, 401);
+  }
+});
+
 test("passwordless proxy redirects stale login to reports while retaining explicit admin login", async () => {
   const { NextRequest } = await import("next/server");
   const { default: proxy } = await import("../proxy");

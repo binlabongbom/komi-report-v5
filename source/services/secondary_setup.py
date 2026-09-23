@@ -378,6 +378,7 @@ class SecondaryPeerClient:
         expected_fingerprint: str = "",
         timeout: float | None = None,
         port: int | None = None,
+        max_response_bytes: int = MAX_RESPONSE_BYTES,
     ) -> tuple[int, dict[str, object], str, list[str]]:
         connection = http.client.HTTPSConnection(
             host,
@@ -393,8 +394,8 @@ class SecondaryPeerClient:
                 raise SecondarySetupError("Certificate ของเครื่องหลักเปลี่ยนระหว่างการ Sync")
             connection.request(method, path, body=body, headers=headers or {})
             response = connection.getresponse()
-            raw = response.read(MAX_RESPONSE_BYTES + 1)
-            if len(raw) > MAX_RESPONSE_BYTES:
+            raw = response.read(max_response_bytes + 1)
+            if len(raw) > max_response_bytes:
                 raise SecondarySetupError("ข้อมูลจากเครื่องหลักมีขนาดใหญ่เกินกำหนด")
             try:
                 payload = json.loads(raw.decode("utf-8")) if raw else {}
@@ -459,6 +460,88 @@ class SecondaryPeerClient:
     def fetch_snapshot(self, candidate: SecondaryPeerCandidate) -> dict[str, object]:
         return validate_setup_snapshot(self._fetch_authorized(candidate, "/api/v1/peer/setup-snapshot"))
 
+    def prepare_enrollment(self, candidate, *, cancelled=lambda: False):
+        from services.peer_enrollment import prepare_enrollment, ROUTE, MAX_BYTES
+        token = self._claim_authorization(candidate)
+        host, port = self._peer_endpoint(candidate)
+        binding = None
+        begin_response = None
+        def request(operation, data):
+            nonlocal token, binding, begin_response
+            if operation == 'begin':
+                binding = dict(data)
+            for attempt in range(2):
+                try:
+                    status, payload, _, _ = self._request(host, 'POST', ROUTE,
+                        body=json.dumps({'operation': operation, 'data': data}).encode(),
+                        headers={'Content-Type': 'application/json', PEER_SYNC_TOKEN_HEADER: token},
+                        expected_fingerprint=candidate.certificate_sha256, port=port, timeout=15.0,
+                        max_response_bytes=MAX_BYTES)
+                    break
+                except (OSError, ssl.SSLError):
+                    if attempt:
+                        raise
+            if status == 401 and binding is not None:
+                # Renew request credentials under persistent source access;
+                # no source-side click is needed. Explicit off still rejects.
+                token = self._claim_authorization(candidate)
+                status, renewed, _, _ = self._request(host, 'POST', ROUTE,
+                    body=json.dumps({'operation': 'begin', 'data': binding}).encode(),
+                    headers={'Content-Type': 'application/json', PEER_SYNC_TOKEN_HEADER: token},
+                    expected_fingerprint=candidate.certificate_sha256, port=port, timeout=15.0,
+                    max_response_bytes=MAX_BYTES)
+                if status == 200:
+                    if begin_response is not None and renewed['invitation'] != begin_response['invitation']:
+                        raise SecondarySetupError('กลุ่มต้นทางเปลี่ยน กรุณาตรวจและเข้าร่วมใหม่')
+                    if operation == 'begin':
+                        payload = renewed
+                    else:
+                        status, payload, _, _ = self._request(host, 'POST', ROUTE,
+                            body=json.dumps({'operation': operation, 'data': data}).encode(),
+                            headers={'Content-Type': 'application/json', PEER_SYNC_TOKEN_HEADER: token},
+                            expected_fingerprint=candidate.certificate_sha256, port=port, timeout=15.0,
+                            max_response_bytes=MAX_BYTES)
+            if status != 200:
+                raise SecondarySetupError(str(payload.get('detail') or 'เข้ากลุ่มไม่สำเร็จ กรุณาตรวจว่าเครื่องต้นทางออนไลน์และเปิดรับสมาชิกอยู่ แล้วลองใหม่'))
+            if operation == 'begin':
+                begin_response = payload
+            return payload
+        result = prepare_enrollment(request, cancelled=cancelled)
+        if result.payload['organization']['company_name'] != candidate.company_name:
+            result.close()
+            raise SecondarySetupError('บริษัทต้นทางเปลี่ยน กรุณาค้นหาและเลือกกลุ่มใหม่')
+        from dataclasses import asdict
+        result.candidate = asdict(candidate)
+        return result
+
+    def finish_pending_enrollment(self, candidate, access, *, contact):
+        """Resume a locally committed join using the persistent source policy."""
+        from services.peer_enrollment import ROUTE, MAX_BYTES
+        token = self._claim_authorization(candidate)
+        host, port = self._peer_endpoint(candidate)
+        def send(operation, data):
+            status, result, _, _ = self._request(host, 'POST', ROUTE,
+                body=json.dumps({'operation':operation, 'data':data}).encode(),
+                headers={'Content-Type':'application/json', PEER_SYNC_TOKEN_HEADER:token},
+                expected_fingerprint=candidate.certificate_sha256, port=port, timeout=15,
+                max_response_bytes=MAX_BYTES)
+            if status != 200:
+                raise SecondarySetupError('ตรวจว่าเครื่องต้นทางออนไลน์และเปิดรับสมาชิกอยู่ แล้วลองเชื่อมต่อใหม่')
+            return result
+        result = send('begin', {'member_id':access.member_id, 'public_key':access.identity.public_key_base64url})
+        if result['invitation'] != access.invitation():
+            raise SecondarySetupError('กลุ่มต้นทางไม่ตรงกับกลุ่มที่ยืนยันไว้')
+        access._checked_contact(result['source'])
+        receipt = send('finish', {'contact':contact})
+        if receipt != {'member_id':access.member_id, 'committed':True}:
+            raise SecondarySetupError('ต้นทางยังไม่ยืนยันสมาชิก')
+        from pathlib import Path
+        from database import get_db_path, config_write_transaction
+        if Path(get_db_path()).resolve() != access.path:
+            raise SecondarySetupError('ฐานข้อมูลเปลี่ยนระหว่างยืนยันสมาชิก กรุณาลองใหม่')
+        with config_write_transaction() as conn:
+            conn.execute("DELETE FROM settings WHERE key='peer_enrollment_pending'")
+
     def fetch_settings_history(self, candidate: SecondaryPeerCandidate) -> dict[str, object]:
         """Fetch only; SettingsHistory.receive validates before persisting."""
         return self._fetch_authorized(candidate, "/api/v2/peer/settings-history")
@@ -493,8 +576,7 @@ class SecondaryPeerClient:
         )
         if claim_status == 423:
             raise SecondarySetupError(
-                "บนเครื่อง Primary ให้เปิด การตั้งค่าขั้นสูง > รายงานผ่าน LAN "
-                "แล้วเลือกเปิด Secondary Sync 5 นาที หรือเปิดตลอด"
+                "ต้นทางปิดสิทธิ์เข้ากลุ่มอยู่ ตรวจการตั้งค่าเครือข่ายว่าไม่ได้เลือกปิดรับสมาชิก"
             )
         if claim_status != 202 or not claim_payload.get("accepted"):
             raise SecondarySetupError("เครื่อง Primary ไม่อนุญาต Secondary Sync")
