@@ -9,6 +9,7 @@ dependencies = [
   "PyQt6-Charts~=6.11.0",
   "fastapi>=0.115,<1",
   "keyring>=25,<26",
+  "truststore==0.10.4",
   "openpyxl~=3.1.0",
   "pyqtgraph~=0.13.3",
   "pysnmp>=7.1,<8",

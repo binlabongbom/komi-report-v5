@@ -710,14 +710,32 @@ class SecondarySnapshotWorker(QObject):
     def __init__(self, candidate: SecondaryPeerCandidate) -> None:
         super().__init__()
         self.candidate = candidate
+        self.cancelled = Event()
 
     @pyqtSlot()
     def run(self) -> None:
         try:
-            snapshot = SecondaryPeerClient().fetch_snapshot(self.candidate)
-            self.finished.emit(snapshot, "")
+            preview = SecondaryPeerClient().prepare_enrollment(self.candidate, cancelled=self.cancelled.is_set)
+            self.finished.emit(preview, "")
         except Exception as exc:
             self.finished.emit({}, str(exc))
+
+
+class EnrollmentCommitWorker(QObject):
+    finished = pyqtSignal(str)
+
+    def __init__(self, preview, settings, repository, devices):
+        super().__init__()
+        self.preview, self.settings = preview, settings
+        self.repository, self.devices = repository, devices
+
+    @pyqtSlot()
+    def run(self):
+        try:
+            self.preview.commit(local_settings=self.settings, repository=self.repository, devices=self.devices)
+            self.finished.emit('')
+        except Exception as error:
+            self.finished.emit(str(error))
 
 
 class LegacyHistoryImportDialog(QDialog):
@@ -1107,6 +1125,8 @@ class SetupWizardV5(QDialog):
         self.secondary_candidates: list[SecondaryPeerCandidate] = []
         self.secondary_candidate: SecondaryPeerCandidate | None = None
         self.secondary_snapshot: dict[str, object] | None = None
+        self.secondary_enrollment = None
+        self._enrollment_commit_thread = None
         self._secondary_discovery_thread: QThread | None = None
         self._secondary_discovery_worker: SecondaryPeerDiscoveryWorker | None = None
         self._secondary_discovery_manual_host = ""
@@ -2016,8 +2036,8 @@ class SetupWizardV5(QDialog):
         layout.addWidget(selector)
         safety = QLabel(
             tr(
-                "ไม่คัดลอก Password เครื่องพิมพ์, Registration Token, ประวัติการใช้งาน หรือ Log",
-                "Printer passwords, registration tokens, usage history and logs are never copied.",
+                "เข้าร่วมแล้วจะ Sync การตั้งค่าและประวัติการใช้งานต่อเนื่อง การเปลี่ยนค่ามีผลกับสมาชิกอื่น โดยไม่คัดลอกรหัสผ่านเครื่องพิมพ์หรือสิทธิ์ลงทะเบียน Host",
+                "Joining enables ongoing settings and usage sync. Shared changes affect other members. Printer passwords and Host registration rights are not copied.",
             )
         )
         safety.setWordWrap(True)
@@ -2029,7 +2049,7 @@ class SetupWizardV5(QDialog):
         actions = QHBoxLayout()
         actions.addStretch()
         normal = btn(tr("ตั้งค่าเครื่องนี้เอง", "Set up independently"), "outline")
-        sync = btn(tr("Sync จากเครื่องหลัก", "Sync from Primary"), "primary")
+        sync = btn(tr("เข้าร่วมและใช้การตั้งค่าร่วมกัน", "Join and share settings"), "primary")
         normal.clicked.connect(dialog.reject)
         sync.clicked.connect(dialog.accept)
         actions.addWidget(normal)
@@ -2051,6 +2071,11 @@ class SetupWizardV5(QDialog):
     ) -> None:
         if self._secondary_sync_thread is not None:
             return
+        try:
+            self._activate_selected_database_path()
+        except Exception as error:
+            self._show_wizard_message(tr('เตรียมฐานข้อมูลไม่สำเร็จ', 'Database preparation failed'), str(error))
+            return
         self._secondary_sync_cancelled = False
         progress = QDialog(self)
         progress.setWindowTitle(tr("กำลัง Sync การตั้งค่า", "Syncing setup"))
@@ -2061,8 +2086,8 @@ class SetupWizardV5(QDialog):
         progress_layout.addWidget(title)
         detail = QLabel(
             tr(
-                "ระบบจะตรวจรูปแบบข้อมูลและไม่รับ Password, Token, ประวัติ หรือ Log",
-                "The app validates the payload and rejects passwords, tokens, history and logs.",
+                "กำลังตรวจสมาชิก ประวัติการตั้งค่า และฐานมิเตอร์ ยกเลิกได้ก่อนบันทึก",
+                "Checking membership, settings history and meter baselines. You can cancel before saving.",
             )
         )
         detail.setWordWrap(True)
@@ -2088,6 +2113,7 @@ class SetupWizardV5(QDialog):
         )
         worker.finished.connect(thread.quit)
         worker.finished.connect(worker.deleteLater)
+        thread.finished.connect(self._secondary_snapshot_stopped)
         thread.finished.connect(thread.deleteLater)
         self._secondary_sync_thread = thread
         self._secondary_sync_worker = worker
@@ -2095,6 +2121,8 @@ class SetupWizardV5(QDialog):
 
     def _cancel_secondary_snapshot(self, dialog: QDialog) -> None:
         self._secondary_sync_cancelled = True
+        if self._secondary_sync_worker is not None:
+            self._secondary_sync_worker.cancelled.set()
         dialog.reject()
 
     def _secondary_snapshot_finished(
@@ -2103,16 +2131,22 @@ class SetupWizardV5(QDialog):
         snapshot: object,
         error: str,
     ) -> None:
-        self._secondary_sync_thread = None
-        self._secondary_sync_worker = None
         if self._secondary_sync_dialog is not None:
             self._secondary_sync_dialog.accept()
             self._secondary_sync_dialog = None
         if self._secondary_sync_cancelled:
+            if hasattr(snapshot, 'close'):
+                snapshot.close()
             self.secondary_join_status.setText(
                 tr("ยกเลิกการ Sync แล้ว · ยังไม่มีการเปลี่ยนแปลง", "Sync cancelled · no changes were made")
             )
             return
+        from services.peer_enrollment import EnrollmentPreview
+        if isinstance(snapshot, EnrollmentPreview):
+            if self.secondary_enrollment is not None:
+                self.secondary_enrollment.close()
+            self.secondary_enrollment = snapshot
+            snapshot = snapshot.snapshot()
         if error or not isinstance(snapshot, dict):
             self._show_wizard_message(
                 tr("Sync ไม่สำเร็จ", "Sync failed"),
@@ -2123,6 +2157,10 @@ class SetupWizardV5(QDialog):
             self._apply_secondary_snapshot(candidate, snapshot)
         except (KeyError, TypeError, ValueError, SecondarySetupError) as exc:
             self._show_wizard_message(tr("Sync ไม่สำเร็จ", "Sync failed"), str(exc))
+
+    def _secondary_snapshot_stopped(self):
+        self._secondary_sync_thread = None
+        self._secondary_sync_worker = None
 
     def _apply_secondary_snapshot(
         self,
@@ -2185,6 +2223,14 @@ class SetupWizardV5(QDialog):
         self.billing_end_day.setCurrentIndex(int(settings["billing_day"]) - 1)
         self.secondary_candidate = candidate
         self.secondary_snapshot = snapshot
+        if self.secondary_enrollment is not None:
+            # Joining preserves the reviewed history; later edits use shared Settings.
+            for control in (self.company_name_input, self.shared_price_mode,
+                    self.per_device_price_mode, self.deferred_price_mode,
+                    self.waste_paper_pct, self.billing_end_day, self.effective_date,
+                    *self.shared_price_row.values(),
+                    *(spin for row in self.price_rows for spin in row.values())):
+                control.setEnabled(False)
         self.secondary_join_status.setText(
             tr(
                 "รับการตั้งค่าแล้ว · กำลังทดสอบเครื่องพิมพ์จาก Secondary เครื่องนี้",
@@ -2406,6 +2452,9 @@ class SetupWizardV5(QDialog):
             return
         if self._scan_worker is not None:
             self._scan_worker.cancel()
+        if self._secondary_sync_worker is not None:
+            self._secondary_sync_worker.cancelled.set()
+            self._secondary_sync_cancelled = True
         self._scan_thread.requestInterruption()
         self.scan_status.setText("กำลังยกเลิกการค้นหา…")
         self.cancel_scan_button.setEnabled(False)
@@ -3544,10 +3593,26 @@ class SetupWizardV5(QDialog):
         return all(thread.wait(timeout_ms) for thread in threads)
 
     def closeEvent(self, event) -> None:
+        if self._enrollment_commit_thread is not None:
+            event.ignore()
+            return
         if not self._stop_active_workers():
             event.ignore()
             return
         super().closeEvent(event)
+
+    def reject(self):
+        if self._enrollment_commit_thread is not None:
+            return
+        if not self._stop_active_workers():
+            return
+        if self._secondary_sync_worker is not None:
+            self._secondary_sync_worker.cancelled.set()
+            self._secondary_sync_cancelled = True
+        if self.secondary_enrollment is not None:
+            self.secondary_enrollment.close()
+            self.secondary_enrollment = None
+        super().reject()
 
     def _configs(self) -> list[DeviceConfig]:
         devices: list[DeviceConfig] = []
@@ -4191,6 +4256,8 @@ class SetupWizardV5(QDialog):
         )
 
     def _save(self) -> None:
+        if self._enrollment_commit_thread is not None:
+            return
         existing_registration_state: dict[str, object] | None = None
         if self.edit_mode:
             current_database_path = Path(get_db_path()).expanduser().resolve(strict=False)
@@ -4228,6 +4295,8 @@ class SetupWizardV5(QDialog):
             if self.lab_mode:
                 self.accept()
                 return
+            if self.secondary_enrollment is not None and self.selected_database_path.resolve() != self.secondary_enrollment.path:
+                raise ValueError('ตำแหน่งฐานข้อมูลเปลี่ยน กรุณารับการตั้งค่ากลุ่มใหม่ก่อนบันทึก')
             self._activate_selected_database_path()
             from services.setup_settings import SetupSettingsService
             service = SetupSettingsService(self.repository)
@@ -4255,6 +4324,19 @@ class SetupWizardV5(QDialog):
                 settings.update(billing_day=str(self._billing_day()),
                                 waste_paper_pct=str(round(self.waste_paper_pct.value(), 1)))
             installation_id = settings["installation_id"]
+            if self.secondary_enrollment is not None:
+                from services.setup_settings import LOCAL_KEYS
+                enrollment = self.secondary_enrollment
+                if company_name != enrollment.payload['organization']['company_name']:
+                    raise ValueError('บริษัทเปลี่ยนหลังเลือกกลุ่ม กรุณารับการตั้งค่าใหม่')
+                expected_devices = {(d['slot'], d['host'], d['serial']) for d in enrollment.payload['devices']}
+                if {(d.slot, d.host, d.serial) for d in devices if d.enabled} != expected_devices:
+                    raise ValueError('เครื่องพิมพ์ต้องตรงกับกลุ่มที่เลือก กรุณารับการตั้งค่าใหม่')
+                installation_id = enrollment.identity.installation_id
+                settings['installation_id'] = installation_id
+                local = {k: v for k, v in settings.items() if k in LOCAL_KEYS}
+                self._save_enrollment(enrollment, local, company_name, registration_mode, installation_id, devices)
+                return
             if self.secondary_candidate is not None and self.secondary_snapshot is not None:
                 organization = self.secondary_snapshot.get("organization", {})
                 received = self.secondary_snapshot.get("settings", {})
@@ -4285,6 +4367,47 @@ class SetupWizardV5(QDialog):
             self.accept()
             return
 
+        self._complete_setup_registration(company_name, registration_mode, installation_id)
+
+    def _save_enrollment(self, preview, settings, company, mode, identity, devices):
+        # Network, vault and large ancestry imports never block Qt's GUI thread.
+        self.setEnabled(False)
+        thread = QThread(self)
+        worker = EnrollmentCommitWorker(preview, settings, self.repository, devices)
+        worker.moveToThread(thread)
+        thread.started.connect(worker.run)
+        self._enrollment_commit_thread, self._enrollment_commit_worker = thread, worker
+        self._enrollment_registration = (company, mode, identity)
+        worker.finished.connect(lambda error: setattr(self, '_enrollment_error', error))
+        worker.finished.connect(thread.quit)
+        worker.finished.connect(worker.deleteLater)
+        thread.finished.connect(lambda: self._enrollment_saved(self._enrollment_error))
+        thread.finished.connect(thread.deleteLater)
+        thread.start()
+
+    @pyqtSlot(str)
+    def _enrollment_saved(self, error):
+        self._enrollment_commit_thread = self._enrollment_commit_worker = None
+        self.setEnabled(True)
+        if error:
+            if self.secondary_enrollment.committed:
+                # The local transaction is durable; finish registration normally.
+                # Runtime keeps the pending marker and offers explicit reconnect.
+                dialog = self._build_wizard_message(tr('รอยืนยันจากกลุ่ม', 'Waiting for group confirmation'),
+                    tr('บันทึกสมาชิกบนเครื่องนี้แล้ว ลงทะเบียนต่อได้ เมื่อเครื่องต้นทางกลับมาออนไลน์ ให้กดค้นหาและเชื่อมต่อสมาชิกเดิมอีกครั้ง ไม่ต้องเปิดอนุญาตซ้ำ',
+                       'Membership is saved locally. Continue registration. When the source is online, choose Find and reconnect existing members; no renewed approval is required.'))
+                self._open_wizard_child(dialog, lambda _result: self._finish_enrollment_registration())
+            else:
+                self._show_wizard_message(tr('เข้ากลุ่มยังไม่ครบ', 'Enrollment incomplete'), error)
+            return
+        self._finish_enrollment_registration()
+
+    def _finish_enrollment_registration(self):
+        self.secondary_enrollment.close()
+        self.secondary_enrollment = None
+        self._complete_setup_registration(*self._enrollment_registration)
+
+    def _complete_setup_registration(self, company_name, registration_mode, installation_id):
         # Configuration stays local and durable if registration fails. The
         # application itself remains closed until Online Registration succeeds
         # or a valid Host-signed Offline License is imported.
@@ -4747,6 +4870,7 @@ class PagePipelineLog(QWidget):
         ("ตรวจสถานะ (SNMP)", "SNMP"),
         ("อ่าน Meter (Web)", "WEB"),
         ("เก็บข้อมูล (RAM / DB)", "RAM_DB"),
+        ("ผลอ่านร่วม (Sync)", "SYNC"),
         ("กฎระบบ", "POLICY"),
     )
 
@@ -4955,16 +5079,17 @@ class PagePipelineLog(QWidget):
         self.live_count = QLabel("")
         self.live_count.setStyleSheet(f"color:{C_TEXT2};")
         layout.addWidget(self.live_count)
-        self.live_table = QTableWidget(0, 4)
+        self.live_table = QTableWidget(0, 5)
         self.live_table.setHorizontalHeaderLabels(
-            ["เวลา", "เครื่อง", "ผลลัพธ์", "รายละเอียด"]
+            [tr("เวลา", "Time"), tr("เครื่องพิมพ์", "Printer"),
+             tr("อ่านโดย", "Read by"), tr("ผลลัพธ์", "Result"), tr("รายละเอียด", "Details")]
         )
         self.live_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.live_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.live_table.verticalHeader().setVisible(False)
         self.live_table.horizontalHeader().setStretchLastSection(True)
         self._stabilize_table(self.live_table)
-        for column, width in enumerate((150, 200, 120, 520)):
+        for column, width in enumerate((145, 200, 180, 110, 430)):
             self.live_table.setColumnWidth(column, width)
         layout.addWidget(self.live_table, 1)
         self.live_detail = QPlainTextEdit()
@@ -5091,7 +5216,7 @@ class PagePipelineLog(QWidget):
         if not value:
             return "ยังไม่มีข้อมูล"
         try:
-            return datetime.fromisoformat(value).strftime("%d/%m %H:%M") + " น."
+            return datetime.fromisoformat(value).astimezone().strftime("%d/%m %H:%M") + " น."
         except ValueError:
             return value.replace("T", " ")
 
@@ -5239,6 +5364,10 @@ class PagePipelineLog(QWidget):
             "รายละเอียดแผนงานอยู่ที่แท็บ การทำงานอัตโนมัติ"
         )
         self._clear_layout(self.status_rows)
+        from services.computer_names import snapshot_readers
+        from services.runtime_snapshots import runtime_snapshots
+        readers = snapshot_readers(get_db_path(), {d.slot: snapshot for d in devices
+            if (snapshot := runtime_snapshots.get(d.slot)) is not None and snapshot.serial == d.serial})
         for device, (status, description, colour, next_action, _latest_success) in rows:
             card = QFrame()
             card.setStyleSheet(
@@ -5256,6 +5385,18 @@ class PagePipelineLog(QWidget):
             detail.setWordWrap(True)
             detail.setStyleSheet("color:#475569;")
             copy.addWidget(detail)
+            provenance = readers.get(device.slot)
+            text = (tr("ผล Web ที่แสดง อ่านโดย {name} · {at}", "Displayed Web reading by {name} · {at}").format(
+                name=provenance['name'], at=self._display_time(provenance['at'])) if provenance else
+                tr("ผู้อ่าน: ยังไม่มีหลักฐานระบุคอมต้นทาง", "Reader: source computer is not yet available"))
+            reader_label = QLabel(text)
+            reader_label.setTextFormat(Qt.TextFormat.PlainText)
+            reader_label.setProperty('i18n_data', True)
+            reader_label.setWordWrap(True)
+            reader_label.setStyleSheet("color:#475569;")
+            if provenance:
+                reader_label.setToolTip(provenance['origin'])
+            copy.addWidget(reader_label)
             action = QLabel(next_action)
             action.setWordWrap(True)
             action.setStyleSheet("color:#64748B;")
@@ -5443,7 +5584,8 @@ class PagePipelineLog(QWidget):
     @staticmethod
     def _event_text(event: PipelineEvent) -> str:
         return " ".join(
-            (event.device_name, event.host, event.stage, event.action, event.target, event.value, event.detail, event.status)
+            (event.device_name, event.host, event.stage, event.action, event.target, event.value, event.detail, event.status,
+             event.computer_name, event.reader_name)
         ).lower()
 
     def refresh_live(self) -> None:
@@ -5482,15 +5624,16 @@ class PagePipelineLog(QWidget):
             values = (
                 display_time,
                 event.device_name or "ระบบ",
+                event.reader_name or '—',
                 self._event_result(event),
                 self._event_summary(event),
             )
             for column, value in enumerate(values):
                 item = QTableWidgetItem(value)
                 item.setToolTip(value)
-                if column == 2:
+                if column == 3:
                     item.setForeground(QColor(self._event_colour(event)))
-                self._align_log_item(item, row, centered=column == 2)
+                self._align_log_item(item, row, centered=column == 3)
                 self.live_table.setItem(row, column, item)
         self.live_count.setText(
             f"แสดง {len(filtered):,} / {len(events):,} เหตุการณ์ล่าสุด · แถวใหม่อยู่ด้านบน · "
@@ -5539,6 +5682,8 @@ class PagePipelineLog(QWidget):
                 (
                     f"เวลา: {event.at}",
                     f"เครื่อง: {event.device_name or 'ระบบ'} {event.host}".strip(),
+                    f"คอมที่ทำรายการ: {event.computer_name or '—'}",
+                    f"อ่านโดย: {event.reader_name or '—'}",
                     f"Stage: {event.stage}",
                     f"Action: {event.action}",
                     f"Target: {event.target or '—'}",
@@ -5549,14 +5694,15 @@ class PagePipelineLog(QWidget):
         )
 
     def _copy_live(self) -> None:
-        rows = ["เวลา\tเครื่อง\tผลลัพธ์\tรายละเอียด"]
+        rows = ["เวลา\tเครื่องพิมพ์\tคอมที่ทำรายการ\tอ่านโดย\tผลลัพธ์\tรายละเอียด"]
         for event in self._visible_events:
             try:
                 stamp = datetime.fromisoformat(event.at).strftime("%d/%m %H:%M:%S")
             except ValueError:
                 stamp = event.at.replace("T", " ")
             rows.append(
-                "\t".join((stamp, event.device_name or "ระบบ", self._event_result(event), self._event_summary(event)))
+                "\t".join((stamp, event.device_name or "ระบบ", event.computer_name or '—', event.reader_name or '—',
+                           self._event_result(event), self._event_summary(event)))
             )
         QApplication.clipboard().setText("\n".join(rows))
 
@@ -6790,7 +6936,8 @@ class ReportExportPeriodDialog(QDialog):
         title.setFont(fnt(F_LG, True))
         layout.addWidget(title)
         description = QLabel(
-            "Excel มีรายงานรายเครื่อง ผู้ใช้ รายวัน และรายละเอียด Legacy พร้อมหมายเหตุเมื่อมีฉบับแก้ไข"
+            tr("Excel มีรายงานรายเครื่อง ผู้ใช้ รายวัน และรายละเอียด Legacy พร้อมหมายเหตุเมื่อมีฉบับแก้ไข",
+               "Excel includes printer, user, and daily reports, Legacy details, and correction notes.")
         )
         description.setWordWrap(True)
         description.setStyleSheet(f"color:{C_TEXT2};")
@@ -6814,7 +6961,7 @@ class ReportExportPeriodDialog(QDialog):
         current_button = QPushButton("ช่วงที่แสดงอยู่")
         current_button.clicked.connect(lambda: self._set_range(start, end))
         quick.addWidget(current_button)
-        month_button = QPushButton("เดือนนี้")
+        month_button = QPushButton(tr("เดือนนี้", "This month"))
         month_button.clicked.connect(self._set_current_month)
         quick.addWidget(month_button)
         if available_start is not None and available_end is not None:
@@ -7198,7 +7345,7 @@ class PageHistoryV5(PageHistory):
         is_custom_period = selected is not None and selected not in periods
         # Printers can use posted monthly records for a billing period, but a
         # custom range must aggregate only the daily records inside its dates.
-        needs_daily_usage = active_tab in {0, 3} or (active_tab == 2 and is_custom_period)
+        needs_daily_usage = active_tab in {0, 2, 3}
         needs_subjects = active_tab in {0, 1}
         needs_raw = active_tab in {1, 4}
         needs_legacy = active_tab in {3, 4}
@@ -7264,7 +7411,7 @@ class PageHistoryV5(PageHistory):
             daily_records=daily_records,
             usage_daily_records=usage_daily_records,
             chart_daily_records=(tuple(load_usage_history(report_slots(), granularity='daily',
-                cache=self.cache, graph=True)) if active_tab in {0, 3} else usage_daily_records),
+                cache=self.cache, graph=True)) if active_tab in {0, 2, 3} else usage_daily_records),
             monthly_records=getattr(self, "_report_records", ()),
             subjects=subjects,
             devices=devices,
@@ -11333,7 +11480,7 @@ class PageFleetSettings(QWidget):
         self.web_service_enabled.setChecked(get_cfg("web_service_enabled", "1") != "0")
         self.web_port.setValue(read_web_port(self.web_service.runtime_root / ".env.local"))
         sync_status = pairing_window_status()
-        self.peer_sync_mode.setCurrentIndex(2 if sync_status.always_open else 1 if sync_status.open else 0)
+        self.peer_sync_mode.setCurrentIndex(self.peer_sync_mode.findData("always" if sync_status.open else "off"))
         web_access = web_access_status(self.web_service.runtime_root / ".env.local")
         self.web_report_require_password.setChecked(not web_access.report_passwordless)
         for control in controls:
@@ -11371,7 +11518,7 @@ class PageFleetSettings(QWidget):
             if mode == "off":
                 close_pairing_window()
             else:
-                open_pairing_window(get_cfg("installation_id", ""), always_open=mode == "always")
+                open_pairing_window(get_cfg("installation_id", ""), always_open=True, continuous=True)
         except PeerSyncAuthorizationError as error:
             QMessageBox.warning(
                 self,
@@ -12591,6 +12738,10 @@ class PageBillingAudit(QWidget):
         self.coverage.setWordWrap(True)
         layout.addWidget(self.coverage)
 
+        self.shared_posting_button = btn(tr('ตรวจยอดจากประวัติร่วมก่อนลงบัญชี', 'Review shared history before posting'), 'outline')
+        self.shared_posting_button.clicked.connect(self._shared_posting)
+        layout.addWidget(self.shared_posting_button, 0, Qt.AlignmentFlag.AlignLeft)
+
         filters = QHBoxLayout()
         filters.setSpacing(8)
         filters.addWidget(QLabel("สถานะ"))
@@ -12785,6 +12936,13 @@ class PageBillingAudit(QWidget):
         self.detail_button.setEnabled(ready)
         self.reprice_button.setEnabled(ready)
         self.manual_review_button.setEnabled(ready)
+
+    def _shared_posting(self) -> None:
+        from ui.shared_billing import SharedBillingDialog
+        dialog = SharedBillingDialog(self)
+        dialog.finished.connect(lambda _result: self.refresh())
+        dialog.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        dialog.open()
 
     def _manual_review(self) -> None:
         ledger_id = self._selected_ledger_id()

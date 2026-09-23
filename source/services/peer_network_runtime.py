@@ -111,6 +111,14 @@ class PeerNetworkRuntime(QObject):
         factory = PeerTransportFactory(access, runtime_root=self.runtime_root, lan_ips=ips + [host])
         packet = factory.own_contact(host=host, port=self.port)
         access.accept_contact(packet)
+        with access._connection() as conn:
+            pending = conn.execute("SELECT value FROM settings WHERE key='peer_enrollment_pending'").fetchone()
+        if pending and pending[0]:
+            from services.secondary_setup import SecondaryPeerClient, SecondaryPeerCandidate, SecondarySetupError
+            try:
+                SecondaryPeerClient().finish_pending_enrollment(SecondaryPeerCandidate(**json.loads(pending[0])), access, contact=packet)
+            except (SecondarySetupError, OSError, ValueError, KeyError) as error:
+                raise PeerRecoveryRequired('enrollment_pending') from error
         if discover:
             from services.peer_contact_discovery import refresh_known_contacts
             refresh_known_contacts(access, interfaces, cancelled=self._stopped.is_set)

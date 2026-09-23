@@ -4,6 +4,7 @@ from collections import deque
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from threading import RLock
+from services.computer_names import local_computer_name
 
 
 @dataclass(frozen=True)
@@ -19,6 +20,8 @@ class PipelineEvent:
     value: str
     detail: str
     status: str
+    computer_name: str = ''
+    reader_name: str = ''
 
     def to_dict(self) -> dict[str, object]:
         return asdict(self)
@@ -50,6 +53,7 @@ class PipelineLogStore:
         detail: str = "",
         status: str = "info",
         at: datetime | None = None,
+        reader_name: str | None = None,
     ) -> PipelineEvent:
         with self._lock:
             self._sequence += 1
@@ -65,6 +69,9 @@ class PipelineLogStore:
                 value=str(value),
                 detail=detail,
                 status=status,
+                computer_name=local_computer_name(),
+                reader_name=(local_computer_name() if stage.upper() in {'SNMP', 'WEB'} else '')
+                    if reader_name is None else reader_name,
             )
             self._events.append(event)
             return event

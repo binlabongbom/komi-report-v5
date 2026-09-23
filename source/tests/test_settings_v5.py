@@ -213,8 +213,8 @@ def test_shared_confirmation_shows_before_after_and_defaults_to_cancel(tmp_path)
         assert dialog.table.item(0, 2).text() == "15"
         assert dialog.table.item(1, 2).text() == "3.5%"
         assert dialog.buttons.button(QDialogButtonBox.StandardButton.Cancel).isDefault()
-        assert any("บนคอมพิวเตอร์เครื่องนี้" in label.text() for label in dialog.findChildren(QLabel))
-        assert any("ยังไม่ส่ง" in label.text() for label in dialog.findChildren(QLabel))
+        assert any("บนคอมพิวเตอร์นี้" in label.text() for label in dialog.findChildren(QLabel))
+        assert any("ส่งการตั้งค่าให้สมาชิกกลุ่มอัตโนมัติ" in label.text() for label in dialog.findChildren(QLabel))
         dialog.close()
     finally:
         database.set_db_path(original)
@@ -1052,7 +1052,7 @@ def test_secondary_always_open_selector_restores_and_can_revoke(tmp_path, monkey
     try:
         database.set_cfg("installation_id", "test-primary")
         page = PageFleetSettings()
-        page.peer_sync_mode.setCurrentIndex(2)
+        page.peer_sync_mode.setCurrentIndex(page.peer_sync_mode.findData("always"))
         page.peer_sync_authorize_button.click()
         assert v5_pages.pairing_window_status().always_open
         assert "เปิดตลอด" in page.peer_sync_status.text()

@@ -21,6 +21,8 @@ def latest_shared_views(path):
     result = []
     with closing(sqlite3.connect(path)) as conn:
         conn.execute('BEGIN')
+        from services.computer_names import computer_directory
+        names = computer_directory(conn)['origins']
         devices = conn.execute('''SELECT d.slot,d.serial,d.host,h.epoch_id FROM devices d
             JOIN slot_meter_heads h ON h.device_slot=d.slot WHERE d.enabled=1 ORDER BY d.slot''').fetchall()
         for slot, serial, host, epoch in devices:
@@ -43,6 +45,8 @@ def latest_shared_views(path):
             if any(key not in values or values[key] != _number(json.loads(value)) for key, value, _ in device_maxima):
                 continue  # Do not invent a single fresh reading from conflicting samples.
             result.append({'slot': slot, 'serial': serial, 'host': host, 'epoch_id': epoch,
+                           'reader_name': names.get(p['origin'], p['origin']),
+                           'printer_name': p['printer_name'], 'origin': p['origin'],
                            'event_id': event['id'], 'reading': SharedWebRead._reading(event)})
     return result
 
@@ -126,6 +130,11 @@ class PeerWebViewRuntime(QObject):
                 snapshot = runtime_snapshots.update(row['slot'], row['reading'], serial=row['serial'],
                     epoch_id=row['epoch_id'], event_id=row['event_id'], preserve_newer=True)
                 if snapshot is not before:
+                    from services.pipeline_log import pipeline_log
+                    pipeline_log.append(stage='SYNC', action='แสดงผล Web ที่บันทึกไว้ในกลุ่ม',
+                        device_slot=row['slot'], device_name=row.get('printer_name', ''), host=row['host'],
+                        reader_name=row.get('reader_name', ''), target=row['event_id'],
+                        detail=f"อ่านเมื่อ {snapshot.collected_at}", status='ok')
                     self.polling.device_updated.emit(row['slot'])
                     refreshed.add(row['slot'])
             # A newly received historical event can change reports while the

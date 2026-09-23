@@ -127,6 +127,9 @@ def test_audit_page_opens_and_applies_reviewed_price_correction():
     app = QApplication.instance() or QApplication([])
     ledger_id = posting()
     page = PageBillingAudit()
+    from test_performance_issue19 import wait_until
+    page.show()
+    wait_until(lambda: not page.audit_reader.busy and bool(page._rows))
     page.table.selectRow(0)
     assert page.reprice_button.isEnabled()
     page.reprice_button.click()
@@ -135,6 +138,7 @@ def test_audit_page_opens_and_applies_reviewed_price_correction():
     dialog.reason.setText("Correct dated price")
     dialog.confirm_button.click()
     assert dialog.result_id is not None
+    wait_until(lambda: not page.audit_reader.busy)
     assert page.table.rowCount() == 3
     page.close()
     app.processEvents()

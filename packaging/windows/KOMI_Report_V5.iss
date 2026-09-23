@@ -29,7 +29,8 @@ AppName={#AppName}
 AppVersion={#AppVersion}
 AppVerName={#AppName} {#AppVersion} — {#EditionLabel}
 AppPublisher={#AppPublisher}
-AppMutex=KOMIReportV5.SingleInstance
+; Upgrade shutdown runs in PrepareToInstall after the chosen {app} is known.
+; AppMutex would block Setup at startup, before that scoped shutdown can run.
 DefaultDirName={localappdata}\Programs\KOMI Report V5
 DefaultGroupName=KOMI Report V5
 DisableProgramGroupPage=yes
@@ -62,6 +63,7 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Files]
 Source: "{#PayloadDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "installer_shutdown.ps1"; Flags: dontcopy
 
 [Icons]
 Name: "{autoprograms}\KOMI Report V5"; Filename: "{sys}\wscript.exe"; Parameters: """{app}\{#AppLauncher}"""; WorkingDir: "{app}"; IconFilename: "{app}\source\Logo.ico"; AppUserModelID: "{#AppUserModelId}"
@@ -81,6 +83,23 @@ Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription:
 Filename: "{sys}\wscript.exe"; Parameters: """{app}\{#AppLauncher}"""; WorkingDir: "{app}"; Description: "Launch KOMI Report V5"; Flags: nowait postinstall skipifsilent
 
 [Code]
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+var
+  ExitCode: Integer;
+  Command: String;
+begin
+  Result := '';
+  ExtractTemporaryFile('installer_shutdown.ps1');
+  Command := '-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "' +
+    ExpandConstant('{tmp}\installer_shutdown.ps1') + '" -InstallDir "' +
+    ExpandConstant('{app}') + '"';
+  if not Exec(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'),
+      Command, '', SW_HIDE, ewWaitUntilTerminated, ExitCode) then
+    Result := 'Could not stop the installed KOMI processes. Close KOMI Report and retry Setup.'
+  else if ExitCode <> 0 then
+    Result := 'KOMI Report is still running from this installation. Close it and retry Setup.';
+end;
+
 function ExistingDesktopShortcut(): Boolean;
 begin
   Result := FileExists(ExpandConstant('{autodesktop}\KOMI Report V5.lnk'));

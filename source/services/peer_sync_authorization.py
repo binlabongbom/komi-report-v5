@@ -1,11 +1,9 @@
-"""User-approved Primary-to-Secondary setup sync with short-lived claim tokens.
+"""Persistent source access with short-lived, IP-bound request tokens.
 
-The Secondary never asks for a password.  Instead, a user on the Primary opens
-an approval window for five minutes.  The first LAN requester may claim that
-window with a 256-bit random token.  Only a hash is stored, the claim is bound
-to the request IP and current Primary installation, and the token is consumed
-before the setup snapshot is returned. Persistent approval is an explicit option;
-its independently claimed tokens still expire and can only be consumed once.
+Desktop and Agent enable continuous joining by default. The source remains
+open across joins and restarts; each client acquires/renews its own request
+without repeated user approval. Explicit off remains available. Temporary
+windows are retained for compatibility, not offered as the default UI flow.
 """
 
 from __future__ import annotations
@@ -133,6 +131,7 @@ def open_pairing_window(
     now: float | None = None,
     ttl_seconds: int = PAIRING_WINDOW_SECONDS,
     always_open: bool = False,
+    continuous: bool = False,
 ) -> PairingWindowStatus:
     """Replace any previous claim with one explicit Primary approval window."""
 
@@ -149,6 +148,7 @@ def open_pairing_window(
                 "schema": 2,
                 "disabled": False,
                 "always_open": bool(always_open),
+                "continuous": bool(continuous),
                 "claims": {},
                 "window_expires_at": current + ttl,
                 "installation_id": identity,
@@ -224,7 +224,7 @@ def claim_pairing_window(
         expiry = float(payload.get("window_expires_at") or 0)
         if expiry <= current or bool(payload.get("used")):
             raise PeerSyncAuthorizationError(
-                "บนเครื่อง Primary ให้กดอนุญาต Secondary Sync 5 นาที"
+                "เครื่องต้นทางปิดรับสมาชิกอยู่ ตรวจการตั้งค่าสิทธิ์เข้ากลุ่ม"
             )
         existing_ip = str(payload.get("requester_ip") or "")
         existing_hash = str(payload.get("token_sha256") or "")
@@ -251,6 +251,7 @@ def consume_pairing_token(
     *,
     now: float | None = None,
     history_transfer: bool = False,
+    enrollment_transfer: bool = False,
 ) -> None:
     """Atomically consume a claimed capability before returning the snapshot."""
 
@@ -261,6 +262,8 @@ def consume_pairing_token(
     path = state_path()
     with _state_lock(path):
         payload = _read_state(path)
+        if enrollment_transfer and payload.get('continuous') is not True:
+            raise PeerSyncAuthorizationError('เครื่องต้นทางยังไม่ได้เปิดรับสมาชิกต่อเนื่อง ตรวจการตั้งค่าสิทธิ์เข้ากลุ่ม')
         if payload.get("always_open") is True:
             digest = _token_digest(value)
             claims = payload.get("claims", {})
@@ -275,6 +278,8 @@ def consume_pairing_token(
             payload["claims"] = claims
             if history_transfer:
                 _grant_history_transfer(payload, value, remote, current)
+            if enrollment_transfer:
+                _grant_enrollment_transfer(payload, value, remote, current)
             _write_state(path, payload)
             return
         valid = (
@@ -296,7 +301,43 @@ def consume_pairing_token(
         payload["token_expires_at"] = 0.0
         if history_transfer:
             _grant_history_transfer(payload, value, remote, current)
+        if enrollment_transfer:
+            _grant_enrollment_transfer(payload, value, remote, current)
         _write_state(path, payload)
+
+
+def _grant_enrollment_transfer(payload, token, remote, now):
+    grants = {k: v for k, v in payload.get('enrollment_transfers', {}).items()
+              if v.get('expires_at', 0) > now}
+    if len(grants) >= 128:
+        raise PeerSyncAuthorizationError('มีคำขอเข้ากลุ่มมากเกินไป กรุณาลองใหม่')
+    grants[_token_digest(token)] = {'requester_ip': remote,
+        'expires_at': now + PAIRING_WINDOW_SECONDS, 'binding': None}
+    payload['enrollment_transfers'] = grants
+
+
+def enrollment_grant(token, requester_ip, installation_id, *, binding=None, now=None):
+    """A separately approved, bounded handoff; never upgrade an old copy grant.
+
+    Retries keep the same member key, group and immutable settings head. Closing
+    the window or changing the installation invalidates every pending handoff.
+    """
+    value = _validate_token(token)
+    current = float(time.time() if now is None else now)
+    path = state_path()
+    with _state_lock(path):
+        payload = _read_state(path)
+        grant = payload.get('enrollment_transfers', {}).get(_token_digest(value), {})
+        if (payload.get('disabled') or not payload.get('continuous')
+                or not installation_id or payload.get('installation_id') != installation_id
+                or grant.get('requester_ip') != requester_ip or grant.get('expires_at', 0) <= current):
+            raise PeerSyncAuthorizationError('คำขอเข้ากลุ่มหมดอายุหรือไม่ถูกต้อง กรุณาลองใหม่')
+        if binding is not None:
+            if grant.get('binding') not in (None, binding):
+                raise PeerSyncAuthorizationError('คำขอเข้ากลุ่มเปลี่ยนจากรายการที่อนุญาต')
+            grant['binding'] = binding
+            _write_state(path, payload)
+        return grant.get('binding')
 
 
 def _grant_history_transfer(payload, token, remote, now):
@@ -335,7 +376,7 @@ def history_transfer_head(token, requester_ip, installation_id, *, bind_head=Non
             head = bind_head
         return head
 
-def ensure_pairing_default(installation_id: str, *, primary: bool = True, now: float | None = None) -> bool:
+def ensure_pairing_default(installation_id: str, *, primary: bool = True, continuous: bool = False, now: float | None = None) -> bool:
     """Migrate a Primary to persistent approval once; preserve explicit choices.
 
     Legacy 'off' was represented by no file, so it cannot be distinguished from
@@ -354,10 +395,17 @@ def ensure_pairing_default(installation_id: str, *, primary: bool = True, now: f
         if path.exists() and not payload:
             raise PeerSyncAuthorizationError("สถานะ Peer Sync เสียหาย กรุณาตั้งค่าใหม่โดยผู้ดูแล")
         if payload.get("schema") == 2 and payload.get("installation_id") == identity:
+            if continuous and not payload.get('continuous_default_migrated'):
+                # Upgrade the former timed/copy-only default without discarding
+                # live requests. A deliberate off setting remains off.
+                payload.update(continuous=True, always_open=not bool(payload.get('disabled')),
+                               continuous_default_migrated=True)
+                _write_state(path, payload)
+                return True
             return False
         if payload.get("schema") == 2:
             disabled = bool(payload.get("disabled"))
-            always = bool(payload.get("always_open")) and not disabled
+            always = (continuous or bool(payload.get("always_open"))) and not disabled
         else:
             disabled, always = False, True
         _write_state(path, {
@@ -366,5 +414,7 @@ def ensure_pairing_default(installation_id: str, *, primary: bool = True, now: f
             "installation_id": identity, "requester_ip": "", "token_sha256": "",
             "token_expires_at": 0.0, "used": False,
             "default_migrated_at": current,
+            "continuous": continuous,
+            "continuous_default_migrated": continuous,
         })
     return True

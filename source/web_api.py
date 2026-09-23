@@ -10,15 +10,17 @@ from __future__ import annotations
 import logging
 import os
 import re
-from collections import defaultdict
+from collections import OrderedDict, defaultdict
 from contextlib import asynccontextmanager
 from dataclasses import asdict
 from datetime import date, datetime, time, timedelta
 from typing import Literal
 from uuid import uuid4
+from threading import Lock
+from time import monotonic
 
 from fastapi import FastAPI, HTTPException, Query, Request
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, RootModel
 
 from config import PACKAGE_VERSION
 from database import get_cfg, init_db
@@ -46,6 +48,31 @@ from services.usage import current_device_identity
 
 log = logging.getLogger(__name__)
 MAX_PAGE_LIMIT = 500
+_user_pages_lock = Lock()
+_user_pages: OrderedDict[str, tuple[float, tuple[date, date] | None, list[dict]]] = OrderedDict()
+_USER_PAGE_TTL = 120.0
+
+
+def _user_page_snapshot(token: str | None, selected, payload):
+    """Keep paged report rows from one immutable read for a bounded interval."""
+    now = monotonic()
+    with _user_pages_lock:
+        for key, (created, _, _) in tuple(_user_pages.items()):
+            if now - created > _USER_PAGE_TTL:
+                _user_pages.pop(key, None)
+        if token:
+            saved = _user_pages.get(token)
+            if saved is None:
+                raise HTTPException(status_code=410, detail="Report page expired; refresh the report")
+            if selected is not None and selected != saved[1]:
+                raise HTTPException(status_code=400, detail="Report period does not match page")
+            _user_pages.move_to_end(token)
+            return token, saved[1], saved[2]
+        token = uuid4().hex
+        _user_pages[token] = (now, selected, payload)
+        while len(_user_pages) > 4:
+            _user_pages.popitem(last=False)
+        return token, selected, payload
 
 
 class ApiModel(BaseModel):
@@ -195,9 +222,19 @@ class PeerSharedSettingsV2Out(ApiModel):
     price_history: list[PeerDatedPriceOut]
 
 
+class PeerSlotEpochReference(ApiModel):
+    slot: int = Field(ge=0, le=2)
+    epoch_id: str
+
+
+class PeerSharedSettingsV3Out(PeerSharedSettingsV2Out):
+    format_version: Literal[3]
+    slot_epochs: list[PeerSlotEpochReference]
+
+
 class PeerSettingsRevisionOut(ApiModel):
     parents: list[str]
-    payload: PeerSharedSettingsV2Out | PeerSharedSettingsOut
+    payload: PeerSharedSettingsV3Out | PeerSharedSettingsV2Out | PeerSharedSettingsOut
     actor: str
     created_at: str
     reason: str
@@ -392,6 +429,7 @@ class UserReportResponse(ApiModel):
     limit: int
     offset: int
     next_offset: int | None
+    snapshot_token: str
     items: list[UserOut]
 
 
@@ -710,6 +748,65 @@ def peer_setup_snapshot(request: Request) -> dict:
 
     _authorize_peer_snapshot(request)
     return primary_setup_snapshot()
+
+
+class PeerEnrollmentRequest(ApiModel):
+    operation: Literal['begin', 'settings', 'origins', 'epoch', 'finish']
+    data: dict
+
+
+class PeerEnrollmentInvitation(ApiModel):
+    format: Literal['komi.lan.enrollment.v1']
+    group_id: str
+    company: str
+    primary_id: str
+    capability: str
+
+
+class PeerEnrollmentStart(ApiModel):
+    invitation: PeerEnrollmentInvitation
+    source: PeerContactResponse
+    head: str
+
+
+class PeerEnrollmentOrigins(ApiModel):
+    contacts: list[PeerContactResponse]
+    after: str
+    more: bool
+
+
+class PeerEnrollmentEpoch(ApiModel):
+    # Signed/hash-addressed documents retain their JSON number representation.
+    # SlotEpochExchange validates their exact schema and proof before export.
+    epoch: dict[str, object]
+    parent_evidence: list[dict[str, object]]
+
+
+class PeerEnrollmentReceipt(ApiModel):
+    member_id: str
+    committed: Literal[True]
+
+
+class PeerEnrollmentResponse(RootModel[PeerEnrollmentStart | PeerSettingsPageResponse |
+        PeerEnrollmentOrigins | PeerEnrollmentEpoch | PeerEnrollmentReceipt]):
+    pass
+
+
+@app.post('/api/v3/peer/enrollment', response_model=PeerEnrollmentResponse)
+def peer_enrollment(request: Request, body: PeerEnrollmentRequest) -> dict:
+    from services.peer_enrollment import EnrollmentSource
+    from services.initial_slot_baselines import InitialBaselineRequired
+    from services.peer_transport_factory import local_membership
+    try:
+        return EnrollmentSource(local_membership()).call(
+            request.headers.get(PEER_SYNC_TOKEN_HEADER, ''), _peer_requester_ip(request),
+            body.operation, body.data)
+    except (PermissionError, PeerSyncAuthorizationError) as exc:
+        raise HTTPException(status_code=401, detail=str(exc)) from exc
+    except InitialBaselineRequired as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except (ValueError, KeyError, TypeError) as exc:
+        raise HTTPException(status_code=409, detail='เข้ากลุ่มยังไม่สำเร็จ ข้อมูลต้นทางเปลี่ยนหรือไม่สมบูรณ์ กรุณาดึงการตั้งค่าใหม่') from exc
 
 
 def _authorize_peer_snapshot(request: Request, *, history_transfer=False) -> None:
@@ -1070,22 +1167,33 @@ def report_users(
     period_end: date | None = None,
     limit: int = Query(default=100, ge=1, le=MAX_PAGE_LIMIT),
     offset: int = Query(default=0, ge=0),
+    snapshot_token: str | None = None,
 ) -> dict:
+    if snapshot_token:
+        requested = (period_start, period_end) if period_start and period_end else None
+        token, selected, payload = _user_page_snapshot(snapshot_token, requested, None)
+        return {
+            "period_start": selected[0].isoformat() if selected else None,
+            "period_end": selected[1].isoformat() if selected else None,
+            "snapshot_token": token,
+            **_page(payload, limit=limit, offset=offset),
+        }
     reports = _report_service()
-    records = reports.subjects()
-    available = sorted(
-        {(record.period_start, record.period_end) for record in records},
-        reverse=True,
-    )
     if period_start is not None and period_end is not None:
         selected = (period_start, period_end)
-    elif period_start is not None:
-        selected = next(
-            (period for period in available if period[0] == period_start),
-            None,
-        )
     else:
-        selected = available[0] if available else None
+        records = reports.subjects()
+        available = sorted(
+            {(record.period_start, record.period_end) for record in records},
+            reverse=True,
+        )
+        if period_start is not None:
+            selected = next(
+                (period for period in available if period[0] == period_start),
+                None,
+            )
+        else:
+            selected = available[0] if available else None
     items = (
         reports.subjects(period_start=selected[0], period_end=selected[1])
         if selected
@@ -1107,9 +1215,11 @@ def report_users(
             }
             for item in items
         ]
+    token, selected, payload = _user_page_snapshot(None, selected, payload)
     return {
         "period_start": selected[0].isoformat() if selected else None,
         "period_end": selected[1].isoformat() if selected else None,
+        "snapshot_token": token,
         **_page(payload, limit=limit, offset=offset),
     }
 

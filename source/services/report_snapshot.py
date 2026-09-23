@@ -101,13 +101,15 @@ def _load_report_snapshot(index, selected, *, cache, subject_cache, repository, 
     canonical = selected in periods
     if not periods:
         periods = [current_period]
-    needs_daily = index in {0, 3} or (index == 2 and not canonical)
+    # Printers uses posted monthly totals for its table, but its timeline
+    # always needs daily points even when the billing period is canonical.
+    needs_daily = index in {0, 2, 3}
     usage_daily = read("daily", lambda: tuple(load_usage_history(slots, granularity="daily", cache=cache))) if needs_daily else ()
     checkpoint()
     start, end = map(date.fromisoformat, selected)
     daily = tuple(record for record in usage_daily if record.period_start <= end and record.period_end >= start)
     chart_daily = read('daily_graph', lambda: tuple(load_usage_history(
-        slots, granularity='daily', cache=cache, graph=True))) if index in {0, 3} else usage_daily
+        slots, granularity='daily', cache=cache, graph=True))) if index in {0, 2, 3} else usage_daily
     selected_monthly = tuple(record for record in monthly if key(record) == selected)
     subject_range = {"period_start": start, "period_end": end} if not canonical else {"only_period": (start, end)}
     subjects = read("subjects", lambda: tuple(

@@ -65,9 +65,9 @@ def local_membership(*, path=None, vault=None):
 
 
 class PeerTransportFactory:
-    def __init__(self, membership, *, runtime_root, hostname=None, lan_ips=None):
+    def __init__(self, membership, *, runtime_root, hostname=None, lan_ips=None, storage_path=None):
         self.membership = membership
-        key = hashlib.sha256((str(membership.path) + ':' + membership.member_id).encode()).hexdigest()[:32]
+        key = hashlib.sha256((str(storage_path or membership.path) + ':' + membership.member_id).encode()).hexdigest()[:32]
         self.material = ensure_generated_certificate(Path(runtime_root) / 'peer-transport' / key,
             hostname=hostname, lan_ips=lan_ips, client_auth=True)
         self._lock = RLock()

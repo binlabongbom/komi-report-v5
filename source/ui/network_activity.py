@@ -49,6 +49,10 @@ class NetworkActivityPanel(QWidget):
         self.reconnect_button.clicked.connect(self._reconnect)
         self.reconnect_button.setEnabled(False)
         layout.addWidget(self.reconnect_button, 0, Qt.AlignmentFlag.AlignLeft)
+        self.reinstall_button = btn(tr('เริ่มสมาชิกใหม่โดยเก็บฐานเดิม', 'Start a new member and keep the old database'), 'outline')
+        self.reinstall_button.clicked.connect(self._reinstall)
+        self.reinstall_button.hide()
+        layout.addWidget(self.reinstall_button, 0, Qt.AlignmentFlag.AlignLeft)
         self.summary = QLabel("ยังไม่มีสถานะการเชื่อมต่อสมาชิก")
         self.summary.setTextFormat(Qt.TextFormat.PlainText)
         self.summary.setWordWrap(True)
@@ -135,6 +139,12 @@ class NetworkActivityPanel(QWidget):
         self.polling.network_recovered()
         self.schedule_refresh()
 
+    def _reinstall(self):
+        from ui.peer_reinstallation import PeerReinstallationDialog
+        dialog = PeerReinstallationDialog(self)
+        dialog.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        dialog.open()
+
     def refresh(self):
         if not self.isVisible():
             return
@@ -175,6 +185,7 @@ class NetworkActivityPanel(QWidget):
             except Exception:
                 self.summary.setText(tr("อ่านสถานะไม่สำเร็จ ข้อมูลเดิมยังแสดงอยู่ · กดตรวจสถานะอีกครั้ง", "Unable to load status. Previous data is still displayed. Check status again."))
             else:
+                computers = data.get('computers', {})
                 active = self.polling.active_slots() if self.polling is not None else ()
                 self.local_read.setText(tr("การอ่านบนคอมนี้: {slots}", "Reading on this computer: {slots}").format(slots=", ".join(f"Slot {slot + 1}" for slot in active) if active else tr("ไม่มีงานอ่านอยู่", "No active reads")))
                 shared = getattr(self.polling, "shared_reads", None)
@@ -188,7 +199,8 @@ class NetworkActivityPanel(QWidget):
                     self.shared_read.setText(tr("ผู้อ่านร่วม · สถานะที่รับล่าสุด ไม่ใช่การตรวจออนไลน์:\n", "Shared reader: last received status, not an online check:\n") + (
                         "\n".join(tr("Slot {slot} · ผู้ประสาน {authority} · ผู้อ่าน {reader} · {phase} · {at}",
                                       "Slot {slot} · Coordinator {authority} · Reader {reader} · {phase} · {at}").format(
-                            slot=job['slot']+1, authority=job['authority'], reader=job['reader'],
+                            slot=job['slot']+1, authority=computers.get(job['authority'], job['authority']),
+                            reader=computers.get(job['reader'], job['reader']),
                             phase=phases.get(job['phase'], tr("รอตรวจ", "Needs review")), at=_date(job['observed_at'])) for job in jobs)
                         or tr("ยังไม่มีคำขออ่านร่วม", "No shared read requests")))
                     self.shared_read.setProperty("i18n_data", True)  # Names inside the rendered status are data.
@@ -201,12 +213,15 @@ class NetworkActivityPanel(QWidget):
                 runtime = getattr(self.polling, 'peer_network_runtime', None)
                 busy = runtime is not None and getattr(runtime, '_future', None) is not None
                 enrolled = runtime is not None and runtime.state != 'not_enrolled'
+                self.reinstall_button.setVisible(runtime is not None and runtime.state == 'unavailable'
+                    and runtime.error in {'identity_missing','identity_changed','installation_mismatch','member_removed','group_secret_missing'})
                 self.reconnect_button.setEnabled(enrolled and not busy)
                 if busy:
                     message += tr('\nกำลังตรวจการเชื่อมต่อสมาชิกเดิม…', '\nChecking existing member connections…')
                 if runtime is not None and runtime.state == 'unavailable':
                     reasons = {
                         'identity_missing': tr('ไม่พบกุญแจสมาชิกเดิมหรือกุญแจเสียหาย · ต้องกู้กุญแจเดิมหรือเชื่อมสมาชิกใหม่โดยยืนยันสิทธิ์ก่อน', 'The original member key is missing or damaged. Restore it or complete an approved enrollment recovery.'),
+                        'enrollment_pending': tr('เข้ากลุ่มยังไม่ครบ · ตรวจว่าต้นทางออนไลน์ แล้วกดค้นหาและเชื่อมต่ออีกครั้ง', 'Enrollment is incomplete. Check that the source is online, then find and reconnect again.'),
                         'identity_changed': tr('กุญแจไม่ตรงกับสมาชิกเดิม · หยุดการเชื่อมต่อไว้เพื่อรอยืนยันการกู้สมาชิก', 'The key does not match the original member. Connections are stopped pending approved recovery.'),
                         'installation_mismatch': tr('ฐานข้อมูลนี้เป็นของการติดตั้งอื่น · ต้องยืนยันการกู้สมาชิกก่อนเชื่อมต่อ', 'This database belongs to another installation. Approved recovery is required before connecting.'),
                         'group_secret_missing': tr('ไม่พบกุญแจกลุ่มเดิมในระบบหรือกุญแจเสียหาย · การคืนเฉพาะฐานข้อมูลยังเชื่อมสมาชิกไม่ได้', 'The original group key is missing or damaged in the OS vault. Restoring only the database does not restore member access.'),
@@ -231,12 +246,12 @@ class NetworkActivityPanel(QWidget):
                 for index, row in enumerate(rows):
                     member = row["member"]
                     queue = data["queues"][member]
-                    values = [member, states.get(row["status"], tr("รอตรวจสอบ", "Needs review")), _date(row["last_success"]),
+                    values = [computers.get(member, member), states.get(row["status"], tr("รอตรวจสอบ", "Needs review")), _date(row["last_success"]),
                               str(queue["web_pending"]), tr("รอยืนยันรับ", "Awaiting receipt") if queue["settings_pending"] else tr("ไม่มีค่ารอส่ง", "No pending settings"),
                               str(queue['amendments_pending'])]
                     for column, value in enumerate(values):
                         item = QTableWidgetItem(value)
-                        item.setToolTip(errors.get(row["error"], "") if column == 1 else value)
+                        item.setToolTip(f'{value}\n{member}' if column == 0 else errors.get(row["error"], "") if column == 1 else value)
                         self.table.setItem(index, column, item)
         apply_language(self)
         if self._again:

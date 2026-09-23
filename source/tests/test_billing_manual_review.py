@@ -64,6 +64,9 @@ def test_audit_dialog_cancel_review_then_confirm():
     app = QApplication.instance() or QApplication([])
     target = held()
     page = PageBillingAudit()
+    from test_performance_issue19 import wait_until
+    page.show()
+    wait_until(lambda: not page.audit_reader.busy and bool(page._rows))
     page.table.selectRow(next(i for i, row in enumerate(page._rows) if row.id == target))
     page.manual_review_button.click()
     dialog = page.findChild(BillingManualReviewDialog)

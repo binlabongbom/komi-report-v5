@@ -634,6 +634,12 @@ class DailyCacheStore:
         state = self._load_unlocked(slot, day, self.path(slot, day))
         if state is None:
             return None
+        from services.group_meter_scope import group_epoch_covers_day
+        with _open(commit=False) as conn:
+            if group_epoch_covers_day(conn, slot, day):
+                # Member-local first reads are not a shared accounting opening.
+                # Retain the original cache for review; never auto-post it.
+                return None
         has_web_success = bool(state.get("first_success"))
         has_observation = bool(state.get("heartbeat_count") or state.get("error_count"))
         if not has_web_success and not has_observation:

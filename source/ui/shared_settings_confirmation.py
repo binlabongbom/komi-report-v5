@@ -75,12 +75,14 @@ class SharedSettingsConfirmation(QDialog):
             self.resize(740, 300)
         layout = QVBoxLayout(self)
         notice = QLabel(tr(
-            "บันทึกการตั้งค่าและประวัติการเปลี่ยนแปลงบนคอมพิวเตอร์เครื่องนี้\n"
-            "รุ่นนี้ยังไม่ส่งการเปลี่ยนแปลงให้คอมพิวเตอร์อื่นอัตโนมัติ "
-            "การรับค่าตอนติดตั้งเป็นการคัดลอกครั้งเดียว",
-            "Save settings and change history on this computer.\n"
-            "This version does not automatically send changes to other computers. "
-            "Receiving settings during setup is a one-time copy.",
+            "เมื่อยืนยัน ระบบจะบันทึกการเปลี่ยนแปลงและประวัติบนคอมพิวเตอร์นี้ "
+            "แล้วส่งการตั้งค่าให้สมาชิกกลุ่มอัตโนมัติเมื่อเชื่อมต่อได้ "
+            "คอมที่ยังไม่พร้อมจะรับฉบับที่ค้างเมื่อกลับมาเชื่อมต่อ "
+            "ตรวจสถานะการรับได้ที่การทำงานร่วมกัน",
+            "Confirming saves this change and its history on this computer. "
+            "The settings are then sent automatically to group members when connected. "
+            "Offline members receive pending revisions after reconnecting. "
+            "Check delivery in collaboration status.",
         ))
         notice.setWordWrap(True)
         layout.addWidget(notice)

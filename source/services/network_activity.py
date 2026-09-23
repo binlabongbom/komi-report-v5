@@ -15,6 +15,8 @@ def load_network_activity(path, members):
         conn.set_progress_handler(lambda: int(monotonic() > deadline), 1000)
         conn.execute("PRAGMA query_only=ON")
         conn.execute("BEGIN")
+        from services.computer_names import computer_directory
+        computers = computer_directory(conn)
         head = conn.execute("SELECT value FROM peer_settings_state WHERE key='head'").fetchone()
         # Incoming revisions already included in the current ancestry are not
         # conflicts merely because the old review marker still exists.
@@ -40,4 +42,5 @@ def load_network_activity(path, members):
                     AND d.amendment_id=a.amendment_id AND d.acknowledged_at IS NOT NULL)''', (member,)).fetchone()[0]
             queues[member] = {"web_pending": outgoing - acknowledged, "settings_pending": bool(pending_settings),
                               "amendments_pending": pending_amendments}
-    return {"queues": queues, "settings_reviews": len(reviews - ancestors), "slot_reviews": slot_reviews}
+    return {"queues": queues, "settings_reviews": len(reviews - ancestors), "slot_reviews": slot_reviews,
+            "computers": computers['members']}

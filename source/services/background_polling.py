@@ -19,6 +19,7 @@ from services.device_config import DatabaseCredentialStore, DeviceConfig, Device
 from services.live_meter_service import meter_reading_to_report
 from services.parser_mapping import apply_parser_mapping_overrides
 from services.pipeline_log import pipeline_log
+from services.computer_names import local_computer_name
 from services.polling import DevicePollState, PollingPolicy, PollingStateMachine
 from services.raw_counter_history import RawCounterHistoryStore
 from services.reconciliation import reconcile_web_counters
@@ -988,6 +989,7 @@ class BackgroundPollingCoordinator(QObject):
                 pipeline_log.append(
                     stage="RAM",
                     action="Normalized counter cached",
+                    reader_name=local_computer_name(),
                     device_slot=device.slot,
                     device_name=device.name,
                     host=device.host,
@@ -1000,6 +1002,7 @@ class BackgroundPollingCoordinator(QObject):
             pipeline_log.append(
                 stage="RAM",
                 action="Daily cache updated",
+                reader_name=local_computer_name(),
                 device_slot=device.slot,
                 device_name=device.name,
                 host=device.host,

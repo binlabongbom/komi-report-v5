@@ -10,14 +10,27 @@ import json
 import math
 import sqlite3
 from dataclasses import dataclass
+from contextlib import contextmanager
+from contextvars import ContextVar
 from datetime import date, datetime
 from decimal import ROUND_HALF_UP, Decimal
 
-from database import _open, get_billing_day, get_waste_paper_pct
+from database import _open as _database_open, get_billing_day, get_waste_paper_pct
 from services.billing_periods import billing_month_range
 from services.pricing import CostCategory, PricingRepository
 
 FORMULA_VERSION = "komi.billing.v1"
+_posting_connection = ContextVar('billing_posting_connection', default=None)
+
+
+@contextmanager
+def _open(commit=True):
+    connection = _posting_connection.get()
+    if connection is None:
+        with _database_open(commit=commit) as conn:
+            yield conn
+    else:
+        yield connection  # The caller owns commit/rollback of source + ledger.
 REVERSAL_VERSION = "komi.billing.reversal.v1"
 MANUAL_ADJUSTMENT_VERSION = "komi.billing.manual-adjustment.v1"
 # This legacy value remains part of the idempotency-key contract. New rows use
@@ -132,7 +145,22 @@ def hold_reason(*, source: dict, incomplete: bool, categories: dict[str, str]) -
     return None
 
 
-def post_daily_record(record_id: int) -> int | None:
+def post_daily_record(record_id: int, *, connection=None) -> int | None:
+    if connection is None:
+        return _post_daily_record(record_id)
+    from pathlib import Path
+    from database import get_db_path
+    if (not connection.in_transaction or Path(connection.execute('PRAGMA database_list').fetchone()[2]).resolve()
+            != Path(get_db_path()).resolve()):
+        raise ValueError('Posting requires a transaction in the active database')
+    token = _posting_connection.set(connection)
+    try:
+        return _post_daily_record(record_id)
+    finally:
+        _posting_connection.reset(token)
+
+
+def _post_daily_record(record_id: int) -> int | None:
     """Create exactly one posting for a safe daily source row, otherwise hold it.
 
     An unsafe source becomes a visible zero-value hold. It can be approved later
