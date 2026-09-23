@@ -452,6 +452,7 @@ class MainWindow(QMainWindow):
         self.polling.device_updated.connect(self._device_updated)
         self.polling.activity_changed.connect(self._refresh_sidebar_role)
         self.polling.peer_network_runtime.changed.connect(self._refresh_sidebar_role)
+        self.polling.peer_history.changed.connect(self._refresh_sidebar_role)
         self.polling.reading_saved.connect(lambda _slot: self._schedule_refresh_all())
         self.polling.reading_saved.connect(self.registration.meter_observed)
         self.polling.shared_settings_applied.connect(self._refresh_all)
@@ -639,7 +640,10 @@ class MainWindow(QMainWindow):
 
         # ─ Status Label ───────────────────────────────────────
         # แสดงเวลาล่าสุดที่ refresh ข้อมูล อยู่ล่างสุดของ sidebar
-        self.status_lbl = QLabel("พร้อมใช้งาน")
+        from ui.reader_members import StatusLinkLabel
+        self.status_lbl = StatusLinkLabel("พร้อมใช้งาน")
+        self.status_lbl.clicked.connect(self._open_reader_members)
+        self.status_lbl.setAccessibleName(tr('ดูสมาชิกคอมพิวเตอร์และสถานะการอ่าน', 'View computer members and reader roles'))
         self.status_lbl.setFont(fnt(F_XS))
         self.status_lbl.setWordWrap(True)  # ตัดบรรทัดถ้าข้อความยาว
         self.status_lbl.setStyleSheet(
@@ -751,6 +755,7 @@ class MainWindow(QMainWindow):
         self._page_widgets[index] = page
         if index == self._settings_index:
             page.fleet_content.network_activity.bind_runtime(self.polling)
+            page.reader_members.bind_runtime(self.polling)
             page.changed.connect(self._refresh_all)
             page.changed.connect(self.polling.reload_policy)
             page.changed.connect(self.registration.configuration_changed)
@@ -892,7 +897,49 @@ class MainWindow(QMainWindow):
         if not eligible:
             self._apply_registration_collection_gate()
             return
+        from datetime import datetime
+        slots = [d.slot for d in self.polling.repository.list(enabled_only=True) if slot is None or d.slot == slot]
+        self._manual_read_feedback = (set(slots), datetime.now().astimezone())
         self.polling.poll_now(slot)
+        self._refresh_manual_read_feedback()
+
+    def _open_reader_members(self):
+        page = self._load_deferred_page(self._settings_index)
+        self._nav(self.nav_btns[self._settings_index])
+        page.show_reader_members()
+
+    def _refresh_manual_read_feedback(self):
+        feedback = getattr(self, '_manual_read_feedback', None)
+        if feedback is None:
+            return
+        from datetime import datetime
+        from services.runtime_snapshots import runtime_snapshots
+        from services.reader_status import newest_time
+        slots, started = feedback
+        active = slots.intersection(self.polling.active_slots())
+        if active:
+            text = tr('กำลังอ่านข้อมูล… ', 'Reading… ') + ', '.join(f'Slot {s + 1}' for s in sorted(active))
+        else:
+            complete, failed = 0, []
+            for device in self.polling.repository.list(enabled_only=True):
+                if device.slot not in slots:
+                    continue
+                snapshot = runtime_snapshots.get(device.slot)
+                stamp = newest_time((device.last_success_at, snapshot.collected_at if snapshot and (not device.serial or snapshot.serial == device.serial) else ''))
+                if stamp and datetime.fromisoformat(stamp).astimezone() >= started:
+                    complete += 1
+                elif device.last_error:
+                    failed.append(f'Slot {device.slot + 1}')
+            text = tr('อ่านข้อมูลใหม่สำเร็จ {count}/{total} เครื่อง', 'New readings saved: {count}/{total} printers').format(count=complete, total=len(slots))
+            if failed:
+                text += tr(' · ควรตรวจสอบ ', ' · Check ') + ', '.join(failed)
+            elif complete < len(slots):
+                text += tr(' · ที่เหลือไม่มีข้อมูลใหม่', ' · No new data from the remaining printers')
+            text += ' · ' + datetime.now().strftime('%H:%M:%S')
+            self._manual_read_feedback = None
+        self.pg_overview.read_feedback.setText(text)
+        self.pg_overview.read_feedback.show()
+        self.statusBar().showMessage(text)
 
     def _schedule_startup_poll(self) -> None:
         """Queue one full read after the configured app passes its fresh status gate."""
@@ -976,8 +1023,11 @@ class MainWindow(QMainWindow):
             return
         from services.sidebar_reader_role import reader_role_text
         label, detail = reader_role_text(self.polling)
-        self.status_lbl.setText(tr('สถานะ\n', 'Status\n') + label)
+        from services.reader_status import latest_local_data, display_time
+        latest = display_time(latest_local_data(self.polling))
+        self.status_lbl.setText(label + tr('\nข้อมูลล่าสุด ', '\nLatest data ') + latest)
         self.status_lbl.setToolTip(detail)
+        MainWindow._refresh_manual_read_feedback(self)
 
     def _install_network_recovery_monitor(self) -> None:
         """Wake V5.2 only on an OS-observed connectivity recovery transition."""

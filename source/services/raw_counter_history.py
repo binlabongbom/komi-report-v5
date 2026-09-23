@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import json
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime
 
 from database import _open
@@ -61,6 +61,17 @@ class UsageMeterBaseline:
     device_name_snapshot: str = ""
     device_serial_snapshot: str = ""
     source: str = "raw_counter_history"
+    opening_counters: tuple[tuple[str, float], ...] = ()
+
+    def usage_values(self) -> dict[str, float | None]:
+        from services.usage import default_usage_groups
+        groups = default_usage_groups(dict(self.opening_counters))
+        result = {"total": self.total_meter, "cost": None, "scan": groups.get("SCAN")}
+        for operation in ("print", "copy"):
+            for field, label in (("a3_color", "A3 Color"), ("a3_bw", "A3 B&W"),
+                                 ("a4_color", "A4 Color"), ("a4_bw", "A4 B&W"), ("other", "Other size")):
+                result[f"{operation}_{field}"] = groups.get(f"{label} ({operation.title()})")
+        return result
 
 
 def _non_negative_number(value: object) -> float | None:
@@ -70,7 +81,7 @@ def _non_negative_number(value: object) -> float | None:
         number = float(value)
     except (TypeError, ValueError):
         return None
-    return number if number >= 0 else None
+    return number if math.isfinite(number) and number >= 0 else None
 
 
 def _serial_matches(current_serial: str, candidate_serial: str) -> bool:
@@ -96,7 +107,7 @@ def load_usage_meter_baselines(
         ).fetchall()
         raw_rows = connection.execute(
             """SELECT device_slot,record_date,opening_value,
-                      device_name_snapshot,device_serial_snapshot
+                      device_name_snapshot,device_serial_snapshot,first_success
                FROM daily_raw_counter_records
                WHERE canonical_field='counter.total.total' AND subject_type=''
                ORDER BY record_date,first_success,id"""
@@ -117,7 +128,8 @@ def load_usage_meter_baselines(
             devices.setdefault(slot, ("", ""))
 
     baselines: dict[int, UsageMeterBaseline] = {}
-    for slot, record_date, opening, name, serial in raw_rows:
+    anchors = {}
+    for slot, record_date, opening, name, serial, first_success in raw_rows:
         slot = int(slot)
         if slot not in devices or slot in baselines:
             continue
@@ -132,6 +144,7 @@ def load_usage_meter_baselines(
             observed_on = date.fromisoformat(str(record_date)[:10])
         except ValueError:
             continue
+        anchors[slot] = (record_date, candidate_serial, first_success)
         baselines[slot] = UsageMeterBaseline(
             device_slot=slot,
             observed_on=observed_on,
@@ -171,8 +184,24 @@ def load_usage_meter_baselines(
             device_name_snapshot=str(identity.get("name") or current_name),
             device_serial_snapshot=candidate_serial or current_serial,
             source="daily_meter_opening",
+            opening_counters=tuple((key, number) for key, value in opening.items()
+                                   if (number := _non_negative_number(value)) is not None),
         )
 
+    # Match the Total opening's physical printer, date and first observation.
+    # A field first discovered later must not be presented as an opening value.
+    with _open(commit=False) as connection:
+        for slot, (record_date, serial, first_success) in anchors.items():
+            rows = connection.execute("""SELECT canonical_field,opening_value
+                FROM daily_raw_counter_records WHERE device_slot=? AND record_date=?
+                AND device_serial_snapshot=? AND subject_type='' AND first_success IS ?
+                ORDER BY id""", (slot, record_date, serial, first_success)).fetchall()
+            counters = {}
+            for key, value in rows:
+                number = _non_negative_number(value)
+                if number is not None:
+                    counters.setdefault(key, number)
+            baselines[slot] = replace(baselines[slot], opening_counters=tuple(counters.items()))
     return tuple(baselines[slot] for slot in sorted(baselines))
 
 

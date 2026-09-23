@@ -28,7 +28,7 @@ def test_role_tracks_owner_change_and_invalidated_decision_without_network_calls
 def test_split_roles_and_connection_failure_are_not_reported_as_all_primary():
     polling = runtime({0: 'LOCAL', 1: 'REMOTE'})
     text, tooltip = reader_role_text(polling)
-    assert text == 'กำลังเป็นผู้อ่านหลัก / ผู้รับข้อมูล'
+    assert text == 'กำลังอ่านและรับข้อมูล'
     assert 'Slot 1: กำลังเป็นผู้อ่านหลัก' in tooltip
     assert 'Slot 2: กำลังเป็นผู้รับข้อมูล' in tooltip
     polling.peer_network_runtime.state = 'unavailable'
@@ -55,9 +55,9 @@ def test_sidebar_retains_role_between_rounds_and_registration_pause_wins():
     window = NS(_background_started=True, polling=runtime({0: 'REMOTE'}), status_lbl=label,
         _registration_usage_eligibility=lambda: (True, 'registered'))
     MainWindow._refresh_sidebar_role(window)
-    assert label.text() == 'สถานะ\nกำลังเป็นผู้รับข้อมูล'
+    assert label.text() == 'กำลังเป็นผู้รับข้อมูล\nข้อมูลล่าสุด ยังไม่มีข้อมูล'
     MainWindow._refresh_sidebar_role(window)
-    assert label.text() == 'สถานะ\nกำลังเป็นผู้รับข้อมูล'
+    assert label.text() == 'กำลังเป็นผู้รับข้อมูล\nข้อมูลล่าสุด ยังไม่มีข้อมูล'
     window._registration_usage_eligibility = lambda: (False, 'deactivated')
     MainWindow._refresh_sidebar_role(window)
     assert 'หยุดอ่านข้อมูล' in label.text()

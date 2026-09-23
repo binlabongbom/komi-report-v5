@@ -23,11 +23,15 @@ def reader_role_text(polling):
             return pending, ''
         return primary, tr('เครื่องนี้อ่านเครื่องพิมพ์โดยตรง', 'This computer reads printers directly')
     election = shared.router.election
+    history = getattr(polling, 'peer_history', None)
+    unavailable = {row['member'] for row in history.snapshot() if row.get('error')} if history else set()
     roles, details = [], []
     for slot in slots:
         try:
             owner = election.owner(shared.current_scope(slot))
         except (ValueError, PermissionError, LookupError, sqlite3.Error):
+            owner = None
+        if owner in unavailable:
             owner = None
         role = pending if owner is None else primary if owner == election.member_id else receiver
         roles.append(role)
@@ -39,7 +43,7 @@ def reader_role_text(polling):
     elif all(role == receiver for role in roles):
         label = receiver
     else:
-        label = tr('กำลังเป็นผู้อ่านหลัก / ผู้รับข้อมูล', 'Primary reader / receiving shared data')
+        label = tr('กำลังอ่านและรับข้อมูล', 'Reading and receiving data')
     details.append(tr('บทบาทล่าสุดที่ระบบเลือก อัปเดตตามรอบอ่านและการเชื่อมต่อ',
                       'Last selected role; updated by reading and connection activity'))
     return label, '\n'.join(details)

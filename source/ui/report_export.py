@@ -144,6 +144,10 @@ class ReportExportController(QObject):
         self.dialog = ExportProgressDialog(self.parent(), title=title)
         self.dialog.canceled.connect(self.cancelled.set)
         self.dialog.show()
+        # The native Save dialog can leave focus on the main window on Windows.
+        # Present progress immediately so the background export is visible.
+        self.dialog.raise_()
+        self.dialog.activateWindow()
         self.busy_changed.emit(True)
         queue = self.messages
         self.future = self.pool.submit(job, cancelled=self.cancelled,

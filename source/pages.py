@@ -1049,6 +1049,12 @@ class PageOverviewV2(QWidget):
         recovery_actions.addStretch()
         layout.addLayout(recovery_actions)
 
+        self.read_feedback = QLabel('')
+        self.read_feedback.setWordWrap(True)
+        self.read_feedback.setStyleSheet('color:#245268;padding:4px 0;')
+        self.read_feedback.hide()
+        layout.addWidget(self.read_feedback)
+
         self.summary_strip = QFrame()
         self.summary_strip.setObjectName("overview_kpi_panel")
         kpi = QGridLayout(self.summary_strip)
@@ -1319,7 +1325,12 @@ class PageOverviewV2(QWidget):
             self.card_total_cost.lbl_val.setText(fmt_baht(display_cost))
         else:
             self.card_total_cost.lbl_val.setText("—")
-        self.card_total_cost.lbl_diff.setText("THB")
+        self.card_total_cost.lbl_diff.setText(
+            tr('ประมาณการ · ยังไม่ลงบัญชี', 'Estimate · Not posted') if provisional_total
+            else tr('ยืนยันแล้ว · THB', 'Posted · THB'))
+        self.card_total_cost.setToolTip(
+            tr('ยืนยันแล้ว {posted} · ประมาณการ {pending}', 'Posted {posted} · Estimated {pending}').format(
+                posted=fmt_baht(metrics.get('cost', 0)), pending=fmt_baht(metrics.get('provisional_cost', 0))))
 
         while self.printer_list_layout.count():
             item = self.printer_list_layout.takeAt(0)

@@ -268,30 +268,30 @@ def test_cloud_reports_exposes_imported_v46_history_without_cost(tmp_path):
     )
     widget.tabs.setCurrentIndex(3)
     assert widget.usage_monthly_table.rowCount() == 2
-    assert widget.usage_monthly_table.item(0, 0).text() == "Meter เริ่มต้น"
+    assert widget.usage_monthly_table.item(1, 0).text().startswith("Meter เริ่มต้น\n")
     headers = [
         widget.usage_monthly_table.horizontalHeaderItem(column).text()
         for column in range(widget.usage_monthly_table.columnCount())
     ]
-    assert widget.usage_monthly_table.item(0, headers.index("รวม")).text() == "300"
-    assert widget.usage_monthly_table.item(0, headers.index("Scan")).text() == "—"
+    assert widget.usage_monthly_table.item(1, headers.index("รวม")).text() == "300"
+    assert widget.usage_monthly_table.item(1, headers.index("Scan")).text() == "—"
     assert (
         widget.usage_monthly_table.item(
-            0, headers.index("ค่าใช้จ่ายโดยประมาณ")
+            1, headers.index("ค่าใช้จ่ายโดยประมาณ")
         ).text()
         == "—"
     )
     assert all(
-        widget.usage_monthly_table.item(0, headers.index(label)).text() == "—"
+        widget.usage_monthly_table.item(1, headers.index(label)).text() == "—"
         for label in headers
         if label.startswith(("Print ", "Copy "))
     )
-    assert widget.usage_monthly_table.item(1, 0).text() == "02/2025"
-    assert widget.usage_monthly_table.item(1, headers.index("รวม")).text() == "90"
-    assert widget.usage_monthly_table.item(1, headers.index("Scan")).text() == "0"
+    assert widget.usage_monthly_table.item(0, 0).text() == "02/2025"
+    assert widget.usage_monthly_table.item(0, headers.index("รวม")).text() == "90"
+    assert widget.usage_monthly_table.item(0, headers.index("Scan")).text() == "0"
     assert (
         widget.usage_monthly_table.item(
-            1, headers.index("ค่าใช้จ่ายโดยประมาณ")
+            0, headers.index("ค่าใช้จ่ายโดยประมาณ")
         ).text()
         == "—"
     )
@@ -417,14 +417,14 @@ def test_usage_timeline_keeps_one_slot_across_v46_and_v5_serials():
     )
     widget.tabs.setCurrentIndex(3)
 
-    matrix = widget.usage_by_printer_table
+    matrix = widget.usage_printer_tables["slot:0"]
     assert matrix.columnCount() == 14
-    assert matrix.groupedHeaderItem(0, 1).text() == "Slot 1 · แผนกบัญชี"
+    assert matrix.groupedHeaderItem(0, 1).text() == "Print"
     assert widget.usage_monthly_table.rowCount() == 2
-    assert widget.usage_monthly_table.item(0, 0).text() == "Meter เริ่มต้น"
-    assert widget.usage_monthly_table.item(0, 12).text() == "300"
-    assert widget.usage_monthly_table.item(0, 13).text() == "—"
-    assert widget.usage_monthly_table.item(1, 12).text() == "40"
-    assert widget.usage_timeline_chart.chart().series()
+    assert widget.usage_monthly_table.item(1, 0).text().startswith("Meter เริ่มต้น\n")
+    assert widget.usage_monthly_table.item(1, 12).text() == "300"
+    assert widget.usage_monthly_table.item(1, 13).text() == "—"
+    assert widget.usage_monthly_table.item(0, 12).text() == "40"
+    assert not hasattr(widget, 'usage_timeline_chart')
     widget.close()
     app.processEvents()

@@ -7411,7 +7411,7 @@ class PageHistoryV5(PageHistory):
             daily_records=daily_records,
             usage_daily_records=usage_daily_records,
             chart_daily_records=(tuple(load_usage_history(report_slots(), granularity='daily',
-                cache=self.cache, graph=True)) if active_tab in {0, 2, 3} else usage_daily_records),
+                cache=self.cache, graph=True)) if active_tab in {0, 2} else usage_daily_records),
             monthly_records=getattr(self, "_report_records", ()),
             subjects=subjects,
             devices=devices,
@@ -13147,6 +13147,9 @@ class PageSettingsV5(QWidget):
         timeline = self.activity.timeline_scroll.takeWidget()
         timeline.layout().setContentsMargins(0, 0, 0, 0)
         self.schedule_page.widget().layout().insertWidget(0, timeline)
+        from ui.reader_members import ReaderMembersPanel
+        self.reader_members = ReaderMembersPanel()
+        self.schedule_page.widget().layout().insertWidget(0, self.reader_members)
         self.activity.layout().setContentsMargins(12, 12, 12, 12)
 
         old_activity_host = self._activity_host
@@ -13214,6 +13217,11 @@ class PageSettingsV5(QWidget):
         QTimer.singleShot(0, lambda: self.schedule_page.ensureWidgetVisible(
             self.fleet_content.schedule_editor, 0, 16,
         ))
+
+    def show_reader_members(self) -> None:
+        if self._select_section(1):
+            self.reader_members.schedule_refresh()
+            QTimer.singleShot(0, lambda: self.schedule_page.verticalScrollBar().setValue(0))
 
     @staticmethod
     def _scroll_page(page: QWidget) -> QScrollArea:

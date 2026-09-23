@@ -209,3 +209,28 @@ def test_usage_meter_baseline_falls_back_to_first_daily_opening_for_older_databa
     assert baselines[0].observed_on == date(2026, 8, 25)
     assert baselines[0].total_meter == 42_000
     assert baselines[0].source == "daily_meter_opening"
+
+def test_baseline_breakdown_uses_opening_not_latest_or_later_discovered_counter():
+    from dataclasses import replace
+    DeviceConfigRepository().replace_all([DeviceConfig(0, 'Printer', '192.0.2.10', serial='SER-001')])
+    first = datetime.fromisoformat('2026-09-22T08:00:00+07:00')
+    def reading(at, total, color, large, scan=None):
+        base = _total_reading(at, total)
+        values = {'counter.print.full_color_total':color,'counter.print.full_color_large':large,
+                  'counter.print.bw_total':0,'counter.print.bw_large':0,'counter.print.total':color}
+        if scan is not None:
+            values['counter.scan_fax.document_read_total'] = scan
+        return replace(base, counters=base.counters + tuple(replace(base.counters[0],canonical_field=k,label=k,count=v) for k,v in values.items()))
+    store=RawCounterHistoryStore()
+    store.update_reading(0,reading(first,1000,800,100),at=first)
+    later=first.replace(hour=9)
+    store.update_reading(0,reading(later,1050,850,120,500),at=later)
+    baseline=load_usage_meter_baselines([0])[0]
+    values=baseline.usage_values()
+    assert values['total']==1000
+    assert values['print_a3_color']==100
+    assert values['print_a4_color']==700
+    assert values['print_a3_bw']==values['print_a4_bw']==0
+    assert values['scan'] is None
+    assert values['copy_a3_color'] is None
+    assert values['cost'] is None
