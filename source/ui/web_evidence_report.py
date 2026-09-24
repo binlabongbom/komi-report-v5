@@ -1,4 +1,5 @@
 """On-demand Web inspection, with a separate explicit billing amendment review."""
+from ui.resource_cleanup import close_executor_with
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 import logging
@@ -8,15 +9,15 @@ from PyQt6.QtCore import QDate, QDateTime, QTimer, Qt
 from PyQt6.QtGui import QColor, QPen
 from PyQt6.QtCharts import QChart, QChartView, QBarSeries, QBarSet, QBarCategoryAxis, QValueAxis, QLineSeries, QScatterSeries
 from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QComboBox, QDateEdit,
-    QPushButton, QTabWidget, QTableWidget, QTableWidgetItem, QAbstractItemView, QFileDialog, QHeaderView, QPlainTextEdit, QLabel)
+    QPushButton, QTabWidget, QTableWidget, QTableWidgetItem, QAbstractItemView, QFileDialog, QHeaderView, QPlainTextEdit)
 
 from database import get_db_path
-from services.web_evidence_report import load_evidence, inspect_counter, export_evidence_xlsx, review_labels
+from services.web_evidence_report import load_evidence, inspect_counter, review_labels
 from ui.counter_review import plain
 from ui.review_components import labeled_control, field_label
 from i18n import tr
 from functools import partial
-from services.web_evidence_export import projection_pdf, export_web_evidence
+from services.web_evidence_export import projection_pdf as projection_pdf, export_web_evidence
 from ui.report_export import ReportExportController
 
 
@@ -36,7 +37,7 @@ class WebEvidenceDialog(QDialog):
         self.pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="komi-evidence")
         self.cancelled = Event()
         pool, cancelled = self.pool, self.cancelled
-        self.destroyed.connect(lambda: (cancelled.set(), pool.shutdown(wait=False, cancel_futures=True)))
+        close_executor_with(self, pool, cancelled)
         self.finished.connect(lambda _: cancelled.set())
         self.future = None
         self.evidence = None

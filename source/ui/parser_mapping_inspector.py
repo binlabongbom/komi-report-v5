@@ -1,6 +1,7 @@
 """Separate V5.2 window for inspecting and correcting counter mappings."""
 
 from __future__ import annotations
+from services.support_diagnostics import with_diagnostic
 
 from collections.abc import Callable
 
@@ -246,7 +247,7 @@ class ParserMappingInspector(QDialog):
         try:
             changed = self._repository.replace_all(str(device.serial or ""), mappings)
         except (OSError, ValueError) as error:
-            QMessageBox.warning(self, "บันทึก Mapping ไม่สำเร็จ", str(error))
+            QMessageBox.warning(self, "บันทึก Mapping ไม่สำเร็จ", with_diagnostic(str(error), error, "บันทึก Mapping ไม่สำเร็จ"))
             return
         self.status.setText(
             f"บันทึกแล้ว {changed} การเปลี่ยนแปลง · มีผลกับข้อมูลที่อ่านใหม่หลังจากนี้"

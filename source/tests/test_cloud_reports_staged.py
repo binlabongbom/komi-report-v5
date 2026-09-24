@@ -74,7 +74,7 @@ def test_scoped_snapshots_never_render_other_tabs_data(staged, monkeypatch):
     assert staged.user_metric_cards["usage"]._full_value == "—"
     staged.tabs.setCurrentIndex(2)
     assert not staged.has_data
-    assert staged.printer_metric_cards["usage"]._full_value == "—"
+    assert staged.printers_table.rowCount() == 0
     staged.tabs.setCurrentIndex(0)
     assert staged.has_data
     assert counts == {"users": 2, "printers": 1}
@@ -94,6 +94,7 @@ def test_loading_slow_and_error_preserve_snapshot_and_offer_retry(staged):
     assert "นานกว่าปกติ" in staged.loading_label.text()
     assert not staged.retry_button.isHidden()
     staged.show_error("connection failed")
+    assert not staged.loading_panel.isHidden()
     assert staged.overview_kpis["total_usage"]._full_value == "123"
     assert "ข้อมูลเดิม" in staged.loading_label.text()
     assert not staged._slow_loading_timer.isActive()
@@ -124,8 +125,8 @@ def test_per_tab_loading_tracks_visible_tab_and_guard_invalid_index(staged):
         staged.ensure_tab(5)
 
 
-@pytest.mark.parametrize("index,prefix,card_key", [(0, "overview", "total_usage"), (1, "users", "usage"), (2, "printers", "usage")])
-def test_cards_render_immediately_then_tables_then_charts(staged, monkeypatch, index, prefix, card_key):
+@pytest.mark.parametrize("index,prefix,card_key", [(0, "overview", "total_usage"), (1, "users", "usage"), (2, "printers", None)])
+def test_tables_and_charts_yield_after_immediate_content(staged, monkeypatch, index, prefix, card_key):
     from PyQt6.QtTest import QTest
 
     staged.tabs.setCurrentIndex(index)
@@ -135,9 +136,14 @@ def test_cards_render_immediately_then_tables_then_charts(staged, monkeypatch, i
     monkeypatch.setattr(staged, table_method, lambda: events.append("tables"))
     monkeypatch.setattr(staged, chart_method, lambda: events.append("charts"))
     deliver(staged, tab_index=index)
-    cards = (staged.overview_kpis, staged.user_metric_cards, staged.printer_metric_cards)[index]
-    assert cards[card_key]._full_value == "—"
-    assert events == [], "tables and charts must yield after cards"
+    if card_key is not None:
+        cards = staged.overview_kpis if index == 0 else staged.user_metric_cards
+        assert cards[card_key]._full_value == "—"
+    else:
+        # Printers' KPI cards were removed; its table still paints on the next turn.
+        assert not hasattr(staged, 'printer_metric_cards')
+        assert staged.printers_table.rowCount() == 0
+    assert events == [], "tables and charts must yield after immediate content"
     staged._render_tail_timer.stop()
     staged._run_render_tail()
     assert events == ["tables"], "charts must yield again after tables"

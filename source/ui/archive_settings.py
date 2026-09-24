@@ -1,4 +1,5 @@
 """Bounded background archive maintenance with metadata-only initial display."""
+from ui.resource_cleanup import close_executor_with
 from concurrent.futures import ThreadPoolExecutor
 from threading import Event
 from datetime import date
@@ -138,7 +139,7 @@ class ArchiveSettingsPanel(QWidget):
         if self.pool is None:
             self.pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="komi-archive")
             pool, cancelled = self.pool, self.cancelled
-            self.destroyed.connect(lambda: (cancelled.set(), pool.shutdown(wait=False, cancel_futures=True)))
+            close_executor_with(self, pool, cancelled)
         self.cancelled.clear()
         self.job = job
         self.start_button.setEnabled(False)

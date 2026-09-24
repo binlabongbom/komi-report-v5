@@ -11,7 +11,12 @@ from komi_snmp_profiler.km_counter_profile import KM_COUNTER_DEFINITIONS
 
 
 class SnmpProbeError(RuntimeError):
-    pass
+    diagnostic_code = 'snmp_failed'
+
+    def __init__(self, message, *, diagnostic_code=None):
+        super().__init__(message)
+        if diagnostic_code:
+            self.diagnostic_code = diagnostic_code
 
 
 @dataclass(frozen=True)
@@ -95,7 +100,7 @@ class SnmpTotalProbe:
     def select_total(cls, totals: list[tuple[str, int]], preferred_oid: str = "") -> tuple[str, int]:
         """Use a Web-calibrated OID first, then model-neutral fallbacks."""
         if not totals:
-            raise SnmpProbeError("ไม่พบ Printer-MIB Total Meter")
+            raise SnmpProbeError("ไม่พบ Printer-MIB Total Meter", diagnostic_code='snmp_meter_missing')
         if preferred_oid:
             preferred = next(((oid, value) for oid, value in totals if oid == preferred_oid), None)
             if preferred is not None:
@@ -267,7 +272,7 @@ class SnmpTotalProbe:
                 get_cmd,
             )
         except ImportError as exc:
-            raise SnmpProbeError("ไม่พบ pysnmp") from exc
+            raise SnmpProbeError("ไม่พบ pysnmp", diagnostic_code='dependency_missing') from exc
 
         engine = SnmpEngine()
         auth = CommunityData(self.community, mpModel=1)

@@ -54,6 +54,7 @@ class _Page(QWidget):
         super().__init__(parent)
         self.sync_button = QPushButton(self)
         self.btn_sync_now = self.sync_button
+        self.read_feedback = QLabel(self)
 
     def sync_completed(self):
         pass

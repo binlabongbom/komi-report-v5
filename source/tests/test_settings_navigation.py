@@ -38,10 +38,10 @@ def settings(monkeypatch, tmp_path):
 def test_sections_use_one_tab_shell_and_share_the_schedule(settings, language):
     set_language(language)
     apply_language(settings)
-    expected = ["ทั่วไป", "การทำงานอัตโนมัติ", "สถานะและประวัติ", "ขั้นสูง"] if language == "th" else [
-        "General", "Automation", "Status and history", "Advanced",
+    expected = ["ทั่วไป", "การทำงานอัตโนมัติ", "สถานะและประวัติ", "การตั้งค่าเครือข่าย", "ขั้นสูง", "Error list"] if language == "th" else [
+        "General", "Automation", "Status and history", "Network settings", "Advanced", "Error list",
     ]
-    assert [settings.section_tabs.tabText(i) for i in range(4)] == expected
+    assert [settings.section_tabs.tabText(i) for i in range(6)] == expected
     assert isinstance(settings.section_tabs, PageTabs)
     assert settings.section_tabs.tabBar().tabRect(0).left() == 0
     assert settings.fleet_content.billing_editor.isVisibleTo(settings)
@@ -56,6 +56,9 @@ def test_sections_use_one_tab_shell_and_share_the_schedule(settings, language):
     settings.activity.tabs.setCurrentWidget(settings.activity.counter_review_page)
     assert settings.activity.counter_reviews.isVisibleTo(settings)
     settings.section_tabs.setCurrentIndex(3)
+    assert settings.fleet_content.web_task_editor.isVisibleTo(settings)
+    assert not settings.fleet_content.support_task_editor.isVisibleTo(settings)
+    settings.section_tabs.setCurrentIndex(4)
     assert settings.fleet_content.support_task_editor.isVisibleTo(settings)
 
 
@@ -98,6 +101,18 @@ def test_embedded_plan_still_refreshes_when_status_tab_is_hidden(settings, monke
     assert not settings.activity.isVisible()
     settings.activity._refresh_if_visible()
     assert calls == [True]
+
+
+def test_unchanged_refresh_preserves_schedule_controls_and_cancel_restores_edits(settings):
+    content = settings.fleet_content
+    original_controls = tuple(content._schedule_row_controls)
+    original_name = original_controls[0][0].text()
+    content.refresh_from_config()
+    assert tuple(content._schedule_row_controls) == original_controls
+    original_controls[0][0].setText('Unsaved schedule edit')
+    content._cancel_section('schedule')
+    assert content._schedule_row_controls[0][0].text() == original_name
+    assert content._schedule_row_controls[0][0] is not original_controls[0][0]
 
 
 @pytest.mark.parametrize("width", [824, 1080, 1205])

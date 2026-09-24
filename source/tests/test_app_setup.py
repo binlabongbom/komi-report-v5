@@ -34,6 +34,7 @@ class _MutableRuntime:
 
 class _PollingGate:
     def __init__(self) -> None:
+        self.repository = SimpleNamespace(list=lambda **_kwargs: [])
         self.paused: list[str] = []
         self.resume_count = 0
         self.manual_polls: list[int | None] = []
@@ -187,6 +188,7 @@ def test_deactivated_registration_pauses_collection_and_reactivation_resumes_it(
     window = SimpleNamespace(
         registration=runtime,
         polling=polling,
+        _refresh_manual_read_feedback=lambda: None,
         status_lbl=status,
         _tray_read_action=read_action,
         pg_import=SimpleNamespace(sync_button=_ActionTarget()),

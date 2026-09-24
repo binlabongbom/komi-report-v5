@@ -1,5 +1,6 @@
 """Review every changed posting before an atomic date-range price correction."""
 
+from ui.resource_cleanup import close_executor_with
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date
 import logging
@@ -24,8 +25,7 @@ class BatchRepricingDialog(QDialog):
         self.future = None
         self.operation = None
         self.pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="komi-reprice-preview")
-        pool = self.pool
-        self.destroyed.connect(lambda: pool.shutdown(wait=False, cancel_futures=True))
+        close_executor_with(self, self.pool)
         self.setWindowTitle("คำนวณราคาใหม่ตามช่วงวันที่")
         self.resize(1200, 650)
         layout = QVBoxLayout(self)

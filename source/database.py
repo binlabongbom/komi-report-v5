@@ -44,6 +44,7 @@ _db_path = DB_PATH
 _report_read_path = ContextVar('report_read_path', default=None)
 _report_read_cancelled = ContextVar('report_read_cancelled', default=None)
 _report_read_components = ContextVar('report_read_components', default=None)
+_report_read_connection = ContextVar('report_read_connection', default=None)
 _report_read_yield_at = ContextVar('report_read_yield_at', default=0.0)
 _read_cache_lock = threading.RLock()
 _all_readings_cache: dict[int, list] = {}
@@ -228,16 +229,22 @@ def get_db_path():
 def report_read_database(path, *, cancelled=None):
     """Pin background report reads to one database without switching the app.
 
-    Connections are read-only; settings bypass the application's shared cache.
+    One read-only connection is reused within this worker request. Settings
+    bypass the application's shared cache; no connection is shared by threads.
     The context is private to the worker and is reset even after cancellation.
     """
     token = _report_read_path.set(Path(path).resolve())
     cancel_token = _report_read_cancelled.set(cancelled)
     cache_token = _report_read_components.set({})
+    connection = [None, False]
+    connection_token = _report_read_connection.set(connection)
     yield_token = _report_read_yield_at.set(0.0)
     try:
         yield
     finally:
+        if connection[0] is not None:
+            connection[0].close()
+        _report_read_connection.reset(connection_token)
         _report_read_cancelled.reset(cancel_token)
         _report_read_components.reset(cache_token)
         _report_read_yield_at.reset(yield_token)
@@ -332,6 +339,28 @@ def _conn():
 @contextmanager
 def _open(commit: bool = True):
     """[V4.5] context manager — ensure connection close + transaction rollback on error"""
+    connection = _report_read_connection.get()
+    if connection is not None and not connection[1]:
+        # Every SELECT used to reopen SQLite (including its schema and page
+        # cache). A report can make thousands of these calls. Keep the handle
+        # only until the read request exits; mode=ro still rejects all writes.
+        if connection[0] is None:
+            connection[0] = read_only_connection(_report_read_path.get())
+        conn = connection[0]
+        row_factory, text_factory = conn.row_factory, conn.text_factory
+        connection[1] = True
+        try:
+            yield conn
+        finally:
+            # Readers may begin an explicit transaction. Preserve the old
+            # per-_open boundary so the next reader can begin its own one.
+            if conn.in_transaction:
+                conn.rollback()
+            conn.row_factory, conn.text_factory = row_factory, text_factory
+            cancelled = _report_read_cancelled.get()
+            conn.set_progress_handler((lambda: int(cancelled.is_set())) if cancelled is not None else None, 1000)
+            connection[1] = False
+        return
     conn = _conn()
     try:
         yield conn

@@ -51,6 +51,7 @@ ProgressCallback = Callable[[ScanProgress], None]
 
 class SnmpCollectionError(RuntimeError):
     """Raised when a device cannot be queried reliably."""
+    diagnostic_code = 'snmp_failed'
 
 
 class SnmpScanCancelled(SnmpCollectionError):

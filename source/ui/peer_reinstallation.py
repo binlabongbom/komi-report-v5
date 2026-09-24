@@ -1,5 +1,6 @@
 """Team-assisted clean reinstallation; never pretend to restore a lost key."""
 from pathlib import Path
+from ui.resource_cleanup import close_executor_with
 from concurrent.futures import ThreadPoolExecutor
 from PyQt6.QtCore import QTimer
 from PyQt6.QtWidgets import QDialog, QVBoxLayout, QLineEdit, QDialogButtonBox, QFileDialog, QApplication
@@ -38,7 +39,7 @@ class PeerReinstallationDialog(QDialog):
         self.buttons.rejected.connect(self.reject)
         layout.addWidget(self.buttons)
         self.pool = ThreadPoolExecutor(max_workers=1,thread_name_prefix='komi-new-installation')
-        self.destroyed.connect(lambda _=None,pool=self.pool:pool.shutdown(wait=False,cancel_futures=True))
+        close_executor_with(self, self.pool)
         self.timer = QTimer(self)
         self.timer.setInterval(50)
         self.timer.timeout.connect(self.collect)

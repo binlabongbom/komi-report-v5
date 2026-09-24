@@ -1,4 +1,10 @@
 from __future__ import annotations
+from services.support_diagnostics import with_diagnostic
+from services.report_period_policy import (
+    EXPORT_YEARS, ReportPeriodLimitError, current_preview_period,
+    latest_allowed_end, latest_export_start, validate_preview_period,
+    validate_report_period,
+)
 
 import csv
 import ipaddress
@@ -172,7 +178,6 @@ from services.secondary_setup import (
     SecondaryPeerCandidate,
     SecondaryPeerClient,
     SecondarySetupError,
-    local_ipv4_hosts,
     normalize_primary_ipv4,
 )
 from services.setup_connectivity import (
@@ -373,7 +378,8 @@ class DeviceTestWorker(QObject):
                     status="ok",
                 )
         except Exception as exc:
-            errors.append(f"SNMP: {exc}")
+            from services.support_diagnostics import diagnostic_report
+            errors.append(diagnostic_report(exc, stage='SNMP / Setup', target=f'{device.host}:{snmp_port}', device=device.name))
             pipeline_log.append(
                 stage="SNMP",
                 action="Setup probe failed",
@@ -478,30 +484,33 @@ class DeviceTestWorker(QObject):
             )
         except WebConnectionAuthenticationError as exc:
             credential_required = True
-            errors.append(f"Web: {exc}")
+            from services.support_diagnostics import diagnostic_report
+            errors.append(diagnostic_report(exc, stage='WEB / Setup', target=web_host, device=device.name))
             pipeline_log.append(
                 stage="WEB",
                 action="Setup Web credential required",
                 device_slot=device.slot,
                 device_name=device.name,
                 host=device.host,
-                value="customer credential required",
+                value=exc,
                 status="warning",
             )
         except WebConnectionSessionBusyError as exc:
             session_busy = True
-            errors.append(f"Web: {exc}")
+            from services.support_diagnostics import diagnostic_report
+            errors.append(diagnostic_report(exc, stage='WEB / Setup', target=web_host, device=device.name))
             pipeline_log.append(
                 stage="WEB",
                 action="Setup Web Connection session busy",
                 device_slot=device.slot,
                 device_name=device.name,
                 host=device.host,
-                value="logout printer web session then retry",
+                value=exc,
                 status="warning",
             )
         except Exception as exc:
-            errors.append(f"Web: {exc}")
+            from services.support_diagnostics import diagnostic_report
+            errors.append(diagnostic_report(exc, stage='WEB / Setup', target=device.host, device=device.name))
             pipeline_log.append(
                 stage="WEB",
                 action="Setup Web read failed",
@@ -526,7 +535,7 @@ class DeviceTestWorker(QObject):
             "serial": probe_result.serial if probe_result else "",
             "total": probe_result.total if probe_result else None,
             "web_ok": reading is not None,
-            "error": "; ".join(errors),
+            "error": "\n\n".join(errors),
             "tls_mode": tls_mode,
             "tls_fingerprint": tls_fingerprint,
             "web_auth_state": reading.auth_state.value if reading is not None else "",
@@ -1336,7 +1345,17 @@ class SetupWizardV5(QDialog):
         heading.setObjectName("wizard_alert_title")
         heading.setFont(fnt(F_LG, True))
         heading.setWordWrap(True)
-        message_label = QLabel(message)
+        from services.support_diagnostics import safe_text, diagnose, warning_report
+        message = safe_text(message)
+        heading_text, marker, report_tail = message.partition('KOMI Diagnostic v1\n')
+        report = marker + report_tail if marker else warning_report(title, message)
+        visible_message = heading_text.strip()
+        if marker:
+            diagnostic = diagnose(report)
+            visible_message = (visible_message + '\n' if visible_message else '') + f'Error Code: {diagnostic.error_code}\n' + diagnostic.summary + '\n' + diagnostic.action
+        else:
+            visible_message = message + f'\nError Code: {diagnose(report).error_code}'
+        message_label = QLabel(visible_message)
         message_label.setObjectName("wizard_alert_message")
         message_label.setFont(fnt(F_MD))
         message_label.setWordWrap(True)
@@ -1348,7 +1367,17 @@ class SetupWizardV5(QDialog):
         content.addLayout(copy, 1)
         root.addLayout(content)
 
+        if marker:
+            details = QPlainTextEdit(report)
+            details.setReadOnly(True)
+            details.setMaximumHeight(180)
+            details.setObjectName('wizard_diagnostic_details')
+            root.addWidget(details)
+
         actions = QHBoxLayout()
+        copy_diagnostic = btn(tr('คัดลอกรายละเอียด', 'Copy details'), 'outline')
+        copy_diagnostic.clicked.connect(lambda: QApplication.clipboard().setText(report))
+        actions.addWidget(copy_diagnostic)
         actions.addStretch()
         confirm = btn(tr("ตกลง", "OK"), "primary")
         confirm.setAccessibleName(tr("ปิดข้อความ", "Close message"))
@@ -2074,7 +2103,7 @@ class SetupWizardV5(QDialog):
         try:
             self._activate_selected_database_path()
         except Exception as error:
-            self._show_wizard_message(tr('เตรียมฐานข้อมูลไม่สำเร็จ', 'Database preparation failed'), str(error))
+            self._show_wizard_message(tr('เตรียมฐานข้อมูลไม่สำเร็จ', 'Database preparation failed'), with_diagnostic(str(error), error, tr('เตรียมฐานข้อมูลไม่สำเร็จ', 'Database preparation failed')))
             return
         self._secondary_sync_cancelled = False
         progress = QDialog(self)
@@ -2150,13 +2179,13 @@ class SetupWizardV5(QDialog):
         if error or not isinstance(snapshot, dict):
             self._show_wizard_message(
                 tr("Sync ไม่สำเร็จ", "Sync failed"),
-                error or tr("เครื่องหลักส่งข้อมูลไม่ครบ", "The Primary returned incomplete data"),
+                with_diagnostic(error or tr("เครื่องหลักส่งข้อมูลไม่ครบ", "The Primary returned incomplete data"), error, tr("Sync ไม่สำเร็จ", "Sync failed")),
             )
             return
         try:
             self._apply_secondary_snapshot(candidate, snapshot)
         except (KeyError, TypeError, ValueError, SecondarySetupError) as exc:
-            self._show_wizard_message(tr("Sync ไม่สำเร็จ", "Sync failed"), str(exc))
+            self._show_wizard_message(tr("Sync ไม่สำเร็จ", "Sync failed"), with_diagnostic(str(exc), exc, tr("Sync ไม่สำเร็จ", "Sync failed")))
 
     def _secondary_snapshot_stopped(self):
         self._secondary_sync_thread = None
@@ -3091,10 +3120,15 @@ class SetupWizardV5(QDialog):
             )
             background = QColor("#FFF7E6") if selected else None
         elif result.get("credential_required"):
-            status, color = "● ต้องใส่รหัส · กรุณาใส่รหัสของลูกค้า", C_RED
+            from services.support_diagnostics import diagnose
+            web_error = str(result.get('error') or '').split('\n\nKOMI Diagnostic v1\n')[-1]
+            diagnostic = diagnose(web_error)
+            status, color = f"● {diagnostic.summary} [{diagnostic.error_code} / {diagnostic.code}]", C_RED
             background = QColor("#FDECEC") if selected else None
         elif result.get("tested"):
-            status, color = "● ไม่ผ่าน · " + str(result.get("error") or "Web Connection อ่านค่าไม่ได้")[:60], C_RED
+            from services.support_diagnostics import diagnose
+            diagnostic = diagnose(str(result.get("error") or ''))
+            status, color = f"● ไม่ผ่าน · {diagnostic.summary} [{diagnostic.error_code} / {diagnostic.code}]", C_RED
             background = QColor("#FDECEC") if selected else None
         elif result.get("online"):
             status, color = "● พบเครื่อง · รอตรวจสอบ Web", C_TEXT2
@@ -3103,7 +3137,9 @@ class SetupWizardV5(QDialog):
             status, color = "บันทึกไว้ · รอตรวจสอบรอบนี้", C_TEXT2
             background = QColor("#E3F0FB") if selected else None
         elif result.get("error"):
-            status, color = "● ไม่ผ่าน · " + str(result["error"])[:60], C_RED
+            from services.support_diagnostics import diagnose
+            diagnostic = diagnose(str(result['error']))
+            status, color = f"● ไม่ผ่าน · {diagnostic.summary} [{diagnostic.error_code} / {diagnostic.code}]", C_RED
             background = QColor("#FDECEC")
         else:
             status, color = "รอทดสอบ", C_TEXT2
@@ -3141,7 +3177,7 @@ class SetupWizardV5(QDialog):
                 and not (result.get("online") and result.get("web_ok"))
             ):
                 item.setForeground(QColor(C_RED) if column == 4 else QColor("#7F1D1D"))
-            item.setToolTip(str(value))
+            item.setToolTip(str(result.get('error') or value) if column == 4 else str(value))
             self.device_table.setItem(row, column, item)
         if result.get("session_busy"):
             action_text = "เปิด Web"
@@ -3164,6 +3200,12 @@ class SetupWizardV5(QDialog):
         self.device_table.setItem(row, 5, credential_item)
 
     def _device_table_action(self, row: int, column: int) -> None:
+        if column == 4 and 0 <= row < len(self.discovered_devices):
+            entry = self.discovered_devices[row]
+            error = entry.get('result', {}).get('error')
+            if error:
+                self._show_wizard_message(f"ผลการเชื่อมต่อ · {entry['name']}", str(error))
+            return
         if column != 5 or row >= len(self.discovered_devices):
             return
         entry = self.discovered_devices[row]
@@ -3339,7 +3381,7 @@ class SetupWizardV5(QDialog):
                     ]
                 )
             except ValueError as exc:
-                self._show_wizard_message("IP address ไม่ถูกต้อง", str(exc))
+                self._show_wizard_message("IP address ไม่ถูกต้อง", with_diagnostic(str(exc), exc, "IP address ไม่ถูกต้อง"))
 
         self._open_wizard_child(dialog, manual_finished)
 
@@ -3694,7 +3736,7 @@ class SetupWizardV5(QDialog):
         try:
             devices = self._configs()
         except ValueError as exc:
-            self._show_wizard_message("ข้อมูลไม่ครบ", str(exc))
+            self._show_wizard_message("ข้อมูลไม่ครบ", with_diagnostic(str(exc), exc, "ข้อมูลไม่ครบ"))
             return
         if self._thread is not None:
             return
@@ -3895,7 +3937,7 @@ class SetupWizardV5(QDialog):
             try:
                 self._configs()
             except ValueError as exc:
-                self._show_wizard_message("ข้อมูลไม่ครบ", str(exc))
+                self._show_wizard_message("ข้อมูลไม่ครบ", with_diagnostic(str(exc), exc, "ข้อมูลไม่ครบ"))
                 return
             not_ready = [
                 str(entry.get("name") or entry.get("host"))
@@ -4357,7 +4399,7 @@ class SetupWizardV5(QDialog):
                 return
             service.commit(preview)
         except Exception as exc:
-            self._show_wizard_message("บันทึกไม่สำเร็จ", str(exc))
+            self._show_wizard_message("บันทึกไม่สำเร็จ", with_diagnostic(str(exc), exc, "บันทึกไม่สำเร็จ"))
             return
 
         if self.edit_mode:
@@ -4398,7 +4440,7 @@ class SetupWizardV5(QDialog):
                        'Membership is saved locally. Continue registration. When the source is online, choose Find and reconnect existing members; no renewed approval is required.'))
                 self._open_wizard_child(dialog, lambda _result: self._finish_enrollment_registration())
             else:
-                self._show_wizard_message(tr('เข้ากลุ่มยังไม่ครบ', 'Enrollment incomplete'), error)
+                self._show_wizard_message(tr('เข้ากลุ่มยังไม่ครบ', 'Enrollment incomplete'), with_diagnostic(error, error, tr('เข้ากลุ่มยังไม่ครบ', 'Enrollment incomplete')))
             return
         self._finish_enrollment_registration()
 
@@ -5244,14 +5286,11 @@ class PagePipelineLog(QWidget):
 
     @staticmethod
     def _plain_error(value: str) -> str:
-        lowered = value.lower()
-        if "timeout" in lowered:
-            return "เชื่อมต่อเครื่องไม่สำเร็จภายในเวลาที่กำหนด"
-        if "credential" in lowered or "unauthorized" in lowered or "login" in lowered:
-            return "ตรวจสอบ Administrator credential ของเครื่องนี้"
-        if "tls" in lowered or "ssl" in lowered:
-            return "เชื่อมต่อ Web Connection ของเครื่องไม่สำเร็จ"
-        return "อ่านข้อมูลจากเครื่องไม่สำเร็จ · ดูรายละเอียดเพื่อส่งให้ทีม Support"
+        from services.support_diagnostics import diagnose, safe_text
+        diagnostic = diagnose(value)
+        if diagnostic.code == 'operation_failed':
+            return safe_text(value) or diagnostic.summary
+        return f'{diagnostic.summary} [{diagnostic.error_code} / {diagnostic.code}]'
 
     @staticmethod
     def _clear_layout(layout: QVBoxLayout) -> None:
@@ -5294,11 +5333,14 @@ class PagePipelineLog(QWidget):
         status = (device.connection_status or "pending").lower()
         if status == "offline" or device.last_error or error_event:
             raw_reason = device.last_error or (error_event.value if error_event else "")
+            from services.support_diagnostics import diagnose
+            diagnostic = diagnose(raw_reason)
+            web_failure = diagnostic.code in {'auth_rejected', 'password_rejected', 'admin_required', 'factory_credentials_rejected', 'session_busy', 'tls_handshake', 'tls_protocol', 'tls_certificate', 'certificate_expired', 'certificate_name', 'certificate_trust', 'certificate_pin', 'endpoint_missing'}
             return (
-                "เชื่อมต่อไม่ได้",
+                "อ่าน Web ไม่สำเร็จ" if web_failure else "เชื่อมต่อไม่ได้",
                 self._plain_error(raw_reason),
                 "#B42318",
-                "ตรวจ IP หรือ Credential แล้วกดอ่านข้อมูลตอนนี้",
+                diagnostic.action,
                 latest_success or "",
             )
         if review_event:
@@ -5666,6 +5708,10 @@ class PagePipelineLog(QWidget):
 
     @staticmethod
     def _event_summary(event: PipelineEvent) -> str:
+        if event.diagnostic:
+            from services.support_diagnostics import diagnose
+            diagnostic = diagnose(event.diagnostic)
+            return f'{event.action} · {diagnostic.summary} [{diagnostic.error_code} / {diagnostic.code}]'
         summary = event.action
         if event.value and event.value not in {"—", "None"}:
             summary += f" · {event.value}"
@@ -5689,11 +5735,14 @@ class PagePipelineLog(QWidget):
                     f"Target: {event.target or '—'}",
                     f"Value: {event.value or '—'}",
                     f"Detail: {event.detail or '—'}",
+                    event.diagnostic,
                 )
             )
         )
 
     def _copy_live(self) -> None:
+        # A copied failure includes the same full evidence as its detail pane.
+        from services.support_diagnostics import safe_text
         rows = ["เวลา\tเครื่องพิมพ์\tคอมที่ทำรายการ\tอ่านโดย\tผลลัพธ์\tรายละเอียด"]
         for event in self._visible_events:
             try:
@@ -5704,6 +5753,9 @@ class PagePipelineLog(QWidget):
                 "\t".join((stamp, event.device_name or "ระบบ", event.computer_name or '—', event.reader_name or '—',
                            self._event_result(event), self._event_summary(event)))
             )
+            rows.append(safe_text(f'Stage: {event.stage}\nTarget: {event.target}\nValue: {event.value}\nDetail: {event.detail}'))
+            if event.diagnostic:
+                rows.append(event.diagnostic)
         QApplication.clipboard().setText("\n".join(rows))
 
     def _clear_live(self) -> None:
@@ -6910,7 +6962,7 @@ class PageImportV5(QWidget):
 
 
 class ReportExportPeriodDialog(QDialog):
-    """Choose one explicit report range before creating the Excel workbook."""
+    """Choose the date range and sheets before starting the background export."""
 
     def __init__(
         self,
@@ -6926,18 +6978,19 @@ class ReportExportPeriodDialog(QDialog):
         self.available_end = available_end
         self.setWindowTitle("Export รายงาน Excel")
         self.setModal(True)
-        self.setMinimumWidth(520)
+        self.setMinimumWidth(540)
+        self.resize(580, 480)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(22, 20, 22, 18)
         layout.setSpacing(14)
 
-        title = QLabel("เลือกช่วงเวลาที่ต้องการ Export")
+        title = QLabel(tr("เลือกข้อมูลที่ต้องการ Export", "Choose reports to export"))
         title.setFont(fnt(F_LG, True))
         layout.addWidget(title)
         description = QLabel(
-            tr("Excel มีรายงานรายเครื่อง ผู้ใช้ รายวัน และรายละเอียด Legacy พร้อมหมายเหตุเมื่อมีฉบับแก้ไข",
-               "Excel includes printer, user, and daily reports, Legacy details, and correction notes.")
+            tr("เลือกช่วงเวลาได้สูงสุด 5 ปีต่อไฟล์ และเลือกรายงานที่ต้องการ",
+               "Choose up to 5 years per file and select the reports to include.")
         )
         description.setWordWrap(True)
         description.setStyleSheet(f"color:{C_TEXT2};")
@@ -6946,32 +6999,57 @@ class ReportExportPeriodDialog(QDialog):
         form = QFormLayout()
         form.setHorizontalSpacing(16)
         form.setVerticalSpacing(10)
+        form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.FieldsStayAtSizeHint)
         self.start_date = QDateEdit(QDate(start.year, start.month, start.day))
         self.end_date = QDateEdit(QDate(end.year, end.month, end.day))
         for editor in (self.start_date, self.end_date):
             editor.setCalendarPopup(True)
             editor.setDisplayFormat("dd/MM/yyyy")
-            editor.setMinimumHeight(40)
-        form.addRow("วันที่เริ่มต้น", self.start_date)
-        form.addRow("วันที่สิ้นสุด", self.end_date)
+            editor.setMinimumHeight(34)
+            editor.setFixedWidth(190)
+        form.addRow(tr("วันที่เริ่มต้น", "Start date"), self.start_date)
+        form.addRow(tr("วันที่สิ้นสุด", "End date"), self.end_date)
         layout.addLayout(form)
 
         quick = QHBoxLayout()
         quick.setSpacing(8)
-        current_button = QPushButton("ช่วงที่แสดงอยู่")
+        current_button = QPushButton(tr("ช่วงที่แสดงอยู่", "Current preview"))
         current_button.clicked.connect(lambda: self._set_range(start, end))
         quick.addWidget(current_button)
         month_button = QPushButton(tr("เดือนนี้", "This month"))
         month_button.clicked.connect(self._set_current_month)
         quick.addWidget(month_button)
         if available_start is not None and available_end is not None:
-            all_button = QPushButton("ข้อมูลทั้งหมด")
-            all_button.clicked.connect(
-                lambda: self._set_range(available_start, available_end)
-            )
+            fits_all = available_end <= latest_allowed_end(available_start, EXPORT_YEARS)
+            all_button = QPushButton(tr('ข้อมูลทั้งหมด', 'All data') if fits_all
+                                     else tr('5 ปีล่าสุด', 'Latest 5 years'))
+            all_button.clicked.connect(lambda: self._set_range(
+                available_start if fits_all else latest_export_start(available_end), available_end))
             quick.addWidget(all_button)
         quick.addStretch(1)
         layout.addLayout(quick)
+
+        from services.report_export_options import REPORT_SECTIONS
+        choices_title = QHBoxLayout()
+        choices_title.addWidget(QLabel(tr("รายงานที่ส่งออก", "Reports to export")))
+        choices_title.addStretch()
+        for label, checked in ((tr("เลือกทั้งหมด", "Select all"), True),
+                               (tr("ล้างทั้งหมด", "Clear all"), False)):
+            button = QPushButton(label)
+            button.clicked.connect(lambda _checked=False, value=checked: self._select_all(value))
+            choices_title.addWidget(button)
+        layout.addLayout(choices_title)
+        choices = QGridLayout()
+        choices.setHorizontalSpacing(24)
+        choices.setVerticalSpacing(10)
+        self.section_checks = {}
+        for index, (key, thai, english) in enumerate(REPORT_SECTIONS):
+            check = QCheckBox(tr(thai, english))
+            check.setChecked(True)
+            check.toggled.connect(self._validate)
+            self.section_checks[key] = check
+            choices.addWidget(check, index % 3, index // 3)
+        layout.addLayout(choices)
 
         self.status = QLabel()
         self.status.setWordWrap(True)
@@ -6984,7 +7062,7 @@ class ReportExportPeriodDialog(QDialog):
         )
         self.export_button = buttons.button(QDialogButtonBox.StandardButton.Save)
         self.export_button.setText("Export Excel")
-        buttons.button(QDialogButtonBox.StandardButton.Cancel).setText("ยกเลิก")
+        buttons.button(QDialogButtonBox.StandardButton.Cancel).setText(tr("ยกเลิก", "Cancel"))
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
@@ -6994,6 +7072,13 @@ class ReportExportPeriodDialog(QDialog):
 
     def selected_range(self) -> tuple[date, date]:
         return self.start_date.date().toPyDate(), self.end_date.date().toPyDate()
+
+    def selected_sections(self) -> tuple[str, ...]:
+        return tuple(key for key, check in self.section_checks.items() if check.isChecked())
+
+    def _select_all(self, checked: bool) -> None:
+        for check in self.section_checks.values():
+            check.setChecked(checked)
 
     def _set_range(self, start: date, end: date) -> None:
         self.start_date.setDate(QDate(start.year, start.month, start.day))
@@ -7007,24 +7092,38 @@ class ReportExportPeriodDialog(QDialog):
 
     def _validate(self) -> None:
         start, end = self.selected_range()
-        valid = start <= end
+        limit = latest_allowed_end(start, EXPORT_YEARS)
+        valid = start <= end <= limit and bool(self.selected_sections())
         self.export_button.setEnabled(valid)
         if not valid:
-            self.status.setText("วันที่เริ่มต้นต้องไม่เกินวันที่สิ้นสุด")
+            if start > end:
+                message = tr("วันที่เริ่มต้นต้องไม่เกินวันที่สิ้นสุด", "Start date must not be after end date")
+            elif end > limit:
+                message = tr('Export ได้สูงสุด 5 ปีต่อไฟล์ · เลือกวันสิ้นสุดไม่เกิน {end}',
+                             'Export supports up to 5 years per file. Choose an end date on or before {end}').format(end=limit.strftime('%d/%m/%Y'))
+            else:
+                message = tr("เลือกรายงานอย่างน้อยหนึ่งรายการ", "Select at least one report")
+            self.status.setText(message)
             self.status.setStyleSheet("color:#B42318;padding:8px;background:#FFF1F0;")
             return
         days = (end - start).days + 1
         available = ""
         if self.available_start is not None and self.available_end is not None:
-            available = (
-                f" · ข้อมูลที่พบ {self.available_start:%d/%m/%Y}–"
-                f"{self.available_end:%d/%m/%Y}"
-            )
-        self.status.setText(f"ช่วงที่เลือก {days:,} วัน{available}")
+            available = tr(" · ข้อมูลที่พบ {start}–{end}", " · Available data {start}–{end}").format(
+                start=self.available_start.strftime('%d/%m/%Y'),
+                end=self.available_end.strftime('%d/%m/%Y'))
+        self.status.setText(tr("ช่วงที่เลือก {days:,} วัน · {count} รายงาน{available}",
+                               "Selected {days:,} days · {count} reports{available}").format(
+                                   days=days, count=len(self.selected_sections()), available=available))
         self.status.setStyleSheet(f"color:{C_TEXT2};padding:8px;background:#F5F8FA;")
 
+    def accept(self) -> None:
+        self._validate()
+        if self.export_button.isEnabled():
+            super().accept()
+
     @classmethod
-    def get_range(
+    def get_selection(
         cls,
         parent,
         start: date,
@@ -7032,7 +7131,7 @@ class ReportExportPeriodDialog(QDialog):
         *,
         available_start: date | None = None,
         available_end: date | None = None,
-    ) -> tuple[date, date] | None:
+    ):
         dialog = cls(
             start,
             end,
@@ -7040,7 +7139,10 @@ class ReportExportPeriodDialog(QDialog):
             available_end=available_end,
             parent=parent,
         )
-        return dialog.selected_range() if dialog.exec() == QDialog.DialogCode.Accepted else None
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return None
+        from services.report_export_options import ReportExportSelection
+        return ReportExportSelection(*dialog.selected_range(), dialog.selected_sections())
 
 
 class PageHistoryV5(PageHistory):
@@ -7124,6 +7226,7 @@ class PageHistoryV5(PageHistory):
         self.report_center = CloudReportsWidget(staged=self._staged)
         self.report_center.refresh_requested.connect(self.refresh_visible)
         self.report_center.export_requested.connect(self._export_report_center_excel)
+        self.report_center.export_range_requested.connect(self._export_report_center_excel)
         self.report_center.period_changed.connect(self._staged_period_changed if self._staged else self._refresh_report_center)
         self.report_center.reading_status_requested.connect(self.reading_status_requested)
         self._report_refresh_busy = False
@@ -7223,6 +7326,8 @@ class PageHistoryV5(PageHistory):
         if str(get_db_path()) != self._snapshot_db:
             self.invalidate_data()
         period = self.report_center.current_period()
+        if period is not None and not self.report_center.show_preview_period_limit(period):
+            return
         cache_key = (index, period)
         cached = self._snapshot_cache.get(cache_key)
         if cached is not None:
@@ -7327,25 +7432,25 @@ class PageHistoryV5(PageHistory):
         """Refresh the visible Cloud reports from one shared date range."""
         if not hasattr(self, "report_center"):
             return
+        selected = (tuple(selection) if isinstance(selection, (tuple, list)) and len(selection) == 2
+                    else self.report_center.current_period()) or current_preview_period()
+        try:
+            validate_preview_period(selected)
+        except ReportPeriodLimitError:
+            self.report_center.set_periods((), selected)
+            return
         if not hasattr(self, "_report_records"):
             self._populate_report_periods()
         periods = sorted(
             {self._period_key(record) for record in getattr(self, "_report_records", ())},
             reverse=True,
         )
-        selected = (
-            tuple(selection)
-            if isinstance(selection, (tuple, list)) and len(selection) == 2
-            else self.report_center.current_period()
-        )
-        if selected is None:
-            selected = periods[0] if periods else None
         self.report_center.set_periods(periods, selected)
         active_tab = self.report_center.tabs.currentIndex()
         is_custom_period = selected is not None and selected not in periods
         # Printers can use posted monthly records for a billing period, but a
         # custom range must aggregate only the daily records inside its dates.
-        needs_daily_usage = active_tab in {0, 2, 3}
+        needs_daily_usage = active_tab in {0, 1, 2, 3}
         needs_subjects = active_tab in {0, 1}
         needs_raw = active_tab in {1, 4}
         needs_legacy = active_tab in {3, 4}
@@ -7406,7 +7511,9 @@ class PageHistoryV5(PageHistory):
             ),
             default=None,
         )
+        from services.report_excel_export import build_daily_category_costs
         self.report_center.set_data(
+            category_costs=build_daily_category_costs(daily_records) if active_tab == 1 and subjects else (),
             records=selected_records,
             daily_records=daily_records,
             usage_daily_records=usage_daily_records,
@@ -7456,7 +7563,7 @@ class PageHistoryV5(PageHistory):
                 self._report_refresh_pending = False
                 self._report_refresh_timer.start()
 
-    def _export_report_center_excel(self) -> None:
+    def _export_report_center_excel(self, period=None) -> None:
         """Choose the destination on Qt; all reading/writing runs in a worker."""
         controller = getattr(self, '_export_controller', None)
         if controller is not None and (controller.busy or controller.closed):
@@ -7473,15 +7580,16 @@ class PageHistoryV5(PageHistory):
             (record.period_end for record in available_records),
             default=None,
         )
-        if cloud._period is not None:
+        requested_period = period or cloud.current_period()
+        if requested_period is not None:
             default_start, default_end = (
-                date.fromisoformat(value) for value in cloud._period
+                date.fromisoformat(value) for value in requested_period
             )
         elif available_start is not None and available_end is not None:
             default_start, default_end = available_start, available_end
         else:
             default_start = default_end = date.today()
-        selected = ReportExportPeriodDialog.get_range(
+        selected = ReportExportPeriodDialog.get_selection(
             self,
             default_start,
             default_end,
@@ -7490,7 +7598,8 @@ class PageHistoryV5(PageHistory):
         )
         if selected is None:
             return
-        start, end = selected
+        start, end = selected.start, selected.end
+        validate_report_period(start, end, years=EXPORT_YEARS)
         suggested = (
             f"KOMI_Reports_{start:%Y%m%d}_{end:%Y%m%d}.xlsx"
         )
@@ -7513,14 +7622,15 @@ class PageHistoryV5(PageHistory):
         controller.start(partial(export_report_selection, path, start, end,
             database_path=get_db_path(), devices=tuple(cloud._devices),
             monthly_records=available_records, last_sync_at=cloud._last_sync_at,
+            sections=selected.sections,
             include_waste_adjustment=cloud.include_waste_adjustment()))
 
     def _report_export_failed(self, error) -> None:
         from services.report_export_job import EmptyReportError
         if isinstance(error, EmptyReportError):
-            QMessageBox.warning(self, 'ไม่พบข้อมูล', str(error))
+            QMessageBox.warning(self, 'ไม่พบข้อมูล', with_diagnostic(str(error), error, 'ไม่พบข้อมูล'))
         else:
-            QMessageBox.critical(self, 'Export ไม่สำเร็จ', f'ไม่สามารถสร้างไฟล์ Excel ได้:\n{error}')
+            QMessageBox.critical(self, 'Export ไม่สำเร็จ', with_diagnostic(f'ไม่สามารถสร้างไฟล์ Excel ได้:\n{error}', error, 'Export ไม่สำเร็จ'))
 
     def _report_export_succeeded(self, saved) -> None:
         QMessageBox.information(
@@ -8462,7 +8572,7 @@ class PageHistoryV5(PageHistory):
             QMessageBox.critical(
                 self,
                 "ส่งออกไม่สำเร็จ",
-                f"ไม่สามารถบันทึกไฟล์ได้\n{error}",
+                with_diagnostic(f"ไม่สามารถบันทึกไฟล์ได้\n{error}", error, "ส่งออกไม่สำเร็จ"),
             )
 
     def _historical_devices(self) -> list[DeviceConfig]:
@@ -11424,6 +11534,8 @@ class PageFleetSettings(QWidget):
     def _mark_dirty(self, section: str) -> None:
         if self._loading_config:
             return
+        if section == 'schedule':
+            self._schedule_rendered_windows = None
         self._dirty_sections.add(section)
         widgets = {
             "billing": (self.billing_save_status, self.billing_save_button),
@@ -11523,7 +11635,7 @@ class PageFleetSettings(QWidget):
             QMessageBox.warning(
                 self,
                 tr("ยังอนุญาตไม่ได้", "Could not authorize sync"),
-                translate_text(str(error)),
+                with_diagnostic(translate_text(str(error)), error, tr("ยังอนุญาตไม่ได้", "Could not authorize sync")),
             )
             self._refresh_peer_sync_status()
             return
@@ -11901,8 +12013,8 @@ class PageFleetSettings(QWidget):
         else:
             self.support_summary.setText(
                 tr(
-                    "Database, Backup, Log, Parser Mapping และรายงานผ่าน LAN",
-                    "Database, backup, logs, parser mapping, and LAN reports",
+                    "Database, Backup, Log และ Parser Mapping",
+                    "Database, backup, logs, and parser mapping",
                 )
             )
 
@@ -12181,7 +12293,7 @@ class PageFleetSettings(QWidget):
             QMessageBox.warning(
                 self,
                 tr("เปลี่ยนรหัส Web ไม่สำเร็จ", "Could not change the Web access code"),
-                translate_text(str(error)),
+                with_diagnostic(translate_text(str(error)), error, tr("เปลี่ยนรหัส Web ไม่สำเร็จ", "Could not change the Web access code")),
             )
             return
         if status.state == "external":
@@ -12213,7 +12325,7 @@ class PageFleetSettings(QWidget):
         try:
             result = create_desktop_shortcuts()
         except Exception as exc:
-            QMessageBox.warning(self, "สร้าง Shortcut ไม่สำเร็จ", str(exc))
+            QMessageBox.warning(self, "สร้าง Shortcut ไม่สำเร็จ", with_diagnostic(str(exc), exc, "สร้าง Shortcut ไม่สำเร็จ"))
             return
         names = "\n".join(path.name for path in result.created_paths)
         QMessageBox.information(
@@ -12322,7 +12434,7 @@ class PageFleetSettings(QWidget):
             QMessageBox.warning(
                 self,
                 tr("ตรวจตารางเวลา", "Check the schedule"),
-                translate_text(str(error)),
+                with_diagnostic(translate_text(str(error)), error, tr("ตรวจตารางเวลา", "Check the schedule")),
             )
             return
         serialized_windows = dump_schedule_windows(schedule_windows)
@@ -12353,7 +12465,7 @@ class PageFleetSettings(QWidget):
             QMessageBox.warning(
                 self,
                 tr("ตั้งค่า Auto-start ไม่สำเร็จ", "Could not configure automatic start"),
-                translate_text(str(exc)),
+                with_diagnostic(translate_text(str(exc)), exc, tr("ตั้งค่า Auto-start ไม่สำเร็จ", "Could not configure automatic start")),
             )
             return
         set_cfg("autostart_enabled", "1" if expected else "0")
@@ -12389,7 +12501,7 @@ class PageFleetSettings(QWidget):
                 with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
                     probe.bind(("0.0.0.0", port))
         except (ValueError, OSError) as error:
-            QMessageBox.warning(self, "เปลี่ยน Port ไม่ได้", f"Port ที่เลือกไม่พร้อมใช้งาน: {error}")
+            QMessageBox.warning(self, "เปลี่ยน Port ไม่ได้", with_diagnostic(f"Port ที่เลือกไม่พร้อมใช้งาน: {error}", error, "เปลี่ยน Port ไม่ได้"))
             return
         passwordless = not self.web_report_require_password.isChecked()
         if not passwordless and not previous_access.configured:
@@ -12399,7 +12511,7 @@ class PageFleetSettings(QWidget):
             try:
                 set_web_access_code(env_path, dialog.value())
             except (OSError, ValueError) as error:
-                QMessageBox.warning(self, tr("ตั้งรหัสไม่สำเร็จ", "Could not set password"), str(error))
+                QMessageBox.warning(self, tr("ตั้งรหัสไม่สำเร็จ", "Could not set password"), with_diagnostic(str(error), error, tr("ตั้งรหัสไม่สำเร็จ", "Could not set password")))
                 return
         try:
             set_web_report_passwordless(env_path, passwordless)
@@ -12408,7 +12520,7 @@ class PageFleetSettings(QWidget):
             QMessageBox.warning(
                 self,
                 tr("บันทึกการเข้าถึง Web ไม่สำเร็จ", "Could not save Web access"),
-                translate_text(str(error)),
+                with_diagnostic(translate_text(str(error)), error, tr("บันทึกการเข้าถึง Web ไม่สำเร็จ", "Could not save Web access")),
             )
             return
         set_cfg("web_service_enabled", "1" if web_enabled else "0")
@@ -12480,10 +12592,14 @@ class PageFleetSettings(QWidget):
         self.schedule.setText(f"{default_prefix}{summary}")
 
     def _replace_schedule_windows(self, windows: tuple[ScheduleWindow, ...]) -> None:
+        signature = (windows, get_language())
+        if getattr(self, '_schedule_rendered_windows', None) == signature:
+            return
         self.schedule_windows_table.setRowCount(0)
         self._schedule_row_controls.clear()
         for window in windows:
             self._append_schedule_window(window, mark_dirty=False)
+        self._schedule_rendered_windows = signature
         self._refresh_schedule()
 
     def _append_schedule_window(self, window: ScheduleWindow, *, mark_dirty: bool) -> None:
@@ -13006,7 +13122,7 @@ class PageBillingAudit(QWidget):
         try:
             count = self._export_rows_to(path)
         except OSError as exc:
-            QMessageBox.warning(self, "Export ไม่สำเร็จ", str(exc))
+            QMessageBox.warning(self, "Export ไม่สำเร็จ", with_diagnostic(str(exc), exc, "Export ไม่สำเร็จ"))
             return
         QMessageBox.information(self, "Export สำเร็จ", f"บันทึก {count:,} รายการแล้ว")
 
@@ -13038,12 +13154,7 @@ class PageSettingsV5(QWidget):
         embed_mode = getattr(self.legacy_content, "set_v5_embed_mode", None)
         if callable(embed_mode):
             embed_mode()
-        self.fleet = self._scroll_page(self.fleet_content)
-        self._activity_host = self._detail_page(
-            "สถานะและประวัติการอ่าน",
-            "ใช้สำหรับตรวจสอบเมื่อข้อมูลไม่อัปเดต ผู้ใช้งานทั่วไปไม่จำเป็นต้องเปิดหน้านี้",
-            self.activity,
-        )
+        self._activity_host = self.activity
         self._audit_host = self._detail_page(
             "ตรวจสอบรอบบิล",
             "",
@@ -13065,7 +13176,7 @@ class PageSettingsV5(QWidget):
             hide_existing(support_layout.itemAt(item_index))
 
         advanced_notice = QLabel(
-            "จัดการ Database, Backup, Log, Parser Mapping และรายงานผ่าน LAN · "
+            "จัดการ Database, Backup, Log และ Parser Mapping · "
             "รายการที่ลบหรือรีเซ็ตข้อมูลจะสำรองข้อมูลและขอยืนยันก่อนเสมอ"
         )
         advanced_notice.setWordWrap(True)
@@ -13081,17 +13192,8 @@ class PageSettingsV5(QWidget):
         self.fleet_content.layout().insertWidget(
             3, self.fleet_content.autostart_program_card
         )
-        self.fleet_content.web_program_card.setParent(
-            self.fleet_content.support_task_editor
-        )
-        support_layout.addWidget(self.fleet_content.web_program_card)
         self.legacy_content.setParent(self.fleet_content.support_task_editor)
         support_layout.addWidget(self.legacy_content)
-        self._legacy_host = self.fleet
-
-        for page in (self.fleet, self._activity_host, self._audit_host):
-            self.stack.addWidget(page)
-        self._logical_pages = [self.fleet, self.activity, self.audit, self.legacy]
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
@@ -13107,6 +13209,7 @@ class PageSettingsV5(QWidget):
         if hasattr(self.legacy_content, "parser_read_requested"):
             self.legacy_content.parser_read_requested.connect(self.parser_read_requested)
         self._build_section_tabs(layout)
+        self._logical_pages = [self.fleet, self.activity, self.audit, self.legacy]
 
     def _build_section_tabs(self, layout: QVBoxLayout) -> None:
         """Reuse the existing forms and handlers inside one page-tab shell."""
@@ -13130,12 +13233,15 @@ class PageSettingsV5(QWidget):
         schedule_card = content.schedule_task_editor.parentWidget()
         support_card = content.support_task_editor.parentWidget()
         self.schedule_page = section(schedule_card)
+        self.network_page = section(content.web_program_card)
         self.advanced_page = section(support_card)
+        from ui.error_list import ErrorListPanel
+        self.error_list_page = ErrorListPanel()
         from ui.archive_settings import ArchiveSettingsPanel
         self.archive_settings = ArchiveSettingsPanel()
         self.advanced_page.widget().layout().insertWidget(1, self.archive_settings)
         self._legacy_host = self.advanced_page
-        for key in ("billing", "schedule", "support"):
+        for key in ("billing", "schedule", "web", "support"):
             content._task_buttons[key].hide()
             editor = content._task_editors[key]
             editor.setStyleSheet("QFrame#" + editor.objectName() + "{background:transparent;border:none;}")
@@ -13152,15 +13258,28 @@ class PageSettingsV5(QWidget):
         self.schedule_page.widget().layout().insertWidget(0, self.reader_members)
         self.activity.layout().setContentsMargins(12, 12, 12, 12)
 
-        old_activity_host = self._activity_host
-        self._activity_host = self.activity
-        for old in (self.fleet, old_activity_host, self._audit_host):
-            self.stack.removeWidget(old)
-        self.section_tabs.addTab(self.fleet, "ทั่วไป")
-        self.section_tabs.addTab(self.schedule_page, "การทำงานอัตโนมัติ")
-        self.section_tabs.addTab(self.activity, "สถานะและประวัติ")
-        self.section_tabs.addTab(self.advanced_page, "ขั้นสูง")
-        old_activity_host.deleteLater()
+        # Attach each subtree only after its final parent is known. Building
+        # the legacy stack first polished all forms, then reparented/polished
+        # them again while the user waited on the first Settings visit.
+        self.fleet = self._scroll_page(content)
+        self._unmounted_sections = {}
+        for index, (page, title) in enumerate((
+            (self.fleet, "ทั่วไป"), (self.schedule_page, "การทำงานอัตโนมัติ"),
+            (self.activity, "สถานะและประวัติ"), (self.network_page, "การตั้งค่าเครือข่าย"),
+            (self.advanced_page, "ขั้นสูง"), (self.error_list_page, "Error list"),
+        )):
+            if index == 0:
+                self.section_tabs.addTab(page, title)
+                continue
+            # Mount only the selected subtree into the styled main window.
+            # Hidden forms keep their state, but do not all incur stylesheet
+            # polish/layout in the first General navigation callback.
+            host = QWidget()
+            QVBoxLayout(host).setContentsMargins(0, 0, 0, 0)
+            page.hide()
+            self.destroyed.connect(page.deleteLater)
+            self._unmounted_sections[index] = page
+            self.section_tabs.addTab(host, title)
         self.activity.timeline_scroll.deleteLater()
         self.stack.addWidget(self.section_tabs)
         self.stack.addWidget(self._audit_host)
@@ -13178,7 +13297,7 @@ class PageSettingsV5(QWidget):
 
     def _section_changed(self, index: int) -> None:
         content = self.fleet_content
-        target = {0: "billing", 1: "schedule", 2: None, 3: "support"}[index]
+        target = {0: "billing", 1: "schedule", 2: None, 3: "web", 4: "support", 5: None}[index]
         # Do not let navigation or a refresh discard edits, including the
         # Auto-start form nested in Advanced Settings.
         if index != self._section_index and content.has_unsaved_changes():
@@ -13191,6 +13310,10 @@ class PageSettingsV5(QWidget):
             )
             return
         content._section_editor = target
+        page = self._unmounted_sections.pop(index, None)
+        if page is not None:
+            self.section_tabs.widget(index).layout().addWidget(page)
+            page.show()
         content._set_active_editor(target, force=True)
         self._section_index = index
         if index == 1:
@@ -13297,7 +13420,7 @@ class PageSettingsV5(QWidget):
         apply_language(self._audit_host)
 
     def show_advanced(self) -> None:
-        if not self._select_section(3):
+        if not self._select_section(4):
             return
         self.fleet_content._set_active_editor("support", force=True)
         refresh = getattr(self.legacy_content, "_refresh_ui", None)

@@ -18,6 +18,7 @@ from komi_snmp_profiler.credential_store import AdminCredential
 from komi_snmp_profiler.meter import MeterReader
 from services.device_config import DatabaseCredentialStore, DeviceConfigRepository
 from services.live_meter_service import LiveMeterPreview, LiveMeterService
+from services.support_diagnostics import diagnostic_report, diagnose, with_diagnostic
 from widgets import btn, fnt, make_table, tbl_item
 
 
@@ -43,7 +44,7 @@ class LiveMeterReadWorker(QObject):
             )
             self.success.emit(preview)
         except Exception as exc:
-            self.error.emit(str(exc))
+            self.error.emit(diagnostic_report(exc, stage='WEB / Live Meter', target=self.host, device=self.machine_name))
         finally:
             self.finished.emit()
 
@@ -177,7 +178,7 @@ class PageLiveMeter(QWidget):
                 self.auth_label.setStyleSheet(f"color:{C_TEXT2};")
             self.password_input.clear()
         except Exception as exc:
-            QMessageBox.warning(self, "ตั้งค่า credential ไม่สำเร็จ", str(exc))
+            QMessageBox.warning(self, "ตั้งค่า credential ไม่สำเร็จ", with_diagnostic(str(exc), exc, 'Live Meter / Credential'))
 
     def _read(self) -> None:
         host = self.host_input.text().strip()
@@ -242,7 +243,8 @@ class PageLiveMeter(QWidget):
         self.save_btn.setEnabled(True)
 
     def _show_error(self, message: str) -> None:
-        self.status_label.setText(f"อ่าน Meter ไม่สำเร็จ: {message}")
+        self.status_label.setText(f"อ่าน Meter ไม่สำเร็จ: {diagnose(message).summary} [{diagnose(message).error_code}]")
+        QMessageBox.warning(self, "อ่าน Meter ไม่สำเร็จ", message)
         self.status_label.setStyleSheet(f"color:{C_RED};")
 
     def _read_finished(self) -> None:
@@ -256,7 +258,7 @@ class PageLiveMeter(QWidget):
         try:
             saved = self.service.save(self.slot_combo.currentIndex(), self.preview)
         except Exception as exc:
-            QMessageBox.warning(self, "บันทึกไม่สำเร็จ", str(exc))
+            QMessageBox.warning(self, "บันทึกไม่สำเร็จ", with_diagnostic(str(exc), exc, 'Live Meter / Save'))
             return
         self.save_btn.setEnabled(False)
         self.status_label.setText(f"บันทึก Meter #{saved.reading_id} เข้า {SLOT_NAMES[saved.slot]} แล้ว")

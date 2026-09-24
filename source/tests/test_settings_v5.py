@@ -823,7 +823,7 @@ def test_settings_v5_routes_support_details_through_section_tabs(tmp_path):
         assert page.fleet_content.schedule_editor.isHidden()
         assert page.fleet_content.support_details.isHidden()
         assert page.count() == 4
-        assert page.section_tabs.count() == 4
+        assert page.section_tabs.count() == 6
 
         assert page.fleet_content.support_toggle.isHidden()
         assert page.fleet_content.support_details.isHidden()
@@ -840,11 +840,9 @@ def test_settings_v5_routes_support_details_through_section_tabs(tmp_path):
         assert page.currentWidget() is page.fleet
         assert legacy.unlock_calls == 0
         assert not page.fleet_content.support_task_editor.isHidden()
-        assert page.section_tabs.currentIndex() == 3
+        assert page.section_tabs.currentIndex() == 4
         assert page.fleet_content.autostart_program_card.parent() is page.fleet_content
-        assert page.fleet_content.web_program_card.parent() is (
-            page.fleet_content.support_task_editor
-        )
+        assert page.fleet_content.web_program_card.parent() is page.network_page.widget()
         assert page.legacy_content.parent() is page.fleet_content.support_task_editor
         page.close()
         app.processEvents()
@@ -852,7 +850,7 @@ def test_settings_v5_routes_support_details_through_section_tabs(tmp_path):
         database.set_db_path(original)
 
 
-def test_advanced_settings_and_nested_lan_stay_inline_without_horizontal_scroll(tmp_path):
+def test_advanced_and_network_tabs_stay_inline_without_horizontal_scroll(tmp_path):
     app = QApplication.instance() or QApplication([])
     original = _database(tmp_path)
     try:
@@ -870,14 +868,12 @@ def test_advanced_settings_and_nested_lan_stay_inline_without_horizontal_scroll(
         assert content.support_task_editor.isVisibleTo(page)
         assert page.advanced_page.horizontalScrollBar().maximum() == 0
 
-        # Exercise the real nested LAN toggle. The parent Advanced section
-        # must remain visible, otherwise the LAN form is hidden by its parent.
-        content.web_toggle.click()
+        page.section_tabs.setCurrentIndex(3)
         app.processEvents()
         assert content._active_editor == "web"
-        assert content.support_task_editor.isVisibleTo(page)
+        assert not content.support_task_editor.isVisibleTo(page)
         assert content.web_task_editor.isVisibleTo(page)
-        assert page.advanced_page.horizontalScrollBar().maximum() == 0
+        assert page.network_page.horizontalScrollBar().maximum() == 0
 
         assert not content.web_report_require_password.isChecked()
         content.web_report_require_password.setChecked(True)
@@ -886,7 +882,7 @@ def test_advanced_settings_and_nested_lan_stay_inline_without_horizontal_scroll(
         assert content.web_access_status.isVisibleTo(page)
         content._dirty_sections.discard("web")
 
-        content.web_toggle.click()
+        page.show_advanced()
         app.processEvents()
         assert content._active_editor == "support"
         assert content.support_task_editor.isVisibleTo(page)

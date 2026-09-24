@@ -314,10 +314,10 @@ def test_ui_keeps_recorded_table_total_and_fractional_estimated_chart_separate()
     assert widget.usage_monthly_table.item(0, total_column).text() == '301'
     widget.tabs.setCurrentIndex(2)
     chart = widget.printer_trend.chart()
-    assert [chart.series()[0].barSets()[0].at(i) for i in range(2)] == [150.5, 150.5]
+    assert [chart.series()[0].barSets()[1].at(i) for i in range(2)] == [150.5, 150.5]
     assert chart.axes(Qt.Orientation.Vertical)[0].labelFormat() == '%.2f'
     assert 'ประมาณการ' in chart.title()
-    assert 'ตารางลงยอดวันก่อน' in widget.report_note_label.text()
+    assert not hasattr(widget, "report_note_label")
     widget.close()
 
 

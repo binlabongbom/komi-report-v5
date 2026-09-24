@@ -22,7 +22,6 @@ import logging
 import os
 import platform
 import sys
-from datetime import datetime
 from pathlib import Path
 
 log = logging.getLogger(__name__)
@@ -163,7 +162,6 @@ from database import (  # ฟังก์ชันฐานข้อมูลท
     get_cfg,
     get_db_path,
     get_last_two,
-    get_latest_read_date,
     get_price,
     get_waste_paper_pct,
     init_db,
@@ -172,10 +170,10 @@ from database import (  # ฟังก์ชันฐานข้อมูลท
 from i18n import ENGLISH, THAI, apply_language, get_language, set_language, tr
 from pages import (
     PageImport,
-    PageManual,
     PageOverview,
-    PageSettings,  # หน้าตั้งค่า + คู่มือ
+    PageSettings,
 )
+from services.support_diagnostics import with_diagnostic
 from services.application_identity import (
     configure_qt_application_identity,
     configure_windows_process_identity,
@@ -212,7 +210,6 @@ SIDEBAR_NAV_ITEMS: tuple[tuple[str, str], ...] = (
     ("▸", "อุปกรณ์"),
     ("▸", "รายงาน"),
     ("▸", "ตั้งค่า"),
-    ("▸", "คู่มือ"),
 )
 
 # ══════════════════════════════════════════════════════════
@@ -670,7 +667,7 @@ class MainWindow(QMainWindow):
         self.pg_overview = PageOverview(lambda: self._data)
         self.pg_import   = PageImportV5(PageImport())
         # Reports prepares Overview during Splash, then stages the other tabs.
-        # Settings and Manual remain first-navigation only.
+        # Settings remains first-navigation only.
         self.pg_history  = _DeferredPage(lambda: PageHistoryV5(staged=True))
         self.pg_settings = _DeferredPage(
             lambda: PageSettingsV5(
@@ -679,29 +676,23 @@ class MainWindow(QMainWindow):
                 offline_license_public_keys=self.offline_license_public_keys,
             )
         )
-        self.pg_manual   = _DeferredPage(lambda: PageManual(lazy=True))
 
         pages = [
             self.pg_overview,
             self.pg_import,
             self.pg_history,
             self.pg_settings,
-            self.pg_manual,
         ]
         self._page_widgets = list(pages)
         self._reports_index = pages.index(self.pg_history)
         self._settings_index = pages.index(self.pg_settings)
-        self._manual_index = pages.index(self.pg_manual)
         self._deferred_pages = {
             self._reports_index: ("pg_history", self.pg_history),
             self._settings_index: ("pg_settings", self.pg_settings),
-            self._manual_index: ("pg_manual", self.pg_manual),
         }
         # หน้าที่ใช้ Tab / ตารางภายในจัดการ scroll เอง → ไม่ต้องห่อ QScrollArea
-        # Reports, Settings and Manual own their internal scrolling.  Keeping
-        # Manual out of this wrapper lets its right-side table of contents stay
-        # fixed while the guide itself scrolls as one continuous document.
-        no_scroll = {self.pg_history, self.pg_settings, self.pg_manual}
+        # Reports and Settings own their internal scrolling.
+        no_scroll = {self.pg_history, self.pg_settings}
         for pg in pages:
             if pg in no_scroll:
                 # ใส่ตรงๆ ใน stack — เนื้อหาภายในจัดการ scroll เอง
@@ -1894,7 +1885,7 @@ class SetupWizard(QDialog):
         try:
             profiles = validate_parser_json(path)
         except Exception as exc:
-            QMessageBox.critical(self, "โหลดไฟล์ไม่ได้", str(exc))
+            QMessageBox.critical(self, "โหลดไฟล์ไม่ได้", with_diagnostic(str(exc), exc, "โหลดไฟล์ไม่ได้"))
             return
 
         # เพิ่มเฉพาะ profiles ใหม่ที่ยังไม่มีในรายการ (ตรวจสอบจากชื่อ)
@@ -2003,7 +1994,7 @@ class SetupWizard(QDialog):
         try:
             save_profiles([profiles_by_slot[s] for s in sorted(profiles_by_slot)])
         except Exception as exc:
-            QMessageBox.warning(self, "บันทึก Parser ไม่ได้", str(exc))
+            QMessageBox.warning(self, "บันทึก Parser ไม่ได้", with_diagnostic(str(exc), exc, "บันทึก Parser ไม่ได้"))
 
         # บันทึกราคา
         for slot, spin_dict in self._price_spins.items():

@@ -39,6 +39,7 @@ class SetupConnectivityCheck:
     support_code: str = ""
     duration_ms: int = 0
     required: bool = True
+    diagnostic: str = ''
 
 
 @dataclass(frozen=True)
@@ -69,6 +70,8 @@ class SetupConnectivityReport:
                 f"[{state}] {check.name} | {check.target} | "
                 f"{check.detail} | {check.duration_ms} ms{suffix}"
             )
+            if check.diagnostic:
+                lines.append(check.diagnostic)
         lines.extend(
             (
                 "",
@@ -165,15 +168,23 @@ def check_setup_connectivity(
             method="HEAD",
         )
         request_started = perf_counter()
+        diagnostic = ''
         try:
             status = int(requester(request, timeout))
             ok, detail, code = _http_result(status)
+            if not ok:
+                from services.support_diagnostics import diagnostic_report
+                diagnostic = diagnostic_report(HTTPError(target, status, '', {}, None), stage='HOST / ' + name,
+                                               target=target, computer='not collected', at=started_at, public=True)
         except (OSError, TimeoutError, URLError) as error:
             code = classify_network_error(error)
             ok = False
             detail = error_message(code)[1]
             if code == "tls_certificate_error":
                 detail += tls_verification_detail(error)
+            from services.support_diagnostics import diagnostic_report
+            diagnostic = diagnostic_report(error, stage='HOST / ' + name, target=target,
+                                           computer='not collected', at=started_at, public=True)
         return SetupConnectivityCheck(
             name=name,
             target=target,
@@ -181,6 +192,7 @@ def check_setup_connectivity(
             detail=detail,
             support_code=code,
             duration_ms=round((perf_counter() - request_started) * 1000),
+            diagnostic=diagnostic,
         )
 
     with ThreadPoolExecutor(max_workers=len(SETUP_API_PATHS)) as executor:

@@ -129,13 +129,16 @@ def test_printers_custom_period_loads_daily_but_preserves_canonical_ledger(repor
     report.refresh(CANONICAL)
     assert cloud._records == (report.monthly,)
     assert cloud._printer_rows[0]["cost"] == 42.75
-    assert report.usage_reads == []
+    # The timeline now reads daily evidence even for a canonical month;
+    # the visible totals must still come from its posted monthly ledger.
+    assert report.usage_reads and set(report.usage_reads) == {"daily"}
+    report.usage_reads.clear()
 
     _select_period(cloud, CUSTOM)
     assert cloud.current_period() == CUSTOM
     assert sum(row.total for row in cloud._records) == 18
     assert cloud._printer_rows[0]["total"] == 18
-    assert report.usage_reads == ["daily", "daily"]
+    assert report.usage_reads and set(report.usage_reads) == {"daily"}
 
 
 def test_canonical_subject_period_keeps_frozen_aggregation_path(report):

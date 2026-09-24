@@ -34,6 +34,7 @@ def main():
     parser.add_argument('--format', choices=('xlsx', 'pdf'), default='xlsx')
     parser.add_argument('--hold-previous-chart', action='store_true',
                         help='Diagnostic control only: retain the old Python chart wrapper through setChart')
+    parser.add_argument('--report-years', type=int, choices=(1, 5), default=1)
     args = parser.parse_args()
     faulthandler.enable()
     faulthandler.dump_traceback_later(60, repeat=True)
@@ -121,6 +122,8 @@ def main():
                 raise ValueError('Only the documented three-printer five-year fixture is accepted')
             result['fixture'] = {'source': str(source), 'original_opened_read_only': True,
                                  'devices': devices, 'database_bytes': source.stat().st_size,
+                                 'users': original.execute('SELECT COUNT(DISTINCT subject_id) FROM daily_subject_records').fetchone()[0],
+                                 'date_range': original.execute('SELECT MIN(record_date),MAX(record_date) FROM daily_subject_records').fetchone(),
                                  'row_counts': {name: original.execute(f'SELECT COUNT(*) FROM {name}').fetchone()[0]
                                     for name in ('daily_meter_records', 'daily_subject_records', 'daily_raw_counter_records')}}
             with closing(sqlite3.connect(database.get_db_path())) as target:
@@ -137,6 +140,18 @@ def main():
     if args.mode == 'ui':
         from ui_consistency import install_button_system
         from app import MainWindow
+        from services.report_snapshot import SnapshotDataCache
+        original_read = SnapshotDataCache.read
+        result['snapshot_reads'] = []
+        def timed_read(self, key, loader, cancelled):
+            def load():
+                started = time.perf_counter()
+                value = loader()
+                result['snapshot_reads'].append({'component': str(key[1:]),
+                                                'seconds': time.perf_counter()-started})
+                return value
+            return original_read(self, key, load, cancelled)
+        SnapshotDataCache.read = timed_read
         install_button_system(app)
         # Offscreen exposes an artificial 800x800 screen; use a declared desktop
         # viewport without changing widget/layout constraints or loading code.
@@ -168,7 +183,7 @@ def main():
         def page_ready(index):
             return index not in window._deferred_pages
 
-        for index, name in ((1, 'devices'), (2, 'reports'), (3, 'settings'), (4, 'manual')):
+        for index, name in ((1, 'devices'), (2, 'reports'), (3, 'settings')):
             step(f'first_navigation_{name}', lambda i=index: navigate(i),
                  reports_ready if index == 2 else lambda i=index: page_ready(i))
         navigate(2)
@@ -187,7 +202,8 @@ def main():
 
         for index in range(center.tabs.count()):
             step(f'report_month_tab_{index}', lambda i=index: center.tabs.setCurrentIndex(i), reports_ready)
-        period = ('2025-09-18', '2026-09-17')
+        period = ('2021-09-18' if args.report_years == 5 else '2025-09-18', '2026-09-17')
+        result['selected_history_years'] = args.report_years
 
         def year_users():
             center.tabs.setCurrentIndex(1)
@@ -195,6 +211,21 @@ def main():
             page._staged_period_changed(period)
         step('report_year_users', year_users, reports_ready)
         result['year_users_data'] = report_rows()
+        snapshot = page._snapshot_cache[(1, period)]
+        with database._open(commit=False) as connection:
+            expected = dict(connection.execute('''SELECT subject_name,SUM(delta_total)
+                FROM daily_subject_records WHERE record_date BETWEEN ? AND ? GROUP BY subject_name''', period))
+            expected_raw = connection.execute('''SELECT COUNT(*) FROM daily_raw_counter_records
+                WHERE record_date BETWEEN ? AND ?''', period).fetchone()[0]
+        users = snapshot.data['prepared_models']['users']
+        actual = {row['name']: row['usage'] for row in users}
+        assert actual == expected, 'Preview user totals do not match selected source dates'
+        assert len(snapshot.data['raw_counter_records']) == expected_raw
+        visible_error = center.error_label.text() if center.error_label.isVisible() else ''
+        assert not visible_error, visible_error
+        result['preview_validation'] = {'users': len(users), 'totals_match': True,
+            'selected_raw_rows': expected_raw, 'period': period}
+        save()
         for index in (0, 2, 3, 4):
             step(f'report_year_tab_{index}', lambda i=index: center.tabs.setCurrentIndex(i), reports_ready)
         result['year_all_tabs_data'] = report_rows()
@@ -236,33 +267,42 @@ def main():
         controller.succeeded.connect(completed.append)
         button.clicked.connect(lambda: clicks.append(time.perf_counter()))
         timer.timeout.connect(button.click)
-        path = directory / 'full-year.xlsx'
+        path = args.output.with_suffix('.xlsx')
+        period_start = date(2021 if args.report_years == 5 else 2025, 9, 18)
+        period_end = date(2026, 9, 17)
+        days = (period_end - period_start).days + 1
+        with database._open(commit=False) as conn:
+            fixture_users = conn.execute('SELECT COUNT(DISTINCT subject_id) FROM daily_subject_records').fetchone()[0]
         database_path = database.get_db_path()
         def job(*, cancelled, progress):
             def phase(percent, message):
                 phases.append({'percent': percent, 'seconds': time.perf_counter()-begun, 'message': message})
+                print(json.dumps({'export_progress': phases[-1]}), flush=True)
                 progress(percent, message)
             # Include all selection preparation, DB/Archive reads and writing.
             from database import report_read_database
             with report_read_database(database_path, cancelled=cancelled):
                 devices = DeviceConfigRepository().list(enabled_only=False)
                 monthly = load_usage_history([0, 1, 2], granularity='monthly')
-                return export_report_selection(path, date(2025, 9, 18), date(2026, 9, 17),
+                return export_report_selection(path, period_start, period_end,
                     database_path=database_path, devices=devices, monthly_records=monthly,
                     cancelled=cancelled, progress=phase)
         begun = time.perf_counter()
-        step('export_full_year_from_database', lambda: controller.start(job), lambda: not controller.busy)
+        step(f'export_{args.report_years}_years_from_database', lambda: controller.start(job), lambda: not controller.busy,
+             timeout=900)
         assert not errors, errors
         assert completed == [path]
         with path.open('rb') as stream:
             book = load_workbook(stream, read_only=True, data_only=True)
             rows = list(book['มุมมองผู้ใช้'].iter_rows(min_row=5, values_only=True))
-            assert len(rows) == 100
+            assert len(rows) == fixture_users
             totals = {row[0]: row[-2] for row in rows}
-            expected = {f'Fixture user {i}': (10 + i % 5) * 365 * 3 for i in range(100)}
+            expected = {f'Fixture user {i}': (10 + i % 5) * days * 3 for i in range(fixture_users)}
             assert totals == expected, (list(totals.items())[:2], list(expected.items())[:2])
             result['validation'] = {'users': len(rows), 'totals_match': True,
-                'sheets': book.sheetnames, 'source_raw_rows': 109500, 'archive_state': 'hot five-year fixture; archive path checked separately'}
+                'sheets': book.sheetnames, 'source_raw_rows': fixture_users * days * 3,
+                'period': [str(period_start), str(period_end)],
+                'archive_state': 'hot five-year fixture; archive path checked separately'}
             book.close()
         result['export_phases'] = phases
         result['navigation_clicks'] = len(clicks)

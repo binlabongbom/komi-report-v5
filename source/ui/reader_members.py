@@ -1,4 +1,5 @@
 """Member roles and evidence times in Automation, without network refresh work."""
+from ui.resource_cleanup import close_executor_with
 from concurrent.futures import ThreadPoolExecutor
 
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
@@ -39,7 +40,7 @@ class ReaderMembersPanel(QWidget):
         self._future = None
         self._again = False
         self._pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix='komi-members-ui')
-        self.destroyed.connect(lambda _=None, pool=self._pool: pool.shutdown(wait=False, cancel_futures=True))
+        close_executor_with(self, self._pool)
         self._completed.connect(self._render)
         self._timer = QTimer(self)
         self._timer.setSingleShot(True)
@@ -55,8 +56,8 @@ class ReaderMembersPanel(QWidget):
         layout.addWidget(self.note)
         self.table = QTableWidget(0, 5)
         self.table.setHorizontalHeaderLabels([tr('คอมพิวเตอร์', 'Computer'), tr('บทบาท', 'Role'),
-            tr('เครื่องพิมพ์ที่อ่าน / รับ', 'Printers read / received'),
-            tr('เชื่อมต่อสำเร็จล่าสุด', 'Last connection'), tr('ข้อมูลล่าสุด', 'Latest data')])
+            tr('เครื่องพิมพ์\nที่อ่าน / รับ', 'Printers\nread / received'),
+            tr('เชื่อมต่อสำเร็จ\nล่าสุด', 'Last successful\nconnection'), tr('ข้อมูลล่าสุด', 'Latest data')])
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.table.verticalHeader().hide()
@@ -127,4 +128,5 @@ class ReaderMembersPanel(QWidget):
                 item.setToolTip(value)
                 self.table.setItem(i, j, item)
         self.table.resizeRowsToContents()
-        self.table.setFixedHeight(min(360, 42 + sum(self.table.rowHeight(i) for i in range(len(rows)))))
+        self.table.setFixedHeight(min(360, self.table.horizontalHeader().height()
+            + 2 * self.table.frameWidth() + sum(self.table.rowHeight(i) for i in range(len(rows)))))

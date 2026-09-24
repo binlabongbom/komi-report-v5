@@ -216,7 +216,6 @@ def test_data_updates_invalidate_reports_before_visible_refresh(monkeypatch):
         status_lbl=SimpleNamespace(setText=lambda _text: None),
     )
     monkeypatch.setattr(app, "get_last_two", lambda _index: (None, None))
-    monkeypatch.setattr(app, "get_latest_read_date", lambda: None)
 
     app.MainWindow._refresh_all(window)
 

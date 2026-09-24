@@ -46,6 +46,7 @@ def cleanup_qt_widgets():
     global _qt_app_keepalive
     yield
     try:
+        from PyQt6 import sip
         from PyQt6.QtWidgets import QApplication
     except ImportError:
         return
@@ -55,6 +56,11 @@ def cleanup_qt_widgets():
     _qt_app_keepalive = app
     for widget in list(app.topLevelWidgets()):
         try:
+            # Qt-owned popups (calendar menus, tooltips, chart helpers) also
+            # appear here. Their owning widget controls their lifetime;
+            # deleting them independently can leave native Qt pointers stale.
+            if not sip.ispyowned(widget):
+                continue
             widget.close()
             widget.deleteLater()
         except RuntimeError:

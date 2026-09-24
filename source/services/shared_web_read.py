@@ -27,12 +27,14 @@ class SharedWebResult:
 
 
 class SharedReadExpired(TimeoutError):
+    diagnostic_code = 'shared_read_expired'
     def __init__(self, job_id):
         super().__init__("Shared reader grant expired")
         self.job_id = job_id
 
 
 class SharedAuthorityUnavailable(ConnectionError):
+    diagnostic_code = 'reader_unavailable'
     def __init__(self, job_id):
         super().__init__("Shared reader authority is unavailable")
         self.job_id = job_id

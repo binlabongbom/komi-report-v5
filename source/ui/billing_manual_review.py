@@ -7,7 +7,7 @@ import socket
 import sqlite3
 
 from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QFormLayout, QLineEdit,
-    QDoubleSpinBox, QCheckBox, QPlainTextEdit, QDialogButtonBox)
+    QDoubleSpinBox, QCheckBox, QDialogButtonBox)
 from services.billing_manual_review import BillingManualReview
 from ui.counter_review import plain
 from i18n import tr

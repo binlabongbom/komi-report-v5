@@ -2,6 +2,7 @@ import os
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+from services.report_export_options import ReportExportSelection
 from datetime import date
 from pathlib import Path
 
@@ -1102,9 +1103,10 @@ def test_report_center_replaces_legacy_reports_with_cloud_overview_users_and_pri
             ),
         )
         usage_loads = []
+        graph_loads = []
 
-        def load_report_usage(slots, granularity, cache):
-            usage_loads.append(granularity)
+        def load_report_usage(slots, granularity, cache, *, graph=False):
+            (graph_loads if graph else usage_loads).append(granularity)
             return records
 
         monkeypatch.setattr(v5_pages, "load_usage_history", load_report_usage)
@@ -1137,6 +1139,7 @@ def test_report_center_replaces_legacy_reports_with_cloud_overview_users_and_pri
 
         page._refresh_report_center()
         assert usage_loads == ["monthly", "daily"]
+        assert graph_loads == ["daily"]
         cloud = page.report_center
         assert cloud.overview_kpis["total_usage"].lbl_val.text() == "1,200"
         assert cloud.overview_printers.item(0, 0).text() == "Printer 1"
@@ -1144,10 +1147,10 @@ def test_report_center_replaces_legacy_reports_with_cloud_overview_users_and_pri
         # This fixture has only aggregate paper totals.  Print/Copy must stay
         # explicitly unavailable instead of being guessed from Color/B&W.
         cloud.tabs.setCurrentIndex(2)
-        assert cloud.printer_metric_cards["color_print"]._full_value == "—"
-        assert cloud.printer_metric_cards["color_copy"]._full_value == "—"
-        assert cloud.printers_table.item(0, 0).text() == "Printer 1"
-        assert cloud.printer_detail.item(0, 1).text() == "Printer 1"
+        assert not hasattr(cloud, "printer_metric_cards")
+        assert [cloud.printers_table.item(0, column).text() for column in range(2, 6)] == ["—"] * 4
+        assert cloud.printers_table.item(0, 0).text() == "Slot 1 · Printer 1"
+        assert cloud.printers_table.columnCount() == 9
         cloud.tabs.setCurrentIndex(3)
         assert cloud.usage_monthly_table.item(0, 0).text() == current_day.strftime("%m/%Y")
         total_metric_index = next(
@@ -1160,7 +1163,7 @@ def test_report_center_replaces_legacy_reports_with_cloud_overview_users_and_pri
         ).text() == "1,200"
         cloud.tabs.setCurrentIndex(2)
         cloud._select_printer_row(0, 0)
-        assert "ทุกเครื่องพร้อมกัน" in cloud.printer_compare_note.text()
+        assert not hasattr(cloud, "printer_compare_note")
         exported = []
         import services.report_export_job as export_job
         import services.report_excel_export as excel
@@ -1173,8 +1176,8 @@ def test_report_center_replaces_legacy_reports_with_cloud_overview_users_and_pri
         )
         monkeypatch.setattr(
             v5_pages.ReportExportPeriodDialog,
-            "get_range",
-            lambda *_args, **_kwargs: (current_day, current_day),
+            "get_selection",
+            lambda *_args, **_kwargs: ReportExportSelection(current_day, current_day),
         )
         monkeypatch.setattr(
             excel,

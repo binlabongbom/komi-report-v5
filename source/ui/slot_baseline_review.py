@@ -1,6 +1,7 @@
 """Review actual Web baselines before creating a shared slot decision."""
 from ui.review_components import field_label
 
+from ui.resource_cleanup import close_executor_with
 from concurrent.futures import ThreadPoolExecutor
 from decimal import Decimal
 from datetime import datetime
@@ -29,8 +30,7 @@ class SlotBaselineDialog(QDialog):
         self.preview = self.future = self.operation = None
         self.revision = None
         self.pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="komi-slot-review")
-        pool = self.pool
-        self.destroyed.connect(lambda: pool.shutdown(wait=False, cancel_futures=True))
+        close_executor_with(self, self.pool)
         self.setWindowTitle("ตรวจและยืนยันฐานมิเตอร์ของ Slot")
         self.resize(1000, 680)
         layout = QVBoxLayout(self)

@@ -91,7 +91,7 @@ def test_calendar_month_menu_and_day_click_allow_dates_outside_report_history(fi
     assert len(changed) == 1
     assert changed[0][0] == expected
     assert widget.current_period() == expected
-    assert len(widget.period_edit_pairs) == 4
+    assert len(widget.period_edit_pairs) == 5
     for pair in widget.period_edit_pairs:
         for control in pair:
             assert control.minimumDate() <= QDate(2026, 8, 15)
@@ -222,6 +222,9 @@ def test_cloud_reports_share_period_and_cross_filter_users_and_printers():
     app = QApplication.instance() or QApplication([])
     day = date(2026, 8, 6)
     widget = CloudReportsWidget()
+    widget.resize(1280, 900)
+    widget.show()
+    app.processEvents()
     periods = (("2026-08-06", "2026-08-06"), ("2026-08-05", "2026-08-05"))
     other_printer = replace(
         _usage(day, 80),
@@ -256,6 +259,7 @@ def test_cloud_reports_share_period_and_cross_filter_users_and_printers():
         ),
     )
 
+    app.processEvents()
     assert [widget.tabs.tabText(index) for index in range(widget.tabs.count())] == [
         "Overview",
         "Users",
@@ -283,9 +287,9 @@ def test_cloud_reports_share_period_and_cross_filter_users_and_printers():
         "ทุกเครื่อง",
         "ตามเครื่อง",
     ]
-    assert len(widget.period_edit_pairs) == 4
+    assert len(widget.period_edit_pairs) == 5
     assert widget.usage_page.findChildren(QDateEdit) == []
-    assert widget.usage_monthly_table.rowCount() == 2
+    assert widget.usage_monthly_table.rowCount() == 1
     assert widget.usage_monthly_table.item(0, 0).text() == "08/2026"
     assert isinstance(widget.usage_monthly_table, FrozenLeftTable)
     assert widget.usage_monthly_table.groupedHeaderItem(0, 1).text() == "Print"
@@ -314,19 +318,18 @@ def test_cloud_reports_share_period_and_cross_filter_users_and_printers():
     assert not widget.include_waste_adjustment()
     widget.usage_waste_checkbox.setChecked(True)
     assert widget.overview_kpis["total_cost"].lbl_val.text() == "฿29.40"
-    # Each Slot has its own compact table; amounts remain unchanged.
-    first = widget.usage_printer_tables["slot:0"]
-    second = widget.usage_printer_tables["slot:1"]
-    assert first.rowCount() == 2
-    assert second.rowCount() == 1
-    assert first.columnCount() == second.columnCount() == 1 + len(USAGE_METRICS)
+    # One shared period axis, four collapsed columns per printer.
+    first = widget.usage_printer_table
+    assert first.rowCount() == 1
+    assert first.columnCount() == 9
     assert first.item(0, 0).text() == "08/2026"
-    assert first.item(0, 1 + total_metric_index).text() == "120"
-    assert second.item(0, 1 + total_metric_index).text() == "80"
+    assert first.item(0, 1).text() == "78"
+    assert first.item(0, 4).text() == "29.40"
+    assert first.item(0, 8).text() == "29.40"
     assert isinstance(first, FrozenLeftTable)
     assert first.groupedHeaderItem(0, 0).text() == "เดือน"
-    assert first.groupedHeaderItem(0, 1).text() == "Print"
-    assert first.groupedHeaderItem(1, 1).text() == "A3 สี"
+    assert first.groupedHeaderItem(0, 1).text().startswith("Slot 1")
+    assert first.groupedHeaderItem(1, 1).text() == "Print"
     assert not hasattr(widget, 'usage_timeline_chart')
     widget.tabs.setCurrentIndex(4)
     assert widget.legacy_machine_table.horizontalHeaderItem(0).text() == "กลุ่มงาน"
@@ -348,8 +351,9 @@ def test_cloud_reports_share_period_and_cross_filter_users_and_printers():
     assert widget.user_filter_badge.text() == "กำลังกรอง: alice"
     widget.tabs.setCurrentIndex(2)
     widget._select_printer_row(0, 0)
-    assert "ทุกเครื่องพร้อมกัน" in widget.printer_compare_note.text()
-    assert widget.printer_detail.item(3, 1).text() == "10,000"
+    assert not hasattr(widget, "printer_compare_note")
+    assert widget.printers_table.columnCount() == 9
+    assert not hasattr(widget, 'printer_detail')
 
     emitted = []
     widget.period_changed.connect(emitted.append)
@@ -364,10 +368,13 @@ def test_cloud_reports_share_period_and_cross_filter_users_and_printers():
 
     widget.tabs.setCurrentIndex(3)
     widget.usage_granularity_buttons["D"].click()
+    assert widget.usage_printer_table.item(0, 0).text() == "ไม่มีข้อมูล"  # August 5 has no data.
+    start_edit.setDate(QDate(2026, 8, 6))
+    widget._render_selected_tab(3)
     assert widget.usage_monthly_table.horizontalHeaderItem(0).text() == "วัน"
     assert widget.usage_monthly_table.item(0, 0).text() == "06/08/2026"
-    assert widget.usage_printer_tables["slot:0"].rowCount() == 1
-    assert widget.usage_printer_tables["slot:0"].groupedHeaderItem(0, 0).text() == "วัน"
+    assert widget.usage_printer_table.rowCount() == 1
+    assert widget.usage_printer_table.groupedHeaderItem(0, 0).text() == "วัน"
     widget.usage_granularity_buttons["Y"].click()
     assert widget.usage_monthly_table.horizontalHeaderItem(0).text() == "ปี"
     assert widget.usage_monthly_table.item(0, 0).text() == "2026"
@@ -403,7 +410,7 @@ def test_cloud_reports_header_and_date_range_fit_desktop_minimum():
         for button in widget.findChildren(QPushButton, "cloud_calendar_button")
         if button.text() == "📅"
     ]
-    assert len(calendar_buttons) == 8
+    assert len(calendar_buttons) == 10
     for button in calendar_buttons[:2]:
         assert button.width() == button.height() == 24
         assert button.height() <= start_edit.height()
@@ -472,14 +479,16 @@ def test_usage_ends_with_dated_reference_meter_without_counting_it_as_usage_or_c
     assert widget.usage_monthly_table.item(0, 1 + total_index).text() == "200"
     assert widget.usage_monthly_table.item(0, 1 + cost_index).text() == "58.80"
 
-    metric_count = len(USAGE_METRICS)
-    matrix = widget.usage_printer_tables["slot:0"]
+    matrix = widget.usage_printer_table
+    matrix.toggle_buttons["slot:0"].click()
+    assert matrix.columnCount() == 17  # one expanded and one collapsed
     assert matrix.item(1, 1).text() == "100"
     assert matrix.item(1, 2).text() == "—"
     assert matrix.item(1, 0).text() == "Meter เริ่มต้น\n01/07/2026"
-    assert matrix.item(1, 1 + total_index).text() == "10,000"
-    assert widget.usage_printer_tables["slot:1"].item(1, 1 + total_index).text() == "20,000"
-    assert matrix.item(1, 1 + cost_index).text() == "—"
+    assert matrix.item(1, 12).text() == "—"  # baseline has no cost
+    matrix.toggle_buttons["slot:1"].click()
+    assert matrix.item(1, 13).text() == "200"
+    assert matrix.item(1, 24).text() == "—"
 
     # The baseline is display-only. Existing summaries and chart series still
     # contain only actual usage periods.
@@ -525,14 +534,21 @@ def test_users_matrix_uses_real_names_and_slot_operation_detail_headers():
     )
     widget.tabs.setCurrentIndex(1)
 
+    widget.user_printers_button.click()
     table = widget.users_table
     assert table.item(0, 0).text() == "TEST1"
-    assert table.groupedHeaderSpan(0, 0) == (3, 1)
+    assert table.groupedHeaderSpan(0, 0) == (2, 1)
     assert table.groupedHeaderItem(0, 1).text() == "Slot 1 · KM bizhub C450i"
-    assert table.groupedHeaderItem(1, 1).text() == "Print"
-    assert table.groupedHeaderItem(2, 1).text() == "A3 Color"
     assert table.item(0, 1).text() == "9"
-    assert table.item(0, 13).text() == "—"  # per-user cost is not inferred
+    assert table.item(0, 2).text() == "—"  # missing Copy detail is not fabricated
+    table.toggle_buttons['slot:0'].click()
+    app.processEvents()
+    assert table.groupedHeaderSpan(0, 0) == (3, 1)
+    assert table.groupedHeaderItem(1, 1).text() == "Print"
+    assert table.groupedHeaderItem(2, 1).text() == "A3\nสี"
+    assert table.item(0, 1).text() == "9"
+    assert table.columnCount() == 14  # usage detail, total and allocated cost
+    assert table.item(0, 13).text() == "—"  # no daily cost evidence
     assert table._right.textElideMode() == Qt.TextElideMode.ElideNone
     widget.close()
     app.processEvents()
@@ -572,7 +588,6 @@ def test_usage_all_devices_checkboxes_filter_aggregate_but_keep_per_device_matri
         index for index, (field, _label, _availability) in enumerate(USAGE_METRICS)
         if field == "cost"
     )
-    metric_count = len(USAGE_METRICS)
     assert all(box.isChecked() for box in widget.usage_device_filters.values())
     assert widget.usage_monthly_table.item(0, 1 + total_index).text() == "200"
 
@@ -580,11 +595,12 @@ def test_usage_all_devices_checkboxes_filter_aggregate_but_keep_per_device_matri
 
     assert widget.usage_monthly_table.item(0, 1 + total_index).text() == "120"
     assert widget.usage_monthly_table.item(0, 1 + cost_index).text() == "29.40"
-    assert widget.usage_printer_tables["slot:1"].item(0, 1 + total_index).text() == "80"
-    assert widget.usage_printer_panels["slot:1"].isHidden()
+    assert widget.usage_printer_table.columnCount() == 5
+    assert "slot:1" not in widget.usage_printer_table.toggle_buttons
     widget.usage_device_filters[1].setChecked(True)
     assert widget.usage_monthly_table.item(0, 1 + total_index).text() == "200"
-    assert not widget.usage_printer_panels["slot:1"].isHidden()
+    assert widget.usage_printer_table.columnCount() == 9
+    assert "slot:1" in widget.usage_printer_table.toggle_buttons
     assert not hasattr(widget, 'usage_timeline_chart')
     widget.close()
     app.processEvents()
@@ -619,22 +635,28 @@ def test_printer_charts_compare_all_devices_and_selection_only_changes_detail():
     def chart_labels(chart):
         return [bar_set.label() for bar_set in chart.series()[0].barSets()]
 
-    expected_mix = ["Slot 1 · Sales Printer", "Slot 2 · Archive Printer"]
+    expected_mix = ['Print A4', 'Print A3', 'Copy A4', 'Copy A3', 'Scan']
     expected_trend = [
-        "Slot 1 · Sales Printer · Print",
-        "Slot 1 · Sales Printer · Copy",
-        "Slot 2 · Archive Printer · Print",
-        "Slot 2 · Archive Printer · Copy",
+        "Slot 1 · Sales Printer · Color",
+        "Slot 1 · Sales Printer · B&W",
+        "Slot 2 · Archive Printer · Color",
+        "Slot 2 · Archive Printer · B&W",
     ]
     assert chart_labels(widget.printer_mix.chart()) == expected_mix
     assert chart_labels(widget.printer_trend.chart()) == expected_trend
     stack = widget.printer_trend.chart().series()[0]
     assert isinstance(stack, QStackedBarSeries)
-    assert [bar.count() for bar in stack.barSets()] == [2, 2, 2, 2]
-    assert stack.barSets()[0].at(1) == stack.barSets()[1].at(1) == 0
-    assert stack.barSets()[2].at(0) == stack.barSets()[3].at(0) == 0
+    assert [bar.count() for bar in stack.barSets()] == [1, 1, 1, 1]
+    assert [bar.at(0) for bar in stack.barSets()] == [60, 60, 60, 60]
+    assert widget.printer_trend.chart().axes(Qt.Orientation.Horizontal)[0].categories() == ['06/08']
+    grouped = widget.printer_mix.chart().series()[0]
+    assert [sum(bar.at(index) for bar in grouped.barSets()) for index in range(5)] == [96, 60, 24, 60, 24]
+    overview = widget.overview_trend.chart().series()[0]
+    assert isinstance(overview, QStackedBarSeries)
+    assert [bar.at(0) for bar in overview.barSets()] == [130, 26, 0, 0]
+    assert [bar.at(1) for bar in overview.barSets()] == [0, 0, 80, 4]
     widget._select_printer_row(1, 0)
-    assert widget.printer_detail.item(0, 1).text() == "Archive Printer"
+    assert widget._selected_printer == 'serial:SER-B'
     assert chart_labels(widget.printer_mix.chart()) == expected_mix
     assert chart_labels(widget.printer_trend.chart()) == expected_trend
     widget.close()
@@ -673,7 +695,7 @@ def test_keyboard_selection_updates_user_filter_and_printer_detail_immediately()
     widget.tabs.setCurrentIndex(2)
     widget.printers_table.setCurrentCell(1, 0)
     app.processEvents()
-    assert widget.printer_detail.item(0, 1).text() == "Archive Printer"
+    assert widget._selected_printer == 'serial:SER-B'
     widget.close()
     app.processEvents()
 
@@ -773,7 +795,7 @@ def test_users_cards_separate_color_without_inventing_missing_counters(mode):
     widget.close()
 
 
-def test_printer_cards_match_overview_and_preserve_scan_summary():
+def test_printers_remove_cards_and_explanations_but_keep_reports():
     app = QApplication.instance() or QApplication([])
     widget = CloudReportsWidget()
     day = date(2026, 8, 6)
@@ -785,18 +807,10 @@ def test_printer_cards_match_overview_and_preserve_scan_summary():
     widget.resize(1440, 800)
     widget.show()
     app.processEvents()
-    for key in ("color_print", "bw_print", "color_copy", "bw_copy"):
-        assert widget.printer_metric_cards[key]._full_value == widget.overview_kpis[key]._full_value
-        assert widget.printer_metric_cards[key]._full_detail == widget.overview_kpis[key]._full_detail
-    assert "เครื่องที่มีการใช้งาน 1 เครื่อง" in widget.printer_activity_summary.text()
-    assert "Scan" in widget.printer_activity_summary.text()
-    for width in (1440, 1024):
-        widget.resize(width, 760)
-        app.processEvents()
-        cards = list(widget.printer_metric_cards.values())
-        assert len({card.y() for card in cards}) in (1, 2, 3)
-        assert len({card.height() for card in cards}) == 1
-    widget.show_error("unavailable")
-    assert all(card._full_value == "—" for card in widget.printer_metric_cards.values())
-    assert "Scan —" in widget.printer_activity_summary.text()
+    assert not hasattr(widget, "printer_metric_cards")
+    assert not hasattr(widget, "printer_activity_summary")
+    assert not hasattr(widget, "printer_compare_note")
+    assert not hasattr(widget, "report_note_label")
+    assert widget.printers_table.rowCount() == 1
+    assert widget.printer_mix.chart().series()
     widget.close()

@@ -265,7 +265,6 @@ def tbl_item(text: str,
 # ══════════════════════════════════════════════════════════
 # FROZEN COLUMN TABLE — คอลัมน์ซ้าย/ขวา freeze, กลาง scroll
 # ══════════════════════════════════════════════════════════
-from PyQt6.QtWidgets import QWidget, QScrollBar
 
 class FrozenColTable(QWidget):
     """Table with frozen first and last columns; middle columns scroll horizontally."""

@@ -1,6 +1,6 @@
 """Isolated synthetic history benchmark; never opens the configured customer DB.
 
-Writes five years of actual daily rows for 100 users on three printers. Web
+Writes five years of actual daily rows for up to 200 users on three printers. Web
 round storage is explicitly estimated from a measured representative payload,
 not presented as five years of physically written Web observations.
 """
@@ -26,8 +26,8 @@ def run(directory: Path, *, years=5, users=100, printers=3):
     from services.web_observations import WebObservationStore, validate_event
     from komi_snmp_profiler.models import MeterReading, WebCounterValue, WebAuthState
 
-    if not 1 <= years <= 5 or not 1 <= users <= 100 or not 1 <= printers <= 3:
-        raise ValueError("Benchmark bounds: 1–5 years, 1–100 users, 1–3 printers")
+    if not 1 <= years <= 5 or not 1 <= users <= 200 or not 1 <= printers <= 3:
+        raise ValueError("Benchmark bounds: 1–5 years, 1–200 users, 1–3 printers")
     directory = directory.resolve()
     directory.mkdir(parents=True, exist_ok=False)
     original = database.get_db_path()
@@ -37,7 +37,7 @@ def run(directory: Path, *, years=5, users=100, printers=3):
     slots = list(range(printers))
     result = {"synthetic": True, "database": str(path), "start": str(start), "end_exclusive": str(end),
               "years": years, "users": users, "printers": printers,
-              "assumptions": ["Same 100 users available on each printer", "Daily rows for every calendar day",
+              "assumptions": [f"Same {users} users available on each printer", "Daily rows for every calendar day",
                   "One user total counter, not every model-specific counter", "No attachments or OS-vault data",
                   "Web-round storage below is an extrapolation, not five years of written rounds"]}
     try:

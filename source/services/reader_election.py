@@ -25,6 +25,7 @@ class ReaderPresence:
 
 class ReaderUnavailable(ConnectionError):
     """No verified reachable member can currently own this Slot."""
+    diagnostic_code = 'reader_unavailable'
 
 
 class ReaderElection:

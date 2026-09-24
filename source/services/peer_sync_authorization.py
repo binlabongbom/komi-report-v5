@@ -28,6 +28,7 @@ _STALE_LOCK_SECONDS = 10.0
 
 class PeerSyncAuthorizationError(RuntimeError):
     """The requested peer-sync capability is absent, expired, or invalid."""
+    diagnostic_code = 'peer_authorization'
 
 
 @dataclass(frozen=True)

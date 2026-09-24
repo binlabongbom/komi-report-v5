@@ -146,6 +146,8 @@ def install_button_system(app: QApplication | None = None) -> ButtonSystem | Non
     app = app or QApplication.instance()
     if app is None:
         return None
+    from ui.warning_diagnostics import install_warning_diagnostics
+    install_warning_diagnostics(app)
     existing = getattr(app, "_komi_button_system", None)
     if existing is not None:
         return existing

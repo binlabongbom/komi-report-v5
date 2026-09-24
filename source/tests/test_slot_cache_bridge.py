@@ -41,17 +41,30 @@ def test_confirmed_reset_resumes_open_cache_and_raw_without_releasing_old_bill(t
     at = STAMP.replace(hour=11)
     assert DailyCacheStore(cache.root).update_reading(0, _reading(15, at), at=at)['delta'][KEY] == 30
     raw.update_reading(0, _reading(15, at), at=at)
-    cache.finalize(0, STAMP.date())
+    # A shared Slot epoch retains local evidence for review; posting it locally
+    # would duplicate the group journal's accounting path.
+    assert cache.finalize(0, STAMP.date()) is None
     with _open(commit=False) as conn:
-        assert conn.execute('SELECT entry_kind FROM billing_ledger').fetchone()[0] == 'hold'
-        original = conn.execute('SELECT source_json FROM daily_meter_records').fetchone()[0]
-        assert json.loads(original)['slot_epoch'] == new_head
+        assert conn.execute('SELECT COUNT(*) FROM billing_ledger').fetchone()[0] == 0
+        assert conn.execute('SELECT COUNT(*) FROM daily_meter_records').fetchone()[0] == 0
+    original = cache.load(0, STAMP.date())
+    assert original['slot_epoch'] == new_head
     next_day = STAMP.replace(day=19)
     cache.record_heartbeat(0, total=15, at=next_day)
     later = next_day.replace(hour=9)
-    assert cache.update_reading(0, _reading(25, later), at=later)['delta'][KEY] == 10
+    reading = _reading(25, later)
+    WebObservationStore().record(0, reading, serial='SER', printer_name='Office', at=later,
+                                 epoch_id=new_head)
+    cache.update_reading(0, reading, at=later)
+    # With a shared epoch, daily usage comes from the durable group journal,
+    # not the retained member-local review cache.
+    from services.shared_report_history import load_shared_counter_days
     with _open(commit=False) as conn:
-        assert conn.execute('SELECT source_json FROM daily_meter_records').fetchone()[0] == original
+        history = load_shared_counter_days(conn, [0], kind='device')
+    assert sum(row.delta for row in history if row.field == KEY) == 40
+    assert sum(row.delta for row in history
+               if row.field == KEY and row.day == next_day.date()) == 10
+    assert cache.load(0, STAMP.date()) == original
 
 
 def test_used_replacement_keeps_old_segment_and_does_not_jump(tmp_path):
@@ -102,7 +115,11 @@ def test_reviewed_subject_reset_survives_rollover_and_archive(tmp_path):
     assert not state['subjects']['user:u-1'].get('counter_review')
     cache.finalize(0, STAMP.date())
     at = STAMP.replace(day=19)
-    cache.update_reading(0, subject_reading(26, collected_at=at), at=at)
+    reading = subject_reading(26, collected_at=at)
+    # Production records the shared observation before updating member caches.
+    WebObservationStore().record(0, reading, serial='SER', printer_name='Office', at=at,
+                                 epoch_id=epochs.head(0)['id'])
+    cache.update_reading(0, reading, at=at)
     cache.finalize(0, at.date())
     before = load_subject_history([0], cache=cache)
     assert sum(r.period_usage for r in before) == 40

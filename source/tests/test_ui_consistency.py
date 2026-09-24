@@ -76,7 +76,6 @@ def test_import_primary_button_keeps_enabled_and_disabled_colors():
 
 def test_heavy_pages_are_constructed_on_first_navigation():
     from app import MainWindow, _DeferredPage
-    from pages import PageManual
     from v5_pages import PageHistoryV5, PageSettingsV5
 
     _app = QApplication.instance() or QApplication([])
@@ -84,11 +83,11 @@ def test_heavy_pages_are_constructed_on_first_navigation():
 
     assert all(
         isinstance(window._page_widgets[index], _DeferredPage)
-        for index in range(2, 5)
+        for index in range(2, 4)
     )
 
-    expected = (PageHistoryV5, PageSettingsV5, PageManual)
-    for index, page_type in zip(range(2, 5), expected, strict=True):
+    expected = (PageHistoryV5, PageSettingsV5)
+    for index, page_type in zip(range(2, 4), expected, strict=True):
         window._nav(window.nav_btns[index])
         deadline = monotonic() + 3
         while isinstance(window._page_widgets[index], _DeferredPage) and monotonic() < deadline:

@@ -27,6 +27,8 @@ from services.report_operation_breakdown import (
     raw_operation_label,
 )
 from services.subject_history import SubjectPeriodUsage
+from services.report_export_options import ALL_REPORT_SECTIONS, validate_sections
+from services.report_period_policy import EXPORT_YEARS, validate_report_period
 
 NAVY = "123262"
 BLUE = "1677C8"
@@ -132,6 +134,7 @@ class CloudReportsExportData:
     include_waste_adjustment: bool = True
     category_costs: tuple[DailyCategoryCost, ...] = ()
     raw_counter_records: tuple[RawCounterDailyRecord, ...] = ()
+    sections: tuple[str, ...] = ALL_REPORT_SECTIONS
 
 
 @dataclass(frozen=True)
@@ -163,10 +166,12 @@ def build_daily_category_costs(
     """
 
     repository = pricing or PricingRepository()
+    prices_by_day = repository.get_prices_for_days(
+        (record.device_slot, record.period_start) for record in records)
     result: list[DailyCategoryCost] = []
     for record in records:
         day = record.period_start
-        prices = repository.get_prices(record.device_slot, day)
+        prices = prices_by_day[(record.device_slot, day)]
         usage = {field: _combined(record, field) for field, _label in CATEGORY_FIELDS}
         basis = {
             field: usage[field] * float(getattr(prices, field, 0.0) or 0.0)
@@ -212,10 +217,19 @@ def export_cloud_reports_xlsx(
     *, cancelled=None, progress=None,
 ) -> Path:
     """Publish only a complete workbook; cancellation/errors preserve old files."""
+    validate_sections(report.sections)
+    if report.period is not None:
+        validate_report_period(*map(date.fromisoformat, report.period), years=EXPORT_YEARS)
     destination = Path(target).expanduser()
     if destination.suffix.casefold() != '.xlsx':
         destination = destination.with_suffix('.xlsx')
-    token = _export_control.set((cancelled, progress))
+    last_percent = 0
+    def monotonic_progress(percent, message):
+        nonlocal last_percent
+        last_percent = max(last_percent, min(100, int(percent)))
+        if progress is not None:
+            progress(last_percent, message)
+    token = _export_control.set((cancelled, monotonic_progress))
     temporary = None
     try:
         _checkpoint(0, 'กำลังเตรียมรายงาน…')
@@ -234,7 +248,7 @@ def export_cloud_reports_xlsx(
 
 
 def _write_report_workbook(target, report):
-
+    sections = validate_sections(report.sections)
     destination = Path(target).expanduser()
     if destination.suffix.casefold() != ".xlsx":
         destination = destination.with_suffix(".xlsx")
@@ -247,16 +261,15 @@ def _write_report_workbook(target, report):
         if report.include_waste_adjustment
         else "ค่าใช้จ่ายก่อนหักกระดาษเสีย"
     )
-    costs = report.category_costs or build_daily_category_costs(
+    costs = report.category_costs or (build_daily_category_costs(
         records,
         include_waste_adjustment=report.include_waste_adjustment,
-    )
+    ) if any(key in sections for key in ('printers', 'users', 'daily')) else ())
     devices = _device_columns(report, records)
     period_text = _period_text(report.period)
 
     workbook = Workbook()
-    machine_sheet = workbook.active
-    machine_sheet.title = "การใช้งานรายเครื่อง"
+    workbook.remove(workbook.active)
     detail_notes = [record for record in report.raw_counter_records if record.remarks]
     if detail_notes:
         notes = workbook.create_sheet('หมายเหตุรายละเอียด')
@@ -286,57 +299,24 @@ def _write_report_workbook(target, report):
         notes.column_dimensions["B"].width = 24
         notes.column_dimensions["C"].width = notes.column_dimensions["D"].width = 16
         notes.column_dimensions["E"].width = 100
-    _checkpoint(10, 'กำลังสร้างรายงานรายเครื่อง…')
-    _write_machine_sheet(
-        machine_sheet,
-        records,
-        costs,
-        devices,
-        period_text,
-        cost_field=cost_field,
-        cost_note=cost_note,
-    )
-    _checkpoint(25, 'กำลังสร้างรายงานผู้ใช้…')
-    _write_user_sheet(
-        workbook.create_sheet("มุมมองผู้ใช้"),
-        report.subjects,
-        devices,
-        period_text,
-        report.raw_counter_records,
-        costs,
-        cost_note=cost_note,
-    )
-    _checkpoint(50, 'กำลังสร้างรายงานรายวัน…')
-    _write_daily_sheet(
-        workbook.create_sheet("มุมมองรายวัน"),
-        records,
-        costs,
-        devices,
-        period_text,
-        cost_field=cost_field,
-        cost_note=cost_note,
-    )
-    _checkpoint(60, 'กำลังสร้างรายละเอียดรายเครื่อง…')
-    _write_legacy_machine_sheet(
-        workbook.create_sheet("Legacy-รายเครื่อง"),
-        report.raw_counter_records,
-        report.devices,
-        period_text,
-    )
-    _checkpoint(70, 'กำลังสร้างรายละเอียดผู้ใช้…')
-    _write_legacy_user_sheet(
-        workbook.create_sheet("Legacy-ผู้ใช้"),
-        report.raw_counter_records,
-        report.devices,
-        period_text,
-    )
-    _checkpoint(80, 'กำลังสร้างรายละเอียดรายวัน…')
-    _write_legacy_daily_sheet(
-        workbook.create_sheet("Legacy-รายวัน"),
-        report.raw_counter_records,
-        report.devices,
-        period_text,
-    )
+    writers = {
+        'printers': ('การใช้งานรายเครื่อง', lambda sheet: _write_machine_sheet(
+            sheet, records, costs, devices, period_text, cost_field=cost_field, cost_note=cost_note)),
+        'users': ('มุมมองผู้ใช้', lambda sheet: _write_user_sheet(
+            sheet, report.subjects, devices, period_text, report.raw_counter_records, costs, cost_note=cost_note)),
+        'daily': ('มุมมองรายวัน', lambda sheet: _write_daily_sheet(
+            sheet, records, costs, devices, period_text, cost_field=cost_field, cost_note=cost_note)),
+        'legacy_printers': ('Legacy-รายเครื่อง', lambda sheet: _write_legacy_machine_sheet(
+            sheet, report.raw_counter_records, report.devices, period_text)),
+        'legacy_users': ('Legacy-ผู้ใช้', lambda sheet: _write_legacy_user_sheet(
+            sheet, report.raw_counter_records, report.devices, period_text)),
+        'legacy_daily': ('Legacy-รายวัน', lambda sheet: _write_legacy_daily_sheet(
+            sheet, report.raw_counter_records, report.devices, period_text)),
+    }
+    for index, key in enumerate(sections):
+        title, write = writers[key]
+        _checkpoint(10 + index * 75 // len(sections), f'กำลังสร้าง {title}…')
+        write(workbook.create_sheet(title, index))
 
     workbook.calculation.fullCalcOnLoad = True
     workbook.calculation.forceFullCalc = True
@@ -654,61 +634,15 @@ def _operation_cost(
     return round(amount, 2)
 
 
-def _device_daily_evidence(raw_records, costs):
-    """Index device evidence once instead of scanning every user on every day."""
-    grouped = defaultdict(list)
-    for record in raw_records:
-        if record.is_subject:
-            continue
-        identities = {f"slot:{record.device_slot}"}
-        if record.device_serial_snapshot:
-            identities.add('serial:' + record.device_serial_snapshot)
-        for identity in identities:
-            grouped[(record.record_date, (record.device_slot, identity))].append(record)
-    breakdowns = {key: breakdown_from_raw_records(rows) for key, rows in grouped.items()}
-    prices = {}
-    for cost in costs:
-        prices.setdefault((cost.record_date, (cost.device_slot, cost.device_identity)), cost)
-    return breakdowns, prices
+from services.report_user_costs import (
+    device_daily_evidence as _device_daily_evidence,
+    subject_total_cost as _subject_total_cost,
+    subject_costs as _allocate_subject_costs,
+)
 
 
 def _subject_costs(subject_records, device_key, evidence):
-    """Use the same exact daily denominators and rounding as the frozen export."""
-    by_day = defaultdict(list)
-    for record in subject_records:
-        by_day[record.record_date].append(record)
-    device_days, costs = evidence
-    amounts, seen, missing = defaultdict(float), set(), set()
-    for day, rows in by_day.items():
-        _checkpoint()
-        subject = breakdown_from_raw_records(rows)
-        device = device_days.get((day, device_key))
-        daily_cost = costs.get((day, device_key))
-        for field, _label, category, _operation in OPERATION_FIELDS:
-            pages = float(getattr(subject, field) or 0.0)
-            if not category or pages <= 0:
-                continue
-            seen.add(field)
-            suffix = field.split('_', 1)[1]
-            denominator = (getattr(device, 'print_' + suffix, 0.0) +
-                           getattr(device, 'copy_' + suffix, 0.0)) if device else 0.0
-            if daily_cost is None or not daily_cost.available or denominator <= 0:
-                missing.add(field)
-            else:
-                amounts[field] += float(getattr(daily_cost, category) or 0.0) * pages / denominator
-    return {field: round(amounts[field], 2) if field in seen and field not in missing else None
-            for field, _label, _category, _operation in OPERATION_FIELDS}
-
-
-def _subject_total_cost(breakdown, amounts):
-    values = []
-    for field, _label, category, _operation in OPERATION_FIELDS:
-        if not category or float(getattr(breakdown, field) or 0.0) <= 0:
-            continue
-        if amounts[field] is None:
-            return None
-        values.append(amounts[field])
-    return round(sum(values), 2) if values else None
+    return _allocate_subject_costs(subject_records, device_key, evidence, checkpoint=_checkpoint)
 
 
 def _write_machine_sheet(
@@ -1243,15 +1177,3 @@ def _finish_sheet(
     for row in worksheet.iter_rows(min_row=3, max_row=last_row, min_col=1, max_col=columns):
         for cell in row:
             cell.border = border
-
-
-def _machine_currency_columns() -> set[int]:
-    return {3, 5, 7, 9, 12}
-
-
-def _wide_currency_columns(fixed_columns: int, device_count: int) -> set[int]:
-    columns: set[int] = set()
-    for device_index in range(device_count):
-        start = fixed_columns + 1 + device_index * len(DEVICE_SUBHEADERS)
-        columns.update({start + 1, start + 3, start + 5, start + 7, start + 10})
-    return columns

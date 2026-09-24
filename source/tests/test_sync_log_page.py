@@ -122,7 +122,7 @@ def test_sync_log_status_explains_an_offline_printer_without_showing_raw_stage_f
                     "Sales Printer",
                     "192.0.2.11",
                     connection_status="offline",
-                    last_error="TLS handshake timeout",
+                    last_error="KOMI Diagnostic v1\nCode: connection_timeout\n",
                 )
             ]
 
@@ -132,7 +132,8 @@ def test_sync_log_status_explains_an_offline_printer_without_showing_raw_stage_f
     card = page.status_rows.itemAt(0).widget()
     texts = [label.text() for label in card.findChildren(type(page.status_banner))]
     assert "เชื่อมต่อไม่ได้" in texts
-    assert any("เชื่อมต่อเครื่องไม่สำเร็จภายในเวลาที่กำหนด" in text for text in texts)
+    assert any("connection_timeout" in text for text in texts)
+    assert any("ไม่ได้รับคำตอบภายในเวลาที่กำหนด" in text for text in texts)
     page.close()
     app.processEvents()
 

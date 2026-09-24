@@ -417,9 +417,9 @@ def test_usage_timeline_keeps_one_slot_across_v46_and_v5_serials():
     )
     widget.tabs.setCurrentIndex(3)
 
-    matrix = widget.usage_printer_tables["slot:0"]
-    assert matrix.columnCount() == 14
-    assert matrix.groupedHeaderItem(0, 1).text() == "Print"
+    matrix = widget.usage_printer_table
+    assert matrix.columnCount() == 5
+    assert matrix.groupedHeaderItem(1, 1).text() == "Print"
     assert widget.usage_monthly_table.rowCount() == 2
     assert widget.usage_monthly_table.item(1, 0).text().startswith("Meter เริ่มต้น\n")
     assert widget.usage_monthly_table.item(1, 12).text() == "300"

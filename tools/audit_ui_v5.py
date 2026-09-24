@@ -22,9 +22,10 @@ parser.add_argument('--width', type=int, default=1024)
 parser.add_argument('--height', type=int, default=640)
 parser.add_argument('--language', default='th')
 parser.add_argument('--only', default='')
+parser.add_argument('--output-root', type=Path, help='Directory for screenshots and inventory')
 args = parser.parse_args()
 selection_suffix='-'+re.sub(r'[^a-zA-Z0-9_-]+','-',args.only) if args.only else ''
-out = ROOT/'outputs/ui-ux-audit'/(f'{args.mode}-{args.width}x{args.height}-{args.language}' + selection_suffix)
+out = (args.output_root or ROOT/'outputs/ui-ux-audit')/(f'{args.mode}-{args.width}x{args.height}-{args.language}' + selection_suffix)
 out.mkdir(parents=True, exist_ok=True)
 network_attempts = []
 def no_network(event, values):
@@ -168,7 +169,7 @@ def main_pages():
     window._startup_refresh_pending=False
     window._refresh_timer.stop()
     report=report_for(users=90,days=2)
-    for index,name in enumerate(('overview','devices','reports','settings','manual')):
+    for index,name in enumerate(('overview','devices','reports','settings')):
         if args.only and name not in args.only.split(','):
             continue
         def visit(index=index,name=name):
@@ -197,10 +198,6 @@ def main_pages():
                 capture('reports-error',window)
                 cloud.set_data(records=(),daily_records=(),subjects=(),devices=(),period=report.period,last_sync_at=None)
                 capture('reports-empty',window)
-            if name=='manual':
-                for i in range(5):
-                    content._scroll_to_manual_section(i)
-                    capture(f'manual-section-{i}',window)
             if name=='settings':
                 content.show_audit()
                 capture('billing-audit',window)

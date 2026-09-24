@@ -14,6 +14,7 @@ import sys
 import json
 from pathlib import Path
 
+
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QSplitter,
     QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
@@ -27,6 +28,7 @@ from PyQt6.QtGui import QColor, QFont, QDragEnterEvent, QDropEvent
 
 # ── เพิ่ม path โปรแกรมหลัก ──────────────────────────────
 sys.path.insert(0, str(Path(__file__).parent.parent))
+from services.support_diagnostics import with_diagnostic
 
 import config as cfg
 
@@ -1428,7 +1430,7 @@ class ParserEditorWindow(QMainWindow):
             self._update_reading_mode_ui()
 
         except Exception as e:
-            QMessageBox.critical(self, "อ่านไฟล์ไม่ได้", str(e))
+            QMessageBox.critical(self, "อ่านไฟล์ไม่ได้", with_diagnostic(str(e), e, "Parser / อ่านไฟล์ไม่ได้"))
             self.lbl_status.setText(f"✗ {e}")
             self.lbl_status.setStyleSheet(f"color:{cfg.C_RED};")
 
@@ -1660,7 +1662,7 @@ class ParserEditorWindow(QMainWindow):
             self.lbl_status.setText(f"📥  นำเข้าสำเร็จ — {len(self._profiles)} Profiles")
             self.lbl_status.setStyleSheet(f"color:{cfg.C_GREEN};")
         except Exception as e:
-            QMessageBox.critical(self, "นำเข้าไม่ได้", str(e))
+            QMessageBox.critical(self, "นำเข้าไม่ได้", with_diagnostic(str(e), e, "Parser / นำเข้าไม่ได้"))
 
     def _export_parsers(self):
         """ส่งออก Parser Profiles ทั้งหมดเป็นไฟล์ JSON"""
@@ -1687,7 +1689,7 @@ class ParserEditorWindow(QMainWindow):
             self.lbl_status.setText("📤  ส่งออกสำเร็จ")
             self.lbl_status.setStyleSheet(f"color:{cfg.C_GREEN};")
         except Exception as e:
-            QMessageBox.critical(self, "ส่งออกไม่ได้", str(e))
+            QMessageBox.critical(self, "ส่งออกไม่ได้", with_diagnostic(str(e), e, "Parser / ส่งออกไม่ได้"))
 
 # ENTRY POINT
 # ════════════════════════════════════════════════════════════

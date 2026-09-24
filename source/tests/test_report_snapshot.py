@@ -22,11 +22,11 @@ def test_background_payload_matches_existing_report_semantics(monkeypatch, index
         monkeypatch.setattr(module, "load_raw_counter_history", lambda *args, **kwargs: ("raw",))
         monkeypatch.setattr(module, "load_imported_legacy_history", lambda: ("legacy",))
         monkeypatch.setattr(module, "load_usage_meter_baselines", lambda *args: ("baseline",))
-    monkeypatch.setattr(report_snapshot, "get_billing_day", lambda: 30)
     monkeypatch.setattr(report_snapshot, "build_user_rows", lambda *a, **kw: ("users-model",))
     monkeypatch.setattr(report_snapshot, "build_legacy_raw_tables", lambda *a, **kw: ("raw-model",))
     monkeypatch.setattr(report_snapshot, "build_printer_rows", lambda *a, **kw: ("printer-model",))
     monkeypatch.setattr(v5_pages, "apply_language", lambda *args: None)
+    monkeypatch.setattr("services.report_excel_export.build_daily_category_costs", lambda *args: ("costs",))
     captured = {}
     center = SimpleNamespace(tabs=SimpleNamespace(currentIndex=lambda:index), current_period=lambda:selected,
                              set_periods=lambda *args:None, set_data=lambda **kwargs:captured.update(kwargs))

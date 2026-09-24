@@ -1,6 +1,7 @@
 """Explicit review before creating local immutable Web allocation corrections."""
 from ui.review_components import field_label
 
+from ui.resource_cleanup import close_executor_with
 from concurrent.futures import ThreadPoolExecutor
 import logging
 import socket
@@ -21,8 +22,7 @@ class BillingWebAmendmentDialog(QDialog):
         self.preview = self.future = self.operation = None
         self.result_ids = ()
         self.pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="komi-web-amendment")
-        pool = self.pool
-        self.destroyed.connect(lambda: pool.shutdown(wait=False, cancel_futures=True))
+        close_executor_with(self, self.pool)
         self.setWindowTitle("แก้การแบ่งยอดตามหลักฐาน Web")
         self.resize(1000, 620)
         layout = QVBoxLayout(self)

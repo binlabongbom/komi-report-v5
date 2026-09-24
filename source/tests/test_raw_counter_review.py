@@ -99,8 +99,17 @@ def test_raw_review_labels_are_visible_in_screen_and_excel():
     rows = load_raw_counter_history([0])
     assert "รอตรวจสอบ" in _raw_total(rows)
     assert "25" in _raw_total(rows)
-    assert "25" in CloudReportsWidget._raw_value(rows)
-    assert CloudReportsWidget._raw_value(rows) != "25"
+    from PyQt6.QtWidgets import QApplication
+    app = QApplication.instance() or QApplication([])
+    view = CloudReportsWidget()
+    view._raw_counter_records = tuple(rows)
+    view._render_legacy_raw()
+    table = view.legacy_machine_table
+    values = [table.item(row, column).text()
+              for row in range(table.rowCount()) for column in range(table.columnCount())
+              if table.item(row, column) is not None]
+    assert any("25" in value and "รอตรวจสอบ" in value for value in values)
+    view.close()
 
 
 def test_upgrade_preserves_legacy_usage_and_requires_review():

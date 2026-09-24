@@ -115,10 +115,15 @@ def test_customer_delivery_holds_unsigned_arm_vm_artifacts(
         "CUSTOMER_RELEASE_NOTES.md",
         "CUSTOMER_INSTALL_GUIDE.md",
         "CUSTOMER_GUIDE_V5_2.md",
+        f"CUSTOMER_GUIDE_V{APP_VERSION.replace('.', '_')}_DRAFT.md",
         "RELEASE_SUPPORT_AND_RECOVERY.md",
         "REGISTRATION_DATA_NOTICE.md",
     ):
         (docs / name).write_text(f"# {name}\n", encoding="utf-8")
+    guide_root = docs / "customer-guide"
+    guide_root.mkdir()
+    (guide_root / f"KOMI_Report_{APP_VERSION}_Source_Guide.pdf").write_bytes(b"%PDF-1.4\nQA fixture\n")
+    (guide_root / f"assets-v{APP_VERSION}-source").mkdir()
     monkeypatch.setattr("tools.build_customer_delivery.PROJECT_ROOT", tmp_path)
 
     archive, manifest = build_delivery(

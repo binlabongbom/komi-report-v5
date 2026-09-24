@@ -1,4 +1,5 @@
 from concurrent.futures import CancelledError, ThreadPoolExecutor
+from services.report_export_options import ReportExportSelection
 from datetime import date
 from threading import Event, get_ident
 from time import monotonic
@@ -243,7 +244,7 @@ def test_page_date_cancel_does_not_read_database_and_export_busy_survives_refres
     page = v5_pages.PageHistoryV5(staged=True)
     page.report_center._period = ('2026-07-01', '2026-07-31')
     page.report_center._has_data = True
-    monkeypatch.setattr(v5_pages.ReportExportPeriodDialog, 'get_range', lambda *a, **kw: None)
+    monkeypatch.setattr(v5_pages.ReportExportPeriodDialog, 'get_selection', lambda *a, **kw: None)
     monkeypatch.setattr(job, 'load_usage_history', lambda *a, **kw: pytest.fail('cancel read history'))
     try:
         page._export_report_center_excel()
@@ -277,8 +278,8 @@ def test_page_export_stays_responsive_during_slow_database_read(monkeypatch, tmp
         release.wait(3)
         raise OSError('synthetic failed database read')
     monkeypatch.setattr(job, 'load_usage_history', slow_read)
-    monkeypatch.setattr(v5_pages.ReportExportPeriodDialog, 'get_range',
-                        lambda *a, **kw: (date(2026, 7, 1), date(2026, 7, 31)))
+    monkeypatch.setattr(v5_pages.ReportExportPeriodDialog, 'get_selection',
+                        lambda *a, **kw: ReportExportSelection(date(2026, 7, 1), date(2026, 7, 31)))
     monkeypatch.setattr(v5_pages.QFileDialog, 'getSaveFileName', lambda *a, **kw: (str(tmp_path/'failed.xlsx'), ''))
     monkeypatch.setattr(v5_pages.QMessageBox, 'critical', lambda *a: messages.append(a[-1]))
     timer = QTimer(page)

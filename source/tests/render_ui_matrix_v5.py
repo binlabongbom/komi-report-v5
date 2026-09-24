@@ -62,7 +62,7 @@ DEVICE_COUNTS = tuple(
     for value in os.environ.get("KOMI_UI_QA_DEVICE_COUNTS", "1,2,3").split(",")
     if value.strip()
 )
-PAGE_NAMES = ("Overview", "Import", "Reports", "Settings", "Manual")
+PAGE_NAMES = ("Overview", "Import", "Reports", "Settings")
 OUTPUT_DIR = Path(
     os.environ.get(
         "KOMI_UI_QA_OUTPUT_DIR",
@@ -470,26 +470,6 @@ def main() -> None:
                     elif page_name == "Settings":
                         assert window.pg_settings.fleet.horizontalScrollBar().maximum() == 0
                         assert str(db_path) in window.pg_settings.fleet_content.active_database_path.text()
-                    elif page_name == "Manual":
-                        assert window.pg_manual.manual_scroll.horizontalScrollBar().maximum() == 0
-                        if device_count == 3 and width == 1024:
-                            assert not window.pg_manual.manual_toc_frame.isVisible()
-                            assert window.pg_manual.manual_toc_combo.isVisible()
-                            for section_index, slug in enumerate(
-                                ("start", "workflow", "reports", "settings", "system")
-                            ):
-                                window.pg_manual._scroll_to_manual_section(section_index)
-                                app.processEvents()
-                                assert not _visible_clips(
-                                    window,
-                                    root=window.pg_manual,
-                                ), (slug, _visible_clips(window, root=window.pg_manual))
-                                window.grab().save(
-                                    str(OUTPUT_DIR / f"v5-1024-3dev-manual-{slug}.png"),
-                                    "PNG",
-                                )
-                            window.pg_manual._scroll_to_manual_section(0)
-                            app.processEvents()
                     capture = window.grab().toImage()
                     captures.append((page_name, capture))
                     if device_count == 3 and (width, height) == (1024, 768):

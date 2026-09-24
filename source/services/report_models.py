@@ -112,7 +112,9 @@ def _record_identity(record) -> str:
     return identity or f"slot:{int(getattr(record, 'device_slot', 0))}"
 
 
-def build_user_rows(subjects, raw_counter_records, *, cancelled=None):
+def build_user_rows(subjects, raw_counter_records, *, category_costs=(), cancelled=None):
+    from services.report_user_costs import device_daily_evidence, subject_costs, subject_total_cost
+    evidence = device_daily_evidence(raw_counter_records, category_costs) if category_costs else ({}, {})
     grouped: dict[str, dict] = {}
     subject_group_keys: dict[tuple[str, str, int], str] = {}
     for item in subjects:
@@ -180,7 +182,8 @@ def build_user_rows(subjects, raw_counter_records, *, cancelled=None):
         slot = int(item.device_slot)
         identity = f"serial:{serial}" if serial else f"slot:{slot}"
         raw_groups[(subject_type, subject_id, slot, identity)].append(item)
-    for (subject_type, subject_id, slot, identity), raw_records in raw_groups.items():
+    for group_index, ((subject_type, subject_id, slot, identity), raw_records) in enumerate(raw_groups.items()):
+        cooperate(cancelled, group_index)
         key = subject_group_keys.get((subject_type, subject_id, slot))
         if key is None:
             raw_name = str(getattr(raw_records[0], "subject_name", "") or "").strip()
@@ -194,6 +197,14 @@ def build_user_rows(subjects, raw_counter_records, *, cancelled=None):
             continue
         breakdown = breakdown_from_raw_records(raw_records)
         slot_row = row["by_slot"][slot]
+        amount = (subject_total_cost(breakdown, subject_costs(raw_records, (slot, identity), evidence))
+                  if category_costs and (breakdown.print_total or breakdown.copy_total) else None)
+        if breakdown.print_total + breakdown.copy_total == 0 and slot_row['total'] == 0:
+            amount = 0.0
+        slot_row['_cost_seen'] = True
+        slot_row['_cost_missing'] = (slot_row.get('_cost_missing', False) or amount is None
+            or any(getattr(record, 'needs_review', False) for record in raw_records))
+        slot_row['cost'] += amount or 0.0
         slot_row.setdefault("available_fields", set()).update(breakdown.available_fields)
         for field in (
             "print_a3_color",
@@ -227,6 +238,16 @@ def build_user_rows(subjects, raw_counter_records, *, cancelled=None):
                 row["printers"].get(identity, 0.0),
                 breakdown.print_total + breakdown.copy_total,
             )
+    for row in grouped.values():
+        for slot_row in row['by_slot'].values():
+            classified = sum(slot_row[f'{op}_{paper}_{color}'] for op in ('print', 'copy')
+                             for paper in ('a3', 'a4') for color in ('color', 'bw'))
+            complete = abs(classified - slot_row['total']) < 0.001
+            seen = slot_row.pop('_cost_seen', False)
+            missing = slot_row.pop('_cost_missing', True)
+            slot_row['cost_available'] = (seen and not missing and complete and not row['review']
+                and not slot_row['print_other'] and not slot_row['copy_other'])
+            slot_row['cost'] = round(slot_row['cost'], 2)
     return freeze(sorted(grouped.values(), key=lambda item: item["usage"], reverse=True))
 
 

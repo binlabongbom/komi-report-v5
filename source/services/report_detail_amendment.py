@@ -72,6 +72,44 @@ def effective_documents(conn, kind, documents, slots=None, *, start=None, end=No
     return [item for item in documents if _key(kind, item['row']) not in revisions] + (list(revisions.values()) if include_revisions else [])
 
 
+def iter_effective_documents(conn, kind, documents, slots=None, *, start=None, end=None, include_revisions=True):
+    """Apply the same revisions while consuming large history cursors once."""
+    revisions = current_revisions(conn, kind, slots, start=start, end=end, include_rows=include_revisions)
+    if not revisions:
+        yield from documents
+        return
+    for item in documents:
+        if _key(kind, item['row']) not in revisions:
+            yield item
+    if include_revisions:
+        yield from revisions.values()
+
+
+def iter_effective_rows(conn, kind, rows, columns, archived=(), slots=None, *,
+                        start=None, end=None, include_revisions=True):
+    """Read hot tuples directly while retaining archive/revision precedence.
+
+    Most daily rows have no amendment. Converting every tuple to a dictionary
+    and back costs substantially more than looking up the few revised days.
+    """
+    revisions = current_revisions(conn, kind, slots, start=start, end=end,
+                                  include_rows=include_revisions)
+    affected = {(key[0], key[3]) for key in revisions}
+    slot_index, day_index = columns.index('device_slot'), columns.index('record_date')
+    for row in rows:
+        if ((row[slot_index], row[day_index]) in affected
+                and _key(kind, dict(zip(columns, row))) in revisions):
+            continue
+        yield row, None
+    for item in archived:
+        if revisions and _key(kind, item['row']) in revisions:
+            continue
+        yield tuple(item['row'][key] for key in columns), item['period']
+    if include_revisions:
+        for item in revisions.values():
+            yield tuple(item['row'][key] for key in columns), item['period']
+
+
 def refresh_subject_summaries(conn, identities):
     from services.subject_history import SUBJECT_COLUMNS, subject_record_from_row, aggregate_subject_days
     for slot, serial, counter_key in identities:

@@ -229,7 +229,7 @@ class MeterReader:
             return result
         raise WebConnectionAuthenticationError(
             "รหัสเริ่มต้นของเครื่องทั้ง 2 แบบไม่ผ่าน · "
-            "กรุณากรอกรหัส Administrator ที่ลูกค้าตั้งไว้"
+            "กรุณากรอกรหัส Administrator ที่ลูกค้าตั้งไว้", diagnostic_code='factory_credentials_rejected'
         ) from None
 
     def _enrich_subject_names(

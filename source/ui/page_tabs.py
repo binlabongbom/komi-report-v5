@@ -29,7 +29,9 @@ class PageTabs(QTabWidget):
     def set_compact(self, compact: bool):
         if getattr(self, "_compact", None) != compact:
             self._compact = compact
-            self.setStyleSheet(page_tabs_qss(compact=compact))
+            # Density changes only the tab buttons. Restyling QTabWidget also
+            # repolishes every chart/table in its pages, including hidden tabs.
+            self.tabBar().setStyleSheet(page_tabs_qss(compact=compact))
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -37,4 +39,5 @@ class PageTabs(QTabWidget):
         self.setUsesScrollButtons(True)
         self.tabBar().setExpanding(False)
         self.tabBar().setElideMode(Qt.TextElideMode.ElideNone)
+        self._compact = False
         self.setStyleSheet(page_tabs_qss())

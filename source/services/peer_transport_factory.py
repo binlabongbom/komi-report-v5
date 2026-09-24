@@ -14,6 +14,7 @@ from services.registration_vault import platform_registration_secret_store
 
 class PeerRecoveryRequired(PermissionError):
     """Non-secret reason for stopping enrollment rather than replacing identity."""
+    diagnostic_code = 'peer_recovery'
     def __init__(self, code):
         self.code = code
         super().__init__(code)

@@ -1,4 +1,5 @@
 """Event-driven network activity view, using actual runtime and durable receipts."""
+from ui.resource_cleanup import close_executor_with
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 
@@ -30,7 +31,7 @@ class NetworkActivityPanel(QWidget):
         self._again = False
         self._page = 0
         self._pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="komi-network-status")
-        self.destroyed.connect(lambda _=None, pool=self._pool: pool.shutdown(wait=False, cancel_futures=True))
+        close_executor_with(self, self._pool)
         self._completed.connect(self._render, Qt.ConnectionType.QueuedConnection)
         self._timer = QTimer(self)
         self._timer.setSingleShot(True)

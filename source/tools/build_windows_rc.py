@@ -64,7 +64,8 @@ VERSION_TAG = VERSION.replace(".", "_")
 INSTALLER_NAME = f"KOMI_Report_V{VERSION_TAG}_Windows_x64_RC.exe"
 CUSTOMER_INSTALLER_NAME = f"KOMI_Report_V{VERSION_TAG}_Windows_x64_Online_Installer.exe"
 INNO_SCRIPT = PROJECT_ROOT / "packaging" / "windows" / "KOMI_Report_V5.iss"
-NODE_VERSION = "24.18.0"
+NODE_VERSION = "24.21.0"
+NPM_VERSION = "12.1.0"
 NODE_ARCHIVE = f"node-v{NODE_VERSION}-win-x64.zip"
 NODE_DIST_ROOT = f"https://nodejs.org/dist/v{NODE_VERSION}"
 NODE_ARCHIVE_URL = f"{NODE_DIST_ROOT}/{NODE_ARCHIVE}"
@@ -379,6 +380,10 @@ def build_web_runtime_seed(*, payload_root: Path, node_root: Path) -> None:
         environment = os.environ.copy()
         environment["PATH"] = str(node_root) + os.pathsep + environment.get("PATH", "")
         npm = _node_command(node_root, "npm.cmd")
+        subprocess.run(
+            [str(npm), "install", "--global", f"npm@{NPM_VERSION}", "--prefix", str(node_root)],
+            cwd=build_root, env=environment, check=True,
+        )
         subprocess.run([str(npm), "ci"], cwd=build_root, env=environment, check=True)
         subprocess.run([str(npm), "run", "build"], cwd=build_root, env=environment, check=True)
 
@@ -459,15 +464,6 @@ def build_payload(
             source = PROJECT_ROOT / "docs" / filename
             if source.is_file():
                 shutil.copy2(source, docs_destination / filename)
-        manual_assets = PROJECT_ROOT / "docs" / "customer-guide" / "assets-v5.2"
-        if not manual_assets.is_dir():
-            raise ReleaseContractError("Customer guide screenshot assets are missing")
-        shutil.copytree(
-            manual_assets,
-            docs_destination / "customer-guide" / "assets-v5.2",
-        )
-        from tools.customer_manual import copy_updated_manual
-        copy_updated_manual(PROJECT_ROOT, docs_destination)
 
     runtime_root = payload_root / "runtime"
     python_runtime_sha256 = download_python_runtime(runtime_root)

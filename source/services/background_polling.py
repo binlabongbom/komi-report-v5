@@ -660,7 +660,8 @@ class BackgroundPollingCoordinator(QObject):
                         at=now,
                     )
         except Exception as exc:
-            snmp_error = str(exc)
+            from services.support_diagnostics import diagnostic_report
+            snmp_error = diagnostic_report(exc, stage='SNMP / Probe', target=device.host, device=device.name)
             decision = self.machine.snmp_failure(state, now)
             pipeline_log.append(
                 stage="SNMP",
@@ -1029,6 +1030,8 @@ class BackgroundPollingCoordinator(QObject):
             )
             return True
         except (WebConnectionSessionBusyError, WebConnectionUnsupportedError) as exc:
+            from services.support_diagnostics import diagnostic_report
+            failure_report = diagnostic_report(exc, stage='WEB / Meter', target=device.host, device=device.name)
             state.next_web_retry_at = now + self.machine.policy.retry_interval
             status = "checking" if snmp_error else "online"
             action = (
@@ -1043,7 +1046,7 @@ class BackgroundPollingCoordinator(QObject):
                 device_name=device.name,
                 host=device.host,
                 target="read-only Meter profile",
-                value=str(exc),
+                value=failure_report,
                 detail="ไม่เพิ่ม Web failure counter และไม่ใช้เป็นหลักฐานว่าเครื่อง offline",
                 status="warning",
                 at=now,
@@ -1052,12 +1055,15 @@ class BackgroundPollingCoordinator(QObject):
                 device.slot,
                 status=status,
                 checked_at=now.isoformat(timespec="seconds"),
-                error=str(exc),
+                error=failure_report,
             )
             return False
         except Exception as exc:
             web_decision = self.machine.web_failure(state, now)
-            message = f"SNMP: {snmp_error}; Web: {exc}" if snmp_error else str(exc)
+            from services.support_diagnostics import diagnostic_report
+            message = diagnostic_report(exc, stage='WEB / Meter', target=device.host, device=device.name)
+            if snmp_error:
+                message += '\n\n' + snmp_error
             error_state = self.cache.record_error(device.slot, now.date(), message, at=now)
             pipeline_log.append(
                 stage="WEB",

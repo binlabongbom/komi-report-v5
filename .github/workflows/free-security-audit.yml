@@ -27,15 +27,15 @@ jobs:
         shell: powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File {0}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 1
 
-      - name: Bootstrap persistent Python 3.13 security runtime
+      - name: Bootstrap persistent Python 3.14 security runtime
         run: |
           $ErrorActionPreference = 'Stop'
           [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-          $pythonVersion = '3.13.15'
+          $pythonVersion = '3.14.7'
           $pythonRoot = "C:\actions-runner\_komi_tools\security-python-$pythonVersion"
           $pythonExe = Join-Path $pythonRoot 'python.exe'
 
@@ -46,7 +46,7 @@ jobs:
             Invoke-WebRequest -UseBasicParsing -TimeoutSec 180 -Uri "https://www.python.org/ftp/python/$pythonVersion/python-$pythonVersion-embed-amd64.zip" -OutFile $zip
             Expand-Archive -LiteralPath $zip -DestinationPath $pythonRoot -Force
 
-            $pth = Join-Path $pythonRoot 'python313._pth'
+            $pth = Join-Path $pythonRoot 'python314._pth'
             $pthText = (Get-Content $pth -Raw) -replace '#import site', 'import site'
             [System.IO.File]::WriteAllText($pth, $pthText, [System.Text.Encoding]::ASCII)
 
@@ -66,7 +66,7 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-          $nodeVersion = '24.18.0'
+          $nodeVersion = '24.21.0'
           $nodeRoot = 'C:\actions-runner\_komi_tools\node-24-security'
           $nodeExe = Join-Path $nodeRoot 'node.exe'
           $npmCmd = Join-Path $nodeRoot 'npm.cmd'
@@ -111,6 +111,9 @@ jobs:
           }
 
           $nodeRoot | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          $env:PATH = "$nodeRoot;$env:PATH"
+          & $npmCmd install --global npm@12.1.0 --prefix $nodeRoot
+          if ($LASTEXITCODE -ne 0) { throw 'npm 12 toolchain upgrade failed.' }
           & $nodeExe --version
           & $npmCmd --version
           if ($LASTEXITCODE -ne 0) { throw 'Node.js/npm security runtime failed to start.' }
@@ -120,7 +123,7 @@ jobs:
           $ErrorActionPreference = 'Stop'
           & $env:SECURITY_PYTHON -m pip install --disable-pip-version-check --upgrade pip
           if ($LASTEXITCODE -ne 0) { throw 'pip upgrade failed.' }
-          & $env:SECURITY_PYTHON -m pip install --disable-pip-version-check pip-audit bandit ruff detect-secrets cyclonedx-bom
+          & $env:SECURITY_PYTHON -m pip install --disable-pip-version-check pip-audit==2.10.1 bandit==1.9.4 ruff==0.16.8 detect-secrets==1.5.0 cyclonedx-bom==7.4.0
           if ($LASTEXITCODE -ne 0) { throw 'Security tool installation failed.' }
 
       - name: Audit Python dependencies and source
@@ -232,7 +235,7 @@ jobs:
 
       - name: Upload security evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7.0.1
         with:
           name: KOMI-Report-Free-Security-Audit-${{ github.sha }}
           retention-days: 30

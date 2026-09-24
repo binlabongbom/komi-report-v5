@@ -12,6 +12,7 @@ import json
 import math
 from dataclasses import dataclass, replace
 from datetime import date, datetime
+from functools import lru_cache
 
 from database import _open
 from komi_snmp_profiler.models import MeterReading
@@ -408,6 +409,18 @@ class RawCounterHistoryStore:
             )
 
 
+@lru_cache(maxsize=256)
+def _review_metadata(review_json, resolutions_json):
+    """Reuse immutable flags for repeated review metadata, never row values."""
+    pending = json.loads(review_json) is not None
+    resolutions = json.loads(resolutions_json)
+    reviewed = any(item.get('format') != 'komi.report.detail-amendment.v1' for item in resolutions)
+    remarks = tuple(dict.fromkeys(note for item in resolutions
+        if item.get('format') == 'komi.report.detail-amendment.v1'
+        for note in ('ฉบับแก้ไขจากหลักฐาน Web', *item.get('remarks', []))))
+    return pending, reviewed, remarks
+
+
 def load_raw_counter_history(
     slots: tuple[int, ...] | list[int] | None = None,
     *,
@@ -434,43 +447,40 @@ def load_raw_counter_history(
     with _open(commit=False) as connection:
         connection.execute("BEGIN")
         rows = connection.execute("SELECT " + ",".join(columns) + " FROM daily_raw_counter_records" + where,
-            tuple(parameters)).fetchall()
+            tuple(parameters))
         from services.report_detail_archive import ReportDetailArchive
-        documents = [{'row': dict(zip(columns, row)), 'period': None} for row in rows]
-        documents.extend(ReportDetailArchive().details(connection, "raw", slots, start=period_start, end=period_end))
-        from services.report_detail_amendment import effective_documents
-        documents = effective_documents(connection, 'raw', documents, slots, start=period_start, end=period_end)
-        rows = [tuple(item['row'][key] for key in columns) for item in documents]
-    rows.sort(key=lambda row: (row[1], row[0], row[5], row[7], row[2]))
-    original = tuple(
-        RawCounterDailyRecord(
-            device_slot=int(row[0]),
-            record_date=date.fromisoformat(str(row[1])),
-            canonical_field=str(row[2]),
-            label=str(row[3]),
-            source_path=str(row[4]),
-            subject_type=str(row[5]),
-            subject_id=str(row[6]),
-            subject_name=str(row[7]),
-            opening_value=float(row[8]) if row[8] is not None else None,
-            closing_value=float(row[9]) if row[9] is not None else None,
-            delta_value=float(row[10]),
-            reset_count=int(row[11]),
-            sample_count=int(row[12]),
-            first_success=str(row[13]) if row[13] is not None else None,
-            last_success=str(row[14]) if row[14] is not None else None,
-            source_name=str(row[15]),
-            device_name_snapshot=str(row[16]),
-            device_serial_snapshot=str(row[17]),
-            incomplete=bool(row[18]),
-            pending_review=json.loads(row[19]) is not None,
-            baseline_reviewed=any(item.get('format') != 'komi.report.detail-amendment.v1' for item in json.loads(row[20])),
-            remarks=tuple(dict.fromkeys(note for item in json.loads(row[20])
-                if item.get('format') == 'komi.report.detail-amendment.v1'
-                for note in ('ฉบับแก้ไขจากหลักฐาน Web', *item.get('remarks', [])))),
+        archived = ReportDetailArchive().details(connection, "raw", slots, start=period_start, end=period_end)
+        from services.report_detail_amendment import iter_effective_rows
+        effective_rows = iter_effective_rows(connection, 'raw', rows, columns, archived, slots,
+                                             start=period_start, end=period_end)
+        original = tuple(
+            RawCounterDailyRecord(
+                device_slot=int(row[0]),
+                record_date=date.fromisoformat(str(row[1])),
+                canonical_field=str(row[2]),
+                label=str(row[3]),
+                source_path=str(row[4]),
+                subject_type=str(row[5]),
+                subject_id=str(row[6]),
+                subject_name=str(row[7]),
+                opening_value=float(row[8]) if row[8] is not None else None,
+                closing_value=float(row[9]) if row[9] is not None else None,
+                delta_value=float(row[10]),
+                reset_count=int(row[11]),
+                sample_count=int(row[12]),
+                first_success=str(row[13]) if row[13] is not None else None,
+                last_success=str(row[14]) if row[14] is not None else None,
+                source_name=str(row[15]),
+                device_name_snapshot=str(row[16]),
+                device_serial_snapshot=str(row[17]),
+                incomplete=bool(row[18]),
+                pending_review=metadata[0],
+                baseline_reviewed=metadata[1],
+                remarks=metadata[2],
+            )
+            for row, _period in effective_rows
+            for metadata in (_review_metadata(row[19], row[20]),)
         )
-        for row in rows
-    )
     from services.shared_report_history import raw_records
     with _open(commit=False) as connection:
         selected_slots = list(slots) if slots is not None else [r[0] for r in connection.execute('SELECT slot FROM devices')]

@@ -26,22 +26,32 @@ class WebConnectionError(RuntimeError):
 
 class WebConnectionAuthenticationError(WebConnectionError):
     """Raised when Web Connection requires or rejects Administrator authentication."""
+    diagnostic_code = 'auth_rejected'
+
+    def __init__(self, message, *, diagnostic_code=None):
+        super().__init__(message)
+        if diagnostic_code:
+            self.diagnostic_code = diagnostic_code
 
 
 class WebConnectionCertificateError(WebConnectionError):
     """Raised when the printer presents a certificate the operating system does not trust."""
+    diagnostic_code = 'tls_certificate'
 
 
 class WebConnectionTlsError(WebConnectionError):
     """Raised when a profile-scoped TLS handshake cannot be completed."""
+    diagnostic_code = 'tls_handshake'
 
 
 class WebConnectionSessionBusyError(WebConnectionError):
     """Raised when an older single-session Web Connection is already in use."""
+    diagnostic_code = 'session_busy'
 
 
 class WebConnectionUnsupportedError(WebConnectionError):
     """Raised when the selected read-only Meter endpoint is not supported by the firmware."""
+    diagnostic_code = 'endpoint_missing'
 
 
 @dataclass(frozen=True)
@@ -233,11 +243,13 @@ class ReadOnlyWebConnectionSession:
 
     def prepare_admin_login(self) -> None:
         """Create the same read-only login context as the Web Connection UI."""
+        self._diagnostic_mode = 'Admin'
         for path in ("spa_main.html", "spa_login.html", "login_ex.json", "top.xml"):
             self.get(path, expect_json=False)
 
     def prepare_legacy_admin_login(self) -> None:
         """Create the fixed browser context used by legacy Meter Admin login."""
+        self._diagnostic_mode = 'Admin'
         for name, value in {
             "pf": "PC",
             "uatype": "NN",
@@ -386,6 +398,18 @@ class ReadOnlyWebConnectionSession:
         )
 
     def _request(
+        self, path: str, *, method: str, data: bytes | None = None,
+        content_type: str | None = None,
+    ) -> bytes:
+        try:
+            return self._request_impl(path, method=method, data=data, content_type=content_type)
+        except Exception as error:
+            # Retain route/method, never POST fields, cookies or response bodies.
+            error.diagnostic_endpoint = f'{method} {self.base_url}/{path.split("?", 1)[0]}'
+            error.diagnostic_mode = getattr(self, '_diagnostic_mode', 'User/Public')
+            raise
+
+    def _request_impl(
         self,
         path: str,
         *,
@@ -406,12 +430,14 @@ class ReadOnlyWebConnectionSession:
                     if not certificate_der or not hmac.compare_digest(
                         actual, self.tls_policy.fingerprint_sha256
                     ):
-                        raise WebConnectionError("Web Connection certificate fingerprint ไม่ตรงค่าที่ pin ไว้")
+                        error = WebConnectionCertificateError("Web Connection certificate fingerprint ไม่ตรงค่าที่ pin ไว้")
+                        error.diagnostic_code = 'certificate_pin'
+                        raise error
                 return response.read()
         except HTTPError as err:
             if err.code == 404:
                 raise WebConnectionUnsupportedError(
-                    "Web Connection firmware ไม่รองรับ Meter endpoint ที่เลือก"
+                    "Web Connection ตอบ HTTP 404: ไม่พบ Meter endpoint ที่เลือก"
                 ) from err
             raise WebConnectionError(f"อ่าน Web Connection ไม่สำเร็จ: HTTP {err.code}") from err
         except URLError as err:
@@ -476,7 +502,7 @@ class WebConnectionCounterConnector:
             common = session.get("api/AppReqGetCustomData/_A-00-00001")
             if _nested(common, "MFP.LoginMode") != "PublicUser":
                 raise WebConnectionAuthenticationError(
-                    "Web Connection ปิด PublicUser และต้องใช้ Administrator"
+                    "Web Connection ปิด PublicUser และต้องใช้ Administrator", diagnostic_code='admin_required'
                 )
             payload = session.post_json("api/AppReqGetCounterInfo/_Total", {"NetworkType": "NW1"})
             counters = self._parse_total_payload(payload)
@@ -777,7 +803,8 @@ class LegacyAuthenticatedWebConnectionCounterConnector(LegacyWebConnectionCounte
         )
         if explicit_rejection or returned_login_form:
             raise WebConnectionAuthenticationError(
-                "Legacy Administrator ปฏิเสธรหัสที่ส่งไป"
+                "Legacy Administrator ปฏิเสธการเข้าสู่ระบบ",
+                diagnostic_code=('password_rejected' if any(marker in lowered for marker in ('incorrect password', 'invalid password', 'password error')) else 'auth_rejected'),
             )
 
     @classmethod

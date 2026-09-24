@@ -13,6 +13,7 @@ from datetime import datetime
 from collections import defaultdict
 from pathlib import Path
 
+from services.support_diagnostics import with_diagnostic
 from i18n import ENGLISH, apply_language, get_language, tr
 
 from PyQt6.QtWidgets import (
@@ -48,7 +49,7 @@ def _open_check_parser():
                               if win in _parser_editor_windows else None)
         win.show()
     except Exception as e:
-        QMessageBox.critical(None, "เปิด Check Parser ไม่ได้", str(e))
+        QMessageBox.critical(None, "เปิด Check Parser ไม่ได้", with_diagnostic(str(e), e, "เปิด Check Parser ไม่ได้"))
 
 
 class _NoParserMatchDialog(QDialog):
@@ -250,14 +251,14 @@ class _ManualDocumentImage(QLabel):
 # ── PyQt6.QtCharts — native Qt charts (pie, bar)
 from PyQt6.QtCharts import (
     QChart, QChartView, QPieSeries,
-    QBarSeries, QBarSet, QBarCategoryAxis, QLineSeries, QValueAxis
+    QBarCategoryAxis, QLineSeries, QValueAxis
 )
 
 from config import *
 from database import (
     get_cfg, set_cfg, get_price, get_billing_day,
     get_last_two, get_all_readings, calc_cost, clear_slot, reset_db,
-    PARSER_REGISTRY, check_duplicate, get_slot_serial, delete_reading,
+    check_duplicate, get_slot_serial, delete_reading,
     calc_billing_month, get_activity_log, get_price_snapshot, get_config_log,
     reset_settings_to_default,
     get_waste_paper_pct, set_waste_paper_pct, verify_settings_password,
@@ -419,549 +420,6 @@ class _OverviewTonerBar(QWidget):
 # 3. Bar chart ย้อนหลัง 12 เดือน (toggle: ปริมาณ / ค่าใช้จ่าย)
 # 4. Top users เดือนปัจจุบัน
 # ══════════════════════════════════════════════════════════
-class PageOverview(QWidget):
-    reports_requested = pyqtSignal()
-    sync_log_requested = pyqtSignal()
-    sync_requested = pyqtSignal()
-
-    def __init__(self, get_data, parent=None):
-        super().__init__(parent)
-        self.get_data       = get_data
-        self._bar_mode      = "volume"   # "volume" | "cost"
-        self._all_monthly: dict = {}     # เก็บข้อมูลสำหรับ bar chart
-        self._ov_filter     = "current"  # "current"|"3m"|"1y"|"all"
-        self._build()
-
-    def _build(self):
-        self.setStyleSheet(build_overview_qss())   # ← QSS เฉพาะหน้า Overview
-        self.setAccessibleName("ภาพรวมสถานะและยอดใช้งานวันนี้")
-        lay = QVBoxLayout(self)
-        lay.setContentsMargins(PAGE_OVERVIEW_MARGIN_L, PAGE_OVERVIEW_MARGIN_T, PAGE_OVERVIEW_MARGIN_R, PAGE_OVERVIEW_MARGIN_B)
-        lay.setSpacing(PAGE_OVERVIEW_SPACING)
-
-        # ── Header: today's operational state ────────────────────
-        self._overview_header = QGridLayout()
-        self._overview_header.setContentsMargins(0, 0, 0, 0)
-        self._overview_header.setHorizontalSpacing(12)
-        self._overview_header.setVerticalSpacing(4)
-        self._overview_title = sec_title("ภาพรวมวันนี้")
-        self._overview_title.setWordWrap(True)
-        self._overview_header.addWidget(self._overview_title, 0, 0)
-
-        self._overview_filters = QWidget()
-        tr = QHBoxLayout(self._overview_filters)
-        tr.setContentsMargins(0, 0, 0, 0)
-        tr.setSpacing(8)
-        tr.addStretch()
-        self._ov_filter_btns = {}
-        self.btn_sync_now = btn("อ่านข้อมูลทันที", "primary")
-        self.btn_sync_now.setMinimumHeight(34)
-        self.btn_sync_now.clicked.connect(self._request_sync)
-        tr.addWidget(self.btn_sync_now)
-        self.btn_open_reports = btn("ดูรายงานฉบับเต็ม", "outline")
-        self.btn_open_reports.setMinimumHeight(34)
-        self.btn_open_reports.clicked.connect(self.reports_requested.emit)
-        tr.addWidget(self.btn_open_reports)
-        self.lbl_time = QLabel("")
-        self.lbl_time.setObjectName("lbl_ov_time")
-        self.lbl_time.setFont(fnt(F_XS))
-        self.lbl_time.setStyleSheet(f"color:{C_TEXT3}; margin-left:10px;")
-        tr.addWidget(self.lbl_time)
-        self._overview_header.addWidget(self._overview_filters, 1, 0)
-        self._overview_compact = True
-        lay.addLayout(self._overview_header)
-
-        self.overview_status = QLabel("")
-        self.overview_status.setObjectName("overview_status")
-        self.overview_status.setAccessibleName("สถานะระบบและเวลาซิงก์ล่าสุด")
-        self.overview_status.setWordWrap(True)
-        lay.addWidget(self.overview_status)
-
-        # ── Summary strip: confirmed Ledger + provisional Daily Cache ──
-        summary_strip = QFrame()
-        summary_strip.setObjectName("overview_summary_strip")
-        sg = QGridLayout(summary_strip)
-        sg.setContentsMargins(0, 0, 0, 0)
-        sg.setSpacing(0)
-        specs = [
-            ("ยอดใช้งาน",             C_ACCENT),
-            ("งานสี",                  C_ORANGE),
-            ("ขาวดำ",                  C_TEXT2),
-            ("ค่าใช้จ่ายประมาณการ",    C_GREEN),
-        ]
-        self.stat_cards = []
-        for col, (title, color) in enumerate(specs):
-            sc = StatCard(title, color, compact=True)
-            sc.setProperty("summaryColumn", col)
-            sc.lbl_title.setFont(fnt(F_SM, True))
-            sc.lbl_title.setStyleSheet(f"color:{C_TEXT2};")
-            sc.lbl_diff.setStyleSheet(f"color:{C_TEXT2};")
-            sg.addWidget(sc, 0, col)
-            sg.setColumnStretch(col, 1)
-            self.stat_cards.append(sc)
-        lay.addWidget(summary_strip)
-
-        self.overview_quality = QLabel("")
-        self.overview_quality.setObjectName("overview_quality")
-        self.overview_quality.setAccessibleName("สถานะยอดยืนยันและยอดระหว่างวัน")
-        self.overview_quality.setWordWrap(True)
-        lay.addWidget(self.overview_quality)
-
-        # ── Printer status list ──────────────────────────────────
-        printer_card = mk_card()
-        printer_outer = QVBoxLayout(printer_card)
-        printer_outer.setContentsMargins(
-            CARD_MARGIN_L, CARD_MARGIN_T, CARD_MARGIN_R, CARD_MARGIN_B
-        )
-        printer_outer.setSpacing(8)
-        printer_header = QHBoxLayout()
-        printer_header.addWidget(sub_title("สถานะเครื่องพิมพ์"))
-        printer_header.addStretch()
-        self.btn_open_sync_log = btn("ตรวจสอบ Sync Log", "outline")
-        self.btn_open_sync_log.setMinimumHeight(30)
-        self.btn_open_sync_log.clicked.connect(self.sync_log_requested.emit)
-        printer_header.addWidget(self.btn_open_sync_log)
-        printer_outer.addLayout(printer_header)
-        self.printer_list = QWidget()
-        self.printer_list_layout = QVBoxLayout(self.printer_list)
-        self.printer_list_layout.setContentsMargins(0, 0, 0, 0)
-        self.printer_list_layout.setSpacing(0)
-        printer_outer.addWidget(self.printer_list)
-        lay.addWidget(printer_card)
-
-        # ── Trend and optional User/Account summary ──────────────
-        bar_card = mk_card(); bar_outer = QVBoxLayout(bar_card)
-        bar_outer.setContentsMargins(CARD_MARGIN_L, CARD_MARGIN_T, CARD_MARGIN_R, CARD_MARGIN_B); bar_outer.setSpacing(BAR_SPACING)
-        bar_card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        bar_card.setMaximumHeight(320)
-        self.trend_card = bar_card
-
-        bar_hdr = QHBoxLayout()
-        bar_hdr.addWidget(sub_title("แนวโน้มย้อนหลัง 12 เดือน"))
-        bar_hdr.addStretch()
-        self.btn_vol    = btn("จำนวนหน้า", "primary")
-        self.btn_cost_b = btn("ค่าใช้จ่าย", "outline")
-        self.btn_vol.clicked.connect(lambda: self._switch_bar("volume"))
-        self.btn_cost_b.clicked.connect(lambda: self._switch_bar("cost"))
-        bar_hdr.addWidget(self.btn_vol)
-        bar_hdr.addWidget(self.btn_cost_b)
-        bar_outer.addLayout(bar_hdr)
-
-        self.view_bar = QChartView()
-        self.view_bar.setAccessibleName("กราฟแนวโน้มย้อนหลัง 12 เดือน")
-        self.view_bar.setFixedHeight(220)
-        self.view_bar.setRenderHint(QPainter.RenderHint.Antialiasing)
-        self.view_bar.setStyleSheet(f"background: {C_CARD}; border: none;")
-        bar_outer.addWidget(self.view_bar)
-
-        self._overview_bottom_row = QBoxLayout(QBoxLayout.Direction.TopToBottom)
-        self._overview_bottom_row.setSpacing(12)
-        self._overview_bottom_row.addWidget(bar_card, 1)
-
-        top_card = mk_card()
-        top_card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        top_card.setMaximumHeight(320)
-        self.top_users_card = top_card
-        tl = QVBoxLayout(top_card)
-        tl.setContentsMargins(CARD_MARGIN_L, CARD_MARGIN_T, CARD_MARGIN_R, CARD_MARGIN_B)
-        tl.setSpacing(8)
-        th = QHBoxLayout()
-        th.setContentsMargins(0, 0, 0, 0)
-        th.addWidget(sub_title("User / Account ที่ใช้งานสูงสุด"))
-        th.addStretch()
-        tl.addLayout(th)
-        self.top_table = make_table(
-            ["อันดับ", "ชื่อผู้ใช้", "สี (แผ่น)", "ขาวดำ (แผ่น)", "รวม (แผ่น)"],
-            stretch_cols=[1],
-            fixed_cols={0: 60, 2: 90, 3: 90, 4: 80},
-            height=200
-        )
-        tl.addWidget(self.top_table)
-        self._overview_bottom_row.addWidget(top_card, 1)
-
-        lay.addLayout(self._overview_bottom_row)
-
-        self.overview_empty = QLabel(
-            "ยังไม่มีประวัติที่ยืนยันแล้ว กราฟจะเริ่มแสดงหลังมี Daily Record แรก "
-            "ส่วนยอดระหว่างวันยังดูได้จากด้านบน"
-        )
-        self.overview_empty.setWordWrap(True)
-        self.overview_empty.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.overview_empty.setObjectName("overview_empty")
-        self.overview_empty.hide()
-        lay.addWidget(self.overview_empty)
-        lay.addStretch(1)
-
-    def _request_sync(self) -> None:
-        self.btn_sync_now.setText("กำลังอ่านข้อมูล…")
-        self.btn_sync_now.setEnabled(False)
-        self.sync_requested.emit()
-
-    def _reflow_overview(self, width: int) -> None:
-        compact = width < 980
-        if compact == self._overview_compact:
-            return
-        self._overview_header.removeWidget(self._overview_filters)
-        if compact:
-            self._overview_header.addWidget(self._overview_filters, 1, 0)
-            self._overview_bottom_row.setDirection(QBoxLayout.Direction.TopToBottom)
-        else:
-            self._overview_header.addWidget(self._overview_filters, 0, 1)
-            self._overview_header.setColumnStretch(0, 1)
-            self._overview_bottom_row.setDirection(QBoxLayout.Direction.LeftToRight)
-        self._overview_compact = compact
-        self.updateGeometry()
-
-    def resizeEvent(self, event):
-        super().resizeEvent(event)
-        self._reflow_overview(event.size().width())
-
-    # ────────────────────────────────────────────────────────────
-    # HELPERS: charts
-    # ────────────────────────────────────────────────────────────
-    def _set_ov_filter(self, key: str):
-        """เปลี่ยน filter ช่วงเวลา Overview"""
-        self._ov_filter = key
-        for k, b in self._ov_filter_btns.items():
-            b.setObjectName("btn_primary" if k == key else "btn_outline")
-            b.style().unpolish(b); b.style().polish(b)
-        self.refresh()
-
-    def _switch_bar(self, mode: str):
-        """สลับ bar chart ระหว่างจำนวน / ค่าใช้จ่าย"""
-        self._bar_mode = mode
-        # เปลี่ยน style ปุ่ม
-        for b, m in [(self.btn_vol, "volume"), (self.btn_cost_b, "cost")]:
-            style = "primary" if mode == m else "outline"
-            b.setObjectName(f"btn_{style}")
-            b.style().unpolish(b); b.style().polish(b)
-        self._redraw_bar()
-
-
-    def _redraw_bar(self):
-        """วาด bar chart ย้อนหลัง 12 เดือน"""
-        monthly = self._all_monthly
-        chart = QChart()
-        chart.setBackgroundBrush(QColor(C_CARD))
-        chart.setDropShadowEnabled(False)
-        chart.legend().setVisible(False)
-
-        if not monthly:
-            chart.setTitle("ยังไม่มีข้อมูล")
-            replace_chart(self.view_bar, chart)
-            return
-
-        months = sorted(monthly.keys())[-12:]
-        if self._bar_mode == "volume":
-            vals  = [monthly[m].get("display_total", monthly[m].get("total", 0)) for m in months]
-            color = C_ACCENT
-            lbl_y = "sheets" if get_language() == ENGLISH else "แผ่น"
-        else:
-            vals  = [monthly[m].get("display_cost", monthly[m].get("cost", 0.0)) for m in months]
-            color = C_GREEN
-            lbl_y = "THB" if get_language() == ENGLISH else "บาท"
-
-        bar_set = QBarSet(lbl_y)
-        bar_set.setColor(QColor(color))
-        bar_set.setBorderColor(QColor(color))
-        for v in vals:
-            bar_set.append(float(v))
-
-        series = QBarSeries()
-        series.append(bar_set)
-        chart.addSeries(series)
-
-        xlabels = []
-        for m in months:
-            try:
-                dt = datetime.strptime(m, "%Y-%m")
-                xlabels.append(dt.strftime("%b %Y"))
-            except Exception:
-                xlabels.append(m)
-
-        axis_x = QBarCategoryAxis()
-        axis_x.append(xlabels)
-        axis_x.setLabelsFont(fnt(F_MD))
-        axis_x.setLabelsColor(QColor("#475569"))
-        axis_x.setGridLineColor(QColor("#E2E8F0"))
-        chart.addAxis(axis_x, Qt.AlignmentFlag.AlignBottom)
-        series.attachAxis(axis_x)
-
-        axis_y = QValueAxis()
-        axis_y.setTitleText(lbl_y)
-        axis_y.setTitleFont(fnt(F_MD))
-        axis_y.setLabelsFont(fnt(F_MD))
-        axis_y.setLabelsColor(QColor("#475569"))
-        axis_y.setGridLineColor(QColor("#E2E8F0"))
-        chart.addAxis(axis_y, Qt.AlignmentFlag.AlignLeft)
-        series.attachAxis(axis_y)
-
-        chart.setAnimationOptions(QChart.AnimationOption.NoAnimation)
-        replace_chart(self.view_bar, chart)
-
-    # ────────────────────────────────────────────────────────────
-    # REFRESH
-    # ────────────────────────────────────────────────────────────
-    def refresh(self):
-        """โหลดข้อมูลจาก database และอัปเดต UI ทั้งหน้า"""
-        summary = build_overview_summary(self._ov_filter)
-        self._all_monthly = summary["all_monthly"]
-        cm = summary["metrics"]
-        display_total = float(cm.get("display_total", cm.get("total", 0)) or 0)
-        display_color = float(cm.get("display_color", cm.get("total_color", 0)) or 0)
-        display_bw = float(cm.get("display_bw", cm.get("total_bw", 0)) or 0)
-        display_cost = float(cm.get("display_cost", cm.get("cost", 0)) or 0)
-        provisional_total = float(cm.get("provisional_total", 0) or 0)
-        provisional_color = float(cm.get("provisional_color", 0) or 0)
-        provisional_bw = float(cm.get("provisional_bw", 0) or 0)
-        provisional_cost = float(cm.get("provisional_cost", 0) or 0)
-        confirmed_total = float(cm.get("total", 0) or 0)
-        confirmed_cost = float(cm.get("cost", 0) or 0)
-
-        quality = summary.get("quality") or {}
-        held_days = int(quality.get("held_days") or 0)
-        incomplete_days = int(quality.get("incomplete_days") or 0)
-        status_counts = quality.get("status_counts") or {}
-        devices = summary.get("devices") or []
-        online_count = int(status_counts.get("online") or 0)
-        offline_count = int(status_counts.get("offline") or 0)
-        stale_count = int(status_counts.get("stale") or 0)
-        pending_count = int(status_counts.get("pending") or 0)
-        last_sync_at = str(quality.get("last_sync_at") or "")
-        last_sync_text = "ยังไม่เคย Sync สำเร็จ"
-        if last_sync_at:
-            try:
-                last_sync_text = datetime.fromisoformat(
-                    last_sync_at.replace("Z", "+00:00")
-                ).astimezone().strftime("%d/%m/%Y %H:%M")
-            except ValueError:
-                last_sync_text = last_sync_at
-
-        status_parts = [f"Online {online_count}/{len(devices)} เครื่อง"]
-        if offline_count:
-            status_parts.append(f"Offline {offline_count}")
-        if stale_count:
-            status_parts.append(f"ข้อมูลล่าช้า {stale_count}")
-        if pending_count:
-            status_parts.append(f"รอตรวจสอบ {pending_count}")
-        status_parts.append(f"Sync ล่าสุด {last_sync_text}")
-        self.overview_status.setText(" · ".join(status_parts))
-        self.overview_status.setAccessibleDescription(self.overview_status.text())
-        if offline_count:
-            self.overview_status.setProperty("state", "error")
-        elif stale_count or pending_count:
-            self.overview_status.setProperty("state", "warning")
-        else:
-            self.overview_status.setProperty("state", "success")
-        self.overview_status.style().unpolish(self.overview_status)
-        self.overview_status.style().polish(self.overview_status)
-
-        if summary.get("source") == "billing_ledger":
-            parts = []
-            if provisional_total or int(quality.get("provisional_days") or 0):
-                cost_text = (
-                    fmt_baht(provisional_cost)
-                    if quality.get("provisional_cost_available", True)
-                    else "—"
-                )
-                parts.append(
-                    f"~ ยอดระหว่างวัน {fn(provisional_total)} หน้า · "
-                    f"ค่าใช้จ่ายประมาณการ {cost_text} · ยังไม่บันทึกใน Billing Ledger"
-                )
-            else:
-                parts.append(
-                    f"ยอดยืนยันในรอบบิล {fn(confirmed_total)} หน้า · "
-                    f"{fmt_baht(confirmed_cost)}"
-                )
-            if held_days:
-                parts.append(f"Hold {held_days:,} วัน ไม่รวมในยอด")
-            if incomplete_days:
-                parts.append(f"ข้อมูลไม่สมบูรณ์ {incomplete_days:,} วัน")
-            self.overview_quality.setText(" · ".join(parts))
-            self.overview_quality.setAccessibleDescription(self.overview_quality.text())
-            if held_days or incomplete_days:
-                self.overview_quality.setProperty("state", "warning")
-            elif provisional_total:
-                self.overview_quality.setProperty("state", "info")
-            else:
-                self.overview_quality.setProperty("state", "success")
-            self.overview_quality.style().unpolish(self.overview_quality)
-            self.overview_quality.style().polish(self.overview_quality)
-            self.overview_quality.show()
-        else:
-            self.overview_quality.hide()
-
-        # ── Summary strip ────────────────────────────────────────
-        if len(self.stat_cards) >= 4:
-            prefix = "~" if provisional_total else ""
-            self.stat_cards[0].lbl_val.setText(f"{prefix}{fn(display_total)}")
-            self.stat_cards[0].lbl_diff.setText(
-                f"ยืนยัน {fn(confirmed_total)} · วันนี้ +{fn(provisional_total)}"
-            )
-            self.stat_cards[1].lbl_val.setText(
-                f"{'~' if provisional_color else ''}{fn(display_color)}"
-            )
-            self.stat_cards[1].lbl_diff.setText(f"วันนี้ +{fn(provisional_color)}")
-            self.stat_cards[2].lbl_val.setText(
-                f"{'~' if provisional_bw else ''}{fn(display_bw)}"
-            )
-            self.stat_cards[2].lbl_diff.setText(f"วันนี้ +{fn(provisional_bw)}")
-            if quality.get("provisional_cost_available", True):
-                self.stat_cards[3].lbl_val.setText(
-                    f"{'~' if provisional_total else ''}{fmt_baht(display_cost)}"
-                )
-            else:
-                self.stat_cards[3].lbl_val.setText("—")
-            self.stat_cards[3].lbl_diff.setText(
-                f"ยืนยัน {fmt_baht(confirmed_cost)} · วันนี้ ~{fmt_baht(provisional_cost)}"
-                if provisional_total
-                else f"ยืนยัน {fmt_baht(confirmed_cost)}"
-            )
-
-        # ── Printer rows ─────────────────────────────────────────
-        while self.printer_list_layout.count():
-            item = self.printer_list_layout.takeAt(0)
-            widget = item.widget()
-            if widget is not None:
-                widget.deleteLater()
-        state_labels = {
-            "online": ("Online", "#087A55", "#EAF7EF"),
-            "offline": ("Offline", "#B42318", "#FFF0F0"),
-            "stale": ("ข้อมูลล่าช้า", "#8A4B08", "#FFF4E5"),
-            "syncing": ("กำลัง Sync", "#155EEF", "#EFF6FF"),
-            "pending": ("รอตรวจสอบ", "#475569", "#F1F5F9"),
-        }
-        for index, device in enumerate(devices):
-            display_name = str(
-                device.get("name") or f"เครื่อง {device.get('slot', 0) + 1}"
-            )
-            row = QFrame()
-            row.setObjectName("overview_printer_row")
-            row.setAccessibleName(f"สถานะ {display_name}")
-            row.setProperty("lastRow", index == len(devices) - 1)
-            row_layout = QGridLayout(row)
-            row_layout.setContentsMargins(12, 10, 12, 10)
-            row_layout.setHorizontalSpacing(14)
-            row_layout.setVerticalSpacing(3)
-            name = QLabel(display_name)
-            name.setProperty("i18n_data", True)
-            name.setFont(fnt(F_LG, True))
-            model = QLabel(str(device.get("model") or device.get("host") or ""))
-            model.setFont(fnt(F_XS))
-            model.setStyleSheet(f"color:{C_TEXT3};")
-            row_layout.addWidget(name, 0, 0)
-            row_layout.addWidget(model, 1, 0)
-            row_layout.setColumnStretch(0, 2)
-
-            raw_state = str(device.get("status") or "pending")
-            state_text, state_color, state_bg = state_labels.get(
-                raw_state, state_labels["pending"]
-            )
-            state = QLabel(f"● {state_text}")
-            state.setFont(fnt(F_MD, True))
-            state.setStyleSheet(
-                f"color:{state_color};background:{state_bg};"
-                "border-radius:5px;padding:4px 8px;"
-            )
-            row_layout.addWidget(state, 0, 1, 2, 1)
-
-            checked = device.get("last_success_at")
-            checked_text = "ยังไม่มีข้อมูล"
-            if checked:
-                try:
-                    checked_text = datetime.fromisoformat(
-                        str(checked).replace("Z", "+00:00")
-                    ).astimezone().strftime("%H:%M")
-                except ValueError:
-                    checked_text = str(checked)
-            sync = QLabel(f"ข้อมูลล่าสุด\n{checked_text}")
-            sync.setFont(fnt(F_SM))
-            sync.setStyleSheet(f"color:{C_TEXT2};")
-            row_layout.addWidget(sync, 0, 2, 2, 1)
-
-            usage = QLabel(
-                f"วันนี้ +{fn(device.get('provisional_total', 0))}\n"
-                f"รวม {fn(device.get('display_total', 0))} หน้า"
-            )
-            usage.setFont(fnt(F_MD, True))
-            usage.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-            row_layout.addWidget(usage, 0, 3, 2, 1)
-
-            if device.get("provisional_cost_available", True):
-                cost_text = f"~{fmt_baht(device.get('display_cost', 0))}"
-            else:
-                cost_text = "—"
-            cost = QLabel(f"ประมาณการ\n{cost_text}")
-            cost.setFont(fnt(F_MD, True))
-            cost.setStyleSheet(f"color:{C_GREEN};")
-            cost.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-            row_layout.addWidget(cost, 0, 4, 2, 1)
-
-            held = int(device.get("held_days") or 0)
-            if held:
-                review = btn(f"ตรวจสอบ Hold {held}", "warning")
-                review.clicked.connect(self.sync_log_requested.emit)
-            elif raw_state in {"offline", "stale"}:
-                review = btn("ตรวจสอบ", "outline")
-                review.clicked.connect(self.sync_log_requested.emit)
-            else:
-                review = QLabel("ปกติ")
-                review.setFont(fnt(F_SM, True))
-                review.setStyleSheet(f"color:{C_GREEN};")
-                review.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            review.setMinimumWidth(110)
-            row_layout.addWidget(review, 0, 5, 2, 1)
-            self.printer_list_layout.addWidget(row)
-            row.setAccessibleDescription(
-                f"{state_text}; ข้อมูลล่าสุด {checked_text}; "
-                f"วันนี้เพิ่ม {fn(device.get('provisional_total', 0))} หน้า; "
-                f"ค่าใช้จ่ายประมาณการ {cost_text}"
-            )
-
-        if not devices:
-            no_device = QLabel("ยังไม่ได้ตั้งค่าเครื่องพิมพ์")
-            no_device.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            no_device.setStyleSheet(f"color:{C_TEXT3};padding:18px;")
-            self.printer_list_layout.addWidget(no_device)
-
-        # ── Optional report details ──────────────────────────────
-        has_trend = any(
-            (item.get("display_total", item.get("total", 0)) or 0) > 0
-            for item in self._all_monthly.values()
-        )
-        self.trend_card.setVisible(has_trend)
-        if has_trend:
-            self._redraw_bar()
-
-        top_users = summary["top_users"]
-        self.top_users_card.setVisible(bool(top_users))
-        row_count = min(len(top_users), 5)
-        self.top_table.setRowCount(row_count)
-        medals = ["🥇", "🥈", "🥉", "  4", "  5"]
-        for r, (name, cf, cb, t) in enumerate(top_users[:row_count]):
-            medal = medals[r] if r < len(medals) else f"  {r + 1}"
-            self.top_table.setItem(r, 0, tbl_item(medal))
-            self.top_table.setItem(r, 1, tbl_item(
-                name, Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft))
-            self.top_table.setItem(r, 2, tbl_item(fn(cf), color=C_ORANGE))
-            self.top_table.setItem(r, 3, tbl_item(fn(cb), color=C_TEXT2))
-            self.top_table.setItem(r, 4, tbl_item(fn(t), bold=True, mono=True, color=C_GREEN))
-        self.overview_empty.setVisible(not has_trend and not top_users)
-
-        self.btn_sync_now.setText("อ่านข้อมูลล่าสุด")
-        self.btn_sync_now.setEnabled(True)
-        self.lbl_time.setText(f"หน้าจออัปเดต {datetime.now().strftime('%H:%M:%S')}")
-
-    def _months_ago(self, bm: str, n: int) -> str:
-        """คำนวณ billing_month ที่ถอยหลัง n เดือน"""
-        try:
-            dt = datetime.strptime(bm, "%Y-%m")
-            total = dt.month - 1 - n
-            y = dt.year + total // 12
-            m = total % 12 + 1
-            return f"{y}-{m:02d}"
-        except Exception:
-            return bm
 
 
 # ══════════════════════════════════════════════════════════
@@ -1463,8 +921,7 @@ class PageOverviewV2(QWidget):
         apply_language(self)
 
 
-# New imports of PageOverview receive the redesigned dashboard while the old
-# implementation remains above for a low-risk rollback during this UI pass.
+# Stable public name; the V2 class name is retained for its Qt stylesheet selector.
 PageOverview = PageOverviewV2
 
 
@@ -1644,7 +1101,7 @@ class PreviewDialog(QDialog):
 
         # ── ตรวจสอบคำเตือน
         existing_sn = get_slot_serial(self.slot)
-        mname = get_cfg(f"machine_name_{self.slot}", SLOT_NAMES[self.slot])
+        get_cfg(f"machine_name_{self.slot}", SLOT_NAMES[self.slot])
         new_sn = d.get("serial","")
 
         # ตรวจสอบ: ไฟล์นี้เป็นของเครื่องอื่นหรือไม่ (check SN ของเครื่องอื่น)
@@ -1898,7 +1355,7 @@ class PageImport(QWidget):
         try:
             import_result = parse_import_file(slot, path)
         except Exception as e:
-            QMessageBox.critical(self, "เกิดข้อผิดพลาด", f"อ่านไฟล์ไม่ได้:\n{e}")
+            QMessageBox.critical(self, "เกิดข้อผิดพลาด", with_diagnostic(f"อ่านไฟล์ไม่ได้:\n{e}", e, "เกิดข้อผิดพลาด"))
             return
         parser_name = import_result.parser_name
         parsed = import_result.parsed
@@ -2427,7 +1884,7 @@ class PageHistory(QWidget):
         """โหลดข้อมูลของทุก slot และอัปเดตทุกแท็บ"""
         slot = self._current_slot
         curr, prev = get_last_two(slot)
-        mname = get_cfg(f"machine_name_{slot}", SLOT_NAMES[slot])
+        get_cfg(f"machine_name_{slot}", SLOT_NAMES[slot])
 
         # อัปเดต button text
         for i in range(3):
@@ -2451,7 +1908,7 @@ class PageHistory(QWidget):
     def _populate_month_dropdown_users(self, slot: int):
         """เติมรายการเดือนลง dropdown ของ Users tab - รวม Account + Summary + Production data"""
         self.cmb_month_users.blockSignals(True)
-        old_month = self.cmb_month_users.currentData() if self.cmb_month_users.count() > 0 else None
+        self.cmb_month_users.currentData() if self.cmb_month_users.count() > 0 else None
         self.cmb_month_users.clear()
 
         # ดึง billing_month ที่มีข้อมูล (Account mode หรือ Summary/Production) จากทั้ง 3 เครื่อง
@@ -3317,7 +2774,7 @@ class PageHistory(QWidget):
                 exporter.export(path)
                 QMessageBox.information(self, "สำเร็จ", f"บันทึกภาพกราฟเรียบร้อยแล้ว\n{path}")
         except Exception as e:
-            QMessageBox.critical(self, "ข้อผิดพลาด", f"ไม่สามารถบันทึกไฟล์ได้:\n{e}")
+            QMessageBox.critical(self, "ข้อผิดพลาด", with_diagnostic(f"ไม่สามารถบันทึกไฟล์ได้:\n{e}", e, "ข้อผิดพลาด"))
 
     # ── Prepare graph data ────────────────────────────────────────────
     def _prepare_graph_data(self) -> dict:
@@ -3523,10 +2980,6 @@ class PageHistory(QWidget):
 
             colors_machine = [_h(c) for c in GRAPH_COLORS_MACHINE]
             colors_type    = {k: _h(v) for k, v in GRAPH_COLORS_TYPE.items()}
-            colors_user_pool = [
-                (37,99,235),(220,38,38),(22,163,74),(234,88,12),(124,58,237),
-                (6,182,212),(236,72,153),(168,85,247),(251,146,60),(20,184,166),
-            ]
 
             self._hover_bars = []  # [(label, x_center, value, month_label, color_rgb)]
 
@@ -3717,7 +3170,6 @@ class PageHistory(QWidget):
                 group_w = n_machines * bar_w + 0.15
 
                 # สร้าง stacked bars
-                added_legend = set()
                 # [V4.5] เก็บ bottoms ต่อ slot เพื่อให้ label "ค่ารวมบนสุด" วางตำแหน่งถูก
                 bottoms_per_slot = {}
                 for idx, si in enumerate(active_slots):
@@ -3957,7 +3409,7 @@ class PageHistory(QWidget):
             vb.setDefaultPadding(0.08)
             self.plot_widget.enableAutoRange()
 
-        except Exception as e:
+        except Exception:
             traceback.print_exc()
 
     def _on_mouse_moved(self, evt):
@@ -4013,7 +3465,7 @@ class PageHistory(QWidget):
             month_label = matched[0][3]
             lines = [month_label]
             for entry in matched:
-                label, bx, val, ml = entry[0], entry[1], entry[2], entry[3]
+                label, bx, val, _ml = entry[0], entry[1], entry[2], entry[3]
                 rgb = entry[4] if len(entry) > 4 else (100, 100, 100)
                 fmt_val = f"{val:,.0f}" if isinstance(val, (int, float)) else str(val)
                 # ใช้ colored square (Unicode) เพื่อแสดงสี
@@ -4215,7 +3667,7 @@ class PageHistory(QWidget):
                 if hasattr(self, 'pie_container'):
                     self.pie_container.setVisible(False)
                 self._draw_graph(data)
-        except Exception as e:
+        except Exception:
             traceback.print_exc()
 
     def _draw_pie_graph(self, data: dict):
@@ -4904,7 +4356,7 @@ class PageHistory(QWidget):
             wb.save(path)
             QMessageBox.information(self, "สำเร็จ", "ส่งออกไฟล์ Excel เรียบร้อยแล้ว")
         except Exception as e:
-            QMessageBox.critical(self, "ข้อผิดพลาด", f"ไม่สามารถบันทึกไฟล์ได้:\n{e}")
+            QMessageBox.critical(self, "ข้อผิดพลาด", with_diagnostic(f"ไม่สามารถบันทึกไฟล์ได้:\n{e}", e, "ข้อผิดพลาด"))
 
 
 # ══════════════════════════════════════════════════════════
@@ -5414,13 +4866,13 @@ class PageSettings(QWidget):
             "คืนค่า Settings",
             self._reset_settings,
         )
-        b_rst_parser = maintenance_row(
+        maintenance_row(
             "คืนค่า Parser Mapping",
             "สำรองและลบ Parser Profile ที่ปรับแต่งไว้ · ไม่ลบ Database",
             "คืนค่า Parser",
             self._reset_parser,
         )
-        b_factory = maintenance_row(
+        maintenance_row(
             "เริ่มติดตั้งและตั้งค่าใหม่ทั้งหมด",
             "ลบเครื่องพิมพ์ ราคา ประวัติ Parser override และสถานะ Registration แล้วกลับไป Setup Wizard",
             "เริ่มตั้งค่าใหม่",
@@ -5627,7 +5079,7 @@ class PageSettings(QWidget):
             from app import validate_parser_json
             new_profiles = validate_parser_json(path)
         except Exception as e:
-            QMessageBox.critical(self, "โหลดไฟล์ไม่ได้", str(e))
+            QMessageBox.critical(self, "โหลดไฟล์ไม่ได้", with_diagnostic(str(e), e, "โหลดไฟล์ไม่ได้"))
             return
 
         try:
@@ -5812,7 +5264,7 @@ class PageSettings(QWidget):
             QMessageBox.warning(
                 self,
                 "เปลี่ยน Path ไม่สำเร็จ",
-                f"{error}\n\nDatabase ที่กำลังใช้ไม่ถูกแก้ไข",
+                with_diagnostic(f"{error}\n\nDatabase ที่กำลังใช้ไม่ถูกแก้ไข", error, "เปลี่ยน Path ไม่สำเร็จ"),
             )
             return
         QMessageBox.information(
@@ -5827,7 +5279,7 @@ class PageSettings(QWidget):
         try:
             result = inspect_database(active)
         except (OSError, ValueError) as error:
-            QMessageBox.warning(self, "Database ไม่ผ่าน", str(error))
+            QMessageBox.warning(self, "Database ไม่ผ่าน", with_diagnostic(str(error), error, "Database ไม่ผ่าน"))
             return
         counts = result.get("critical_counts", {})
         total_rows = sum(int(value) for value in counts.values()) if isinstance(counts, dict) else 0
@@ -5854,7 +5306,7 @@ class PageSettings(QWidget):
         try:
             result = backup_database(active, destination)
         except (OSError, ValueError) as error:
-            QMessageBox.warning(self, "สำรองไม่สำเร็จ", str(error))
+            QMessageBox.warning(self, "สำรองไม่สำเร็จ", with_diagnostic(str(error), error, "สำรองไม่สำเร็จ"))
             return
         QMessageBox.information(
             self,
@@ -5893,7 +5345,7 @@ class PageSettings(QWidget):
             QMessageBox.warning(
                 self,
                 "นำ Backup กลับมาใช้ไม่สำเร็จ",
-                f"{error}\n\nDatabase ที่กำลังใช้ไม่ถูกแก้ไข",
+                with_diagnostic(f"{error}\n\nDatabase ที่กำลังใช้ไม่ถูกแก้ไข", error, "นำ Backup กลับมาใช้ไม่สำเร็จ"),
             )
             return
         QMessageBox.information(
@@ -6101,7 +5553,7 @@ class PageSettings(QWidget):
             QMessageBox.warning(
                 self,
                 "หยุดรายการเพื่อป้องกันข้อมูล",
-                f"สำรอง Database ไม่สำเร็จ จึงยังไม่ได้เปลี่ยนหรือลบข้อมูล\n\n{error}",
+                with_diagnostic(f"สำรอง Database ไม่สำเร็จ จึงยังไม่ได้เปลี่ยนหรือลบข้อมูล\n\n{error}", error, "หยุดรายการเพื่อป้องกันข้อมูล"),
             )
             return None
         return destination
@@ -6184,7 +5636,7 @@ class PageSettings(QWidget):
                 QMessageBox.warning(
                     self,
                     "หยุดรายการเพื่อป้องกันข้อมูล",
-                    f"สำรอง Parser Profile ไม่สำเร็จ จึงยังไม่ได้ลบข้อมูล\n\n{error}",
+                    with_diagnostic(f"สำรอง Parser Profile ไม่สำเร็จ จึงยังไม่ได้ลบข้อมูล\n\n{error}", error, "หยุดรายการเพื่อป้องกันข้อมูล"),
                 )
                 return
         deleted = 0
@@ -6349,7 +5801,7 @@ class PageSettings(QWidget):
             log.exception("issue log failed")
             QMessageBox.critical(
                 self, "สร้าง Issue Log ไม่ได้",
-                f"{type(e).__name__}: {e}"
+                with_diagnostic(f"{type(e).__name__}: {e}", e, "สร้าง Issue Log ไม่ได้")
             )
 
     def _refresh_ui(self):

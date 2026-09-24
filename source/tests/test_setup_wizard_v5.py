@@ -1238,7 +1238,8 @@ def test_device_test_worker_does_not_request_customer_password_for_tls_failure(m
     assert result["online"] is True
     assert result["web_ok"] is False
     assert result["credential_required"] is False
-    assert "TLS compatibility failed" in result["error"]
+    assert "Code: tls_handshake" in result["error"]
+    assert "WebConnectionTlsError" in result["error"]
 
 
 def test_device_test_worker_reports_session_busy_without_requesting_password(monkeypatch) -> None:
@@ -1271,7 +1272,7 @@ def test_device_test_worker_reports_session_busy_without_requesting_password(mon
     assert result["web_ok"] is False
     assert result["session_busy"] is True
     assert result["credential_required"] is False
-    assert "session busy" in result["error"]
+    assert "Code: session_busy" in result["error"]
 
 
 def test_device_test_worker_accepts_public_meter_for_public_capable_press_even_if_password_was_entered(monkeypatch) -> None:
@@ -1374,12 +1375,13 @@ def test_setup_wizard_marks_customer_password_required_without_exposing_a_defaul
                     "online": True,
                     "web_ok": False,
                     "credential_required": True,
-                    "error": "รหัสเริ่มต้นของเครื่องทั้ง 2 แบบไม่ผ่าน",
+                    "error": "KOMI Diagnostic v1\nCode: factory_credentials_rejected\n",
                 },
             )
         )
 
-        assert "กรุณาใส่รหัสของลูกค้า" in wizard.device_table.item(0, 4).text()
+        assert "factory_credentials_rejected" in wizard.device_table.item(0, 4).text()
+        assert "รหัสเริ่มต้นใช้เข้าสู่เครื่องนี้ไม่ได้" in wizard.device_table.item(0, 4).text()
         assert wizard.device_table.item(0, 5).text() == "ใส่รหัส"
         assert wizard.discovered_devices[0]["password"] == ""
         wizard.close()

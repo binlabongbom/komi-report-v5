@@ -1,5 +1,6 @@
 """Behavioral Mac QA for V5.2.8; synthetic data and no device access."""
 
+from services.report_export_options import ReportExportSelection
 from datetime import date, datetime
 
 import pytest
@@ -31,10 +32,9 @@ def window():
 
 
 def test_deferred_navigation_loads_all_pages_after_event_loop(window):
-    from pages import PageManual
     from v5_pages import PageHistoryV5, PageSettingsV5
 
-    for index, expected in zip((2, 3, 4), (PageHistoryV5, PageSettingsV5, PageManual), strict=True):
+    for index, expected in zip((2, 3), (PageHistoryV5, PageSettingsV5), strict=True):
         window._nav(window.nav_btns[index])
         QTest.qWait(250)
         assert window.stack.currentIndex() == index
@@ -156,13 +156,18 @@ def test_excel_export_available_from_every_report_tab(window, monkeypatch, tmp_p
         reads.append(kwargs.get("granularity"))
         return daily if kwargs.get("granularity") == "daily" else (monthly,)
 
-    monkeypatch.setattr(v5_pages, "load_usage_history", load_usage)
+    import services.report_snapshot as snapshots
+    import services.report_export_job as export_job
+    from test_report_export_job import wait_until
+
+    monkeypatch.setattr(snapshots, "load_usage_history", load_usage)
+    monkeypatch.setattr(export_job, "load_usage_history", load_usage)
     window._nav(window.nav_btns[2])
     QTest.qWait(300)
     page = window.pg_history
     page.refresh_visible()
     page.report_center_tabs.setCurrentIndex(tab_index)
-    QTest.qWait(300)
+    wait_until(lambda: bool(page.report_center._monthly_records))
     reads_before_date_change = reads.count("daily")
     page.report_center.period_start_edit.setDate(QDate(start.year, start.month, start.day))
     page.report_center.period_end_edit.setDate(QDate(end.year, end.month, end.day))
@@ -175,16 +180,17 @@ def test_excel_export_available_from_every_report_tab(window, monkeypatch, tmp_p
     def choose_range(_parent, default_start, default_end, **kwargs):
         dialog_defaults.append((default_start, default_end))
         assert kwargs["available_start"] == period_start
-        assert kwargs["available_end"] == date(2026, 9, 9)
-        return start, end
+        assert kwargs["available_end"] == period_end
+        return ReportExportSelection(start, end)
 
-    monkeypatch.setattr(v5_pages.ReportExportPeriodDialog, "get_range", choose_range)
+    monkeypatch.setattr(v5_pages.ReportExportPeriodDialog, "get_selection", choose_range)
     monkeypatch.setattr(v5_pages.QFileDialog, "getSaveFileName", lambda *a, **k: (str(output), ""))
     for kind in ("warning", "critical", "information"):
         monkeypatch.setattr(v5_pages.QMessageBox, kind, lambda *a, **k: messages.append(a[2]))
     daily_reads_before_export = reads.count("daily")
     page._export_report_center_excel()
-    assert reads.count("daily") == daily_reads_before_export + 1
+    wait_until(lambda: not page._export_controller.busy)
+    assert reads.count("daily") >= daily_reads_before_export + 1
     assert dialog_defaults == [(start, end)]
     assert output.is_file(), messages
     workbook = load_workbook(output)
@@ -193,24 +199,28 @@ def test_excel_export_available_from_every_report_tab(window, monkeypatch, tmp_p
     workbook.close()
 
 
-def test_excel_export_reports_daily_history_read_failure(monkeypatch):
-    from types import SimpleNamespace
-
+def test_excel_export_reports_daily_history_read_failure(window, monkeypatch, tmp_path):
     import v5_pages
+    import services.report_export_job as export_job
+    from test_report_export_job import wait_until
 
     def failed_read(*_args, **_kwargs):
         raise RuntimeError("synthetic read failure")
 
-    monkeypatch.setattr(v5_pages, "load_usage_history", failed_read)
-    monkeypatch.setattr(v5_pages, "report_slots", lambda: [0])
-    monkeypatch.setattr(
-        v5_pages.ReportExportPeriodDialog, "get_range",
-        lambda *_args, **_kwargs: pytest.fail("Do not open export dialogs after a failed read"),
-    )
+    window._nav(window.nav_btns[2])
+    QTest.qWait(300)
+    page = window.pg_history
+    output = tmp_path / "failed-export.xlsx"
+    monkeypatch.setattr(export_job, "load_usage_history", failed_read)
+    monkeypatch.setattr(export_job, "report_slots", lambda: [0])
+    monkeypatch.setattr(v5_pages.ReportExportPeriodDialog, "get_selection",
+                        lambda *_args, **_kwargs: ReportExportSelection(date(2026, 9, 1), date(2026, 9, 30)))
+    monkeypatch.setattr(v5_pages.QFileDialog, "getSaveFileName", lambda *a, **k: (str(output), ""))
     errors = []
     monkeypatch.setattr(v5_pages.QMessageBox, "critical", lambda _parent, title, message: errors.append((title, message)))
-    view = SimpleNamespace(report_center=object(), cache=object())
-    v5_pages.PageHistoryV5._export_report_center_excel(view)
+    page._export_report_center_excel()
+    wait_until(lambda: not page._export_controller.busy)
     assert len(errors) == 1
     assert errors[0][0] == "Export ไม่สำเร็จ"
     assert "synthetic read failure" in errors[0][1]
+    assert not output.exists()

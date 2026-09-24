@@ -310,17 +310,19 @@ class LegacyRejectedLoginPageSession(FakeLegacySession):
         return b""
 
 
-def test_legacy_admin_connector_calls_only_explicit_login_page_bad_password() -> None:
+def test_legacy_admin_connector_returned_login_form_is_rejection_not_proven_wrong_password() -> None:
     session = LegacyRejectedLoginPageSession("10.0.0.5", scheme="https")
     connector = LegacyAuthenticatedWebConnectionCounterConnector(
         session_factory=lambda *_args, **_kwargs: session
     )
 
-    with pytest.raises(WebConnectionAuthenticationError, match="ปฏิเสธรหัส"):
+    with pytest.raises(WebConnectionAuthenticationError, match="ปฏิเสธการเข้าสู่ระบบ") as failure:
         connector.collect_with_credential(
             "10.0.0.5",
             AdminCredential(password=secrets.token_urlsafe(18)),
         )
+
+    assert failure.value.diagnostic_code == 'auth_rejected'
 
     assert session.calls.count(("POST_FORM", "login.cgi")) == 1
     assert ("POST_FORM", "a_user.cgi") not in session.calls

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import re
+from bisect import bisect_right
+from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date, datetime
 from enum import StrEnum
@@ -106,6 +108,28 @@ class PricingRepository:
                 (slot, on_date.isoformat()),
             ).fetchone()
         return PriceList(*row) if row else PriceList()
+
+    def get_prices_for_days(self, requests) -> dict[tuple[int, date], PriceList]:
+        """Resolve historical prices for a report with one read, not one per day."""
+        requests = set(requests)
+        if not requests:
+            return {}
+        slots = sorted({slot for slot, _day in requests})
+        latest = max(day for _slot, day in requests).isoformat()
+        placeholders = ','.join('?' for _slot in slots)
+        with _open(commit=False) as conn:
+            rows = conn.execute(f'''SELECT device_slot,effective_date,a3_color,a3_bw,a4_color,a4_bw
+                FROM price_history WHERE device_slot IN ({placeholders}) AND effective_date<=?
+                ORDER BY device_slot,effective_date''', (*slots, latest)).fetchall()
+        dates, prices = defaultdict(list), defaultdict(list)
+        for slot, effective, *amounts in rows:
+            dates[slot].append(effective)
+            prices[slot].append(PriceList(*amounts))
+        resolved = {}
+        for slot, day in requests:
+            index = bisect_right(dates[slot], day.isoformat()) - 1
+            resolved[(slot, day)] = prices[slot][index] if index >= 0 else PriceList()
+        return resolved
 
     def set_category(self, slot: int, raw_key: str, effective_date: date, category: CostCategory) -> None:
         now = datetime.now().astimezone().isoformat(timespec="seconds")

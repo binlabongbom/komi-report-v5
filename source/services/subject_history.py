@@ -574,11 +574,6 @@ def _daily_record_from_cache(
     )
 
 
-def _latest_device_ledger_periods(slots: list[int], *, period_start: date | None = None,
-                                  period_end: date | None = None) -> dict[tuple[int, date], tuple[date, date]]:
-    """Return each device day's immutable period without changing legacy rows."""
-    with _open(commit=False) as conn:
-        return _device_ledger_periods(conn, slots, period_start=period_start, period_end=period_end)
 
 
 def _device_ledger_periods(conn, slots, *, period_start=None, period_end=None):
@@ -657,22 +652,22 @@ def load_subject_history(
                     FROM daily_subject_records WHERE device_slot IN ({placeholders}) {filters}
                     ORDER BY record_date,device_slot,subject_type,subject_id""",
                 [*slots, *parameters],
-            ).fetchall()
+            )
             from services.report_detail_archive import ReportDetailArchive
             archive = ReportDetailArchive()
-            documents = [{'row': dict(zip(SUBJECT_COLUMNS, row)), 'period': None} for row in rows]
+            archived = ()
             if period_start is None and period_end is None:
                 archived_buckets = archive.subject_summaries(conn, slots, only_period=only_period, only_periods=only_periods)
             else:
-                documents.extend(archive.details(conn, "subject", slots, start=source_start, end=source_end))
-            from services.report_detail_amendment import effective_documents
-            documents = effective_documents(conn, 'subject', documents, slots, start=source_start, end=source_end,
-                                            include_revisions=period_start is not None or period_end is not None)
-            for item in documents:
-                record = subject_record_from_row([item['row'][key] for key in SUBJECT_COLUMNS])
+                archived = archive.details(conn, "subject", slots, start=source_start, end=source_end)
+            from services.report_detail_amendment import iter_effective_rows
+            effective_rows = iter_effective_rows(conn, 'subject', rows, SUBJECT_COLUMNS, archived, slots,
+                start=source_start, end=source_end, include_revisions=period_start is not None or period_end is not None)
+            for row, archived_period in effective_rows:
+                record = subject_record_from_row(row)
                 period = frozen_periods.get((record.device_slot, record.record_date))
-                if period is None and item['period']:
-                    period = tuple(date.fromisoformat(value) for value in item['period'])
+                if period is None and archived_period:
+                    period = tuple(date.fromisoformat(value) for value in archived_period)
                 daily.append((record, period))
 
     cache_store = cache or SubjectDailyCacheStore()

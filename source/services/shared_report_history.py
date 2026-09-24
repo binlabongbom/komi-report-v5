@@ -242,11 +242,13 @@ def _blocked_source_days(conn, rows, kind, blocked):
 def raw_records(conn, slots, *, start=None, end=None, existing=()):
     from services.raw_counter_history import RawCounterDailyRecord
     from services.web_evidence_report import review_labels
+    rows = load_shared_counter_days(conn, slots, start=start, end=end)
+    if not rows:
+        return ()
     blocked = {}
     for r in existing:
         blocked.setdefault((r.device_slot, r.device_serial_snapshot, r.canonical_field,
                             r.subject_type or None, r.subject_id or None), set()).add(r.record_date)
-    rows = load_shared_counter_days(conn, slots, start=start, end=end)
     archived = _blocked_source_days(conn, rows, 'raw', blocked)
     return tuple(RawCounterDailyRecord(
         device_slot=r.slot, record_date=r.day, canonical_field=r.field,
@@ -267,10 +269,12 @@ def raw_records(conn, slots, *, start=None, end=None, existing=()):
 def subject_records(conn, slots, *, start=None, end=None, existing=()):
     from services.subject_history import SubjectDailyRecord
     from services.web_evidence_report import review_labels
+    rows = load_shared_counter_days(conn, slots, start=start, end=end, kind='subject')
+    if not rows:
+        return ()
     blocked = {}
     for r in existing:
         blocked.setdefault((r.device_slot, r.device_serial_snapshot, r.subject_type, r.subject_id), set()).add(r.record_date)
-    rows = load_shared_counter_days(conn, slots, start=start, end=end, kind='subject')
     archived = _blocked_source_days(conn, rows, 'subject', blocked)
     return tuple(SubjectDailyRecord(
         device_slot=r.slot, record_date=r.day, subject_type=r.subject_type,

@@ -1,5 +1,5 @@
 """Counter review UI, separate from the settings/report monolith."""
-from ui.review_components import field_label, technical_details
+from ui.review_components import field_label
 
 from datetime import datetime
 import sqlite3

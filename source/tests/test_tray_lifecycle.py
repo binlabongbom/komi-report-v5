@@ -20,12 +20,16 @@ class _Polling:
     def __init__(self) -> None:
         self.started = 0
         self.stopped = 0
+        self.network_recoveries = 0
 
     def start(self) -> None:
         self.started += 1
 
     def stop(self) -> None:
         self.stopped += 1
+
+    def network_recovered(self) -> None:
+        self.network_recoveries += 1
 
 
 class _Registration(_Polling):
@@ -64,6 +68,9 @@ class _WebService:
 
 class _WindowDouble:
     _stop_ui_work = app.MainWindow._stop_ui_work
+
+    def findChildren(self, _kind):
+        return getattr(self, "readers", [])
     def __init__(self) -> None:
         self._quitting = False
         self._background_started = False
@@ -107,6 +114,7 @@ def test_shutdown_discards_late_refresh_requests_and_queued_page_callback(monkey
     window._refresh_timer = SimpleNamespace(start=lambda: refreshed.append("timer"), stop=lambda: stopped.append("refresh"))
     window._startup_poll_timer = SimpleNamespace(stop=lambda: stopped.append("startup"))
     window.pg_history = SimpleNamespace(shutdown_report_loading=lambda: stopped.append("reports"))
+    window.readers = [SimpleNamespace(shutdown=lambda: stopped.append("reader"))]
     window._dirty_pages = {0}
     window.stack = SimpleNamespace(currentIndex=lambda: 0)
     window._page_widgets = [SimpleNamespace(refresh_visible_cached=lambda: refreshed.append("page"))]
@@ -120,7 +128,7 @@ def test_shutdown_discards_late_refresh_requests_and_queued_page_callback(monkey
     app.MainWindow._schedule_refresh_all(window)
     app.MainWindow._device_updated(window, 0)
     app.MainWindow._refresh_all(window)
-    assert stopped == ["refresh", "startup", "reports"]
+    assert stopped == ["refresh", "startup", "reports", "reader"]
     assert refreshed == []
 
 
@@ -238,7 +246,7 @@ def test_os_network_recovery_only_wakes_runtime_on_disconnected_to_connected_tra
     )
 
     assert window.registration.network_recoveries == 2
-    assert window.polling.peer_history.network_recoveries == 2
+    assert window.polling.network_recoveries == 2
 
 
 def test_macos_27_uses_click_only_tray_to_avoid_status_menu_crash(monkeypatch):

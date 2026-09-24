@@ -39,7 +39,7 @@ jobs:
           & $gitExe --version
           if ($LASTEXITCODE -ne 0) { throw 'git bootstrap failed.' }
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7.0.1
         with:
           ref: chatgpt/python-3-14-runtime
           fetch-depth: 0
@@ -177,7 +177,7 @@ jobs:
 
       - name: Upload Python 3.14 native validation evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7.0.1
         with:
           name: python314-native-${{ github.sha }}
           retention-days: 14

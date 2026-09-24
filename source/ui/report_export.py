@@ -1,5 +1,6 @@
 """One cancellable export worker with Qt updates collected on the GUI thread."""
 from i18n import tr, translate_text
+from ui.resource_cleanup import close_executor_with
 from concurrent.futures import CancelledError, ThreadPoolExecutor
 from queue import Empty, SimpleQueue
 from threading import Event
@@ -129,7 +130,7 @@ class ReportExportController(QObject):
         self.timer.timeout.connect(self._collect)
         # Cleanup must not dereference a deleted widget or wait on its worker.
         cancelled, pool = self.cancelled, self.pool
-        self.destroyed.connect(lambda: (cancelled.set(), pool.shutdown(wait=False, cancel_futures=True)))
+        close_executor_with(self, pool, cancelled)
         QApplication.instance().aboutToQuit.connect(self.shutdown)
 
     @property
