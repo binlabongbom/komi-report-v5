@@ -1,4 +1,5 @@
 """Counter review UI, separate from the settings/report monolith."""
+from ui.styles import text as text_styles
 from ui.review_components import field_label
 
 from datetime import datetime
@@ -57,7 +58,7 @@ class CounterReviewDialog(QDialog):
         self.verified = QCheckBox(tr("ตรวจสอบ Serial และค่ามิเตอร์จากเครื่องพิมพ์แล้ว", "I checked the printer serial and meter"))
         layout.addWidget(self.verified)
         self.error = plain("")
-        self.error.setStyleSheet("color:#B42318;")
+        self.error.setStyleSheet(text_styles.label('#B42318'))
         layout.addWidget(self.error)
         self.buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         self.confirm = self.buttons.button(QDialogButtonBox.StandardButton.Ok)

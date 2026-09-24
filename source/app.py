@@ -16,6 +16,8 @@
 #   ↓ เมื่อนำเข้าข้อมูลใหม่ → _refresh_all() → อัปเดตทุกหน้า
 # ═══════════════════════════════════════════════════════════
 
+from ui.styles import shell as shell_styles
+from ui.styles import text as text_styles
 import json
 import logging
 import os
@@ -149,7 +151,34 @@ from PyQt6.QtWidgets import (
 )
 
 from ui.numeric_inputs import configure_numeric_locale
-from config import *  # สี, ฟอนต์, ขนาด, ค่าคงที่ทั้งหมด — ปรับแก้ที่ config.py
+from config import (
+    APP_TITLE,
+    APP_VER,
+    LOGO_FILENAME,
+)
+from ui.styles.tokens import (
+    DEFAULT_FONT_NAME,
+    DEFAULT_FONT_SIZE,
+    F_LG,
+    F_MD,
+    F_SM,
+    F_XL,
+    F_XS,
+    LOGO_MARGIN_BOTTOM,
+    LOGO_SCALED_WIDTH,
+    NAV_BUTTON_HEIGHT,
+    SIDEBAR_MARGIN_BOTTOM,
+    SIDEBAR_MARGIN_LEFT,
+    SIDEBAR_MARGIN_RIGHT,
+    SIDEBAR_MARGIN_TOP,
+    SIDEBAR_SPACING,
+    SIDEBAR_WIDTH,
+    STATUS_PADDING,
+    WINDOW_DEFAULT_HEIGHT,
+    WINDOW_DEFAULT_WIDTH,
+    WINDOW_MIN_WIDTH,
+)
+from ui.styles.application import build_qss
 from database import (  # ฟังก์ชันฐานข้อมูลที่ใช้ที่นี่
     compute_diff,
     get_cfg,
@@ -185,7 +214,7 @@ from services.peer_sync_authorization import ensure_pairing_default, PeerSyncAut
 from services.v5_2_client import V52ContractClient, V52RuntimeConfig
 from services.v5_2_runtime import V52RuntimeCoordinator
 from services.web_service import web_service_manager
-from ui_consistency import install_button_system
+from ui.button_system import install_button_system
 from v5_pages import (
     PageHistoryV5,
     PageImportV5,
@@ -237,12 +266,7 @@ class SplashScreen(QWidget):
 
         # Card — พื้นหลังสีเข้มเหมือน sidebar
         card = QFrame()
-        card.setStyleSheet(f"""
-            QFrame {{
-                background: {C_SIDEBAR};
-                border-radius: 20px;
-            }}
-        """)
+        card.setStyleSheet(shell_styles.splash_screen_card())
         cl = QVBoxLayout(card)
         cl.setContentsMargins(44, 36, 44, 36)
         cl.setSpacing(10)
@@ -260,21 +284,21 @@ class SplashScreen(QWidget):
         else:
             logo_lbl.setText("KM")
             logo_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            logo_lbl.setStyleSheet("color: white; font-size: 22pt; font-weight: bold;")
+            logo_lbl.setStyleSheet(text_styles.label('white', font_size='22pt', font_weight='bold'))
         cl.addWidget(logo_lbl)
 
         # ชื่อโปรแกรม
         title_lbl = QLabel(APP_TITLE)
         title_lbl.setFont(fnt(F_MD, bold=True))
         title_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        title_lbl.setStyleSheet("color: #ffffff;")
+        title_lbl.setStyleSheet(text_styles.label('#ffffff'))
         cl.addWidget(title_lbl)
 
         # เวอร์ชัน
         ver_lbl = QLabel(f"v{APP_VER}")
         ver_lbl.setFont(fnt(F_XS))
         ver_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        ver_lbl.setStyleSheet("color: rgba(255,255,255,0.50);")
+        ver_lbl.setStyleSheet(text_styles.label('rgba(255,255,255,0.50)'))
         cl.addWidget(ver_lbl)
 
         cl.addSpacing(14)
@@ -283,7 +307,7 @@ class SplashScreen(QWidget):
         self._msg_lbl = QLabel("กำลังเริ่มต้นโปรแกรม...")
         self._msg_lbl.setFont(fnt(F_SM))
         self._msg_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._msg_lbl.setStyleSheet("color: rgba(255,255,255,0.70);")
+        self._msg_lbl.setStyleSheet(text_styles.label('rgba(255,255,255,0.70)'))
         cl.addWidget(self._msg_lbl)
 
         self._activity = QProgressBar()
@@ -292,8 +316,7 @@ class SplashScreen(QWidget):
         self._activity.setFixedHeight(5)
         self._activity.setAccessibleName("กำลังเตรียมโปรแกรม")
         self._activity.setStyleSheet(
-            "QProgressBar { background: #334155; border: none; border-radius: 2px; }"
-            "QProgressBar::chunk { background: #38BDF8; border-radius: 2px; }"
+            shell_styles.SPLASH_SCREEN_ACTIVITY
         )
         cl.addWidget(self._activity)
 
@@ -530,8 +553,7 @@ class MainWindow(QMainWindow):
         self._sidebar_logo_image.setFixedSize(icon_width, icon_width)
         self._sidebar_logo_layout.setSpacing(6 if compact else 10)
         self._sidebar_logo_title.setStyleSheet(
-            "color:#FFFFFF;background:transparent;border:none;letter-spacing:0.4px;"
-            f"font-size:{F_MD if compact else F_LG}pt;font-weight:bold;"
+            shell_styles.main_window_sidebar_logo_title(F_MD if compact else F_LG)
         )
 
     # ──────────────────────────────────────────────────────
@@ -566,7 +588,7 @@ class MainWindow(QMainWindow):
         # ─ โลโก้ด้านบน Sidebar ────────────────────────────────
         # หัวแบบ compact: icon เล็กทางซ้าย + ชื่อผลิตภัณฑ์ทางขวา
         logo = QFrame()
-        logo.setStyleSheet("background: transparent; border: none;")
+        logo.setStyleSheet(shell_styles.MAIN_WINDOW_LOGO)
         ll = QHBoxLayout(logo)
         ll.setContentsMargins(0, 0, 0, 0)
         ll.setSpacing(10)
@@ -587,14 +609,14 @@ class MainWindow(QMainWindow):
         else:  # ไม่พบไฟล์รูป — แสดงข้อความแทน
             logo_img.setText("Logo")
             logo_img.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            logo_img.setStyleSheet("color: white; font-weight: bold;")
+            logo_img.setStyleSheet(text_styles.label('white', font_weight='bold'))
 
         ll.addWidget(logo_img)
         logo_title = QLabel("KOMI REPORT")
         self._sidebar_logo_title = logo_title
         logo_title.setFont(fnt(F_LG, bold=True))
         logo_title.setStyleSheet(
-            "color:#FFFFFF;background:transparent;border:none;letter-spacing:0.4px;"
+            shell_styles.MAIN_WINDOW_LOGO_TITLE
         )
         logo_title.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
         ll.addWidget(logo_title, 1)
@@ -615,7 +637,7 @@ class MainWindow(QMainWindow):
         sb_lay.addStretch()  # ดัน status label ให้อยู่ล่างสุดของ sidebar
 
         language_label = QLabel("ภาษา / Language")
-        language_label.setStyleSheet("color:#BFD3E6;padding:2px 8px;background:transparent;")
+        language_label.setStyleSheet(text_styles.label('#BFD3E6', padding='2px 8px', background='transparent'))
         sb_lay.addWidget(language_label)
         self.language_combo = QComboBox()
         self.language_combo.setObjectName("language_selector")
@@ -634,7 +656,7 @@ class MainWindow(QMainWindow):
         self.status_lbl.setFont(fnt(F_XS))
         self.status_lbl.setWordWrap(True)  # ตัดบรรทัดถ้าข้อความยาว
         self.status_lbl.setStyleSheet(
-            f"color:#CBD5E1; padding:{STATUS_PADDING}; background:transparent;"
+            text_styles.label('#CBD5E1', padding=STATUS_PADDING, background='transparent')
         )
         sb_lay.addWidget(self.status_lbl)
 
@@ -649,7 +671,7 @@ class MainWindow(QMainWindow):
         # replaced primary-button backgrounds while leaving their white text.
         self.stack.setObjectName("main_content_stack")
         self.stack.setStyleSheet(
-            f"QStackedWidget#main_content_stack {{ background: {C_BG}; }}"
+            shell_styles.main_window_stack()
         )
 
         # สร้างแต่ละหน้า — ลำดับต้องตรงกับ nav_items ด้านบน

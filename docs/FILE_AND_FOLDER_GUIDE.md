@@ -1,6 +1,6 @@
 # แผนที่โฟลเดอร์และไฟล์ — KOMI REPORT V5
 
-อัปเดต: 2026-08-11
+อัปเดต: 2026-09-24
 
 ## ภาพรวมการทำงาน
 
@@ -60,8 +60,10 @@ Web browser
 | `ui/common_dialogs.py` | หน้าบ้าน Desktop | dialog มาตรฐานที่หลายหน้าใช้ร่วมกัน | เมื่อเปิด dialog/ข้อความยืนยัน |
 | `live_meter_page.py` | หน้าบ้าน Desktop | หน้าสถานะ meter แบบ live รุ่นเฉพาะ | เมื่อเปิดส่วน live meter |
 | `i18n.py` | หน้าบ้านร่วม | คำแปลและ label ที่แสดงใน UI | ตอนสร้าง/เปลี่ยนข้อความ UI |
-| `ui_consistency.py` | หน้าบ้าน/QA | กฎตรวจความสม่ำเสมอของ widget/style | ตอน test หรือ QA UI |
-| `config.py` | หลังบ้าน | configuration หลัก, path, default และ setting compatibility | import ตั้งแต่เริ่มแอป/API |
+| `ui/styles/` | หน้าบ้าน Desktop | สี ฟอนต์ และ stylesheet ส่วนกลาง แยกตาม component/หน้า | ตอนสร้างและปรับสถานะ UI |
+| `ui/button_system.py` | หน้าบ้าน Desktop | กฎขนาดปุ่มและ animation ส่วนกลาง | ติดตั้งครั้งเดียวกับ QApplication |
+| `ui_consistency.py` | Compatibility | re-export จาก `ui/button_system.py` ไม่มี implementation ซ้ำ | สำหรับผู้เรียกเดิม |
+| `config.py` | หลังบ้าน/Compatibility | ค่า default ของระบบและ path; re-export visual API เดิม โดยไม่มีนิยาม style ซ้ำ | import ตั้งแต่เริ่มแอป/API |
 | `runtime_config.py` | หลังบ้าน | แยก source/runtime/data root และค่าที่เปลี่ยนตามเครื่อง | ตอน bootstrap config |
 | `database.py` | หลังบ้าน | SQLite access, config, device, readings, summary และ schema entrypoint | ทุก flow ที่อ่าน/เขียนข้อมูล |
 | `migrations.py` | หลังบ้าน | migration schema แบบเพิ่มทีละ version | ตอน init/upgrade database |
@@ -237,3 +239,7 @@ Windows VM ที่ไม่มี OneDrive ใช้ Shared Folder ชี้ r
 หลักฐานวันที่ 2026-08-09 ได้ Desktop/Web Source ID ตรงกับ Mac, เปิด Desktop, Login Web และโหลด Overview สำเร็จ
 
 ข้อจำกัดการพิสูจน์: การผ่านบน macOS ไม่ได้แปลว่า Windows/Linux ผ่าน ต้องทำ native UAT แยกแต่ละระบบ
+
+## โครงสร้าง style ของ Desktop
+
+ดู [UI_STYLE_ARCHITECTURE.md](UI_STYLE_ARCHITECTURE.md) สำหรับตำแหน่งแก้สี ฟอนต์ ปุ่ม ตาราง และกฎป้องกัน style ซ้ำ

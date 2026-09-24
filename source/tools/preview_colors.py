@@ -2,7 +2,7 @@
 """
 preview_colors.py — ดูตัวอย่างสี, ฟอนต์, ปุ่ม และ card ของโปรแกรมแบบ Live
 
-แก้ค่าใน config.py แล้วรันโปรแกรมนี้ใหม่ → เห็นผลทันที
+แก้ค่าใน ui/styles/tokens.py แล้วรันโปรแกรมนี้ใหม่ → เห็นผลทันที
 ไม่ต้องเปิดโปรแกรมหลักเพื่อเช็คว่าสีออกมาถูกต้องไหม
 
 ใช้งาน:  python tools/preview_colors.py
@@ -23,10 +23,11 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui  import QFont, QColor, QFontDatabase
 
-import config
+from ui.styles import tokens as theme_tokens
+from ui.styles.application import build_qss
 from widgets import fnt, btn, StatCard, badge
 
-CONFIG_PATH = Path(__file__).parent.parent / "config.py"
+CONFIG_PATH = Path(theme_tokens.__file__)
 
 
 def _text_color_for(hex_bg: str) -> tuple[str, str, str]:
@@ -45,7 +46,7 @@ def _text_color_for(hex_bg: str) -> tuple[str, str, str]:
 # ════════════════════════════════════════════════════════════
 
 class Swatch(QFrame):
-    """กล่องแสดงสี — คลิกเพื่อเปลี่ยนสีและบันทึกลง config.py"""
+    """กล่องแสดงสี — คลิกเพื่อเปลี่ยนสีและบันทึกลง ui/styles/tokens.py"""
     need_refresh = pyqtSignal()  # emit หลังบันทึกสำเร็จ
 
     def __init__(self, name: str, color: str):
@@ -157,7 +158,7 @@ class Swatch(QFrame):
                 )
                 if n == 0:
                     QMessageBox.warning(self, "ไม่พบตัวแปร",
-                        f"ไม่พบ  {self._name}  ใน config.py")
+                        f"ไม่พบ  {self._name}  ใน ui/styles/tokens.py")
                     return
                 text = new_text
             
@@ -173,15 +174,15 @@ class Swatch(QFrame):
 def section_label(text: str) -> QLabel:
     """หัวข้อย่อยใน tab"""
     lbl = QLabel(text)
-    lbl.setFont(fnt(config.F_LG, bold=True))
-    lbl.setStyleSheet(f"color: {config.C_TEXT2}; padding: 4px 0;")
+    lbl.setFont(fnt(theme_tokens.F_LG, bold=True))
+    lbl.setStyleSheet(f"color: {theme_tokens.C_TEXT2}; padding: 4px 0;")
     return lbl
 
 
 def divider() -> QFrame:
     f = QFrame()
     f.setFrameShape(QFrame.Shape.HLine)
-    f.setStyleSheet(f"color: {config.C_BORDER}; max-height: 1px;")
+    f.setStyleSheet(f"color: {theme_tokens.C_BORDER}; max-height: 1px;")
     return f
 
 
@@ -206,7 +207,7 @@ def tab_colors(on_refresh=None) -> QWidget:
 
     # ดึงเฉพาะ C_* ที่เป็นสีเท่านั้น
     color_vars = sorted(
-        [(k, v) for k, v in vars(config).items()
+        [(k, v) for k, v in vars(theme_tokens).items()
          if k.startswith("C_") and isinstance(v, str) and v.startswith("#")],
         key=lambda x: x[0]
     )
@@ -239,23 +240,23 @@ def tab_fonts(on_refresh=None) -> QWidget:
 
     lbl_fn = QLabel("DEFAULT_FONT_NAME")
     lbl_fn.setFont(QFont("Courier New", 10, QFont.Weight.Bold))
-    lbl_fn.setStyleSheet(f"color:{config.C_TEXT3};")
+    lbl_fn.setStyleSheet(f"color:{theme_tokens.C_TEXT3};")
     lbl_fn.setFixedWidth(190)
 
     font_combo = QFontComboBox()
     font_combo.setFixedWidth(280)
-    font_combo.setCurrentFont(QFont(config.DEFAULT_FONT_NAME))
+    font_combo.setCurrentFont(QFont(theme_tokens.DEFAULT_FONT_NAME))
     font_combo.setEditable(True)
     font_combo.setToolTip("เลือกฟอนต์ หรือพิมพ์ชื่อฟอนต์ที่ต้องการ")
 
     lbl_font_preview = QLabel("สวัสดี  AaBbCc 0123  คุณภาพดี")
-    lbl_font_preview.setFont(QFont(config.DEFAULT_FONT_NAME, config.F_LG))
-    lbl_font_preview.setStyleSheet(f"color:{config.C_TEXT};")
+    lbl_font_preview.setFont(QFont(theme_tokens.DEFAULT_FONT_NAME, theme_tokens.F_LG))
+    lbl_font_preview.setStyleSheet(f"color:{theme_tokens.C_TEXT};")
 
     def _font_live():
         name = font_combo.currentFont().family()
-        lbl_font_preview.setFont(QFont(name, config.F_LG))
-        lbl_fn.setStyleSheet(f"color:{config.C_ORANGE}; font-weight:bold;")
+        lbl_font_preview.setFont(QFont(name, theme_tokens.F_LG))
+        lbl_fn.setStyleSheet(f"color:{theme_tokens.C_ORANGE}; font-weight:bold;")
     font_combo.currentFontChanged.connect(lambda _: _font_live())
 
     font_sel_row.addWidget(lbl_fn)
@@ -282,16 +283,16 @@ def tab_fonts(on_refresh=None) -> QWidget:
         chip_row.setSpacing(6)
         chip_row.addWidget(QLabel("💡 แนะนำ:"))
         chip_row.itemAt(0).widget().setStyleSheet(
-            f"color:{config.C_TEXT2}; font-size:{config.F_SM}pt;")
+            f"color:{theme_tokens.C_TEXT2}; font-size:{theme_tokens.F_SM}pt;")
         for fname in suggested[:9]:
             chip = QPushButton(fname)
             chip.setFixedHeight(26)
             chip.setStyleSheet(
-                f"QPushButton {{border:1px solid {config.C_BORDER}; border-radius:13px;"
-                f" padding:0 10px; background:white; color:{config.C_TEXT};"
-                f" font-size:{config.F_SM}pt;}}"
-                f"QPushButton:hover {{background:{config.C_ACCENT}; color:white;"
-                f" border-color:{config.C_ACCENT};}}"
+                f"QPushButton {{border:1px solid {theme_tokens.C_BORDER}; border-radius:13px;"
+                f" padding:0 10px; background:white; color:{theme_tokens.C_TEXT};"
+                f" font-size:{theme_tokens.F_SM}pt;}}"
+                f"QPushButton:hover {{background:{theme_tokens.C_ACCENT}; color:white;"
+                f" border-color:{theme_tokens.C_ACCENT};}}"
             )
             chip.clicked.connect(lambda _, f=fname: (
                 font_combo.setCurrentFont(QFont(f)),
@@ -309,7 +310,7 @@ def tab_fonts(on_refresh=None) -> QWidget:
     outer.addWidget(divider())
 
     font_vars = sorted(
-        [(k, v) for k, v in vars(config).items()
+        [(k, v) for k, v in vars(theme_tokens).items()
          if k.startswith("F_") and isinstance(v, int)],
         key=lambda x: x[1]
     )
@@ -324,7 +325,7 @@ def tab_fonts(on_refresh=None) -> QWidget:
         lbl_key = QLabel(name)
         lbl_key.setFont(QFont("Courier New", 10, QFont.Weight.Bold))
         lbl_key.setFixedWidth(90)
-        lbl_key.setStyleSheet(f"color: {config.C_TEXT3};")
+        lbl_key.setStyleSheet(f"color: {theme_tokens.C_TEXT3};")
 
         sb = QSpinBox()
         sb.setRange(6, 72)
@@ -334,19 +335,19 @@ def tab_fonts(on_refresh=None) -> QWidget:
         spinboxes[name] = sb
 
         lbl_sample = QLabel("สวัสดี AaBbCc 0123")
-        lbl_sample.setFont(QFont(config.DEFAULT_FONT_NAME, size))
-        lbl_sample.setStyleSheet(f"color: {config.C_TEXT};")
+        lbl_sample.setFont(QFont(theme_tokens.DEFAULT_FONT_NAME, size))
+        lbl_sample.setStyleSheet(f"color: {theme_tokens.C_TEXT};")
         lbl_sample.setFixedWidth(260)
 
         lbl_bold = QLabel("Bold — ตัวหนา")
-        lbl_bold.setFont(QFont(config.DEFAULT_FONT_NAME, size, QFont.Weight.Bold))
-        lbl_bold.setStyleSheet(f"color: {config.C_ACCENT};")
+        lbl_bold.setFont(QFont(theme_tokens.DEFAULT_FONT_NAME, size, QFont.Weight.Bold))
+        lbl_bold.setStyleSheet(f"color: {theme_tokens.C_ACCENT};")
 
         def _live(val, ls=lbl_sample, lb=lbl_bold, lk=lbl_key):
             f = font_combo.currentFont().family()
             ls.setFont(QFont(f, val))
             lb.setFont(QFont(f, val, QFont.Weight.Bold))
-            lk.setStyleSheet(f"color: {config.C_ORANGE}; font-weight: bold;")
+            lk.setStyleSheet(f"color: {theme_tokens.C_ORANGE}; font-weight: bold;")
         sb.valueChanged.connect(_live)
         font_combo.currentFontChanged.connect(
             lambda _, sb=sb, ls=lbl_sample, lb=lbl_bold: _live(sb.value(), ls, lb))
@@ -379,12 +380,12 @@ def tab_fonts(on_refresh=None) -> QWidget:
                 )
             CONFIG_PATH.write_text(text, encoding="utf-8")
             if on_refresh:
-                importlib.reload(config)
+                importlib.reload(theme_tokens)
                 on_refresh()
         except Exception as ex:
             QMessageBox.critical(None, "เกิดข้อผิดพลาด", str(ex))
 
-    btn_save = QPushButton("💾  บันทึกลง config.py")
+    btn_save = QPushButton("💾  บันทึกลง ui/styles/tokens.py")
     btn_save.setObjectName("btn_primary")
     btn_save.setFixedWidth(220)
     btn_save.clicked.connect(_save_fonts)
@@ -394,7 +395,7 @@ def tab_fonts(on_refresh=None) -> QWidget:
     btn_reset.setFixedWidth(100)
     def _reset_fonts():
         if on_refresh:
-            importlib.reload(config)
+            importlib.reload(theme_tokens)
             on_refresh()
     btn_reset.clicked.connect(_reset_fonts)
 
@@ -427,7 +428,7 @@ def tab_buttons(on_refresh=None) -> QWidget:
 
         lbl = QLabel(f'btn("ข้อความ", "{style}")')
         lbl.setFont(QFont("Courier New", 11))
-        lbl.setStyleSheet(f"color: {config.C_TEXT2};")
+        lbl.setStyleSheet(f"color: {theme_tokens.C_TEXT2};")
 
         row.addWidget(b)
         row.addWidget(lbl)
@@ -443,7 +444,7 @@ def tab_buttons(on_refresh=None) -> QWidget:
     swatch_row = QHBoxLayout()
     swatch_row.setSpacing(12)
     for key in btn_color_keys:
-        val = getattr(config, key, None)
+        val = getattr(theme_tokens, key, None)
         if val:
             sw = Swatch(key, val)
             if on_refresh:
@@ -470,10 +471,10 @@ def tab_cards(on_refresh=None) -> QWidget:
     card_row = QHBoxLayout()
     card_row.setSpacing(12)
     cards_data = [
-        ("ยอดพิมพ์รวม", config.C_ACCENT,  42300, 1250),
-        ("A4 สี",       config.C_ORANGE,  18500,  870),
-        ("A4 ขาวดำ",    config.C_TEXT2,   23800,  380),
-        ("ค่าใช้จ่าย",  config.C_GREEN,   None,   None),
+        ("ยอดพิมพ์รวม", theme_tokens.C_ACCENT,  42300, 1250),
+        ("A4 สี",       theme_tokens.C_ORANGE,  18500,  870),
+        ("A4 ขาวดำ",    theme_tokens.C_TEXT2,   23800,  380),
+        ("ค่าใช้จ่าย",  theme_tokens.C_GREEN,   None,   None),
     ]
     for title, color, val, diff in cards_data:
         sc = StatCard(title, color)
@@ -493,12 +494,12 @@ def tab_cards(on_refresh=None) -> QWidget:
     badge_row = QHBoxLayout()
     badge_row.setSpacing(8)
     badge_data = [
-        ("USER",   config.C_ACCENT),
-        ("SUM",    config.C_GREEN),
-        ("PROD",   config.C_ORANGE),
-        ("ซ้ำ",    config.C_RED),
-        ("คำเตือน", config.C_YELLOW),
-        ("ปกติ",   config.C_PURPLE),
+        ("USER",   theme_tokens.C_ACCENT),
+        ("SUM",    theme_tokens.C_GREEN),
+        ("PROD",   theme_tokens.C_ORANGE),
+        ("ซ้ำ",    theme_tokens.C_RED),
+        ("คำเตือน", theme_tokens.C_YELLOW),
+        ("ปกติ",   theme_tokens.C_PURPLE),
     ]
     for text, color in badge_data:
         badge_row.addWidget(badge(text, color))
@@ -516,7 +517,7 @@ def tab_cards(on_refresh=None) -> QWidget:
     sw_row = QHBoxLayout()
     sw_row.setSpacing(12)
     for key in card_color_keys:
-        val = getattr(config, key, None)
+        val = getattr(theme_tokens, key, None)
         if val:
             sw = Swatch(key, val)
             if on_refresh:
@@ -549,7 +550,7 @@ def tab_graph(on_refresh=None) -> QWidget:
     font_spinboxes = {}
 
     for var_name, label in graph_font_vars:
-        val = getattr(config, var_name, 12)
+        val = getattr(theme_tokens, var_name, 12)
         row_w = QWidget()
         row = QHBoxLayout(row_w)
         row.setSpacing(12)
@@ -558,7 +559,7 @@ def tab_graph(on_refresh=None) -> QWidget:
         lbl = QLabel(label)
         lbl.setFont(QFont("Courier New", 10))
         lbl.setFixedWidth(160)
-        lbl.setStyleSheet(f"color: {config.C_TEXT2};")
+        lbl.setStyleSheet(f"color: {theme_tokens.C_TEXT2};")
 
         sb = QSpinBox()
         sb.setRange(8, 48)
@@ -568,11 +569,11 @@ def tab_graph(on_refresh=None) -> QWidget:
         font_spinboxes[var_name] = sb
 
         lbl_preview = QLabel(f"ตัวอย่าง font {val}pt")
-        lbl_preview.setFont(QFont(config.DEFAULT_FONT_NAME, val))
-        lbl_preview.setStyleSheet(f"color:{config.C_TEXT};")
+        lbl_preview.setFont(QFont(theme_tokens.DEFAULT_FONT_NAME, val))
+        lbl_preview.setStyleSheet(f"color:{theme_tokens.C_TEXT};")
 
         def _live(v, preview=lbl_preview, size_var=var_name):
-            preview.setFont(QFont(config.DEFAULT_FONT_NAME, v))
+            preview.setFont(QFont(theme_tokens.DEFAULT_FONT_NAME, v))
         sb.valueChanged.connect(_live)
 
         row.addWidget(lbl)
@@ -595,7 +596,7 @@ def tab_graph(on_refresh=None) -> QWidget:
     bar_spinboxes = {}
 
     for var_name, label, min_v, max_v, step in bar_settings:
-        val = getattr(config, var_name, 0.5)
+        val = getattr(theme_tokens, var_name, 0.5)
         row_w = QWidget()
         row = QHBoxLayout(row_w)
         row.setSpacing(12)
@@ -604,7 +605,7 @@ def tab_graph(on_refresh=None) -> QWidget:
         lbl = QLabel(label)
         lbl.setFont(QFont("Courier New", 10))
         lbl.setFixedWidth(160)
-        lbl.setStyleSheet(f"color: {config.C_TEXT2};")
+        lbl.setStyleSheet(f"color: {theme_tokens.C_TEXT2};")
 
         sb = QDoubleSpinBox()
         sb.setRange(min_v, max_v)
@@ -636,7 +637,7 @@ def tab_graph(on_refresh=None) -> QWidget:
 
     # Machine colors
     lay.addWidget(QLabel("สี Machine (by_machine view)"))
-    machine_colors = getattr(config, "GRAPH_COLORS_MACHINE", ["#2563EB", "#DC2626", "#16A34A"])
+    machine_colors = getattr(theme_tokens, "GRAPH_COLORS_MACHINE", ["#2563EB", "#DC2626", "#16A34A"])
     machine_row = QHBoxLayout()
     machine_row.setSpacing(8)
     for i, color in enumerate(machine_colors):
@@ -650,7 +651,7 @@ def tab_graph(on_refresh=None) -> QWidget:
     # Type colors
     lay.addSpacing(8)
     lay.addWidget(QLabel("สี Type (by_type view)"))
-    type_colors_dict = getattr(config, "GRAPH_COLORS_TYPE", {})
+    type_colors_dict = getattr(theme_tokens, "GRAPH_COLORS_TYPE", {})
     type_row = QHBoxLayout()
     type_row.setSpacing(8)
     type_keys = ["copy_color", "copy_bw", "print_color", "print_bw"]
@@ -669,7 +670,7 @@ def tab_graph(on_refresh=None) -> QWidget:
     tooltip_row = QHBoxLayout()
     tooltip_row.setSpacing(8)
     for key in ["GRAPH_TOOLTIP_COLOR", "GRAPH_TOOLTIP_BG"]:
-        val = getattr(config, key, "#000000")
+        val = getattr(theme_tokens, key, "#000000")
         sw = Swatch(key, val)
         if on_refresh:
             sw.need_refresh.connect(on_refresh)
@@ -700,13 +701,13 @@ def tab_graph(on_refresh=None) -> QWidget:
                 )
             CONFIG_PATH.write_text(text, encoding="utf-8")
             if on_refresh:
-                importlib.reload(config)
+                importlib.reload(theme_tokens)
                 on_refresh()
             QMessageBox.information(None, "สำเร็จ", "บันทึกการตั้งค่ากราฟเรียบร้อยแล้ว")
         except Exception as ex:
             QMessageBox.critical(None, "เกิดข้อผิดพลาด", str(ex))
 
-    btn_save = QPushButton("💾  บันทึกลง config.py")
+    btn_save = QPushButton("💾  บันทึกลง ui/styles/tokens.py")
     btn_save.setObjectName("btn_primary")
     btn_save.setFixedWidth(220)
     btn_save.clicked.connect(_save_graph_settings)
@@ -731,16 +732,16 @@ class PreviewWindow(QMainWindow):
         self.resize(1100, 750)
 
         self._tabs = QTabWidget()
-        self._tabs.setFont(fnt(config.F_LG))
+        self._tabs.setFont(fnt(theme_tokens.F_LG))
         self.setCentralWidget(self._tabs)
         self._rebuild_tabs()
 
     def _rebuild_tabs(self):
-        """สร้าง (หรือสร้างใหม่) ทุก tab — เรียกหลัง reload config"""
+        """สร้าง (หรือสร้างใหม่) ทุก tab — เรียกหลัง reload theme_tokens"""
         current = self._tabs.currentIndex()
         self._tabs.clear()
-        self.setStyleSheet(config.build_qss())
-        self._tabs.setFont(fnt(config.F_LG))
+        self.setStyleSheet(build_qss())
+        self._tabs.setFont(fnt(theme_tokens.F_LG))
         cb = self._on_color_changed
         self._tabs.addTab(tab_colors(on_refresh=cb),  "🎨  สี (C_*)")
         self._tabs.addTab(tab_fonts(on_refresh=cb),   "🔤  ฟอนต์ (F_*)")
@@ -751,10 +752,10 @@ class PreviewWindow(QMainWindow):
             self._tabs.setCurrentIndex(current)
 
     def _on_color_changed(self):
-        """Swatch บันทึกแล้ว → reload config → rebuild ทุก tab"""
-        importlib.reload(config)
+        """Swatch บันทึกแล้ว → reload theme_tokens → rebuild ทุก tab"""
+        importlib.reload(theme_tokens)
         self._rebuild_tabs()
-        self.statusBar().showMessage("✅  บันทึกและอัปเดต config.py เรียบร้อยแล้ว", 3000)
+        self.statusBar().showMessage("✅  บันทึกและอัปเดต ui/styles/tokens.py เรียบร้อยแล้ว", 3000)
 
 
 # ════════════════════════════════════════════════════════════
@@ -763,8 +764,8 @@ class PreviewWindow(QMainWindow):
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
-    app.setFont(fnt(config.F_MD))
+    app.setFont(fnt(theme_tokens.F_MD))
     win = PreviewWindow()
-    win.statusBar().showMessage("คลิกที่ swatch สีใดก็ได้เพื่อแก้ไขและบันทึกลง config.py")
+    win.statusBar().showMessage("คลิกที่ swatch สีใดก็ได้เพื่อแก้ไขและบันทึกลง ui/styles/tokens.py")
     win.show()
     sys.exit(app.exec())

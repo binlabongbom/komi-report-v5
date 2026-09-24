@@ -1,4 +1,6 @@
 """Member roles and evidence times in Automation, without network refresh work."""
+from ui.styles import tables as tables_styles
+from ui.styles import text as text_styles
 from ui.resource_cleanup import close_executor_with
 from concurrent.futures import ThreadPoolExecutor
 
@@ -48,7 +50,7 @@ class ReaderMembersPanel(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 8, 0, 12)
         title = QLabel(tr('สมาชิกคอมพิวเตอร์และสถานะการอ่าน', 'Computer members and reader roles'))
-        title.setStyleSheet('font-weight:700;color:#123262;')
+        title.setStyleSheet(text_styles.label('#123262', font_weight='700'))
         layout.addWidget(title)
         self.note = QLabel(tr('บทบาทที่ระบบเลือกล่าสุด · เวลาเชื่อมต่อแยกจากเวลาข้อมูลที่อ่านหรือยืนยันรับแล้ว',
                               'Last selected roles · Connection time is separate from saved reading / acknowledged data time'))
@@ -65,9 +67,7 @@ class ReaderMembersPanel(QWidget):
         self.table.setTextElideMode(Qt.TextElideMode.ElideNone)
         self.table.horizontalHeader().setMinimumSectionSize(90)
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
-        self.table.setStyleSheet('QTableWidget{background:white;border:1px solid #D7E0E8;}'
-            'QHeaderView::section{background:#EDF2F7;color:#123262;padding:6px;border:1px solid #D7E0E8;}'
-            'QTableWidget::item{padding:5px;}')
+        self.table.setStyleSheet(tables_styles.READER_MEMBERS_PANEL_TABLE)
         self.table.setMinimumHeight(130)
         layout.addWidget(self.table)
 

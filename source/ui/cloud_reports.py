@@ -1,5 +1,18 @@
 from __future__ import annotations
 
+from ui.styles import surfaces as surfaces_styles
+from ui.styles import text as text_styles
+from ui.styles import reports as report_styles
+from ui.styles.reports import (
+    NAVY,
+    BLUE,
+    ORANGE,
+    SLATE,
+    GREEN,
+    MUTED,
+    DEVICE_COLORS,
+)
+
 from collections import defaultdict
 from collections.abc import Iterable
 from datetime import date
@@ -53,15 +66,6 @@ from widgets import FrozenLeftTable, VisibleCheckBox
 from ui.usage_table import UsageTable, PrinterUsageTable
 from ui.flow_layout import FlowLayout, FlowLabel, FlowWidget
 
-NAVY = "#123262"
-BLUE = "#1677C8"
-ORANGE = "#E58A18"
-SLATE = "#56677A"
-GREEN = "#16805A"
-LINE = "#D9E2EA"
-MUTED = "#66788A"
-PANEL = "#FFFFFF"
-DEVICE_COLORS = (BLUE, ORANGE, "#D65364")
 FIVE_CATEGORIES = ('Print Color', 'Print B&W', 'Copy Color', 'Copy B&W', 'Scan')
 
 USAGE_METRICS = (
@@ -186,7 +190,7 @@ class _CloudOverviewMetricCard(QFrame):
         self.lbl_title.setWordWrap(False)
         self.lbl_val = QLabel("—")
         self.lbl_val.setObjectName("cloud_overview_metric_value")
-        self.lbl_val.setStyleSheet(f"color:{accent};background:transparent;border:0;")
+        self.lbl_val.setStyleSheet(text_styles.label(accent, background='transparent', border='0'))
         self.lbl_val.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         self.lbl_detail = QLabel("")
         self.lbl_detail.setObjectName("cloud_overview_metric_detail")
@@ -250,7 +254,7 @@ class _CloudOverviewMetricCard(QFrame):
         if self._value_pixel_size != pixel_size:
             self._value_pixel_size = pixel_size
             self.lbl_val.setStyleSheet(
-                f"color:{self._accent};background:transparent;border:0;font-size:{pixel_size}px;"
+                text_styles.label(self._accent, background='transparent', border='0', font_size=f'{pixel_size}px')
             )
         self.lbl_val.setFixedWidth(min(available, natural_width + 2))
         self.layout().setColumnMinimumWidth(1, self.lbl_val.width())
@@ -427,53 +431,7 @@ class CloudReportsWidget(QWidget):
     def _build(self) -> None:
         self.setObjectName("cloud_reports")
         self.setStyleSheet(
-            f"QWidget#cloud_reports{{background:#F3F6F8;color:#243244;}}"
-            "QWidget#cloud_reports QLabel{background:transparent;border:none;}"
-            f"QFrame#cloud_report_toolbar,QFrame#cloud_report_panel{{"
-            f"background:{PANEL};border:1px solid {LINE};border-radius:7px;}}"
-            "QLabel#cloud_title{font-weight:700;color:#102A43;}"
-            f"QLabel#cloud_subtitle,QLabel#cloud_panel_subtitle{{color:{MUTED};font-size:12px;}}"
-            "QLabel#cloud_panel_title{font-size:15px;font-weight:750;color:#25364A;}"
-            f"QFrame#cloud_overview_kpi_panel{{background:{PANEL};border:1px solid {LINE};border-radius:12px;}}"
-            "QFrame#cloud_overview_metric_card{background:#FFFFFF;border:1px solid #D7E0EA;border-radius:9px;}"
-            "QWidget#cloud_overview_metric_content{background:transparent;border:none;}"
-            "QLabel#cloud_overview_metric_title{color:#25364A;font-size:15px;font-weight:750;}"
-            f"QLabel#cloud_overview_metric_detail{{color:{MUTED};font-size:11px;}}"
-            "QLabel#cloud_overview_metric_value{font-size:24px;font-weight:800;}"
-            f"QTableWidget{{background:white;border:1px solid {LINE};gridline-color:#E8EDF2;"
-            "alternate-background-color:#F7F9FB;selection-background-color:#E8F2FB;"
-            "selection-color:#203247;}"
-            "QTableWidget::item{padding:8px 10px;}"
-            "QHeaderView::section{background:#F1F4F7;color:#526476;border:0;"
-            "border-bottom:1px solid #D9E2EA;padding:8px 10px 8px 1px;font-weight:700;}"
-            "QLabel#cloud_period_label{color:#526476;font-size:11px;font-weight:700;}"
-            "QDateEdit#cloud_period_date{background:white;color:#243244;border:1px solid #B9CBDD;"
-            "border-radius:6px;padding:8px 10px;min-width:132px;font-weight:700;}"
-            f"QDateEdit#cloud_period_date:hover,QDateEdit#cloud_period_date:focus{{border-color:{BLUE};}}"
-            "QDateEdit#cloud_period_date::drop-down{border:0;width:24px;}"
-            f"QPushButton#cloud_primary{{background:{BLUE};color:white;border:0;border-radius:5px;"
-            "padding:9px 14px;font-weight:700;}"
-            f"QPushButton#cloud_export{{background:white;color:{NAVY};border:1px solid #B9CBDD;"
-            "border-radius:5px;padding:9px 14px;font-weight:700;}"
-            f"QPushButton#cloud_export:hover{{background:#EEF5FB;border-color:{BLUE};}}"
-            f"QPushButton#cloud_retry{{color:{NAVY};background:white;border:1px solid #B9CBDD;"
-            "border-radius:4px;padding:4px 6px;font-size:11px;}"
-            f"QPushButton#cloud_reset{{background:#EEF3F7;color:{NAVY};border:1px solid {LINE};"
-            "border-radius:5px;padding:7px 11px;font-weight:700;}"
-            "QWidget#cloud_calendar_control{background:transparent;border:0;}"
-            f"QPushButton#cloud_calendar_button{{background:#FFFFFF;color:{NAVY};"
-            "border:1px solid #B9CBDD;border-radius:4px;"
-            "padding:0;margin:0;font-size:16px;}"
-            f"QPushButton#cloud_calendar_button:hover,QPushButton#cloud_calendar_button:focus{{"
-            f"background:#EEF5FB;border-color:{BLUE};}}"
-            "QPushButton#cloud_calendar_button:pressed{background:#DDECF8;}"
-            f"QPushButton#cloud_granularity{{background:#EEF3F7;color:{NAVY};border:1px solid {LINE};"
-            "border-radius:5px;min-width:30px;padding:6px 8px;font-weight:800;}"
-            f"QPushButton#cloud_granularity:checked{{background:{NAVY};color:white;border-color:{NAVY};}}"
-            f"QLabel#cloud_filter_badge{{background:#FFF2DE;color:#95570A;border:1px solid #F2D09B;"
-            "border-radius:11px;padding:5px 9px;font-weight:700;}"
-            "QLabel#cloud_error{background:#FFF0F1;color:#A61D2D;border:1px solid #F1BBC1;"
-            "border-radius:5px;padding:9px 12px;font-weight:700;}"
+            report_styles.base_qss()
         )
         self._base_qss = self.styleSheet()
         root = QVBoxLayout(self)
@@ -764,21 +722,7 @@ class CloudReportsWidget(QWidget):
             return
         self._compact_density = compact
         self.tabs.set_compact(compact)
-        sizes = {
-            "cloud_subtitle": 11 if compact else 12,
-            "cloud_panel_title": 13 if compact else 15,
-            "cloud_panel_subtitle": 11 if compact else 12,
-            "cloud_overview_metric_title": 11 if compact else 13,
-            "cloud_overview_metric_value": 24 if compact else 32,
-            "cloud_overview_metric_detail": 10 if compact else 11,
-        }
-        density_qss = "".join(
-            f"QLabel#{name}{{font-size:{size}px;}}" for name, size in sizes.items()
-        )
-        density_qss += (
-            f"QDateEdit#cloud_period_date{{font-size:{11 if compact else 12}px;padding:4px 7px;min-width:126px;}}"
-            f"QPushButton#cloud_export,QPushButton#cloud_primary{{font-size:{11 if compact else 12}px;padding:6px 10px;}}"
-        )
+        density_qss = report_styles.density_qss(compact)
         self.setStyleSheet(self._base_qss + density_qss)
         self._header_subtitle.setVisible(True)
         for card in self.overview_kpis.values():
@@ -998,7 +942,7 @@ class CloudReportsWidget(QWidget):
         for button, mode in ((self.user_overview_button, 'overview'), (self.user_printers_button, 'printers')):
             button.setCheckable(True)
             button.setObjectName('cloud_reset')
-            button.setStyleSheet('QPushButton:checked { background:#123262; color:white; border:1px solid #123262; }')
+            button.setStyleSheet(report_styles.CLOUD_REPORTS_WIDGET_BUTTON)
             button.clicked.connect(lambda _checked, value=mode: self._set_user_table_mode(value))
             title_row.addWidget(button)
         self.user_overview_button.setChecked(True)
@@ -1207,8 +1151,7 @@ class CloudReportsWidget(QWidget):
         )
         note.setWordWrap(True)
         note.setStyleSheet(
-            "background:#EEF6F9;color:#245268;border:1px solid #C9DFE8;"
-            "border-radius:6px;padding:9px 11px;"
+            surfaces_styles.INFO_NOTICE
         )
         layout.addWidget(note)
         self.legacy_raw_tabs = QTabWidget()
@@ -1260,8 +1203,7 @@ class CloudReportsWidget(QWidget):
         )
         notice.setWordWrap(True)
         notice.setStyleSheet(
-            "background:#EEF6F9;color:#245268;border:1px solid #C9DFE8;"
-            "border-radius:6px;padding:9px 11px;"
+            surfaces_styles.INFO_NOTICE
         )
         panel_layout.addWidget(notice)
         self.legacy_history_table = _table(
@@ -1290,7 +1232,7 @@ class CloudReportsWidget(QWidget):
         toolbar_layout.setSpacing(8)
 
         title = QLabel(tr('ช่วงรายงาน · สูงสุด 12 เดือน', 'Report period · up to 12 months'))
-        title.setStyleSheet("font-weight:750;color:#25364A;")
+        title.setStyleSheet(text_styles.label('#25364A', font_weight='750'))
         toolbar_layout.addWidget(title, 0, 0)
 
         start_label = QLabel("วันที่เริ่มต้น")
@@ -1368,12 +1310,7 @@ class CloudReportsWidget(QWidget):
         calendar = control.calendarWidget()
         calendar.setGridVisible(True)
         calendar.setStyleSheet(
-            "QCalendarWidget QWidget{background:#FFFFFF;color:#243244;}"
-            "QCalendarWidget QToolButton{background:#EEF4F8;color:#25364A;border:0;"
-            "padding:6px;font-weight:700;}"
-            "QCalendarWidget QAbstractItemView{background:#FFFFFF;color:#243244;"
-            "selection-background-color:#1677C8;selection-color:#FFFFFF;outline:0;}"
-            "QCalendarWidget QSpinBox{background:#FFFFFF;color:#243244;border:1px solid #B9CBDD;}"
+            report_styles.PERIOD_CALENDAR
         )
         return control
 
@@ -1382,7 +1319,7 @@ class CloudReportsWidget(QWidget):
         view = QChartView()
         view.setRenderHint(QPainter.RenderHint.Antialiasing)
         view.setFixedHeight(240)
-        view.setStyleSheet("background:white;border:0;")
+        view.setStyleSheet(report_styles.CLOUD_REPORTS_WIDGET_CHART_VIEW)
         return view
 
 

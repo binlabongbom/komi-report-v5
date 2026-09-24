@@ -1,4 +1,7 @@
 """Compact usage tables with a frozen period and content-aware numeric widths."""
+from ui.styles import tables as tables_styles
+from ui.styles import reports as reports_styles
+from ui.styles import text as text_styles
 from PyQt6.QtCore import Qt, QTimer, QEvent, pyqtSignal
 from PyQt6.QtGui import QFontMetrics
 from PyQt6.QtWidgets import QAbstractItemView, QWidget, QHBoxLayout, QLabel, QToolButton
@@ -19,7 +22,7 @@ class UsageTable(FrozenLeftTable):
             table.setWordWrap(False)
             table.setTextElideMode(Qt.TextElideMode.ElideNone)
             table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
-            table.setStyleSheet(self._TBL_STYLE + 'QTableWidget::item { padding:2px 4px; }')
+            table.setStyleSheet(self._TBL_STYLE + tables_styles.COMPACT_CELL)
         for table in (self._right, self._group_right):
             table.horizontalHeader().setMinimumSectionSize(38)
         for table in (self._group_left, self._group_right):
@@ -92,7 +95,7 @@ class PrinterUsageTable(UsageTable):
         self.printer_columns = {}
         self._printer_groups = ()
         for table in (self._left, self._right, self._group_left, self._group_right):
-            table.setStyleSheet(table.styleSheet() + 'QTableWidget::item { padding:2px; }')
+            table.setStyleSheet(table.styleSheet() + tables_styles.MATRIX_CELL)
         for table in (self._right, self._group_right):
             table.setHorizontalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
         self._right.viewport().installEventFilter(self)
@@ -153,7 +156,7 @@ class PrinterUsageTable(UsageTable):
         for identity, name, expanded in groups:
             start, _ = self.printer_columns[identity]
             host = QWidget()
-            host.setStyleSheet('background:#F8FAFC;')
+            host.setStyleSheet(reports_styles.PRINTER_USAGE_TABLE_HOST)
             layout = QHBoxLayout(host)
             layout.setContentsMargins(6, 3, 6, 3)
             layout.setSpacing(5)
@@ -161,7 +164,7 @@ class PrinterUsageTable(UsageTable):
             label.setMinimumWidth(0)
             label.setWordWrap(True)
             label.setToolTip(name)
-            label.setStyleSheet('color:#123262;font-weight:600;border:none;')
+            label.setStyleSheet(text_styles.label('#123262', font_weight='600', border='none'))
             button = QToolButton()
             button.setText('−' if expanded else '+')
             button.setCheckable(True)
@@ -171,7 +174,7 @@ class PrinterUsageTable(UsageTable):
             action = tr('ยุบรายละเอียด', 'Collapse details') if expanded else tr('ขยายรายละเอียด', 'Expand details')
             button.setAccessibleName(f'{action} {name}')
             button.setToolTip(f'{action} {name}')
-            button.setStyleSheet('QToolButton { color:#123262; background:#E8F2FA; border:1px solid #AABBCF; border-radius:4px; font-size:18px; } QToolButton:focus { border:2px solid #0065A3; }')
+            button.setStyleSheet(reports_styles.PRINTER_USAGE_TABLE_BUTTON)
             button.clicked.connect(lambda _checked, key=identity: self.printer_toggled.emit(key))
             layout.addWidget(label, 1)
             layout.addWidget(button)

@@ -2,6 +2,14 @@
 # pages.py  —  แต่ละหน้าของโปรแกรม
 # ═══════════════════════════════════════════════════════════
 
+from ui.styles import devices as devices_styles
+from ui.styles import legacy as legacy_styles
+from ui.styles import reports as reports_styles
+from ui.styles import settings as settings_styles
+from ui.styles import buttons as buttons_styles
+from ui.styles import inputs as inputs_styles
+from ui.styles import surfaces as surfaces_styles
+from ui.styles import text as text_styles
 import json
 import logging
 import os
@@ -70,7 +78,7 @@ class _NoParserMatchDialog(QDialog):
 
         icon = QLabel("⚠️")
         icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        icon.setStyleSheet("font-size:36px; background:transparent; border:none;")
+        icon.setStyleSheet(legacy_styles.NO_PARSER_MATCH_DIALOG_ICON)
         lay.addWidget(icon)
 
         title = QLabel("ไม่พบ Parser ที่ตรงกับไฟล์นี้")
@@ -86,7 +94,7 @@ class _NoParserMatchDialog(QDialog):
         )
         sub_msg.setAlignment(Qt.AlignmentFlag.AlignCenter)
         sub_msg.setWordWrap(True)
-        sub_msg.setStyleSheet("color:#64748B; font-size:10pt;")
+        sub_msg.setStyleSheet(text_styles.label('#64748B', font_size='10pt'))
         sub_msg.setTextFormat(Qt.TextFormat.RichText)
         lay.addWidget(sub_msg)
 
@@ -96,9 +104,7 @@ class _NoParserMatchDialog(QDialog):
         btn_open.setFixedHeight(40)
         btn_open.setCursor(Qt.CursorShape.PointingHandCursor)
         btn_open.setStyleSheet(
-            "QPushButton { background:#2563EB; color:white; border:none;"
-            " border-radius:8px; padding:8px 18px; font-weight:600; font-size:10pt; }"
-            "QPushButton:hover { background:#1E3A8A; }"
+            legacy_styles.NO_PARSER_MATCH_DIALOG_BTN_OPEN
         )
         btn_open.clicked.connect(self._on_open_parser)
         lay.addWidget(btn_open)
@@ -107,9 +113,7 @@ class _NoParserMatchDialog(QDialog):
         btn_confirm.setFixedHeight(36)
         btn_confirm.setCursor(Qt.CursorShape.PointingHandCursor)
         btn_confirm.setStyleSheet(
-            "QPushButton { background:#F0FDF4; color:#16A34A; border:1.5px solid #16A34A;"
-            " border-radius:8px; padding:6px 18px; font-weight:600; font-size:10pt; }"
-            "QPushButton:hover { background:#16A34A; color:white; }"
+            legacy_styles.NO_PARSER_MATCH_DIALOG_BTN_CONFIRM
         )
         btn_confirm.clicked.connect(self._on_confirm)
         lay.addWidget(btn_confirm)
@@ -118,8 +122,7 @@ class _NoParserMatchDialog(QDialog):
         btn_cancel.setFixedHeight(30)
         btn_cancel.setCursor(Qt.CursorShape.PointingHandCursor)
         btn_cancel.setStyleSheet(
-            "QPushButton { background:transparent; color:#94A3B8; border:none; font-size:9pt; }"
-            "QPushButton:hover { color:#0F172A; text-decoration:underline; }"
+            legacy_styles.NO_PARSER_MATCH_DIALOG_BTN_CANCEL
         )
         btn_cancel.clicked.connect(self.reject)
         lay.addWidget(btn_cancel, alignment=Qt.AlignmentFlag.AlignCenter)
@@ -224,7 +227,7 @@ class _ManualDocumentImage(QLabel):
             QSizePolicy.Policy.Preferred,
         )
         self.setMinimumWidth(0)
-        self.setStyleSheet("background:#FFFFFF; border:0;")
+        self.setStyleSheet(surfaces_styles.WHITE_BORDERLESS)
 
     def hasHeightForWidth(self):
         return True
@@ -254,7 +257,57 @@ from PyQt6.QtCharts import (
     QBarCategoryAxis, QLineSeries, QValueAxis
 )
 
-from config import *
+from config import (
+    APP_TITLE,
+    APP_VER,
+    DB_PATH,
+    DEFAULT_WASTE_PCT,
+    SLOT_NAMES,
+)
+from ui.styles.tokens import (
+    C_ACCENT,
+    C_CARD,
+    C_GREEN,
+    C_ORANGE,
+    C_PURPLE,
+    C_STATUS_OFFLINE,
+    C_STATUS_ONLINE,
+    C_STATUS_PENDING,
+    C_TABLE_BORDER,
+    C_TEXT,
+    C_TEXT2,
+    C_TEXT3,
+    C_TONER_BORDER,
+    C_TONER_C,
+    C_TONER_K,
+    C_TONER_M,
+    C_TONER_TRACK,
+    C_TONER_Y,
+    F_2XL,
+    F_LG,
+    F_MD,
+    F_SM,
+    F_XL,
+    F_XS,
+    GRAPH_AXIS_LABEL_SIZE,
+    GRAPH_BAR_WIDTH,
+    GRAPH_BG_COLOR,
+    GRAPH_COLORS_MACHINE,
+    GRAPH_COLORS_TYPE,
+    GRAPH_GRID_ALPHA,
+    GRAPH_TITLE_SIZE,
+    GRAPH_TOOLTIP_BG,
+    GRAPH_TOOLTIP_COLOR,
+    GRAPH_TOOLTIP_SIZE,
+    GRAPH_VALUE_SIZE,
+    PAGE_OVERVIEW_MARGIN_B,
+    PAGE_OVERVIEW_MARGIN_L,
+    PAGE_OVERVIEW_MARGIN_R,
+    PAGE_OVERVIEW_MARGIN_T,
+    SLOT_COLORS,
+    SLOT_LIGHT,
+)
+from ui.styles.overview import build_overview_qss
 from database import (
     get_cfg, set_cfg, get_price, get_billing_day,
     get_last_two, get_all_readings, calc_cost, clear_slot, reset_db,
@@ -324,13 +377,13 @@ class _OverviewMetricCard(QFrame):
         self.lbl_val = QLabel("—")
         self.lbl_val.setObjectName("overview_metric_value")
         self.lbl_val.setFont(fnt(F_2XL, True))
-        self.lbl_val.setStyleSheet(f"color:{accent};")
+        self.lbl_val.setStyleSheet(text_styles.label(accent))
         self.lbl_val.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         self.lbl_diff = QLabel("")
         self.lbl_diff.setObjectName("overview_metric_detail")
         self.lbl_diff.setFont(fnt(F_MD))
         self.lbl_diff.setWordWrap(False)
-        self.lbl_diff.setStyleSheet(f"color:{C_TEXT2};")
+        self.lbl_diff.setStyleSheet(text_styles.label(C_TEXT2))
         left_layout.addWidget(self.lbl_title)
         left_layout.addWidget(self.lbl_diff)
         layout.addWidget(left, 1)
@@ -382,7 +435,7 @@ class _OverviewTonerBar(QWidget):
         self.setFixedHeight(32)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.setAutoFillBackground(False)
-        self.setStyleSheet("background:transparent;border:none;")
+        self.setStyleSheet(surfaces_styles.TRANSPARENT)
 
     def sizeHint(self) -> QSize:
         return QSize(150, 32)
@@ -509,7 +562,7 @@ class PageOverviewV2(QWidget):
 
         self.read_feedback = QLabel('')
         self.read_feedback.setWordWrap(True)
-        self.read_feedback.setStyleSheet('color:#245268;padding:4px 0;')
+        self.read_feedback.setStyleSheet(text_styles.label('#245268', padding='4px 0'))
         self.read_feedback.hide()
         layout.addWidget(self.read_feedback)
 
@@ -576,7 +629,7 @@ class PageOverviewV2(QWidget):
         self.view_bar.setAccessibleName("กราฟแนวโน้มการใช้งานแยกตามเครื่อง")
         self.view_bar.setMinimumHeight(220)
         self.view_bar.setRenderHint(QPainter.RenderHint.Antialiasing)
-        self.view_bar.setStyleSheet(f"background:{C_CARD};border:none;")
+        self.view_bar.setStyleSheet(devices_styles.overview_v2_view_bar())
         trend_layout.addWidget(self.view_bar)
         self._overview_bottom_row = QBoxLayout(QBoxLayout.Direction.TopToBottom)
         self._overview_bottom_row.addWidget(self.trend_card)
@@ -814,7 +867,7 @@ class PageOverviewV2(QWidget):
                 raw_state, state_labels["pending"]
             )
             dot = QLabel("●")
-            dot.setStyleSheet(f"color:{state_color};font-size:16px;")
+            dot.setStyleSheet(text_styles.label(state_color, font_size='16px'))
             dot.setToolTip(state_text)
             name = QLabel(str(device.get("name") or f"เครื่อง {int(device.get('slot', 0)) + 1}"))
             name.setFont(fnt(F_XL, True))
@@ -823,7 +876,7 @@ class PageOverviewV2(QWidget):
             name.setToolTip(name.text())
             serial = QLabel(f"Serial No: {device.get('serial') or '—'}")
             serial.setFont(fnt(F_XS))
-            serial.setStyleSheet(f"color:{C_TEXT2};")
+            serial.setStyleSheet(text_styles.label(C_TEXT2))
             host_value = str(device.get("host") or "")
             host = QLabel()
             host.setObjectName("overview_ip_link")
@@ -865,12 +918,12 @@ class PageOverviewV2(QWidget):
             status = QLabel(f"● {state_text}")
             status.setFont(fnt(F_SM, True))
             status.setStyleSheet(
-                f"color:{state_color};background:transparent;border:none;"
+                text_styles.label(state_color, background='transparent', border='none')
             )
             status.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
             status_detail = QLabel(fallback_detail)
             status_detail.setFont(fnt(F_XS))
-            status_detail.setStyleSheet(f"color:{C_TEXT2};background:transparent;border:none;")
+            status_detail.setStyleSheet(text_styles.label(C_TEXT2, background='transparent', border='none'))
             status_detail.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
             status_detail.setWordWrap(True)
 
@@ -883,7 +936,7 @@ class PageOverviewV2(QWidget):
             toner_layout.setSpacing(2)
             toner_title = QLabel("หมึก")
             toner_title.setFont(fnt(F_XS, True))
-            toner_title.setStyleSheet(f"color:{C_TEXT2};background:transparent;border:none;")
+            toner_title.setStyleSheet(text_styles.label(C_TEXT2, background='transparent', border='none'))
             toner_layout.addWidget(toner_title)
             toner_bars = QHBoxLayout()
             toner_bars.setContentsMargins(0, 0, 0, 0)
@@ -907,7 +960,7 @@ class PageOverviewV2(QWidget):
         if not devices:
             no_device = QLabel("ยังไม่ได้ตั้งค่าเครื่องพิมพ์")
             no_device.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            no_device.setStyleSheet(f"color:{C_TEXT3};padding:18px;")
+            no_device.setStyleSheet(text_styles.label(C_TEXT3, padding='18px'))
             self.printer_list_layout.addWidget(no_device)
 
         has_data = bool(self._all_monthly)
@@ -965,18 +1018,17 @@ class PreviewDialog(QDialog):
                     break
             parser_banner = QFrame()
             parser_banner.setStyleSheet(
-                f"QFrame {{ background: {p_color}18; border: 1.5px solid {p_color}60;"
-                f" border-left: 5px solid {p_color}; border-radius: 8px; }}"
+                legacy_styles.preview_dialog_parser_banner(p_color)
             )
             pb_lay = QHBoxLayout(parser_banner)
             pb_lay.setContentsMargins(14, 10, 14, 10)
             pb_icon = QLabel("🔍  ตรวจพบรูปแบบไฟล์:")
             pb_icon.setFont(fnt(F_MD))
-            pb_icon.setStyleSheet(f"color:{C_TEXT2}; background:transparent; border:none;")
+            pb_icon.setStyleSheet(text_styles.label(C_TEXT2, background='transparent', border='none'))
             pb_name = QLabel(self.parser_name)
             pb_name.setProperty("i18n_data", True)
             pb_name.setFont(fnt(F_LG, True))
-            pb_name.setStyleSheet(f"color:{p_color}; background:transparent; border:none;")
+            pb_name.setStyleSheet(text_styles.label(p_color, background='transparent', border='none'))
             pb_lay.addWidget(pb_icon)
             pb_lay.addWidget(pb_name)
 
@@ -1002,8 +1054,7 @@ class PreviewDialog(QDialog):
                             _badge = QLabel(_lbl)
                             _badge.setFont(fnt(F_XS, True))
                             _badge.setStyleSheet(
-                                f"background:{_clr}; color:white; padding:2px 8px;"
-                                f" border-radius:4px; border:none;"
+                                legacy_styles.preview_dialog_badge(_clr)
                             )
                             pb_lay.addWidget(_badge)
             except Exception:
@@ -1038,7 +1089,7 @@ class PreviewDialog(QDialog):
             mode_color = "#16A34A"
         mode_badge = QLabel(mode_text)
         mode_badge.setFont(fnt(F_MD, True))
-        mode_badge.setStyleSheet(f"background: {mode_color}; color: white; padding: 4px 10px; border-radius: 4px;")
+        mode_badge.setStyleSheet(legacy_styles.preview_dialog_mode_badge(mode_color))
         header_lay.addWidget(mode_badge)
         il.addLayout(header_lay)
 
@@ -1092,9 +1143,9 @@ class PreviewDialog(QDialog):
             ]
         g = QGridLayout(); g.setSpacing(6)
         for r, (lbl, val, col, bold) in enumerate(rows_info):
-            tl = QLabel(f"{lbl} :"); tl.setFont(fnt(F_MD)); tl.setStyleSheet(f"color:{C_TEXT3};")
+            tl = QLabel(f"{lbl} :"); tl.setFont(fnt(F_MD)); tl.setStyleSheet(text_styles.label(C_TEXT3))
             tl.setFixedWidth(110)
-            vl = QLabel(val); vl.setFont(fnt(F_MD, bold)); vl.setStyleSheet(f"color:{col};")
+            vl = QLabel(val); vl.setFont(fnt(F_MD, bold)); vl.setStyleSheet(text_styles.label(col))
             g.addWidget(tl, r, 0); g.addWidget(vl, r, 1)
         il.addLayout(g)
         lay.addWidget(info_card)
@@ -1135,7 +1186,7 @@ class PreviewDialog(QDialog):
             wl.setSpacing(4)
             wlbl = QLabel(warn_text)
             wlbl.setFont(fnt(F_LG, True))
-            wlbl.setStyleSheet("color: #DC2626; font-weight: bold;")
+            wlbl.setStyleSheet(text_styles.label('#DC2626', font_weight='bold'))
             wlbl.setWordWrap(True)
             wl.addWidget(wlbl)
             lay.addWidget(wc)
@@ -1145,15 +1196,15 @@ class PreviewDialog(QDialog):
         if self._warnings:
             save_btn = btns.addButton("บันทึกถึงกระนั้น", QDialogButtonBox.ButtonRole.AcceptRole)
             save_btn.setObjectName("btn_warning")
-            save_btn.setStyleSheet("QPushButton { background: white !important; color: #0F172A !important; border: 1.5px solid #E2E8F0 !important; border-radius: 8px; padding: 8px 18px; font-weight: 600; } QPushButton:hover { background: #2563EB !important; color: white !important; border-color: #E2E8F0 !important; } QPushButton:pressed { background: #1E40AF !important; color: white !important; border-color: white !important; }")
+            save_btn.setStyleSheet(buttons_styles.dialog_action(pressed=True))
         else:
             save_btn = btns.addButton("✅  บันทึกข้อมูล", QDialogButtonBox.ButtonRole.AcceptRole)
             save_btn.setObjectName("btn_success")
-            save_btn.setStyleSheet("QPushButton { background: white !important; color: #0F172A !important; border: 1.5px solid #E2E8F0 !important; border-radius: 8px; padding: 8px 18px; font-weight: 600; } QPushButton:hover { background: #2563EB !important; color: white !important; border-color: #E2E8F0 !important; } QPushButton:pressed { background: #1E40AF !important; color: white !important; border-color: white !important; }")
+            save_btn.setStyleSheet(buttons_styles.dialog_action(pressed=True))
 
         cancel_btn = btns.addButton("ยกเลิก", QDialogButtonBox.ButtonRole.RejectRole)
         cancel_btn.setObjectName("btn_outline")
-        cancel_btn.setStyleSheet("QPushButton { background: white !important; color: #0F172A !important; border: 1.5px solid #E2E8F0 !important; border-radius: 8px; padding: 7px 16px; font-weight: 600; } QPushButton:hover { background: #2563EB !important; color: white !important; border-color: #E2E8F0 !important; } QPushButton:pressed { background: #1E40AF !important; color: white !important; border-color: white !important; }")
+        cancel_btn.setStyleSheet(legacy_styles.PREVIEW_DIALOG_CANCEL_BTN)
 
         btns.accepted.connect(self.accept)
         btns.rejected.connect(self.reject)
@@ -1197,17 +1248,13 @@ class PageImport(QWidget):
         self.btn_edit_mode.setFont(fnt(F_MD, True))
         self.btn_edit_mode.setFixedHeight(34)
         self.btn_edit_mode.setStyleSheet(
-            "QPushButton { background: #EFF6FF; color: #2563EB; border: 1.5px solid #BFDBFE;"
-            " border-radius: 7px; padding: 4px 16px; font-weight: 600; }"
-            " QPushButton:hover { background: #2563EB; color: white; }"
+            buttons_styles.EDIT
         )
         self.btn_delete_sel = QPushButton("🗑  ลบที่เลือก")
         self.btn_delete_sel.setFont(fnt(F_MD, True))
         self.btn_delete_sel.setFixedHeight(34)
         self.btn_delete_sel.setStyleSheet(
-            "QPushButton { background: #FEE2E2; color: #DC2626; border: 1.5px solid #FCA5A5;"
-            " border-radius: 7px; padding: 4px 16px; font-weight: 600; }"
-            " QPushButton:hover { background: #DC2626; color: white; }"
+            devices_styles.IMPORT_BTN_DELETE_SEL
         )
         self.btn_delete_sel.setVisible(False)
         act_hdr.addWidget(self.btn_edit_mode)
@@ -1289,29 +1336,29 @@ class PageImport(QWidget):
         # Header
         hr = QHBoxLayout()
         dot = QLabel("●"); dot.setFont(fnt(F_LG, True))
-        dot.setStyleSheet(f"color:{color};")
+        dot.setStyleSheet(text_styles.label(color))
         name_l = QLabel(get_cfg(f"machine_name_{i}", SLOT_NAMES[i]))
         name_l.setFont(fnt(F_LG, True))
         mode_l = QLabel(""); mode_l.setFont(fnt(F_SM, True))
-        mode_l.setStyleSheet(f"color:{color};")
+        mode_l.setStyleSheet(text_styles.label(color))
         hr.addWidget(dot); hr.addWidget(name_l); hr.addStretch(); hr.addWidget(mode_l)
         lay.addLayout(hr)
 
         mach_l = QLabel("—"); mach_l.setFont(fnt(F_LG, True))
-        mach_l.setStyleSheet(f"color:{C_TEXT};")
+        mach_l.setStyleSheet(text_styles.label(C_TEXT))
         sn_l = QLabel(""); sn_l.setFont(fnt(F_SM, True))
-        sn_l.setStyleSheet(f"color:{C_TEXT};")
+        sn_l.setStyleSheet(text_styles.label(C_TEXT))
         date_l = QLabel(""); date_l.setFont(fnt(F_SM, True))
-        date_l.setStyleSheet(f"color:{C_TEXT};")
+        date_l.setStyleSheet(text_styles.label(C_TEXT))
         lay.addWidget(mach_l); lay.addWidget(sn_l); lay.addWidget(date_l)
         lay.addStretch()
 
         # ปุ่มนำเข้าและล้าง
         br = QHBoxLayout(); br.setSpacing(8)
         b_imp = btn("📥  นำเข้าไฟล์", "primary")
-        b_imp.setStyleSheet("QPushButton { background: white !important; color: #0F172A !important; border: 1.5px solid #E2E8F0 !important; border-radius: 8px; padding: 8px 18px; font-weight: 600; } QPushButton:hover { background: #2563EB !important; color: white !important; border-color: #E2E8F0 !important; }")
+        b_imp.setStyleSheet(buttons_styles.dialog_action())
         b_clr = btn("🗑", "danger"); b_clr.setFixedWidth(50); b_clr.setMinimumHeight(38)
-        b_clr.setStyleSheet("QPushButton { background: white !important; color: #0F172A !important; border: 1.5px solid #E2E8F0 !important; border-radius: 8px; padding: 8px 12px; font-weight: 600; font-size: 16px; } QPushButton:hover { background: #2563EB !important; color: white !important; border-color: #E2E8F0 !important; }")
+        b_clr.setStyleSheet(devices_styles.IMPORT_B_CLR)
         br.addWidget(b_imp); br.addWidget(b_clr)
         lay.addLayout(br)
 
@@ -1326,8 +1373,7 @@ class PageImport(QWidget):
         # สร้าง overlay widget สำหรับ drag & drop hint
         overlay = QLabel("", f)  # parent คือ card frame
         overlay.setStyleSheet(
-            "QLabel { background-color: rgba(200, 200, 200, 200); border: 2px dashed #999999; "
-            "border-radius: 8px; color: #333333; font-weight: 600; }"
+            devices_styles.IMPORT_OVERLAY
         )
         overlay.setAlignment(Qt.AlignmentFlag.AlignCenter)
         overlay.setFont(fnt(F_MD, False))
@@ -1460,7 +1506,7 @@ class PageImport(QWidget):
             else:
                 # Shade items อื่นๆ ให้จาง
                 card_frame.setStyleSheet(
-                    "QFrame { border: 1px solid #E2E8F0 !important; border-radius: 8px; background: rgba(200, 200, 200, 0.15); }"
+                    devices_styles.IMPORT_CARD_FRAME_SET_DRAG_HIGHLIGHT
                 )
                 if hasattr(card_frame, '_overlay'):
                     card_frame._overlay.setVisible(False)
@@ -1472,7 +1518,7 @@ class PageImport(QWidget):
 
         for i, card_frame in enumerate(self._slot_widgets):
             # รีเซ็ต stylesheet เป็นค่าปกติ
-            card_frame.setStyleSheet("QFrame { background: transparent; }")
+            card_frame.setStyleSheet(devices_styles.IMPORT_CARD_FRAME)
             if hasattr(card_frame, '_overlay'):
                 card_frame._overlay.setVisible(False)
 
@@ -1541,12 +1587,10 @@ class PageImport(QWidget):
         if self._edit_mode:
             self.tbl_activity.setCursor(Qt.CursorShape.PointingHandCursor)
             self.tbl_activity.setAlternatingRowColors(False)
-            self.tbl_activity.setStyleSheet("QTableWidget { background: #F8FAFC; } QTableWidget::item:hover { background: #DBEAFE; }")
+            self.tbl_activity.setStyleSheet(devices_styles.IMPORT_TBL_ACTIVITY)
             self.btn_edit_mode.setText("✕  ยกเลิก")
             self.btn_edit_mode.setStyleSheet(
-                "QPushButton { background: #F1F5F9; color: #64748B; border: 1.5px solid #CBD5E1;"
-                " border-radius: 7px; padding: 4px 16px; font-weight: 600; }"
-                " QPushButton:hover { background: #CBD5E1; color: #0F172A; }"
+                devices_styles.IMPORT_BTN_EDIT_MODE
             )
         else:
             self.tbl_activity.setCursor(Qt.CursorShape.ArrowCursor)
@@ -1554,9 +1598,7 @@ class PageImport(QWidget):
             self.tbl_activity.setStyleSheet("")
             self.btn_edit_mode.setText("✏️  แก้ไข")
             self.btn_edit_mode.setStyleSheet(
-                "QPushButton { background: #EFF6FF; color: #2563EB; border: 1.5px solid #BFDBFE;"
-                " border-radius: 7px; padding: 4px 16px; font-weight: 600; }"
-                " QPushButton:hover { background: #2563EB; color: white; }"
+                buttons_styles.EDIT
             )
             for r in range(self.tbl_activity.rowCount()):
                 item = self.tbl_activity.item(r, 8)
@@ -1587,9 +1629,7 @@ class PageImport(QWidget):
             self._edit_mode = False
             self.btn_edit_mode.setText("✏️  แก้ไข")
             self.btn_edit_mode.setStyleSheet(
-                "QPushButton { background: #EFF6FF; color: #2563EB; border: 1.5px solid #BFDBFE;"
-                " border-radius: 7px; padding: 4px 16px; font-weight: 600; }"
-                " QPushButton:hover { background: #2563EB; color: white; }"
+                buttons_styles.EDIT
             )
             self.btn_delete_sel.setVisible(False)
             self.tbl_activity.setColumnHidden(8, True)  # [V4.5] fix: checkbox column is 8 (was incorrectly 7)
@@ -1686,7 +1726,7 @@ class PageHistory(QWidget):
 
         bar.addStretch()
         self.lbl_info = QLabel("")
-        self.lbl_info.setFont(fnt(F_XS)); self.lbl_info.setStyleSheet(f"color:{C_TEXT3};")
+        self.lbl_info.setFont(fnt(F_XS)); self.lbl_info.setStyleSheet(text_styles.label(C_TEXT3))
         bar.addWidget(self.lbl_info)
         lay.addWidget(self.machine_selector_container)
         self._current_slot = 0
@@ -1774,7 +1814,7 @@ class PageHistory(QWidget):
         # หมายเหตุขนาดกระดาษ
         _note_curr = QLabel("ℹ️  หมายเหตุ: ขนาดกระดาษที่เล็กกว่า A4 จะถูกนับรวมเป็น A4")
         _note_curr.setFont(fnt(F_XS))
-        _note_curr.setStyleSheet(f"color:{C_TEXT3}; padding:3px 2px;")
+        _note_curr.setStyleSheet(text_styles.label(C_TEXT3, padding='3px 2px'))
         lay.addWidget(_note_curr)
 
     def _build_monthly_tab(self):
@@ -1787,8 +1827,7 @@ class PageHistory(QWidget):
         self.lbl_billing_day = QLabel()
         self.lbl_billing_day.setFont(fnt(F_MD))
         self.lbl_billing_day.setStyleSheet(
-            f"color:{C_ACCENT}; background:{SLOT_LIGHT[0]}; "
-            f"padding:4px 14px; border-radius:5px;")
+            reports_styles.billing_day_badge(SLOT_LIGHT[0]))
         lay.addWidget(self.lbl_billing_day)
 
         # Header row: ชื่อตาราง (แถวบน)
@@ -1824,7 +1863,7 @@ class PageHistory(QWidget):
         # หมายเหตุขนาดกระดาษ
         _note_monthly = QLabel("ℹ️  หมายเหตุ: ขนาดกระดาษที่เล็กกว่า A4 จะถูกนับรวมเป็น A4")
         _note_monthly.setFont(fnt(F_XS))
-        _note_monthly.setStyleSheet(f"color:{C_TEXT3}; padding:3px 2px;")
+        _note_monthly.setStyleSheet(text_styles.label(C_TEXT3, padding='3px 2px'))
         lay.addWidget(_note_monthly)
 
         # ── Summary stat cards — 2×4 ──────────────────────────────
@@ -2449,7 +2488,7 @@ class PageHistory(QWidget):
 
         self.lbl_count_users = QLabel("")
         self.lbl_count_users.setFont(fnt(F_MD))
-        self.lbl_count_users.setStyleSheet(f"color:{C_TEXT2};")
+        self.lbl_count_users.setStyleSheet(text_styles.label(C_TEXT2))
         lay.addWidget(self.lbl_count_users)
 
         # เริ่มต้นเป็น overview mode — 17 คอลัมน์ (frozen ชื่อผู้ใช้ + ค่าใช้จ่าย)
@@ -2678,7 +2717,7 @@ class PageHistory(QWidget):
         # ── Pie chart container สำหรับ by_type / by_user ──────
         # Layout: Pie ใหญ่รวม (บน) + Row 3 Pie เล็กแยกเครื่อง (ล่าง)
         self.pie_container = QWidget()
-        self.pie_container.setStyleSheet(f"background: {C_BG};")
+        self.pie_container.setStyleSheet(reports_styles.history_pie_container())
         self.pie_container.setVisible(False)
         pie_vlay = QVBoxLayout(self.pie_container)
         pie_vlay.setContentsMargins(0, 0, 0, 0)
@@ -2687,7 +2726,7 @@ class PageHistory(QWidget):
         # Pie ใหญ่รวมทุกเครื่อง
         self.pie_view_all = QChartView()
         self.pie_view_all.setRenderHint(QPainter.RenderHint.Antialiasing)
-        self.pie_view_all.setStyleSheet(f"background: {C_CARD}; border-radius: 8px; border: none;")
+        self.pie_view_all.setStyleSheet(surfaces_styles.card())
         self.pie_view_all.setMinimumHeight(300)
         pie_vlay.addWidget(self.pie_view_all, 5)
 
@@ -2698,7 +2737,7 @@ class PageHistory(QWidget):
         for _i in range(3):
             _v = QChartView()
             _v.setRenderHint(QPainter.RenderHint.Antialiasing)
-            _v.setStyleSheet(f"background: {C_CARD}; border-radius: 8px; border: none;")
+            _v.setStyleSheet(surfaces_styles.card())
             _v.setMinimumHeight(220)
             pie_small_row.addWidget(_v, 1)
             self.pie_views_slot.append(_v)
@@ -3025,10 +3064,7 @@ class PageHistory(QWidget):
                             cb.setChecked(False)  # ทั้งหมดเป็น unchecked
                             cb.setFont(fnt(F_SM))
                             cb.setStyleSheet(
-                                f"QCheckBox {{ spacing: 3px; color: #999999; }}"
-                                f"QCheckBox::indicator {{ width: 13px; height: 13px; }}"
-                                f"QCheckBox::indicator:checked {{ background: {hex_c}; border: 1px solid {hex_c}; border-radius: 2px; }}"
-                                f"QCheckBox::indicator:unchecked {{ background: #e2e8f0; border: 1px solid #cbd5e1; border-radius: 2px; }}")
+                                inputs_styles.legend_checkbox(hex_c, muted=True))
                             cb.toggled.connect(lambda checked, s=si: self._toggle_machine_legend(s, checked))
                             self._ext_legend_layout.addWidget(cb)
                         self._ext_legend_widget.setVisible(True)
@@ -3100,10 +3136,7 @@ class PageHistory(QWidget):
                         cb.setChecked(si not in hidden_machines)
                         cb.setFont(fnt(F_SM))
                         cb.setStyleSheet(
-                            f"QCheckBox {{ spacing: 3px; }}"
-                            f"QCheckBox::indicator {{ width: 13px; height: 13px; }}"
-                            f"QCheckBox::indicator:checked {{ background: {hex_c}; border: 1px solid {hex_c}; border-radius: 2px; }}"
-                            f"QCheckBox::indicator:unchecked {{ background: #e2e8f0; border: 1px solid #cbd5e1; border-radius: 2px; }}")
+                            inputs_styles.legend_checkbox(hex_c))
                         cb.toggled.connect(lambda checked, s=si: self._toggle_machine_legend(s, checked))
                         self._ext_legend_layout.addWidget(cb)
                     self._ext_legend_widget.setVisible(True)
@@ -3153,10 +3186,7 @@ class PageHistory(QWidget):
                             cb.setChecked(False)  # ทั้งหมดเป็น unchecked
                             cb.setFont(fnt(F_SM))
                             cb.setStyleSheet(
-                                f"QCheckBox {{ spacing: 3px; color: #999999; }}"
-                                f"QCheckBox::indicator {{ width: 13px; height: 13px; }}"
-                                f"QCheckBox::indicator:checked {{ background: {hex_c}; border: 1px solid {hex_c}; border-radius: 2px; }}"
-                                f"QCheckBox::indicator:unchecked {{ background: #e2e8f0; border: 1px solid #cbd5e1; border-radius: 2px; }}")
+                                inputs_styles.legend_checkbox(hex_c, muted=True))
                             cb.toggled.connect(lambda checked, t=tk: self._toggle_type_legend(t, checked))
                             self._ext_legend_layout.addWidget(cb)
                         self._ext_legend_widget.setVisible(True)
@@ -3266,10 +3296,7 @@ class PageHistory(QWidget):
                         cb.setChecked(tk not in hidden_types)
                         cb.setFont(fnt(F_SM))
                         cb.setStyleSheet(
-                            f"QCheckBox {{ spacing: 3px; }}"
-                            f"QCheckBox::indicator {{ width: 13px; height: 13px; }}"
-                            f"QCheckBox::indicator:checked {{ background: {hex_c}; border: 1px solid {hex_c}; border-radius: 2px; }}"
-                            f"QCheckBox::indicator:unchecked {{ background: #e2e8f0; border: 1px solid #cbd5e1; border-radius: 2px; }}")
+                            inputs_styles.legend_checkbox(hex_c))
                         cb.toggled.connect(lambda checked, t=tk: self._toggle_type_legend(t, checked))
                         self._ext_legend_layout.addWidget(cb)
                     self._ext_legend_widget.setVisible(True)
@@ -4417,11 +4444,11 @@ class PageSettings(QWidget):
         for i in range(3):
             hr = QHBoxLayout(); hr.setSpacing(8)
             dot = QLabel("●"); dot.setFont(fnt(F_LG, True))
-            dot.setStyleSheet(f"color:{SLOT_COLORS[i]};")
+            dot.setStyleSheet(text_styles.label(SLOT_COLORS[i]))
             lb = QLabel(f"เครื่อง {i+1} :"); lb.setFont(fnt(F_LG)); lb.setFixedWidth(88)
             inp = QLineEdit(get_cfg(f"machine_name_{i}", SLOT_NAMES[i]))
             inp.setFont(fnt(F_LG)); inp.setFixedWidth(160)
-            sep = QLabel("|"); sep.setFont(fnt(F_LG)); sep.setStyleSheet(f"color:{C_TEXT3}; padding: 0 4px;")
+            sep = QLabel("|"); sep.setFont(fnt(F_LG)); sep.setStyleSheet(text_styles.label(C_TEXT3, padding='0 4px'))
             parser_lbl = QLabel("Parser :"); parser_lbl.setFont(fnt(F_MD))
             parser_combo = QComboBox(); parser_combo.setFont(fnt(F_MD)); parser_combo.setFixedWidth(300)
             self._fill_parser_combo(parser_combo, parser_profiles)
@@ -4442,10 +4469,10 @@ class PageSettings(QWidget):
             self.parser_dropdowns[i] = parser_combo
         btn_row = QHBoxLayout(); btn_row.setSpacing(10); btn_row.setContentsMargins(0,4,0,0)
         b_save = btn("💾  บันทึกชื่อเครื่อง", "primary"); b_save.setFixedWidth(200)
-        b_save.setStyleSheet("QPushButton { background: white !important; color: #0F172A !important; border: 1.5px solid #E2E8F0 !important; border-radius: 8px; padding: 8px 18px; font-weight: 600; } QPushButton:hover { background: #2563EB !important; color: white !important; border-color: #E2E8F0 !important; }")
+        b_save.setStyleSheet(buttons_styles.dialog_action())
         b_save.clicked.connect(self._save_names)
         b_import_parser = btn("📥  นำเข้า Parser", "outline"); b_import_parser.setFixedWidth(180)
-        b_import_parser.setStyleSheet("QPushButton { background: #EFF6FF !important; color: #2563EB !important; border: 1.5px solid #BFDBFE !important; border-radius: 8px; padding: 8px 18px; font-weight: 600; } QPushButton:hover { background: #2563EB !important; color: white !important; border-color: #2563EB !important; }")
+        b_import_parser.setStyleSheet(settings_styles.SETTINGS_B_IMPORT_PARSER)
         b_import_parser.clicked.connect(self._import_parser_profile)
         btn_row.addWidget(b_save)
         btn_row.addWidget(b_import_parser)
@@ -4474,9 +4501,9 @@ class PageSettings(QWidget):
         for slot in range(3):
             mname = get_cfg(f"machine_name_{slot}", SLOT_NAMES[slot])
             dot = QLabel("●"); dot.setFont(fnt(F_LG, True))
-            dot.setStyleSheet(f"color:{SLOT_COLORS[slot]};")
+            dot.setStyleSheet(text_styles.label(SLOT_COLORS[slot]))
             mk_lbl = QLabel(f"เครื่อง {slot+1}: {mname}"); mk_lbl.setFont(fnt(F_MD, True))
-            mk_lbl.setStyleSheet(f"color:{SLOT_COLORS[slot]};")
+            mk_lbl.setStyleSheet(text_styles.label(SLOT_COLORS[slot]))
             mk_row = QHBoxLayout(); mk_row.setSpacing(6)
             mk_row.addWidget(dot); mk_row.addWidget(mk_lbl); mk_row.addStretch()
             l2.addLayout(mk_row)
@@ -4484,7 +4511,7 @@ class PageSettings(QWidget):
             pg = QGridLayout(); pg.setSpacing(10)
             for r, (key, label, color) in enumerate(price_specs):
                 lbl = QLabel(f"  {label} :"); lbl.setFont(fnt(F_LG))
-                lbl.setStyleSheet(f"color:{color};"); lbl.setFixedWidth(100)
+                lbl.setStyleSheet(text_styles.label(color)); lbl.setFixedWidth(100)
                 spin = QDoubleSpinBox()
                 spin.setRange(0, 9999); spin.setDecimals(2); spin.setSuffix(" บาท/แผ่น")
                 spin.setValue(get_price(key, slot)); spin.setFont(fnt(F_LG)); spin.setFixedWidth(180)
@@ -4496,7 +4523,7 @@ class PageSettings(QWidget):
                 l2.addWidget(hline())
 
         b_price = btn("💾  บันทึก Price List", "primary"); b_price.setFixedWidth(200)
-        b_price.setStyleSheet("QPushButton { background: white !important; color: #0F172A !important; border: 1.5px solid #E2E8F0 !important; border-radius: 8px; padding: 8px 18px; font-weight: 600; } QPushButton:hover { background: #2563EB !important; color: white !important; border-color: #E2E8F0 !important; }")
+        b_price.setStyleSheet(buttons_styles.dialog_action())
         b_price.clicked.connect(self._save_prices)
         l2.addWidget(b_price)
         lay.addWidget(c2)
@@ -4517,7 +4544,7 @@ class PageSettings(QWidget):
         wr.addWidget(lb_waste); wr.addWidget(self.spin_waste); wr.addStretch()
         l_waste.addLayout(wr)
         waste_hint = QLabel("ใช้สำหรับหักค่าใช้จ่ายกระดาษเสียในรายงานรายเดือน")
-        waste_hint.setFont(fnt(F_XS)); waste_hint.setStyleSheet(f"color:{C_TEXT3};")
+        waste_hint.setFont(fnt(F_XS)); waste_hint.setStyleSheet(text_styles.label(C_TEXT3))
         l_waste.addWidget(waste_hint)
         b_waste = btn("💾  บันทึก % กระดาษเสีย", "primary"); b_waste.setFixedWidth(220)
         b_waste.clicked.connect(self._save_waste_pct)
@@ -4539,11 +4566,11 @@ class PageSettings(QWidget):
         l_day.addLayout(dr)
 
         day_hint = QLabel("เช่น ถ้าตั้งวัน 25 → ไฟล์ที่อ่านวันที่ 1-25 นับเป็นเดือนนั้น, หลังวันที่ 25 นับเป็นเดือนถัดไป")
-        day_hint.setFont(fnt(F_XS)); day_hint.setStyleSheet(f"color:{C_TEXT3};")
+        day_hint.setFont(fnt(F_XS)); day_hint.setStyleSheet(text_styles.label(C_TEXT3))
         l_day.addWidget(day_hint)
 
         b_day = btn("💾  บันทึกวันตัดรอบ", "primary"); b_day.setFixedWidth(200)
-        b_day.setStyleSheet("QPushButton { background: white !important; color: #0F172A !important; border: 1.5px solid #E2E8F0 !important; border-radius: 8px; padding: 8px 18px; font-weight: 600; } QPushButton:hover { background: #2563EB !important; color: white !important; border-color: #E2E8F0 !important; }")
+        b_day.setStyleSheet(buttons_styles.dialog_action())
         b_day.clicked.connect(self._save_billing_day)
         l_day.addWidget(b_day)
         lay.addWidget(c_day)
@@ -4572,9 +4599,9 @@ class PageSettings(QWidget):
         self.db_lbl.setWordWrap(True)
         self.db_lbl.setMinimumWidth(0)
         self.db_lbl.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-        self.db_lbl.setStyleSheet(f"color:{C_TEXT2}; background:#F1F5F9; padding:8px; border-radius:6px;")
+        self.db_lbl.setStyleSheet(surfaces_styles.muted_note(C_TEXT2))
         b_ch = btn("เปลี่ยน Path", "outline"); b_ch.setFixedWidth(130)
-        b_ch.setStyleSheet("QPushButton { background: white !important; color: #0F172A !important; border: 1.5px solid #E2E8F0 !important; border-radius: 8px; padding: 7px 16px; font-weight: 600; } QPushButton:hover { background: #2563EB !important; color: white !important; border-color: #E2E8F0 !important; }")
+        b_ch.setStyleSheet(buttons_styles.dialog_action(compact=True))
         b_ch.clicked.connect(self._change_db)
         self._btn_change_db_path = b_ch
         l3.addWidget(self.db_lbl)
@@ -4585,8 +4612,7 @@ class PageSettings(QWidget):
         )
         self._v5_db_migration_note.setWordWrap(True)
         self._v5_db_migration_note.setStyleSheet(
-            "background:#FFF4E5;color:#8A4B08;border:1px solid #F4C98B;"
-            "border-radius:6px;padding:8px 10px;"
+            settings_styles.SETTINGS_V5_DB_MIGRATION_NOTE
         )
         self._v5_db_migration_note.hide()
         l3.addWidget(self._v5_db_migration_note)
@@ -4612,12 +4638,12 @@ class PageSettings(QWidget):
         self.imported_lbl.setWordWrap(True)
         self.imported_lbl.setMinimumWidth(0)
         self.imported_lbl.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-        self.imported_lbl.setStyleSheet(f"color:{C_TEXT2}; background:#F1F5F9; padding:8px; border-radius:6px;")
+        self.imported_lbl.setStyleSheet(surfaces_styles.muted_note(C_TEXT2))
         b_ch2 = btn("เปลี่ยนโฟลเดอร์สำรอง", "outline"); b_ch2.setFixedWidth(180)
-        b_ch2.setStyleSheet("QPushButton { background: white !important; color: #0F172A !important; border: 1.5px solid #E2E8F0 !important; border-radius: 8px; padding: 7px 16px; font-weight: 600; } QPushButton:hover { background: #2563EB !important; color: white !important; border-color: #E2E8F0 !important; }")
+        b_ch2.setStyleSheet(buttons_styles.dialog_action(compact=True))
         b_ch2.clicked.connect(self._change_imported_path)
         b_open_imported = btn("📂  เปิดโฟลเดอร์", "outline"); b_open_imported.setMinimumWidth(150)
-        b_open_imported.setStyleSheet("QPushButton { background: white !important; color: #0F172A !important; border: 1.5px solid #E2E8F0 !important; border-radius: 8px; padding: 7px 16px; font-weight: 600; } QPushButton:hover { background: #16A34A !important; color: white !important; border-color: #16A34A !important; }")
+        b_open_imported.setStyleSheet(settings_styles.SETTINGS_B_OPEN_IMPORTED)
         b_open_imported.clicked.connect(self._open_imported_folder)
         l3.addWidget(self.imported_lbl)
         imported_actions = QHBoxLayout(); imported_actions.setSpacing(8)
@@ -4636,7 +4662,7 @@ class PageSettings(QWidget):
             "ดูข้อมูล Raw จากเครื่องแต่ละ Slot เทียบกับช่องที่จะบันทึกใน Database "
             "และแก้ Mapping เฉพาะ Serial Number ได้"
         )
-        p_hint.setFont(fnt(F_MD)); p_hint.setStyleSheet(f"color:{C_TEXT2};")
+        p_hint.setFont(fnt(F_MD)); p_hint.setStyleSheet(text_styles.label(C_TEXT2))
         p_hint.setWordWrap(True)
         l_parser.addWidget(p_hint)
         b_parser = btn("🔎  ตรวจสอบ Parser Mapping", "outline"); b_parser.setFixedWidth(260)
@@ -4655,8 +4681,7 @@ class PageSettings(QWidget):
         self.runtime_info.setWordWrap(True)
         self.runtime_info.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         self.runtime_info.setStyleSheet(
-            f"color:{C_TEXT2};background:#F1F5F9;border:1px solid #D6E0EA;"
-            "border-radius:6px;padding:9px 11px;"
+            settings_styles.settings_runtime_info()
         )
         l_runtime.addWidget(self.runtime_info)
 
@@ -4714,7 +4739,7 @@ class PageSettings(QWidget):
         l4 = QVBoxLayout(c4); l4.setContentsMargins(20,16,20,16); l4.setSpacing(8)
         l4.addWidget(sub_title("⚠️  จัดการข้อมูลและคืนค่าโปรแกรม"))
         warn = QLabel("ระบบสำรอง Database ก่อนเปลี่ยนหรือลบข้อมูลทุกครั้ง กรุณาเลือกตามผลกระทบที่ต้องการ")
-        warn.setFont(fnt(F_MD)); warn.setStyleSheet(f"color:{C_ORANGE};")
+        warn.setFont(fnt(F_MD)); warn.setStyleSheet(text_styles.label(C_ORANGE))
         warn.setWordWrap(True)
         l4.addWidget(warn)
 
@@ -4722,14 +4747,13 @@ class PageSettings(QWidget):
             row = QFrame()
             row.setObjectName("maintenance_action_row")
             row.setStyleSheet(
-                "QFrame#maintenance_action_row{background:#F8FAFC;border:1px solid #D6E0EA;"
-                "border-radius:7px;} QLabel{background:transparent;border:none;}"
+                settings_styles.SETTINGS_MAINTENANCE_ROW
             )
             body = QHBoxLayout(row); body.setContentsMargins(12,9,12,9); body.setSpacing(12)
             copy = QVBoxLayout(); copy.setSpacing(2)
             heading = QLabel(title); heading.setFont(fnt(F_MD, True))
             explanation = QLabel(detail); explanation.setWordWrap(True)
-            explanation.setStyleSheet(f"color:{C_TEXT2};")
+            explanation.setStyleSheet(text_styles.label(C_TEXT2))
             copy.addWidget(heading); copy.addWidget(explanation)
             body.addLayout(copy, 1)
             button = btn(action, "danger" if danger else "outline")
@@ -4836,7 +4860,11 @@ class PageSettings(QWidget):
     def _ask_password(self) -> bool:
         """แสดง dialog ขอรหัสผ่าน"""
         from PyQt6.QtWidgets import QDialog, QVBoxLayout, QLabel, QLineEdit, QPushButton, QHBoxLayout
-        from config import C_ACCENT, C_TEXT, C_TEXT2, C_BORDER, F_MD, F_SM
+        from ui.styles.tokens import (
+            C_TEXT,
+            F_MD,
+            F_SM,
+        )
         from widgets import fnt
 
         dlg = QDialog(self)
@@ -4853,7 +4881,7 @@ class PageSettings(QWidget):
         lbl = QLabel("🔒  ใส่รหัสผ่านเพื่อเข้าหน้า Settings")
         lbl.setFont(fnt(F_SM, bold=True))
         lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        lbl.setStyleSheet(f"color:{C_TEXT};")
+        lbl.setStyleSheet(text_styles.label(C_TEXT))
         lbl.setWordWrap(True)
         lay.addWidget(lbl)
 
@@ -4863,15 +4891,14 @@ class PageSettings(QWidget):
         pwd_edit.setFont(fnt(F_MD))
         pwd_edit.setFixedHeight(34)
         pwd_edit.setStyleSheet(
-            f"QLineEdit {{ border:1px solid {C_BORDER}; border-radius:6px;"
-            f" padding:4px 10px; color:{C_TEXT}; }}"
+            settings_styles.settings_pwd_edit()
         )
         lay.addWidget(pwd_edit)
 
         err_lbl = QLabel("")
         err_lbl.setFont(fnt(F_SM))
         err_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        err_lbl.setStyleSheet("color:#DC2626;")
+        err_lbl.setStyleSheet(text_styles.label('#DC2626'))
         lay.addWidget(err_lbl)
 
         btn_row = QHBoxLayout()
@@ -4881,8 +4908,7 @@ class PageSettings(QWidget):
         btn_cancel.setFont(fnt(F_SM))
         btn_cancel.setFixedHeight(32)
         btn_cancel.setStyleSheet(
-            f"QPushButton {{ background:{C_BORDER}; color:{C_TEXT2}; border:none;"
-            f" border-radius:6px; padding:4px 14px; }}"
+            settings_styles.settings_btn_cancel()
         )
         btn_cancel.clicked.connect(dlg.reject)
         btn_row.addWidget(btn_cancel)
@@ -4891,9 +4917,7 @@ class PageSettings(QWidget):
         btn_ok.setFont(fnt(F_SM, bold=True))
         btn_ok.setFixedHeight(32)
         btn_ok.setStyleSheet(
-            f"QPushButton {{ background:{C_ACCENT}; color:white; border:none;"
-            f" border-radius:6px; padding:4px 14px; }}"
-            f"QPushButton:hover {{ background:#1E3A8A; }}"
+            settings_styles.settings_btn_ok()
         )
         btn_row.addWidget(btn_ok)
         lay.addLayout(btn_row)
@@ -5764,15 +5788,14 @@ class PageManual(QWidget):
         lbl.setFont(self._manual_font(F_2XL))
         lbl.setWordWrap(True)
         lbl.setStyleSheet(
-            f"color:{C_ACCENT}; font-weight:bold; padding-bottom:4px;"
-            f"border-bottom: 2px solid {C_ACCENT}; margin-top:18px; margin-bottom:6px;"
+            legacy_styles.manual_sec()
         )
         return lbl
 
     # ── helper: สร้าง step badge + ข้อความ ──────────────────
     def _step(self, num: int, text: str) -> QWidget:
         row = QWidget()
-        row.setStyleSheet("background:transparent; border:0;")
+        row.setStyleSheet(legacy_styles.MANUAL_STEP)
         lay = QHBoxLayout()
         lay.setContentsMargins(0, 3, 0, 3)
         lay.setSpacing(10)
@@ -5781,14 +5804,13 @@ class PageManual(QWidget):
         badge.setFixedSize(30, 30)
         badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
         badge.setStyleSheet(
-            f"background:{C_ACCENT}; color:white; border-radius:15px;"
-            f"font-weight:bold; font-size:{self._manual_point_size(F_LG)}pt;"
+            legacy_styles.manual_badge(self._manual_point_size(F_LG))
         )
 
         desc = QLabel(text)
         desc.setFont(self._manual_font(F_XL))
         desc.setWordWrap(True)
-        desc.setStyleSheet(f"color:{C_TEXT}; background:transparent; border:0;")
+        desc.setStyleSheet(text_styles.label(C_TEXT, background='transparent', border='0'))
 
         lay.addWidget(badge, 0, Qt.AlignmentFlag.AlignTop)
         lay.addWidget(desc, 1)
@@ -5800,8 +5822,7 @@ class PageManual(QWidget):
         card = QFrame()
         card.setObjectName("manual_document_block")
         card.setStyleSheet(
-            "QFrame#manual_document_block { background:#FFFFFF; border:0; "
-            "border-radius:0; padding:0; }"
+            legacy_styles.MANUAL_CARD
         )
         vl = QVBoxLayout()
         vl.setContentsMargins(8, 8, 8, 12)
@@ -5811,8 +5832,7 @@ class PageManual(QWidget):
             t.setFont(self._manual_font(F_2XL))
             t.setWordWrap(True)
             t.setStyleSheet(
-                f"color:{C_TEXT}; font-weight:bold; background:transparent; "
-                f"border:0; border-bottom:1px solid {C_ACCENT}; padding:2px 0 8px 0;"
+                legacy_styles.manual_card_title()
             )
             vl.addWidget(t)
         for w in body_widgets:
@@ -5827,8 +5847,7 @@ class PageManual(QWidget):
         lbl.setWordWrap(True)
         c = color or C_TEXT
         lbl.setStyleSheet(
-            f"color:{c}; background:transparent; border:0; "
-            f"{'font-weight:bold;' if bold else ''}"
+            legacy_styles.manual_txt(c, 'font-weight:bold;' if bold else '')
         )
         return lbl
 
@@ -5838,8 +5857,7 @@ class PageManual(QWidget):
         lbl.setFont(self._manual_font(F_LG))
         lbl.setWordWrap(True)
         lbl.setStyleSheet(
-            f"color:{C_TEXT2}; background:#EEF6FF; border:0; "
-            f"border-left:4px solid {C_ACCENT}; padding:8px 12px;"
+            legacy_styles.manual_tip()
         )
         return lbl
 
@@ -5853,7 +5871,7 @@ class PageManual(QWidget):
         )
 
         block = QWidget()
-        block.setStyleSheet("background:#FFFFFF; border:0;")
+        block.setStyleSheet(surfaces_styles.WHITE_BORDERLESS)
         layout = QVBoxLayout(block)
         layout.setContentsMargins(8, 6, 8, 16)
         layout.setSpacing(5)
@@ -5871,8 +5889,7 @@ class PageManual(QWidget):
         label.setWordWrap(True)
         label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         label.setStyleSheet(
-            f"color:{C_TEXT2}; background:transparent; border:0; "
-            "font-style:italic; padding:2px 8px;"
+            legacy_styles.manual_guide_screenshot()
         )
         layout.addWidget(label)
         return block
@@ -5937,7 +5954,7 @@ class PageManual(QWidget):
         preview.setMinimumWidth(0)
         preview.setMinimumHeight(280)
         preview.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
-        preview.setStyleSheet(f"background:#F7F8FA;border:1px solid {C_BORDER};padding:8px;")
+        preview.setStyleSheet(legacy_styles.manual_preview())
         pixmap = QPixmap(str(image_path)) if self._manual_asset_available(image_path) else QPixmap()
         if pixmap.isNull():
             preview.setText("ไม่พบภาพคู่มือ")
@@ -5955,8 +5972,7 @@ class PageManual(QWidget):
         open_button = QPushButton("เปิด Diagram แบบเต็ม")
         open_button.setEnabled(self._manual_asset_available(open_path))
         open_button.setStyleSheet(
-            f"QPushButton {{ background:{C_ACCENT};color:white;border:0;border-radius:6px;padding:9px 14px;"
-            "font-weight:bold; } QPushButton:disabled { background:#AAB4BF; }"
+            legacy_styles.manual_open_button()
         )
         open_button.clicked.connect(
             lambda _checked=False, path=open_path: QDesktopServices.openUrl(QUrl.fromLocalFile(str(path)))
@@ -5977,10 +5993,10 @@ class PageManual(QWidget):
         header = QHBoxLayout()
         self.manual_title = QLabel("📖  คู่มือการใช้งาน")
         self.manual_title.setFont(self._manual_font(F_2XL))
-        self.manual_title.setStyleSheet(f"color:{C_TEXT}; font-weight:bold;")
+        self.manual_title.setStyleSheet(text_styles.label(C_TEXT, font_weight='bold'))
         self.manual_subtitle = QLabel("KOMI Report 5.2.12 — ติดตั้ง อ่านมิเตอร์ และออกรายงาน")
         self.manual_subtitle.setFont(self._manual_font(F_LG))
-        self.manual_subtitle.setStyleSheet(f"color:{C_TEXT2};")
+        self.manual_subtitle.setStyleSheet(text_styles.label(C_TEXT2))
         title_col = QVBoxLayout()
         title_col.setSpacing(2)
         title_col.addWidget(self.manual_title)
@@ -6011,13 +6027,13 @@ class PageManual(QWidget):
             Qt.ScrollBarPolicy.ScrollBarAlwaysOff
         )
         self.manual_scroll.setStyleSheet(
-            "QScrollArea#manual_single_page_scroll { background:transparent; border:0; }"
+            legacy_styles.MANUAL_MANUAL_SCROLL
         )
 
         self.manual_content = QWidget()
         self.manual_content.setObjectName("manual_word_content")
         self.manual_content.setStyleSheet(
-            "QWidget#manual_word_content { background:#FFFFFF; }"
+            legacy_styles.MANUAL_MANUAL_CONTENT
         )
         content_layout = QVBoxLayout(self.manual_content)
         content_layout.setContentsMargins(12, 0, 12, 32)
@@ -6038,15 +6054,14 @@ class PageManual(QWidget):
         self.manual_toc_frame.setObjectName("manual_toc_frame")
         self.manual_toc_frame.setFixedWidth(224)
         self.manual_toc_frame.setStyleSheet(
-            f"QFrame#manual_toc_frame {{ background-color:{C_CARD}; "
-            f"border:1px solid {C_BORDER}; border-radius:10px; }}"
+            legacy_styles.manual_contents()
         )
         toc_layout = QVBoxLayout(self.manual_toc_frame)
         toc_layout.setContentsMargins(12, 14, 12, 14)
         toc_layout.setSpacing(5)
         self.manual_toc_title = QLabel("สารบัญหน้านี้")
         self.manual_toc_title.setFont(self._manual_font(F_LG, bold=True))
-        self.manual_toc_title.setStyleSheet(f"color:{C_TEXT};padding:4px 6px 8px 6px;")
+        self.manual_toc_title.setStyleSheet(text_styles.label(C_TEXT, padding='4px 6px 8px 6px'))
         toc_layout.addWidget(self.manual_toc_title)
         self.manual_toc_buttons: list[QPushButton] = []
         for index in range(5):
@@ -6209,16 +6224,7 @@ class PageManual(QWidget):
 
     @staticmethod
     def _manual_toc_button_style(*, active: bool) -> str:
-        if active:
-            return (
-                f"text-align:left; color:{C_ACCENT}; background-color:#EAF3FB; "
-                f"border:1px solid {C_ACCENT}; border-radius:6px; padding:9px 8px; "
-                "font-weight:bold;"
-            )
-        return (
-            f"text-align:left; color:{C_TEXT2}; background-color:transparent; "
-            "border:1px solid transparent; border-radius:6px; padding:9px 8px;"
-        )
+        return legacy_styles.manual_toc_button(active=active)
 
     def _update_manual_toc_highlight(self, value: int) -> None:
         sections = self._active_manual_sections()

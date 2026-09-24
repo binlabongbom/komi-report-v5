@@ -2,6 +2,8 @@
 
 The owner retains persistence and service lifecycle logic during this extraction.
 """
+from ui.styles import settings as settings_styles
+from ui.styles import text as text_styles
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QFrame, QVBoxLayout, QHBoxLayout, QLabel, QCheckBox, QComboBox, QToolButton, QWidget
 from ui.numeric_inputs import NumericSpinBox as QSpinBox
@@ -12,14 +14,13 @@ from widgets import btn
 def build_network_settings(self, program_body):
     def section_title(thai, english):
         label = QLabel(tr(thai, english))
-        label.setStyleSheet("font-weight:700;color:#123262;padding:4px 0;")
+        label.setStyleSheet(text_styles.label('#123262', font_weight='700', padding='4px 0'))
         return label
 
     web_service_card = QFrame()
     web_service_card.setObjectName("web_service_settings")
     web_service_card.setStyleSheet(
-        "QFrame#web_service_settings{background:transparent;border:none;}"
-        "QLabel{background:transparent;border:none;}"
+        settings_styles.BUILD_NETWORK_SETTINGS_WEB_SERVICE_CARD
     )
     web_service_layout = QVBoxLayout(web_service_card)
     web_service_layout.setContentsMargins(0, 0, 0, 8)
@@ -45,8 +46,7 @@ def build_network_settings(self, program_body):
     self.web_service_url.setWordWrap(True)
     self.web_service_url.setAccessibleName("ที่อยู่ Web Report สำหรับเครื่องอื่นใน LAN")
     self.web_service_url.setStyleSheet(
-        "color:#123262;background:#FFFFFF;border:1px solid #C9D8E6;"
-        "border-radius:6px;padding:7px 9px;font-weight:700;"
+        settings_styles.BUILD_NETWORK_SETTINGS_WEB_SERVICE_URL
     )
     address_row.addWidget(self.web_service_url, 1)
     self.open_web_button = btn("เปิด Web", "outline")
@@ -61,7 +61,7 @@ def build_network_settings(self, program_body):
     self.web_advanced_toggle.setCheckable(True)
     self.web_advanced_toggle.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
     self.web_advanced_toggle.setArrowType(Qt.ArrowType.RightArrow)
-    self.web_advanced_toggle.setStyleSheet("QToolButton{border:none;color:#64748B;padding:4px 0;}")
+    self.web_advanced_toggle.setStyleSheet(settings_styles.BUILD_NETWORK_SETTINGS_WEB_ADVANCED_TOGGLE)
     web_service_layout.addWidget(self.web_advanced_toggle, 0, Qt.AlignmentFlag.AlignLeft)
     self.web_advanced_panel = QWidget()
     port_layout = QHBoxLayout(self.web_advanced_panel)
@@ -82,8 +82,7 @@ def build_network_settings(self, program_body):
     web_security = QFrame()
     web_security.setObjectName("web_security")
     web_security.setStyleSheet(
-        "QFrame#web_security{background:transparent;border:none;}"
-        "QLabel{background:transparent;border:none;}"
+        settings_styles.BUILD_NETWORK_SETTINGS_WEB_SECURITY
     )
     web_security_layout = QHBoxLayout(web_security)
     web_security_layout.setContentsMargins(0, 8, 0, 8)
@@ -121,8 +120,7 @@ def build_network_settings(self, program_body):
     peer_sync = QFrame()
     peer_sync.setObjectName("peer_sync_authorization")
     peer_sync.setStyleSheet(
-        "QFrame#peer_sync_authorization{background:transparent;border:none;}"
-        "QLabel{background:transparent;border:none;}"
+        settings_styles.BUILD_NETWORK_SETTINGS_PEER_SYNC
     )
     peer_sync_layout = QHBoxLayout(peer_sync)
     peer_sync_layout.setContentsMargins(0, 8, 0, 8)

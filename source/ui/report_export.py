@@ -1,4 +1,6 @@
 """One cancellable export worker with Qt updates collected on the GUI thread."""
+from ui.styles import reports as reports_styles
+from ui.styles import text as text_styles
 from i18n import tr, translate_text
 from ui.resource_cleanup import close_executor_with
 from concurrent.futures import CancelledError, ThreadPoolExecutor
@@ -23,29 +25,19 @@ class ExportProgressDialog(QDialog):
         self._finished = False
         self._cancel_requested = False
         self._started = monotonic()
-        self.setStyleSheet('''
-            QDialog#excel_export_progress { background:#FFFFFF; }
-            QLabel { color:#123262; background:transparent; }
-            QProgressBar { border:1px solid #C9D8E6; border-radius:7px;
-                background:#EEF4FA; color:#123262; min-height:24px; text-align:center; }
-            QProgressBar::chunk { background:#1677C8; border-radius:6px; }
-            QPushButton { background:#FFFFFF; color:#123262; border:1px solid #C9D8E6;
-                border-radius:6px; padding:8px 20px; }
-            QPushButton:hover { background:#EEF4FA; }
-            QPushButton:disabled { color:#66788A; background:#F3F6F8; }
-        ''')
+        self.setStyleSheet(reports_styles.EXPORT_PROGRESS)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(24, 22, 24, 20)
         layout.setSpacing(14)
         title = QLabel(title or tr('กำลังส่งออก Excel', 'Exporting Excel'))
-        title.setStyleSheet('font-size:13.5pt;font-weight:700;')
+        title.setStyleSheet(reports_styles.EXPORT_PROGRESS_DIALOG_TITLE)
         layout.addWidget(title)
         self.phase_label = QLabel(tr('กำลังเตรียมส่งออก…', 'Preparing export…'))
         self.phase_label.setWordWrap(True)
         status_row = QHBoxLayout()
         status_row.addWidget(self.phase_label, 1)
         self.percent_label = QLabel('0%')
-        self.percent_label.setStyleSheet('color:#1677C8;font-size:13.5pt;font-weight:700;')
+        self.percent_label.setStyleSheet(text_styles.label('#1677C8', font_size='13.5pt', font_weight='700'))
         status_row.addWidget(self.percent_label)
         layout.addLayout(status_row)
         self.progress_bar = QProgressBar()
@@ -56,10 +48,10 @@ class ExportProgressDialog(QDialog):
         self.progress_bar.setAccessibleName(tr('ความคืบหน้าการส่งออก', 'Export progress'))
         layout.addWidget(self.progress_bar)
         self.elapsed_label = QLabel()
-        self.elapsed_label.setStyleSheet('color:#66788A;')
+        self.elapsed_label.setStyleSheet(text_styles.label('#66788A'))
         layout.addWidget(self.elapsed_label)
         self.hint_label = QLabel(tr('เปอร์เซ็นต์แสดงความคืบหน้าตามขั้นตอน\nสามารถใช้งานหน้ารายงานต่อได้ระหว่างรอ', 'Percentage indicates progress through the export stages.\nYou can continue using the report while waiting.'))
-        self.hint_label.setStyleSheet('color:#66788A;')
+        self.hint_label.setStyleSheet(text_styles.label('#66788A'))
         self.hint_label.setWordWrap(True)
         layout.addWidget(self.hint_label)
         row = QHBoxLayout()

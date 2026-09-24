@@ -1,4 +1,6 @@
 """Searchable reference, not an event log: every registered application code."""
+from ui.styles import tables as tables_styles
+from ui.styles import text as text_styles
 from math import ceil
 from PyQt6.QtCore import Qt, QTimer, QSize
 from PyQt6.QtGui import QTextDocument
@@ -30,7 +32,7 @@ class ErrorListPanel(QWidget):
         heading = QHBoxLayout()
         title = QLabel('Error list')
         title.setProperty('i18n_data', True)
-        title.setStyleSheet('font-size:18px;font-weight:700;color:#123262;')
+        title.setStyleSheet(text_styles.label('#123262', font_size='18px', font_weight='700'))
         heading.addWidget(title)
         heading.addStretch()
         self.copy_button = QPushButton(tr('คัดลอกรายละเอียด', 'Copy details'))
@@ -60,9 +62,7 @@ class ErrorListPanel(QWidget):
         header.setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
         self.table.setColumnWidth(0, 158)
-        self.table.setStyleSheet('QTableWidget{background:white;border:1px solid #D7E0E8;}'
-            'QHeaderView::section{background:#EDF2F7;color:#123262;padding:6px;border:1px solid #D7E0E8;}'
-            'QTableWidget::item{padding:6px;}')
+        self.table.setStyleSheet(tables_styles.ERROR_LIST_PANEL_TABLE)
         body.addWidget(self.table, 1)
         self._resize_timer = QTimer(self)
         self._resize_timer.setSingleShot(True)

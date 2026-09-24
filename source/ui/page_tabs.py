@@ -1,9 +1,11 @@
 """Shared page navigation for reports, settings and their detail views."""
 
+from ui.styles import text as text_styles
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QLabel, QTabWidget, QVBoxLayout, QWidget
 
-from config import F_2XL, page_tabs_qss
+from ui.styles.tokens import F_2XL
+from ui.styles.navigation import page_tabs_qss
 from widgets import fnt
 
 
@@ -17,10 +19,10 @@ class PageHeading(QWidget):
         layout.setSpacing(4)
         self.title = QLabel(title)
         self.title.setFont(fnt(F_2XL, True))
-        self.title.setStyleSheet("color:#102A43;border:none;background:transparent;")
+        self.title.setStyleSheet(text_styles.label('#102A43', border='none', background='transparent'))
         self.description = QLabel(description)
         self.description.setWordWrap(True)
-        self.description.setStyleSheet("color:#52677D;border:none;background:transparent;")
+        self.description.setStyleSheet(text_styles.label('#52677D', border='none', background='transparent'))
         layout.addWidget(self.title)
         layout.addWidget(self.description)
 

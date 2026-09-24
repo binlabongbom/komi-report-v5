@@ -2,27 +2,35 @@
 # widgets.py  —  Widget และ helper ที่ใช้ซ้ำทั่วโปรแกรม
 # ═══════════════════════════════════════════════════════════
 
+from ui.styles import surfaces as surfaces_styles
+from ui.styles import text as text_styles
+from ui.styles import tables as tables_styles
+
 from PyQt6.QtWidgets import (
     QFrame, QLabel, QPushButton, QHBoxLayout, QVBoxLayout,
     QTableWidget, QTableWidgetItem, QHeaderView, QScrollBar, QWidget,
     QStyledItemDelegate, QCheckBox, QSizePolicy, QAbstractItemView,
 )
 from PyQt6.QtCore import QPointF, QRectF, QSize, Qt, QTimer
-from PyQt6.QtGui  import QFont, QColor, QPainter, QPen
-from config import *
+from PyQt6.QtGui  import QColor, QPainter, QPen
+from ui.styles.tokens import (
+    C_ACCENT,
+    C_GREEN,
+    C_TEXT,
+    C_TEXT3,
+    F_2XL,
+    F_LG,
+    F_MD,
+    F_NUM,
+    F_SM,
+    F_XL,
+    F_XS,
+)
 
 # ══════════════════════════════════════════════════════════
 # FONT HELPER
 # ══════════════════════════════════════════════════════════
-def fnt(size: int = F_LG, bold: bool = False, mono: bool = False) -> QFont:
-    """
-    สร้าง QFont — cross-platform (Windows/macOS/Linux)
-    mono=True ใช้ฟอนต์ตระกูล monospace สำหรับตัวเลข
-    """
-    family = MONO_FONT_FAMILY if mono else UI_FONT_FAMILY
-    f = QFont(family, size)
-    if bold: f.setBold(True)
-    return f
+from ui.styles.typography import fnt as fnt
 
 # ══════════════════════════════════════════════════════════
 # FORMAT HELPERS
@@ -52,7 +60,7 @@ def hline() -> QFrame:
     """เส้นแบ่งแนวนอน"""
     f = QFrame()
     f.setFrameShape(QFrame.Shape.HLine)
-    f.setStyleSheet(f"color: {C_BORDER}; background: {C_BORDER}; max-height: 1px;")
+    f.setStyleSheet(surfaces_styles.divider())
     return f
 
 
@@ -60,14 +68,14 @@ def sec_title(text: str) -> QLabel:
     """หัวข้อหน้า — ขนาด F_2XL bold"""
     l = QLabel(text)
     l.setFont(fnt(F_2XL, True))
-    l.setStyleSheet(f"color: {C_TEXT}; padding-bottom: 2px;")
+    l.setStyleSheet(surfaces_styles.section_title())
     return l
 
 def sub_title(text: str) -> QLabel:
     """หัวข้อย่อย — ขนาด F_XL bold"""
     l = QLabel(text)
     l.setFont(fnt(F_XL, True))
-    l.setStyleSheet(f"color: {C_TEXT};")
+    l.setStyleSheet(text_styles.label(C_TEXT))
     return l
 
 # ══════════════════════════════════════════════════════════
@@ -77,12 +85,7 @@ def mk_card(top_color: str = None) -> QFrame:
     """สร้าง card สีขาว ขอบมน — top_color ใส่เส้นสีด้านบน"""
     f = QFrame(); f.setObjectName("card")
     if top_color:
-        f.setStyleSheet(f"""QFrame#card{{
-            background: {C_CARD};
-            border: 1px solid {C_BORDER};
-            border-radius: 12px;
-            border-top: 4px solid {top_color};
-        }}""")
+        f.setStyleSheet(surfaces_styles.accent_card(top_color))
     return f
 
 def mk_preview_card() -> QFrame:
@@ -120,16 +123,16 @@ class StatCard(QFrame):
 
         self.lbl_title = QLabel(title)
         self.lbl_title.setFont(fnt(F_XS if compact else F_SM))
-        self.lbl_title.setStyleSheet(f"color: {C_TEXT3};")
+        self.lbl_title.setStyleSheet(text_styles.label(C_TEXT3))
         self.lbl_title.setWordWrap(True)
 
         self.lbl_val = QLabel("—")
         self.lbl_val.setFont(fnt(F_XL if compact else F_NUM, True, not compact))
-        self.lbl_val.setStyleSheet(f"color: {color};")
+        self.lbl_val.setStyleSheet(text_styles.label(color))
 
         self.lbl_diff = QLabel("")
         self.lbl_diff.setFont(fnt(F_XS if compact else F_MD))
-        self.lbl_diff.setStyleSheet(f"color: {C_TEXT3};")
+        self.lbl_diff.setStyleSheet(text_styles.label(C_TEXT3))
 
         lay.addWidget(self.lbl_title)
         lay.addWidget(self.lbl_val)
@@ -141,7 +144,7 @@ class StatCard(QFrame):
         if diff is not None:
             self.lbl_diff.setText(fd(diff))
             color = C_GREEN if (isinstance(diff,(int,float)) and diff > 0) else C_TEXT3
-            self.lbl_diff.setStyleSheet(f"color: {color};")
+            self.lbl_diff.setStyleSheet(text_styles.label(color))
         else:
             self.lbl_diff.setText("")
 
@@ -281,9 +284,7 @@ class FrozenColTable(QWidget):
         self._right = QTableWidget()
 
         _tbl_style = (
-            "QTableWidget { border: 1px solid #E2E8F0; }"
-            "QHeaderView::section { background: #F8FAFC; border: 1px solid #E2E8F0;"
-            " padding: 4px; font-weight: 600; }"
+            tables_styles.DETAIL_TABLE
         )
         self._row_h = 30  # ความสูง row คงที่
         for t in (self._left, self._mid, self._right):
@@ -527,10 +528,7 @@ class FrozenLeftTable(QWidget):
     """Table with a frozen first column; remaining columns scroll horizontally."""
 
     _TBL_STYLE = (
-        "QTableWidget { border: 1px solid #E2E8F0; border-radius: 0px; }"
-        "QTableWidget::item { border-radius: 0px; }"
-        "QHeaderView::section { background: #F8FAFC; border: 1px solid #E2E8F0;"
-        " border-radius: 0px; padding: 4px 6px; font-weight: 600; }"
+        tables_styles.FROZEN_TABLE
     )
 
     def __init__(self, parent=None):
@@ -565,10 +563,7 @@ class FrozenLeftTable(QWidget):
         self._group_header.setVisible(False)
 
         group_style = (
-            "QTableWidget { border: 1px solid #CBD5E1; border-radius: 0px;"
-            " background: #F8FAFC; }"
-            "QTableWidget::item { border: 1px solid #CBD5E1; padding: 4px 6px;"
-            " border-radius: 0px; font-weight: 600; color: #123262; }"
+            tables_styles.GROUP_HEADER
         )
         for table in (self._group_left, self._group_right):
             table.horizontalHeader().setVisible(False)
@@ -1036,10 +1031,7 @@ def badge(text: str, bg: str = C_ACCENT, fg: str = "white") -> QLabel:
     """ป้ายสี เช่น "User" "SUM" "ซ้ำ" "ปกติ" """
     l = QLabel(f"  {text}  ")
     l.setFont(fnt(F_XS, True))
-    l.setStyleSheet(f"""
-        background: {bg}; color: {fg};
-        border-radius: 4px; padding: 2px 4px;
-    """)
+    l.setStyleSheet(surfaces_styles.badge(bg, fg))
     l.setFixedHeight(20)
     return l
 

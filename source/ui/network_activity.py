@@ -1,4 +1,6 @@
 """Event-driven network activity view, using actual runtime and durable receipts."""
+from ui.styles import tables as tables_styles
+from ui.styles import text as text_styles
 from ui.resource_cleanup import close_executor_with
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
@@ -40,7 +42,7 @@ class NetworkActivityPanel(QWidget):
         layout.setContentsMargins(0, 8, 0, 8)
         title = QHBoxLayout()
         heading = QLabel("สถานะการทำงานร่วมกัน")
-        heading.setStyleSheet("font-weight:700;color:#123262;")
+        heading.setStyleSheet(text_styles.label('#123262', font_weight='700'))
         title.addWidget(heading, 1)
         self.refresh_button = btn("ตรวจสถานะอีกครั้ง", "outline")
         self.refresh_button.clicked.connect(self.refresh)
@@ -72,12 +74,7 @@ class NetworkActivityPanel(QWidget):
         self.table.verticalHeader().setDefaultSectionSize(42)
         self.table.setShowGrid(False)
         self.table.setAlternatingRowColors(True)
-        self.table.setStyleSheet("QTableWidget{background:white;alternate-background-color:#F8FAFC;"
-            "border:1px solid #D7E0E8;border-radius:6px;color:#24364B;}"
-            "QHeaderView::section{background:#EDF2F7;color:#42526B;font-weight:600;"
-            "border:none;border-bottom:1px solid #D7E0E8;padding:10px 8px;}"
-            "QTableWidget::item{padding:8px;border-bottom:1px solid #EDF2F7;}"
-            "QTableWidget::item:selected{background:#E0EDFA;color:#123262;}")
+        self.table.setStyleSheet(tables_styles.NETWORK_ACTIVITY)
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.table.setMinimumHeight(125)
         self.table.setMaximumHeight(265)
@@ -96,7 +93,7 @@ class NetworkActivityPanel(QWidget):
         layout.addLayout(pager)
         self.notice = QLabel("รอยืนยันรับ = ยังไม่มีหลักฐานว่าคอมปลายทางบันทึกแล้ว · สถานะรับประวัติไม่ใช่สถานะการตั้งค่าหรือผู้อ่านร่วม")
         self.notice.setWordWrap(True)
-        self.notice.setStyleSheet("color:#64748B;")
+        self.notice.setStyleSheet(text_styles.label('#64748B'))
         layout.addWidget(self.notice)
 
     def bind_runtime(self, polling):
