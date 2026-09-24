@@ -13,7 +13,7 @@ from PyQt6.QtWidgets import QApplication, QDialog, QPushButton
 from openpyxl import load_workbook
 
 import database
-import v5_pages
+from ui.reports import page as report_page
 from i18n import set_language
 from services import report_snapshot
 from services.report_period_policy import (
@@ -77,7 +77,7 @@ def test_initial_preview_uses_current_month_even_when_only_old_history_exists(mo
 def test_rejected_preview_keeps_dates_and_exports_exact_range_without_loading(monkeypatch, language):
     app = QApplication.instance() or QApplication([])
     set_language(language)
-    page = v5_pages.PageHistoryV5(staged=True)
+    page = report_page.PageHistoryV5(staged=True)
     cloud = page.report_center
     requests, dialogs = [], []
     def submit(*args, **kwargs):
@@ -87,8 +87,8 @@ def test_rejected_preview_keeps_dates_and_exports_exact_range_without_loading(mo
         dialogs.append((start, end))
         return None
     monkeypatch.setattr(page._snapshot_pool, 'submit', submit)
-    monkeypatch.setattr(v5_pages.ReportExportPeriodDialog, 'get_selection', choose)
-    monkeypatch.setattr(v5_pages.QFileDialog, 'getSaveFileName',
+    monkeypatch.setattr(report_page.ReportExportPeriodDialog, 'get_selection', choose)
+    monkeypatch.setattr(report_page.QFileDialog, 'getSaveFileName',
                         lambda *a, **kw: pytest.fail('Cancelled handoff opened Save'))
     page.resize(1280, 800)
     page.show()
@@ -151,7 +151,7 @@ def test_usage_filters_old_years_and_partial_months_without_changing_posted_tota
 
 def test_late_preview_result_cannot_replace_rejected_range(monkeypatch):
     app = QApplication.instance() or QApplication([])
-    page = v5_pages.PageHistoryV5(staged=True)
+    page = report_page.PageHistoryV5(staged=True)
     cloud = page.report_center
     future = Future()
     future.set_running_or_notify_cancel()
@@ -179,7 +179,7 @@ def test_late_preview_result_cannot_replace_rejected_range(monkeypatch):
 def test_export_dialog_allows_five_years_blocks_overflow_and_offers_latest_five(language):
     app = QApplication.instance() or QApplication([])
     set_language(language)
-    dialog = v5_pages.ReportExportPeriodDialog(date(2022, 1, 1), date(2026, 12, 31),
+    dialog = report_page.ReportExportPeriodDialog(date(2022, 1, 1), date(2026, 12, 31),
         available_start=date(2010, 1, 1), available_end=date(2026, 12, 31))
     try:
         assert dialog.export_button.isEnabled()

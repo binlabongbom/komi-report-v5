@@ -1,8 +1,11 @@
+import inspect
 from pathlib import Path
+
+from ui.reports.page import PageHistoryV5
 
 
 def test_report_tab_refresh_is_debounced_and_guarded():
-    text = Path(__file__).resolve().parents[1].joinpath("v5_pages.py").read_text(encoding="utf-8")
+    text = inspect.getsource(PageHistoryV5)
     assert "lambda _index: QTimer.singleShot(0, self.refresh_visible)" not in text
     assert "self.report_center.tabs.currentChanged.connect(self._schedule_report_refresh)" in text
     assert "self._report_refresh_busy" in text

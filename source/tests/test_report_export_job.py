@@ -238,13 +238,13 @@ def test_export_job_reads_selected_user_and_raw_dates_from_database(tmp_path, ar
 
 
 def test_page_date_cancel_does_not_read_database_and_export_busy_survives_refresh(monkeypatch):
-    import v5_pages
+    from ui.reports import page as report_page
     import services.report_export_job as job
     app = QApplication.instance() or QApplication([])
-    page = v5_pages.PageHistoryV5(staged=True)
+    page = report_page.PageHistoryV5(staged=True)
     page.report_center._period = ('2026-07-01', '2026-07-31')
     page.report_center._has_data = True
-    monkeypatch.setattr(v5_pages.ReportExportPeriodDialog, 'get_selection', lambda *a, **kw: None)
+    monkeypatch.setattr(report_page.ReportExportPeriodDialog, 'get_selection', lambda *a, **kw: None)
     monkeypatch.setattr(job, 'load_usage_history', lambda *a, **kw: pytest.fail('cancel read history'))
     try:
         page._export_report_center_excel()
@@ -261,10 +261,10 @@ def test_page_date_cancel_does_not_read_database_and_export_busy_survives_refres
 
 
 def test_page_export_stays_responsive_during_slow_database_read(monkeypatch, tmp_path):
-    import v5_pages
+    from ui.reports import page as report_page
     import services.report_export_job as job
     app = QApplication.instance() or QApplication([])
-    page = v5_pages.PageHistoryV5(staged=True)
+    page = report_page.PageHistoryV5(staged=True)
     page.report_center._period = ('2026-07-01', '2026-07-31')
     page.report_center._has_data = True
     page.report_center._update_loading_visibility()
@@ -278,10 +278,10 @@ def test_page_export_stays_responsive_during_slow_database_read(monkeypatch, tmp
         release.wait(3)
         raise OSError('synthetic failed database read')
     monkeypatch.setattr(job, 'load_usage_history', slow_read)
-    monkeypatch.setattr(v5_pages.ReportExportPeriodDialog, 'get_selection',
+    monkeypatch.setattr(report_page.ReportExportPeriodDialog, 'get_selection',
                         lambda *a, **kw: ReportExportSelection(date(2026, 7, 1), date(2026, 7, 31)))
-    monkeypatch.setattr(v5_pages.QFileDialog, 'getSaveFileName', lambda *a, **kw: (str(tmp_path/'failed.xlsx'), ''))
-    monkeypatch.setattr(v5_pages.QMessageBox, 'critical', lambda *a: messages.append(a[-1]))
+    monkeypatch.setattr(report_page.QFileDialog, 'getSaveFileName', lambda *a, **kw: (str(tmp_path/'failed.xlsx'), ''))
+    monkeypatch.setattr(report_page.QMessageBox, 'critical', lambda *a: messages.append(a[-1]))
     timer = QTimer(page)
     timer.setInterval(10)
     timer.timeout.connect(lambda: ticks.append(1))

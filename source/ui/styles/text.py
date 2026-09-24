@@ -1,5 +1,18 @@
 """Shared label styling. Layout and font construction remain separate."""
 
+from html import escape
+
+
+def paper_size_detail(a3_value: str, a4_value: str) -> str:
+    """Render metadata labels separately from safely escaped counter values."""
+    return (
+        "<span style='color:#64748B'>A3</span> "
+        f"<span style='color:#111827'>{escape(a3_value)}</span>"
+        "<span style='color:#94A3B8'>  |  </span>"
+        "<span style='color:#64748B'>A4</span> "
+        f"<span style='color:#111827'>{escape(a4_value)}</span>"
+    )
+
 
 def label(
     color: str,

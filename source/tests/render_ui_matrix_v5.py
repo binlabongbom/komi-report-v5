@@ -36,8 +36,10 @@ from PyQt6.QtWidgets import (
 )
 
 import database
-import pages
-import v5_pages
+from ui.pages import overview as overview_page
+from ui.pages import devices as devices_page
+from ui.settings import fleet as fleet_settings
+from ui.reports import page as report_page
 from app import MainWindow
 from database import _open
 from i18n import apply_language
@@ -136,7 +138,7 @@ def _overview_summary(device_count: int) -> dict:
 
 
 def _usage_records(slots: list[int]) -> tuple[MonthlyUsage, ...]:
-    period_start, period_end = v5_pages.history_period_range(
+    period_start, period_end = report_page.history_period_range(
         date.today(),
         1,
         "monthly",
@@ -357,18 +359,18 @@ def main() -> None:
     # Status labels must remain deterministic and offline in visual QA.
     web_service._port_open = lambda _port: False
     web_service._lan_ip = lambda: "127.0.0.1"
-    pages.build_overview_summary = lambda _filter: _overview_summary(current_count["value"])
-    v5_pages.latest_counters = lambda slot: {
+    overview_page.build_overview_summary = lambda _filter: _overview_summary(current_count["value"])
+    devices_page.latest_counters = lambda slot: {
         "counter.total.total": 10_000 + slot,
         "counter.print.full_color_total": 1_000,
         "counter.print.black_total": 4_000,
     }
-    v5_pages.load_usage_history = lambda slots, **_kwargs: _usage_records(slots)
-    v5_pages.load_monthly_usage = lambda slots, **_kwargs: _usage_records(slots)
-    v5_pages.load_subject_history = lambda slots, **_kwargs: ()
+    report_page.load_usage_history = lambda slots, **_kwargs: _usage_records(slots)
+    report_page.load_monthly_usage = lambda slots, **_kwargs: _usage_records(slots)
+    report_page.load_subject_history = lambda slots, **_kwargs: ()
 
     temp_root = Path(tempfile.mkdtemp(prefix="komi-ui-matrix-"))
-    v5_pages.configure_autostart = (
+    fleet_settings.configure_autostart = (
         lambda _enabled, *, apply=True: temp_root / "synthetic-autostart-registration"
     )
     results: list[tuple[int, str, str]] = []

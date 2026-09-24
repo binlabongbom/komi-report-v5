@@ -29,7 +29,7 @@ from PyQt6.QtWidgets import (
 
 import database
 from komi_version import APP_VERSION
-import v5_pages
+from ui.setup import wizard as setup_wizard
 from komi_snmp_profiler.connectors import (
     WebConnectionCertificateError,
     WebConnectionSessionBusyError,
@@ -540,7 +540,7 @@ def test_verify_selected_devices_passes_current_configs_to_worker(tmp_path, monk
         captured["kwargs"] = kwargs
         raise RuntimeError("worker captured")
 
-    monkeypatch.setattr(v5_pages, "DeviceTestWorker", capture_worker)
+    monkeypatch.setattr(setup_wizard, "DeviceTestWorker", capture_worker)
     try:
         wizard = SetupWizardV5()
         _add_selected_device(wizard, "DMS Printer", "192.0.2.10")
@@ -1103,7 +1103,7 @@ def test_device_test_worker_pins_first_self_signed_certificate(monkeypatch) -> N
     policies: list[str] = []
 
     monkeypatch.setattr(
-        "v5_pages.SnmpTotalProbe.read",
+        "ui.setup.workers.SnmpTotalProbe.read",
         lambda _probe, _host: SimpleNamespace(
             model="KONICA MINOLTA bizhub C450i",
             serial="SERIAL-1",
@@ -1113,7 +1113,7 @@ def test_device_test_worker_pins_first_self_signed_certificate(monkeypatch) -> N
         ),
     )
     monkeypatch.setattr(
-        "v5_pages.server_certificate_fingerprint",
+        "ui.setup.workers.server_certificate_fingerprint",
         lambda _host: fingerprint,
     )
 
@@ -1131,7 +1131,7 @@ def test_device_test_worker_pins_first_self_signed_certificate(monkeypatch) -> N
             WebAuthState.ADMIN,
         )
 
-    monkeypatch.setattr("v5_pages.MeterReader.read", read)
+    monkeypatch.setattr("ui.setup.workers.MeterReader.read", read)
     result = DeviceTestWorker(
         [
             DeviceConfig(
@@ -1162,7 +1162,7 @@ def test_device_test_worker_passes_pinned_policy_to_legacy_admin_connector(monke
     policies: list[tuple[str, str]] = []
 
     monkeypatch.setattr(
-        "v5_pages.SnmpTotalProbe.read",
+        "ui.setup.workers.SnmpTotalProbe.read",
         lambda _probe, _host: SimpleNamespace(
             model="KONICA MINOLTA bizhub C458",
             serial="C458-SERIAL",
@@ -1172,7 +1172,7 @@ def test_device_test_worker_passes_pinned_policy_to_legacy_admin_connector(monke
         ),
     )
     monkeypatch.setattr(
-        "v5_pages.server_certificate_fingerprint",
+        "ui.setup.workers.server_certificate_fingerprint",
         lambda _host, **_kwargs: fingerprint,
     )
 
@@ -1191,7 +1191,7 @@ def test_device_test_worker_passes_pinned_policy_to_legacy_admin_connector(monke
             WebAuthState.ADMIN,
         )
 
-    monkeypatch.setattr("v5_pages.MeterReader.read", read)
+    monkeypatch.setattr("ui.setup.workers.MeterReader.read", read)
     device = DeviceConfig(
         0,
         "bizhub C458",
@@ -1211,7 +1211,7 @@ def test_device_test_worker_passes_pinned_policy_to_legacy_admin_connector(monke
 
 def test_device_test_worker_does_not_request_customer_password_for_tls_failure(monkeypatch) -> None:
     monkeypatch.setattr(
-        "v5_pages.SnmpTotalProbe.read",
+        "ui.setup.workers.SnmpTotalProbe.read",
         lambda _probe, _host: SimpleNamespace(
             model="KONICA MINOLTA bizhub C368",
             serial="C368-SERIAL",
@@ -1221,7 +1221,7 @@ def test_device_test_worker_does_not_request_customer_password_for_tls_failure(m
         ),
     )
     monkeypatch.setattr(
-        "v5_pages.MeterReader.read",
+        "ui.setup.workers.MeterReader.read",
         lambda *_args, **_kwargs: (_ for _ in ()).throw(
             WebConnectionTlsError("TLS compatibility failed")
         ),
@@ -1244,7 +1244,7 @@ def test_device_test_worker_does_not_request_customer_password_for_tls_failure(m
 
 def test_device_test_worker_reports_session_busy_without_requesting_password(monkeypatch) -> None:
     monkeypatch.setattr(
-        "v5_pages.SnmpTotalProbe.read",
+        "ui.setup.workers.SnmpTotalProbe.read",
         lambda _probe, _host: SimpleNamespace(
             model="KONICA MINOLTA bizhub C458",
             serial="C458-SERIAL",
@@ -1254,7 +1254,7 @@ def test_device_test_worker_reports_session_busy_without_requesting_password(mon
         ),
     )
     monkeypatch.setattr(
-        "v5_pages.MeterReader.read",
+        "ui.setup.workers.MeterReader.read",
         lambda *_args, **_kwargs: (_ for _ in ()).throw(
             WebConnectionSessionBusyError("legacy session busy")
         ),
@@ -1277,7 +1277,7 @@ def test_device_test_worker_reports_session_busy_without_requesting_password(mon
 
 def test_device_test_worker_accepts_public_meter_for_public_capable_press_even_if_password_was_entered(monkeypatch) -> None:
     monkeypatch.setattr(
-        "v5_pages.SnmpTotalProbe.read",
+        "ui.setup.workers.SnmpTotalProbe.read",
         lambda _probe, _host: SimpleNamespace(
             model="KONICA MINOLTA bizhub C450i",
             serial="SERIAL-1",
@@ -1288,7 +1288,7 @@ def test_device_test_worker_accepts_public_meter_for_public_capable_press_even_i
     )
     counter = WebCounterValue("counter.total.total", "Total", 100, "Total", "test")
     monkeypatch.setattr(
-        "v5_pages.MeterReader.read",
+        "ui.setup.workers.MeterReader.read",
         lambda _reader, host: MeterReading.create(
             host,
             [counter],
@@ -1397,7 +1397,7 @@ def test_setup_wizard_marks_session_busy_and_opens_printer_web_instead_of_passwo
     original_path = _wizard_database(tmp_path)
     app = QApplication.instance() or QApplication([])
     opened: list[str] = []
-    monkeypatch.setattr(v5_pages.webbrowser, "open", opened.append)
+    monkeypatch.setattr(setup_wizard.webbrowser, "open", opened.append)
     try:
         wizard = SetupWizardV5()
         _add_selected_device(wizard, "KONICA MINOLTA bizhub C458", "192.0.2.16")
@@ -1764,7 +1764,7 @@ def test_offline_registration_entry_point_is_disabled_without_creating_runtime(
 
     monkeypatch.setattr(runtime_module, "V52RuntimeCoordinator", OfflineRuntime)
     monkeypatch.setattr(
-        v5_pages.QFileDialog,
+        setup_wizard.QFileDialog,
         "getSaveFileName",
         lambda *args, **kwargs: (str(exported), "KOMI Request (*.komirequest)"),
     )
@@ -2186,7 +2186,7 @@ def test_setup_wizard_shared_pricing_and_billing_fit_without_scrolling(tmp_path)
 
 @pytest.fixture(autouse=True)
 def accept_reviewed_setup_in_existing_workflow_tests(monkeypatch):
-    monkeypatch.setattr(v5_pages, "confirm_shared_settings", lambda *_: True)
+    monkeypatch.setattr(setup_wizard, "confirm_shared_settings", lambda *_: True)
 
 
 def test_setup_cancel_shared_review_does_not_configure_or_register(tmp_path, monkeypatch):
@@ -2195,7 +2195,7 @@ def test_setup_cancel_shared_review_does_not_configure_or_register(tmp_path, mon
     try:
         wizard = SetupWizardV5()
         _add_selected_device(wizard, "DMS Printer", "192.0.2.10")
-        monkeypatch.setattr(v5_pages, "confirm_shared_settings", lambda *_: False)
+        monkeypatch.setattr(setup_wizard, "confirm_shared_settings", lambda *_: False)
         wizard._save()
         assert DeviceConfigRepository().list(enabled_only=True) == []
         assert V52RuntimeStateRepository().internal() is None
@@ -2218,7 +2218,7 @@ def test_setup_change_during_review_keeps_external_edit_and_draft(tmp_path, monk
         def review(*_args):
             database.set_cfg("billing_day", "22")
             return True
-        monkeypatch.setattr(v5_pages, "confirm_shared_settings", review)
+        monkeypatch.setattr(setup_wizard, "confirm_shared_settings", review)
         monkeypatch.setattr(wizard, "_show_wizard_message", lambda *args: errors.append(args))
         wizard._save()
         assert errors and "เปลี่ยน" in errors[0][1]

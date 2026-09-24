@@ -4,7 +4,7 @@ from types import SimpleNamespace
 from concurrent.futures import CancelledError
 
 import pytest
-import v5_pages
+from ui.reports import page as report_page
 from services import report_snapshot
 
 
@@ -15,7 +15,7 @@ def test_background_payload_matches_existing_report_semantics(monkeypatch, index
     daily = [SimpleNamespace(period_start=date(2026,9,7),period_end=date(2026,9,7))]
     subjects = [SimpleNamespace(period_start=date.fromisoformat(selected[0]),period_end=date.fromisoformat(selected[1]))]
     devices = [SimpleNamespace(last_success_at="2026-09-08T12:00:00")]
-    for module in (v5_pages, report_snapshot):
+    for module in (report_page, report_snapshot):
         monkeypatch.setattr(module, "report_slots", lambda: [0])
         monkeypatch.setattr(module, "load_usage_history", lambda slots,granularity,cache,**kwargs: monthly if granularity=="monthly" else daily)
         monkeypatch.setattr(module, "load_subject_history", lambda *args, **kwargs: subjects)
@@ -25,14 +25,14 @@ def test_background_payload_matches_existing_report_semantics(monkeypatch, index
     monkeypatch.setattr(report_snapshot, "build_user_rows", lambda *a, **kw: ("users-model",))
     monkeypatch.setattr(report_snapshot, "build_legacy_raw_tables", lambda *a, **kw: ("raw-model",))
     monkeypatch.setattr(report_snapshot, "build_printer_rows", lambda *a, **kw: ("printer-model",))
-    monkeypatch.setattr(v5_pages, "apply_language", lambda *args: None)
+    monkeypatch.setattr(report_page, "apply_language", lambda *args: None)
     monkeypatch.setattr("services.report_excel_export.build_daily_category_costs", lambda *args: ("costs",))
     captured = {}
     center = SimpleNamespace(tabs=SimpleNamespace(currentIndex=lambda:index), current_period=lambda:selected,
                              set_periods=lambda *args:None, set_data=lambda **kwargs:captured.update(kwargs))
     original = SimpleNamespace(report_center=center,_report_records=monthly,cache=None,subject_cache=None,
-                               _historical_devices=lambda:devices,_period_key=v5_pages.PageHistoryV5._period_key)
-    v5_pages.PageHistoryV5._refresh_report_center(original, selected)
+                               _historical_devices=lambda:devices,_period_key=report_page.PageHistoryV5._period_key)
+    report_page.PageHistoryV5._refresh_report_center(original, selected)
     result=report_snapshot.load_report_snapshot(index,selected,cache=None,subject_cache=None,
           repository=SimpleNamespace(list=lambda **kwargs:devices),cancelled=Event())
     # Original monthly list is intentionally normalized to immutable tuple by the worker.

@@ -13,7 +13,7 @@ from PyQt6.QtCore import QTime
 from PyQt6.QtWidgets import QAbstractButton, QApplication, QDialog, QLabel, QWidget
 
 import database
-import v5_pages
+from ui.settings import fleet as fleet_page
 from i18n import apply_language, set_language
 from pages import PageSettings
 from services.device_config import DeviceConfig, DeviceConfigRepository
@@ -106,7 +106,7 @@ class _WebServiceDouble:
         self.runtime_root = root / "web-runtime"
 
     def _status(self, state: str = "stopped") -> WebServiceStatus:
-        port = v5_pages.read_web_port(self.runtime_root / ".env.local")
+        port = fleet_page.read_web_port(self.runtime_root / ".env.local")
         return WebServiceStatus(
             state=state,
             local_url=f"http://127.0.0.1:{port}",
@@ -134,8 +134,8 @@ class _WebServiceDouble:
 @pytest.fixture(autouse=True)
 def fake_web_service(monkeypatch, tmp_path):
     service = _WebServiceDouble(tmp_path)
-    monkeypatch.setattr(v5_pages, "web_service_manager", lambda: service)
-    monkeypatch.setattr(v5_pages, "confirm_shared_settings", lambda *_: True)
+    monkeypatch.setattr(fleet_page, "web_service_manager", lambda: service)
+    monkeypatch.setattr(fleet_page, "confirm_shared_settings", lambda *_: True)
     return service
 
 
@@ -168,7 +168,7 @@ def test_shared_billing_cancel_keeps_draft_and_does_not_write_history(tmp_path, 
         old = database.get_cfg("billing_day")
         page.billing_day.setValue(15)
         previews = []
-        monkeypatch.setattr(v5_pages, "confirm_shared_settings", lambda _parent, preview: previews.append(preview) or False)
+        monkeypatch.setattr(fleet_page, "confirm_shared_settings", lambda _parent, preview: previews.append(preview) or False)
         page._save_billing()
         assert previews[0].changes["billing_day"] == (int(old), 15)
         assert database.get_cfg("billing_day") == old
@@ -191,7 +191,7 @@ def test_shared_billing_rejects_edit_made_while_confirmation_is_open(tmp_path, m
             database.set_cfg("billing_day", "20")
             return True
 
-        monkeypatch.setattr(v5_pages, "confirm_shared_settings", concurrent_change)
+        monkeypatch.setattr(fleet_page, "confirm_shared_settings", concurrent_change)
         page._save_billing()
         assert database.get_cfg("billing_day") == "20"
         assert page.billing_save_button.isEnabled()
@@ -238,7 +238,7 @@ def test_fleet_settings_groups_fields_and_live_schedule(tmp_path, monkeypatch, f
 
     try:
         monkeypatch.setattr(
-            v5_pages,
+            fleet_page,
             "configure_autostart",
             fake_configure_autostart,
         )
@@ -329,7 +329,7 @@ def test_fleet_settings_toggle_stops_web_service(tmp_path, monkeypatch, fake_web
     original = _database(tmp_path)
     registration = tmp_path / "autostart.registered"
     try:
-        monkeypatch.setattr(v5_pages, "configure_autostart", lambda _enabled, *, apply=True: registration)
+        monkeypatch.setattr(fleet_page, "configure_autostart", lambda _enabled, *, apply=True: registration)
         database.set_cfg("web_service_enabled", "1")
         page = PageFleetSettings()
         page.web_service_enabled.setChecked(False)
@@ -355,12 +355,12 @@ def test_compact_settings_opens_one_editor_and_preserves_dirty_draft(
     notices: list[tuple[str, str]] = []
     try:
         monkeypatch.setattr(
-            v5_pages,
+            fleet_page,
             "configure_autostart",
             lambda _enabled, *, apply=True: registration,
         )
         monkeypatch.setattr(
-            v5_pages,
+            fleet_page,
             "show_compact_information",
             lambda _parent, title, message: notices.append((title, message)),
         )
@@ -407,7 +407,7 @@ def test_web_recovery_can_start_enabled_but_stopped_service_without_toggling(
     registration = tmp_path / "autostart.registered"
     try:
         monkeypatch.setattr(
-            v5_pages,
+            fleet_page,
             "configure_autostart",
             lambda _enabled, *, apply=True: registration,
         )
@@ -466,7 +466,7 @@ def test_desktop_changes_web_access_and_restarts_owned_service(tmp_path, monkeyp
     registration = tmp_path / "autostart.registered"
     registration.write_text("synthetic registration", encoding="utf-8")
     try:
-        monkeypatch.setattr(v5_pages, "configure_autostart", lambda _enabled, *, apply=True: registration)
+        monkeypatch.setattr(fleet_page, "configure_autostart", lambda _enabled, *, apply=True: registration)
         fake_web_service.started = 1
         page = PageFleetSettings()
 
@@ -491,7 +491,7 @@ def test_fleet_settings_allows_adding_and_removing_custom_schedule_windows(tmp_p
     registration = tmp_path / "autostart.registered"
     registration.write_text("synthetic registration", encoding="utf-8")
     try:
-        monkeypatch.setattr(v5_pages, "configure_autostart", lambda _enabled, *, apply=True: registration)
+        monkeypatch.setattr(fleet_page, "configure_autostart", lambda _enabled, *, apply=True: registration)
         page = PageFleetSettings()
 
         page._add_schedule_window()
@@ -528,7 +528,7 @@ def test_fleet_autostart_reflects_missing_os_registration(tmp_path, monkeypatch)
     planned: list[tuple[bool, bool]] = []
     try:
         monkeypatch.setattr(
-            v5_pages,
+            fleet_page,
             "configure_autostart",
             lambda enabled, *, apply=True: (
                 planned.append((enabled, apply)) or registration
@@ -736,17 +736,17 @@ def test_offline_license_settings_are_hidden_while_activation_is_disabled(
     host_keys = {"synthetic-kid": "synthetic-public-verification-value"}
     messages: list[str] = []
     monkeypatch.setattr(
-        v5_pages.QFileDialog,
+        fleet_page.QFileDialog,
         "getSaveFileName",
         lambda *args, **kwargs: (str(tmp_path / "desktop-request"), ""),
     )
     monkeypatch.setattr(
-        v5_pages.QFileDialog,
+        fleet_page.QFileDialog,
         "getOpenFileName",
         lambda *args, **kwargs: (str(tmp_path / "desktop.komilicense"), ""),
     )
     monkeypatch.setattr(
-        v5_pages.QMessageBox,
+        fleet_page.QMessageBox,
         "information",
         lambda *args: messages.append(" ".join(str(value) for value in args[1:])),
     )
@@ -793,12 +793,12 @@ def test_disabled_offline_license_ui_does_not_call_export_runtime(
     runtime = FailingRuntime(mode="offline", status="offline_request_required")
     warnings: list[str] = []
     monkeypatch.setattr(
-        v5_pages.QFileDialog,
+        fleet_page.QFileDialog,
         "getSaveFileName",
         lambda *args, **kwargs: (str(tmp_path / "desktop.komirequest"), ""),
     )
     monkeypatch.setattr(
-        v5_pages.QMessageBox,
+        fleet_page.QMessageBox,
         "warning",
         lambda *args: warnings.append(" ".join(str(value) for value in args[1:])),
     )
@@ -965,7 +965,7 @@ def test_web_custom_port_is_saved_restarted_and_restored(tmp_path, monkeypatch, 
         assert page.web_save_button.isEnabled()
         page._save_web()
         assert fake_web_service.restarted == 1
-        assert v5_pages.read_web_port(fake_web_service.runtime_root / ".env.local") == port
+        assert fleet_page.read_web_port(fake_web_service.runtime_root / ".env.local") == port
         assert f":{port}" in page.web_service_url.text()
         page.refresh_from_config(force=True)
         assert page.web_port.value() == port
@@ -978,8 +978,8 @@ def test_web_custom_port_is_saved_restarted_and_restored(tmp_path, monkeypatch, 
 def test_web_password_lock_sets_a_code_before_closing_reports(tmp_path, monkeypatch, fake_web_service):
     app = QApplication.instance() or QApplication([])
     original = _database(tmp_path)
-    monkeypatch.setattr(v5_pages.WebAccessCodeDialog, "exec", lambda self: QDialog.DialogCode.Accepted)
-    monkeypatch.setattr(v5_pages.WebAccessCodeDialog, "value", lambda self: "Chosen-LAN-Password-2026")
+    monkeypatch.setattr(fleet_page.WebAccessCodeDialog, "exec", lambda self: QDialog.DialogCode.Accepted)
+    monkeypatch.setattr(fleet_page.WebAccessCodeDialog, "value", lambda self: "Chosen-LAN-Password-2026")
     try:
         fake_web_service.started = 1
         page = PageFleetSettings()
@@ -987,7 +987,7 @@ def test_web_password_lock_sets_a_code_before_closing_reports(tmp_path, monkeypa
         page.web_report_require_password.setChecked(True)
         page._save_web()
         env = fake_web_service.runtime_root / ".env.local"
-        status = v5_pages.web_access_status(env)
+        status = fleet_page.web_access_status(env)
         assert status.configured and not status.report_passwordless
         assert fake_web_service.restarted == 1
         assert verify_web_access_code("Chosen-LAN-Password-2026", _read_values(env)[ACCESS_HASH_KEY])
@@ -1001,12 +1001,12 @@ def test_web_password_lock_sets_a_code_before_closing_reports(tmp_path, monkeypa
 def test_cancel_password_setup_keeps_reports_open(tmp_path, monkeypatch, fake_web_service):
     app = QApplication.instance() or QApplication([])
     original = _database(tmp_path)
-    monkeypatch.setattr(v5_pages.WebAccessCodeDialog, "exec", lambda self: QDialog.DialogCode.Rejected)
+    monkeypatch.setattr(fleet_page.WebAccessCodeDialog, "exec", lambda self: QDialog.DialogCode.Rejected)
     try:
         page = PageFleetSettings()
         page.web_report_require_password.setChecked(True)
         page._save_web()
-        status = v5_pages.web_access_status(fake_web_service.runtime_root / ".env.local")
+        status = fleet_page.web_access_status(fake_web_service.runtime_root / ".env.local")
         assert status.report_passwordless and not status.configured
         assert fake_web_service.restarted == 0
         assert "web" in page._dirty_sections
@@ -1022,7 +1022,7 @@ def test_web_occupied_port_is_rejected_before_any_settings_change(tmp_path, monk
     app = QApplication.instance() or QApplication([])
     original = _database(tmp_path)
     warnings = []
-    monkeypatch.setattr(v5_pages.QMessageBox, "warning", lambda *args: warnings.append(args[-1]))
+    monkeypatch.setattr(fleet_page.QMessageBox, "warning", lambda *args: warnings.append(args[-1]))
     try:
         page = PageFleetSettings()
         with socket.socket() as occupied:
@@ -1032,8 +1032,8 @@ def test_web_occupied_port_is_rejected_before_any_settings_change(tmp_path, monk
             page.web_report_require_password.setChecked(True)
             page._save_web()
         assert warnings
-        assert v5_pages.read_web_port(fake_web_service.runtime_root / ".env.local") == 3000
-        assert v5_pages.web_access_status(fake_web_service.runtime_root / ".env.local").report_passwordless
+        assert fleet_page.read_web_port(fake_web_service.runtime_root / ".env.local") == 3000
+        assert fleet_page.web_access_status(fake_web_service.runtime_root / ".env.local").report_passwordless
         assert fake_web_service.restarted == 0
         page.close()
         app.processEvents()
@@ -1050,13 +1050,13 @@ def test_secondary_always_open_selector_restores_and_can_revoke(tmp_path, monkey
         page = PageFleetSettings()
         page.peer_sync_mode.setCurrentIndex(page.peer_sync_mode.findData("always"))
         page.peer_sync_authorize_button.click()
-        assert v5_pages.pairing_window_status().always_open
+        assert fleet_page.pairing_window_status().always_open
         assert "เปิดตลอด" in page.peer_sync_status.text()
         page.refresh_from_config(force=True)
         assert page.peer_sync_mode.currentData() == "always"
         page.peer_sync_mode.setCurrentIndex(0)
         page.peer_sync_authorize_button.click()
-        assert not v5_pages.pairing_window_status().open
+        assert not fleet_page.pairing_window_status().open
         page.close()
         app.processEvents()
     finally:

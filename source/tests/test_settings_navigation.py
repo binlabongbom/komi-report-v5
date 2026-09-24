@@ -5,7 +5,8 @@ from PyQt6.QtCore import QPoint
 from PyQt6.QtWidgets import QApplication, QAbstractButton
 
 import database
-import v5_pages
+from ui.settings import fleet as fleet_page
+from ui.settings import page as settings_page
 from i18n import apply_language, set_language
 from pages import PageSettings
 from test_settings_v5 import _WebServiceDouble
@@ -18,9 +19,9 @@ from v5_pages import PageSettingsV5
 def settings(monkeypatch, tmp_path):
     app = QApplication.instance() or QApplication([])
     set_language("th")
-    monkeypatch.setattr(v5_pages, "web_service_manager", lambda: _WebServiceDouble(tmp_path))
-    monkeypatch.setattr(v5_pages, "configure_autostart", lambda *a, **kw: tmp_path / "autostart")
-    monkeypatch.setattr(v5_pages, "confirm_shared_settings", lambda *_: True)
+    monkeypatch.setattr(fleet_page, "web_service_manager", lambda: _WebServiceDouble(tmp_path))
+    monkeypatch.setattr(fleet_page, "configure_autostart", lambda *a, **kw: tmp_path / "autostart")
+    monkeypatch.setattr(fleet_page, "confirm_shared_settings", lambda *_: True)
     from services.device_config import DeviceConfig, DeviceConfigRepository
     database.set_cfg("company_name", "Synthetic settings company")
     DeviceConfigRepository().replace_all([DeviceConfig(0, "Synthetic Printer", "192.0.2.10")])
@@ -75,7 +76,7 @@ def test_schedule_shortcut_opens_editor_in_the_same_settings_window(settings):
 
 def test_tab_switch_preserves_unsaved_values_then_save_keeps_form_open(settings, monkeypatch):
     notices = []
-    monkeypatch.setattr(v5_pages, "show_compact_information", lambda *args: notices.append(args))
+    monkeypatch.setattr(settings_page, "show_compact_information", lambda *args: notices.append(args))
     field = settings.fleet_content.billing_day
     field.setValue(17)
     settings.section_tabs.setCurrentIndex(1)

@@ -8,7 +8,8 @@
 ตัวเปิดของแต่ละ OS
   -> runtime Python ของเครื่องนั้น (อยู่นอก OneDrive)
   -> source/app.py ใน OneDrive
-  -> หน้าจอ PyQt6 (pages.py / v5_pages.py / widgets.py)
+  -> หน้าจอ PyQt6 (ui/pages, ui/setup, ui/reports, ui/settings)
+  -> component ที่ใช้ร่วมกัน (ui/components, widgets.py)
   -> services และ database.py
   -> SQLite ในโฟลเดอร์ข้อมูลผู้ใช้
 
@@ -53,8 +54,13 @@ Web browser
 | ไฟล์ | ประเภท | หน้าที่ | ทำงานเมื่อไหร่ |
 |---|---|---|---|
 | `app.py` | ทั้งหน้าบ้าน/ตัวประกอบระบบ | entrypoint Desktop, สร้าง `QApplication`, main window, tray และ lifecycle | ทุกครั้งที่เปิด Desktop |
-| `v5_pages.py` | หน้าบ้าน Desktop | หน้าหลัก V5 เช่น Overview, Import, Reports, Sync Log, Settings | เมื่อสร้างหน้าและผู้ใช้เปิดเมนู |
-| `pages.py` | หน้าบ้าน Desktop | page/widget รุ่นฐานและหน้าที่ V5 ยัง reuse | ตอนสร้าง UI และเปลี่ยนหน้า |
+| `v5_pages.py`, `pages.py` | Compatibility | ส่งต่อ class/function เดิมไปยังไฟล์เจ้าของ ไม่มี implementation หน้าจอซ้ำ | สำหรับผู้เรียกเดิมและ test ความเข้ากันได้ |
+| `ui/pages/` | หน้าบ้าน Desktop | Overview, อุปกรณ์, Import, สถานะและประวัติ และหน้าเอกสารเดิม | เมื่อสร้างหน้า/เปลี่ยนเมนู |
+| `ui/setup/` | หน้าบ้าน Desktop | Wizard, worker ตรวจการเชื่อมต่อ, control และ Import ประวัติเดิม | ตั้งค่าครั้งแรก/แก้เครื่อง |
+| `ui/reports/` | หน้าบ้าน Desktop | โหลดรายงาน, อายุงาน background, Export dialog และรายงานฐานที่ยังใช้งาน | เปิดรายงาน/ส่งออก |
+| `ui/settings/` | หน้าบ้าน Desktop | แท็บ Settings, การทำงานอัตโนมัติ, control, billing audit และเครื่องมือเดิม | เปิด/แก้การตั้งค่า |
+| `ui/components/` | Component กลาง | แถบหมึก, label การ์ดสรุป, หัวการ์ด Settings และข้อความแจ้งขนาดกะทัดรัด | เรียกใช้ร่วมกันจากหลายหน้า |
+| `ui/parser_editor.py`, `ui/policy.py` | UI helper | อายุหน้าต่าง Parser editor และนโยบายแสดง entry point | หน้า Import/Settings/Setup |
 | `widgets.py` | หน้าบ้าน Desktop | component ใช้ร่วม เช่น card, table, status และ navigation widget | ตอน render หน้าจอ |
 | `ui/cloud_reports.py` | หน้าบ้าน Desktop | หน้ารายงานแบบ cloud-inspired และตาราง Usage/Trend/Users/Devices | เมื่อเปิด Reports |
 | `ui/common_dialogs.py` | หน้าบ้าน Desktop | dialog มาตรฐานที่หลายหน้าใช้ร่วมกัน | เมื่อเปิด dialog/ข้อความยืนยัน |

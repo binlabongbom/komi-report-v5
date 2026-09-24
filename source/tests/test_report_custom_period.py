@@ -8,7 +8,7 @@ from PyQt6.QtCore import QDate
 from PyQt6.QtWidgets import QApplication
 
 import database
-import v5_pages
+from ui.reports import page as report_page
 from services.device_config import DeviceConfig, DeviceConfigRepository
 from services.monthly_history import MonthlyUsage
 from services.subject_history import SubjectDailyCacheStore
@@ -47,7 +47,7 @@ def report(tmp_path, monkeypatch):
     monthly = _usage(date(2026, 9, 1), date(2026, 9, 30), 293, cost=42.75)
     usage_reads = []
     subject_reads = []
-    subject_loader = v5_pages.load_subject_history
+    subject_loader = report_page.load_subject_history
 
     def load_usage(*_args, **kwargs):
         usage_reads.append(kwargs.get("granularity"))
@@ -57,22 +57,22 @@ def report(tmp_path, monkeypatch):
         subject_reads.append(kwargs)
         return subject_loader(*args, **kwargs)
 
-    monkeypatch.setattr(v5_pages, "load_usage_history", load_usage)
-    monkeypatch.setattr(v5_pages, "load_subject_history", load_subjects)
-    monkeypatch.setattr(v5_pages, "load_raw_counter_history", lambda *_args, **_kwargs: ())
-    monkeypatch.setattr(v5_pages, "report_slots", lambda: [0])
+    monkeypatch.setattr(report_page, "load_usage_history", load_usage)
+    monkeypatch.setattr(report_page, "load_subject_history", load_subjects)
+    monkeypatch.setattr(report_page, "load_raw_counter_history", lambda *_args, **_kwargs: ())
+    monkeypatch.setattr(report_page, "report_slots", lambda: [0])
     cloud = CloudReportsWidget()
     host = SimpleNamespace(
         report_center=cloud,
         _report_records=(monthly,),
-        _period_key=v5_pages.PageHistoryV5._period_key,
+        _period_key=report_page.PageHistoryV5._period_key,
         _historical_devices=lambda: devices,
         cache=object(),
         subject_cache=SubjectDailyCacheStore(tmp_path / "subjects"),
     )
 
     def refresh(selected=None):
-        v5_pages.PageHistoryV5._refresh_report_center(host, selected)
+        report_page.PageHistoryV5._refresh_report_center(host, selected)
 
     cloud.period_changed.connect(refresh)
     refresh(CANONICAL)

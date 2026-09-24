@@ -5,7 +5,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QAbstractButton, QApplication, QHeaderView, QLabel, QMessageBox
 
-import v5_pages
+from ui.pages import activity as activity_page
 from i18n import ENGLISH, THAI, apply_language, set_language
 from services.device_config import DeviceConfig
 from services.pipeline_log import pipeline_log
@@ -145,7 +145,7 @@ def test_clearing_live_log_requires_confirmation(monkeypatch):
     page = PagePipelineLog(repository=_Repository(), cache=_Cache())
 
     monkeypatch.setattr(
-        v5_pages.QMessageBox,
+        activity_page.QMessageBox,
         "question",
         lambda *_args, **_kwargs: QMessageBox.StandardButton.No,
     )

@@ -33,12 +33,12 @@ sys.path.insert(0, os.getcwd())
 import app
 assert 'pyqtgraph' not in sys.modules
 assert 'numpy' not in sys.modules
-import pages
-pages._load_pyqtgraph()
-assert pages._PQG_OK
-assert callable(pages.pg.PlotWidget)
-first = pages.pg
-pages._load_pyqtgraph()
-assert pages.pg is first
+from ui.reports import legacy as legacy_reports
+legacy_reports._load_pyqtgraph()
+assert legacy_reports._PQG_OK
+assert callable(legacy_reports.pg.PlotWidget)
+first = legacy_reports.pg
+legacy_reports._load_pyqtgraph()
+assert legacy_reports.pg is first
 '''], cwd=source, env=env, capture_output=True, text=True, timeout=30)
     assert result.returncode == 0, result.stdout + result.stderr

@@ -24,7 +24,7 @@ from tools.virtual_printer import VirtualPrinterService
 from ui_consistency import install_button_system
 from ui.numeric_inputs import configure_numeric_locale
 from services.application_identity import load_application_icon
-from v5_pages import SetupWizardV5
+from ui.setup.wizard import SetupWizardV5
 
 
 @dataclass(frozen=True)

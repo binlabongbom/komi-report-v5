@@ -5,7 +5,7 @@
 #   config.py   — สีสัน, ฟอนต์, ค่าคงที่  [แก้ที่นี่เพื่อเปลี่ยนหน้าตาโปรแกรม]
 #   database.py — ฐานข้อมูล SQLite + แยก/อ่านข้อมูลจากไฟล์ .txt ของเครื่องพิมพ์
 #   widgets.py  — คอมโพเนนต์ UI ที่ใช้ซ้ำได้ (StatCard, buttons, ฯลฯ)
-#   pages.py    — หน้า Report เดิม (Overview, Import, History, Settings, Manual)
+#   ui/         — หน้าจอแยกตามหน้าที่ และ component ที่ใช้ร่วมกัน
 #   app.py      — หน้าต่างหลัก, sidebar, entry point ← ไฟล์นี้
 #
 # ความสัมพันธ์ระหว่างไฟล์:
@@ -188,11 +188,9 @@ from database import (  # ฟังก์ชันฐานข้อมูลท
     set_cfg,
 )
 from i18n import ENGLISH, THAI, apply_language, get_language, set_language, tr
-from pages import (
-    PageImport,
-    PageOverview,
-    PageSettings,
-)
+from ui.pages.imports import PageImport
+from ui.pages.overview import PageOverview
+from ui.settings.legacy import PageSettings
 from services.application_identity import (
     configure_qt_application_identity,
     configure_windows_process_identity,
@@ -215,12 +213,10 @@ from services.v5_2_client import V52ContractClient, V52RuntimeConfig
 from services.v5_2_runtime import V52RuntimeCoordinator
 from services.web_service import web_service_manager
 from ui.button_system import install_button_system
-from v5_pages import (
-    PageHistoryV5,
-    PageImportV5,
-    PageSettingsV5,
-    SetupWizardV5,
-)
+from ui.reports.page import PageHistoryV5
+from ui.pages.devices import PageImportV5
+from ui.settings.page import PageSettingsV5
+from ui.setup.wizard import SetupWizardV5
 from widgets import fnt  # fnt(size, bold) — สร้าง QFont อย่างสั้น
 
 # หน้าที่ผู้ใช้เปิดได้จาก Sidebar ตามลำดับที่แสดงจริง

@@ -32,7 +32,8 @@ def window():
 
 
 def test_deferred_navigation_loads_all_pages_after_event_loop(window):
-    from v5_pages import PageHistoryV5, PageSettingsV5
+    from ui.reports.page import PageHistoryV5
+    from ui.settings.page import PageSettingsV5
 
     for index, expected in zip((2, 3), (PageHistoryV5, PageSettingsV5), strict=True):
         window._nav(window.nav_btns[index])
@@ -80,16 +81,16 @@ def test_rapid_report_tabs_coalesce_and_recover_after_error(window, monkeypatch)
     assert calls and all(index == 1 for index in calls)
     assert page.report_center.error_label.isHidden()
 
-    import v5_pages
-    original_loader = v5_pages.load_report_snapshot
+    from ui.reports import page as report_page
+    original_loader = report_page.load_report_snapshot
     def failed_refresh(*args, **kwargs):
         raise RuntimeError("synthetic QA error")
 
     from test_reports_background_loading import wait_until
-    monkeypatch.setattr(v5_pages, "load_report_snapshot", failed_refresh)
+    monkeypatch.setattr(report_page, "load_report_snapshot", failed_refresh)
     page.refresh_visible()
     wait_until(lambda: "synthetic QA error" in page.report_center.error_label.text())
-    monkeypatch.setattr(v5_pages, "load_report_snapshot", original_loader)
+    monkeypatch.setattr(report_page, "load_report_snapshot", original_loader)
     page.refresh_visible()
     wait_until(lambda: page.report_center.error_label.isHidden())
 
@@ -141,7 +142,7 @@ def test_excel_export_available_from_every_report_tab(window, monkeypatch, tmp_p
     from openpyxl import load_workbook
     from PyQt6.QtCore import QDate
 
-    import v5_pages
+    from ui.reports import page as report_page
 
     period_start, period_end = date(2026, 9, 1), date(2026, 9, 30)
     start, end = date(2026, 9, 3), date(2026, 9, 7)
@@ -183,10 +184,10 @@ def test_excel_export_available_from_every_report_tab(window, monkeypatch, tmp_p
         assert kwargs["available_end"] == period_end
         return ReportExportSelection(start, end)
 
-    monkeypatch.setattr(v5_pages.ReportExportPeriodDialog, "get_selection", choose_range)
-    monkeypatch.setattr(v5_pages.QFileDialog, "getSaveFileName", lambda *a, **k: (str(output), ""))
+    monkeypatch.setattr(report_page.ReportExportPeriodDialog, "get_selection", choose_range)
+    monkeypatch.setattr(report_page.QFileDialog, "getSaveFileName", lambda *a, **k: (str(output), ""))
     for kind in ("warning", "critical", "information"):
-        monkeypatch.setattr(v5_pages.QMessageBox, kind, lambda *a, **k: messages.append(a[2]))
+        monkeypatch.setattr(report_page.QMessageBox, kind, lambda *a, **k: messages.append(a[2]))
     daily_reads_before_export = reads.count("daily")
     page._export_report_center_excel()
     wait_until(lambda: not page._export_controller.busy)
@@ -200,7 +201,7 @@ def test_excel_export_available_from_every_report_tab(window, monkeypatch, tmp_p
 
 
 def test_excel_export_reports_daily_history_read_failure(window, monkeypatch, tmp_path):
-    import v5_pages
+    from ui.reports import page as report_page
     import services.report_export_job as export_job
     from test_report_export_job import wait_until
 
@@ -213,11 +214,11 @@ def test_excel_export_reports_daily_history_read_failure(window, monkeypatch, tm
     output = tmp_path / "failed-export.xlsx"
     monkeypatch.setattr(export_job, "load_usage_history", failed_read)
     monkeypatch.setattr(export_job, "report_slots", lambda: [0])
-    monkeypatch.setattr(v5_pages.ReportExportPeriodDialog, "get_selection",
+    monkeypatch.setattr(report_page.ReportExportPeriodDialog, "get_selection",
                         lambda *_args, **_kwargs: ReportExportSelection(date(2026, 9, 1), date(2026, 9, 30)))
-    monkeypatch.setattr(v5_pages.QFileDialog, "getSaveFileName", lambda *a, **k: (str(output), ""))
+    monkeypatch.setattr(report_page.QFileDialog, "getSaveFileName", lambda *a, **k: (str(output), ""))
     errors = []
-    monkeypatch.setattr(v5_pages.QMessageBox, "critical", lambda _parent, title, message: errors.append((title, message)))
+    monkeypatch.setattr(report_page.QMessageBox, "critical", lambda _parent, title, message: errors.append((title, message)))
     page._export_report_center_excel()
     wait_until(lambda: not page._export_controller.busy)
     assert len(errors) == 1

@@ -29,6 +29,7 @@ from PyQt6.QtCharts import (
     QValueAxis,
 )
 from ui.chart_lifecycle import replace_chart
+from ui.components.metric_card import MetricCard
 from PyQt6.QtCore import QDate, QEvent, QMargins, QPointF, QSignalBlocker, Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QColor, QFont, QFontMetrics, QMouseEvent, QPainter
 from PyQt6.QtWidgets import (
@@ -165,14 +166,14 @@ def _record_identity(record) -> str:
 
 
 
-class _CloudOverviewMetricCard(QFrame):
+class _CloudOverviewMetricCard(MetricCard):
     """Overview summary card styled to match the operational Overview page."""
 
     def __init__(self, title: str, *, accent: str, parent=None) -> None:
-        super().__init__(parent)
-        self.setObjectName("cloud_overview_metric_card")
-        self.setMinimumWidth(0)
-        self.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+        super().__init__(
+            title, object_prefix="cloud_overview_metric", accent=accent,
+            transparent_value=True, parent=parent,
+        )
         self._full_title = title
         self._full_value = "—"
         self._full_detail = ""
@@ -185,15 +186,7 @@ class _CloudOverviewMetricCard(QFrame):
         layout.setVerticalSpacing(2)
         layout.setColumnStretch(0, 1)
 
-        self.lbl_title = QLabel(title)
-        self.lbl_title.setObjectName("cloud_overview_metric_title")
         self.lbl_title.setWordWrap(False)
-        self.lbl_val = QLabel("—")
-        self.lbl_val.setObjectName("cloud_overview_metric_value")
-        self.lbl_val.setStyleSheet(text_styles.label(accent, background='transparent', border='0'))
-        self.lbl_val.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        self.lbl_detail = QLabel("")
-        self.lbl_detail.setObjectName("cloud_overview_metric_detail")
         for label in (self.lbl_title, self.lbl_val, self.lbl_detail):
             label.setMinimumWidth(0)
             label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
@@ -275,23 +268,6 @@ class _CloudOverviewMetricCard(QFrame):
         )
         self._set_detail(detail)
 
-    def _set_detail(self, detail: str) -> None:
-        """Keep A3/A4 labels muted while preserving their values as readable data."""
-        prefix, separator, suffix = detail.partition("  |  ")
-        if prefix.startswith("A3 ") and separator and suffix.startswith("A4 "):
-            a3_value = escape(prefix[3:])
-            a4_value = escape(suffix[3:])
-            self.lbl_detail.setTextFormat(Qt.TextFormat.RichText)
-            self.lbl_detail.setText(
-                "<span style='color:#64748B'>A3</span> "
-                f"<span style='color:#111827'>{a3_value}</span>"
-                "<span style='color:#94A3B8'>  |  </span>"
-                "<span style='color:#64748B'>A4</span> "
-                f"<span style='color:#111827'>{a4_value}</span>"
-            )
-            return
-        self.lbl_detail.setTextFormat(Qt.TextFormat.PlainText)
-        self.lbl_detail.setText(detail)
 
 
 def _table(

@@ -6,7 +6,7 @@ import pytest
 from PyQt6.QtCore import QAbstractAnimation
 from PyQt6.QtWidgets import QApplication, QHeaderView, QLabel, QPushButton, QWidget
 
-import v5_pages
+from ui.pages import devices as devices_page
 from i18n import tr
 from komi_snmp_profiler.models import MeterReading, WebAuthState, WebCounterValue
 from services.device_config import DeviceConfig
@@ -49,7 +49,7 @@ class _LegacyImport(QWidget):
 def test_import_layout_matches_configured_device_count(monkeypatch, device_count):
     app = QApplication.instance() or QApplication([])
     runtime_snapshots.clear()
-    monkeypatch.setattr(v5_pages, "latest_counters", lambda slot: {"counter.total.total": 1000 + slot})
+    monkeypatch.setattr(devices_page, "latest_counters", lambda slot: {"counter.total.total": 1000 + slot})
 
     page = PageImportV5(_LegacyImport(), repository=_Repository(device_count), cache=_Cache())
     page.resize(1300, 1200)
@@ -84,7 +84,7 @@ def test_import_layout_matches_configured_device_count(monkeypatch, device_count
 def test_import_three_device_cards_reflow_without_overlap(monkeypatch, page_width, expected_columns):
     app = QApplication.instance() or QApplication([])
     runtime_snapshots.clear()
-    monkeypatch.setattr(v5_pages, "latest_counters", lambda slot: {"counter.total.total": 1000 + slot})
+    monkeypatch.setattr(devices_page, "latest_counters", lambda slot: {"counter.total.total": 1000 + slot})
     page = PageImportV5(_LegacyImport(), repository=_Repository(3), cache=_Cache())
 
     page.resize(page_width, 3600)
@@ -106,7 +106,7 @@ def test_import_three_device_cards_reflow_without_overlap(monkeypatch, page_widt
 def test_import_single_device_uses_available_content_width(monkeypatch):
     app = QApplication.instance() or QApplication([])
     runtime_snapshots.clear()
-    monkeypatch.setattr(v5_pages, "latest_counters", lambda slot: {"counter.total.total": 1000 + slot})
+    monkeypatch.setattr(devices_page, "latest_counters", lambda slot: {"counter.total.total": 1000 + slot})
     page = PageImportV5(_LegacyImport(), repository=_Repository(1), cache=_Cache())
 
     page.resize(1050, 1400)
@@ -123,7 +123,7 @@ def test_import_refresh_can_clear_an_empty_device_grid(monkeypatch):
     """A fresh database has no device cards; refreshing it must not dereference None."""
     app = QApplication.instance() or QApplication([])
     runtime_snapshots.clear()
-    monkeypatch.setattr(v5_pages, "latest_counters", lambda _slot: {})
+    monkeypatch.setattr(devices_page, "latest_counters", lambda _slot: {})
     page = PageImportV5(_LegacyImport(), repository=_Repository(0), cache=_Cache())
 
     page.refresh()
@@ -136,7 +136,7 @@ def test_import_refresh_can_clear_an_empty_device_grid(monkeypatch):
 def test_import_sync_button_emits_request_and_waits_for_completion(monkeypatch):
     app = QApplication.instance() or QApplication([])
     runtime_snapshots.clear()
-    monkeypatch.setattr(v5_pages, "latest_counters", lambda _slot: {"counter.total.total": 1000})
+    monkeypatch.setattr(devices_page, "latest_counters", lambda _slot: {"counter.total.total": 1000})
     page = PageImportV5(_LegacyImport(), repository=_Repository(1), cache=_Cache())
     requests: list[bool] = []
     page.sync_requested.connect(lambda: requests.append(True))
@@ -159,7 +159,7 @@ def test_import_sync_button_emits_request_and_waits_for_completion(monkeypatch):
 def test_import_sync_status_uses_per_device_dots_and_hides_error_when_all_online(monkeypatch):
     app = QApplication.instance() or QApplication([])
     runtime_snapshots.clear()
-    monkeypatch.setattr(v5_pages, "latest_counters", lambda slot: {"counter.total.total": 1000 + slot})
+    monkeypatch.setattr(devices_page, "latest_counters", lambda slot: {"counter.total.total": 1000 + slot})
     repository = _Repository(2, statuses=["online", "offline"])
     page = PageImportV5(_LegacyImport(), repository=repository, cache=_Cache())
 
@@ -189,7 +189,7 @@ def test_import_sync_status_uses_per_device_dots_and_hides_error_when_all_online
 def test_import_card_uses_clean_labels_and_dynamic_toner_bars(monkeypatch):
     app = QApplication.instance() or QApplication([])
     runtime_snapshots.clear()
-    monkeypatch.setattr(v5_pages, "latest_counters", lambda _slot: {"counter.total.total": 1000})
+    monkeypatch.setattr(devices_page, "latest_counters", lambda _slot: {"counter.total.total": 1000})
 
     class _TonerCache(_Cache):
         def load(self, slot, day):
@@ -321,7 +321,7 @@ def test_toner_bar_rounded_corners_match_white_device_card():
 def test_import_sync_log_button_opens_observability_page(monkeypatch):
     app = QApplication.instance() or QApplication([])
     runtime_snapshots.clear()
-    monkeypatch.setattr(v5_pages, "latest_counters", lambda _slot: {"counter.total.total": 1000})
+    monkeypatch.setattr(devices_page, "latest_counters", lambda _slot: {"counter.total.total": 1000})
     page = PageImportV5(_LegacyImport(), repository=_Repository(1), cache=_Cache())
     requests: list[bool] = []
     page.sync_log_requested.connect(lambda: requests.append(True))
@@ -337,7 +337,7 @@ def test_import_can_hide_zero_web_counters_without_removing_data(monkeypatch):
     app = QApplication.instance() or QApplication([])
     runtime_snapshots.clear()
     monkeypatch.setattr(
-        v5_pages,
+        devices_page,
         "latest_counters",
         lambda _slot: {
             "counter.total.total": 1000,
@@ -363,7 +363,7 @@ def test_import_can_hide_zero_web_counters_without_removing_data(monkeypatch):
 def test_import_uses_real_subject_name_from_runtime_snapshot(monkeypatch):
     app = QApplication.instance() or QApplication([])
     runtime_snapshots.clear()
-    monkeypatch.setattr(v5_pages, "latest_counters", lambda _slot: {"counter.total.total": 2341})
+    monkeypatch.setattr(devices_page, "latest_counters", lambda _slot: {"counter.total.total": 2341})
     reading = MeterReading.create(
         "192.0.2.10",
         [
@@ -398,7 +398,7 @@ def test_import_shows_needs_review_when_web_totals_do_not_reconcile(monkeypatch)
     app = QApplication.instance() or QApplication([])
     runtime_snapshots.clear()
     monkeypatch.setattr(
-        v5_pages,
+        devices_page,
         "latest_counters",
         lambda _slot: {
             "counter.total.total": 100,

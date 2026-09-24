@@ -40,8 +40,10 @@ from PyQt6.QtWidgets import (QApplication, QWidget, QLabel, QPushButton, QAbstra
 from PyQt6.QtTest import QTest
 from qt_render_environment import configure_offscreen_fonts
 import database
-import pages
 import v5_pages
+from ui.pages import overview as overview_page
+from ui.pages import devices as devices_page
+from ui.settings import fleet as fleet_settings
 from app import MainWindow
 from config import build_qss
 from ui_consistency import install_button_system
@@ -68,9 +70,9 @@ DeviceConfigRepository().replace_all(devices)
 _seed_billing_audit()
 web_service._port_open = lambda _port: False
 web_service._lan_ip = lambda: '127.0.0.1'
-v5_pages.configure_autostart = lambda *_a, **_kw: Path(temp.name)/'autostart'
-pages.build_overview_summary = lambda *_a, **_kw: _overview_summary(3)
-v5_pages.latest_counters = lambda slot: {'counter.total.total': 12000, 'counter.print.black_total': 4000}
+fleet_settings.configure_autostart = lambda *_a, **_kw: Path(temp.name)/'autostart'
+overview_page.build_overview_summary = lambda *_a, **_kw: _overview_summary(3)
+devices_page.latest_counters = lambda slot: {'counter.total.total': 12000, 'counter.print.black_total': 4000}
 results, errors = [], []
 
 def settle(ms=50):

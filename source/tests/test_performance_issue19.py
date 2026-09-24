@@ -194,14 +194,14 @@ def test_hidden_settings_do_not_poll_network_and_cancel_pending_status(monkeypat
 
 
 def test_overview_failure_offers_retry_and_close_discards_pending(monkeypatch):
-    import pages
+    from ui.pages import overview as overview_page
     from services.summary_service import build_overview_summary
-    page = pages.PageOverview(lambda: [])
-    monkeypatch.setattr(pages, 'build_overview_summary', lambda *_: (_ for _ in ()).throw(OSError('fixture')))
+    page = overview_page.PageOverview(lambda: [])
+    monkeypatch.setattr(overview_page, 'build_overview_summary', lambda *_: (_ for _ in ()).throw(OSError('fixture')))
     page.refresh()
     wait_until(lambda: not page.summary_reader.busy)
     assert not page.overview_retry.isHidden()
-    monkeypatch.setattr(pages, 'build_overview_summary', build_overview_summary)
+    monkeypatch.setattr(overview_page, 'build_overview_summary', build_overview_summary)
     page.overview_retry.click()
     wait_until(lambda: not page.summary_reader.busy)
     assert page.overview_retry.isHidden()
@@ -210,7 +210,7 @@ def test_overview_failure_offers_retry_and_close_discards_pending(monkeypatch):
         started.set()
         gate.wait(3)
         return {'top_users': []}
-    monkeypatch.setattr(pages, 'build_overview_summary', blocked)
+    monkeypatch.setattr(overview_page, 'build_overview_summary', blocked)
     page.refresh()
     wait_until(started.is_set)
     before = page.overview_status.text()

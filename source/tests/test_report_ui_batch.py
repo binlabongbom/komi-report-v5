@@ -19,7 +19,7 @@ from services.report_export_options import ALL_REPORT_SECTIONS, REPORT_SECTIONS
 from services.support_diagnostics import diagnose
 from ui.cloud_reports import CloudReportsWidget, FIVE_CATEGORIES
 from ui.error_list import ErrorListPanel
-from v5_pages import ReportExportPeriodDialog
+from ui.reports.export_dialog import ReportExportPeriodDialog
 
 
 @pytest.fixture

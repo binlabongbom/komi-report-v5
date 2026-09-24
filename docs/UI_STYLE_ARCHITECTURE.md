@@ -21,11 +21,15 @@ The desktop presentation rules live in `source/ui/styles/`. Pages construct widg
 | `ui/styles/devices.py`, `shell.py` | Device/import views and application shell |
 | `ui/styles/legacy.py` | Existing preview/manual component styles kept for their current callers |
 | `ui/button_system.py` | Application-wide button size, radius normalization and motion behavior |
-| `widgets.py`, `ui/*.py`, `pages.py`, `v5_pages.py` | Widget composition, layout, state and interaction; no direct nonempty QSS literals in `setStyleSheet` |
+| `ui/components/` | Shared widget construction/painting: toner, metric labels, task headers and compact notices |
+| `widgets.py`, `ui/pages/`, `ui/setup/`, `ui/settings/`, `ui/reports/`, other `ui/*.py` | Widget composition, layout, state and interaction; no direct nonempty QSS literals in `setStyleSheet` |
+| `pages.py`, `v5_pages.py` | Compatibility class/function re-exports; runtime composition imports the owning modules |
 | `config.py` | Business defaults and compatibility exports, not a second style implementation |
 | `ui_consistency.py` | Compatibility re-export of the button system |
 
 Dependency direction: `tokens → stylesheet builders → widgets/pages`. The typography helper additionally depends on Qt. Styles do not import pages, services, the database or application configuration.
+
+Page and component ownership is documented in [UI_COMPONENT_ARCHITECTURE.md](UI_COMPONENT_ARCHITECTURE.md). Shared components do not access storage or depend on feature pages.
 
 ## How to change appearance
 

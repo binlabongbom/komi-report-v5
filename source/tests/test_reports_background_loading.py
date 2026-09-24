@@ -11,7 +11,7 @@ from PyQt6.QtTest import QTest
 from PyQt6.QtWidgets import QApplication, QPushButton
 
 import database
-import v5_pages
+from ui.reports import page as report_page
 from services.report_snapshot import ReportSnapshot
 
 _APP = None
@@ -24,7 +24,7 @@ def page(tmp_path, monkeypatch):
     old = database.get_db_path()
     database.set_db_path(tmp_path / "qa.db")
     database.init_db()
-    widget = v5_pages.PageHistoryV5(staged=True)
+    widget = report_page.PageHistoryV5(staged=True)
     widget.resize(1100, 750)
     widget.show()
     yield widget
@@ -57,7 +57,7 @@ def test_first_shell_defers_legacy_and_menu_stays_responsive(page, monkeypatch):
         release.wait(2)
         return snapshot()
 
-    monkeypatch.setattr(v5_pages, "load_report_snapshot", slow)
+    monkeypatch.setattr(report_page, "load_report_snapshot", slow)
     assert not hasattr(page, "plot_widget")
     assert not hasattr(page, "report_profile_combo")
     page.prepare_overview()
@@ -75,7 +75,7 @@ def test_first_shell_defers_legacy_and_menu_stays_responsive(page, monkeypatch):
 
 
 def test_refresh_keeps_old_snapshot_and_ignores_stale_result(page, monkeypatch):
-    monkeypatch.setattr(v5_pages, "load_report_snapshot", lambda *a, **kw: snapshot())
+    monkeypatch.setattr(report_page, "load_report_snapshot", lambda *a, **kw: snapshot())
     page.prepare_overview()
     wait_until(lambda: page.report_center.has_data)
     blocked, release = Event(), Event()
@@ -85,11 +85,11 @@ def test_refresh_keeps_old_snapshot_and_ignores_stale_result(page, monkeypatch):
         release.wait(2)
         return snapshot("2026-09-08T10:00:00")
 
-    monkeypatch.setattr(v5_pages, "load_report_snapshot", stale)
+    monkeypatch.setattr(report_page, "load_report_snapshot", stale)
     page.refresh_visible()
     wait_until(blocked.is_set)
     assert page.report_center.has_data
-    monkeypatch.setattr(v5_pages, "load_report_snapshot", lambda *a, **kw: snapshot("2026-09-08T14:00:00"))
+    monkeypatch.setattr(report_page, "load_report_snapshot", lambda *a, **kw: snapshot("2026-09-08T14:00:00"))
     page.refresh_visible()
     wait_until(lambda: "14:00" in page.report_center.updated_label.text())
     release.set()
@@ -102,7 +102,7 @@ def test_prewarm_does_not_select_tabs_and_cached_navigation_avoids_read(page, mo
     def load(index, *args, **kwargs):
         reads.append(index)
         return snapshot()
-    monkeypatch.setattr(v5_pages, "load_report_snapshot", load)
+    monkeypatch.setattr(report_page, "load_report_snapshot", load)
     page.prepare_overview()
     wait_until(lambda: page.report_center.has_data)
     page.prewarm_tab(1)
@@ -121,11 +121,11 @@ def test_prewarm_does_not_select_tabs_and_cached_navigation_avoids_read(page, mo
 def test_failed_read_stops_loading_and_retry_succeeds(page, monkeypatch):
     def fail(*args, **kwargs):
         raise OSError("synthetic read failure")
-    monkeypatch.setattr(v5_pages, "load_report_snapshot", fail)
+    monkeypatch.setattr(report_page, "load_report_snapshot", fail)
     page.prepare_overview()
     wait_until(lambda: not page.report_center.error_label.isHidden())
     assert "synthetic read failure" in page.report_center.error_label.text()
-    monkeypatch.setattr(v5_pages, "load_report_snapshot", lambda *a, **kw: snapshot())
+    monkeypatch.setattr(report_page, "load_report_snapshot", lambda *a, **kw: snapshot())
     page.refresh_visible()
     wait_until(lambda: page.report_center.has_data)
     assert page.report_center.error_label.isHidden()
@@ -140,13 +140,13 @@ def test_database_switch_refreshes_cache_roots_before_background_reads(page, tmp
 
 
 def test_new_period_keeps_explicit_old_period_notice_until_loaded(page, monkeypatch):
-    monkeypatch.setattr(v5_pages,"load_report_snapshot",lambda *a,**kw:snapshot())
+    monkeypatch.setattr(report_page,"load_report_snapshot",lambda *a,**kw:snapshot())
     page.prepare_overview();wait_until(lambda:page.report_center.has_data)
     release=Event()
     def slow(index,period,**kwargs):
         release.wait(2)
         return snapshot(period=period)
-    monkeypatch.setattr(v5_pages,"load_report_snapshot",slow)
+    monkeypatch.setattr(report_page,"load_report_snapshot",slow)
     from PyQt6.QtCore import QDate
     page.report_center.period_edit_pairs[0][0].setDate(QDate(2026,9,5))
     assert not page.report_center.error_label.isHidden()
