@@ -400,13 +400,6 @@ class RawCounterHistoryStore:
                 changed += 1
         return changed
 
-    def mark_day_incomplete(self, slot: int, day: date) -> None:
-        with _open() as connection:
-            connection.execute(
-                """UPDATE daily_raw_counter_records SET incomplete=1,updated_at=?
-                   WHERE device_slot=? AND record_date=?""",
-                (datetime.now().astimezone().isoformat(timespec="seconds"), slot, day.isoformat()),
-            )
 
 
 @lru_cache(maxsize=256)

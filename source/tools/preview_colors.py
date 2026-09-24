@@ -18,7 +18,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QScrollArea, QFrame, QGridLayout, QTabWidget,
-    QColorDialog, QMessageBox, QSpinBox, QPushButton, QFontComboBox, QLineEdit, QDoubleSpinBox,
+    QColorDialog, QMessageBox, QSpinBox, QPushButton, QFontComboBox, QDoubleSpinBox,
 )
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui  import QFont, QColor, QFontDatabase
@@ -654,8 +654,6 @@ def tab_graph(on_refresh=None) -> QWidget:
     type_row = QHBoxLayout()
     type_row.setSpacing(8)
     type_keys = ["copy_color", "copy_bw", "print_color", "print_bw"]
-    type_labels = {"copy_color": "Copy สี", "copy_bw": "Copy ขาวดำ", 
-                   "print_color":"Print สี", "print_bw":"Print ขาวดำ"}
     for key in type_keys:
         color = type_colors_dict.get(key, "#000000")
         sw = Swatch(f"Type_{key}", color)

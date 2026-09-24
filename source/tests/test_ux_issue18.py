@@ -165,7 +165,9 @@ def test_missing_readings_are_not_displayed_as_zero():
     assert widget.overview_kpis["total_usage"]._full_value == "—"
     assert widget.overview_kpis["total_cost"]._full_value == "—"
     widget.tabs.setCurrentIndex(2)
-    assert widget.printer_metric_cards["usage"]._full_value == "—"
+    assert widget.printers_table.rowCount() == 1
+    assert widget.printers_table.item(0, 0).text() == "ยังไม่มีข้อมูลเครื่องพิมพ์ในช่วงนี้"
+    assert widget.printers_table.columnSpan(0, 0) == widget.printers_table.columnCount()
     widget.close()
 
 

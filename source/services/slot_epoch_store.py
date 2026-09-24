@@ -101,10 +101,6 @@ class SlotEpochStore:
             head = self._head(conn, slot)
             return self._projection(conn, self._epoch(conn, head))[0] if head else None
 
-    def review_latest(self, slot, *, actor, reason):
-        """Prepare the current physical printer's latest committed Web baseline."""
-        with self._connection() as conn:
-            return self._review_latest(conn, slot, actor=actor, reason=reason)
 
     def _review_latest(self, conn, slot, *, actor, reason):
         device = conn.execute("SELECT serial FROM devices WHERE slot=? AND enabled=1", (slot,)).fetchone()

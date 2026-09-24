@@ -408,7 +408,6 @@ def main():
         from services.web_usage_projection import CounterPoint, CounterProjection, UsageInterval
         from services.web_evidence_report import MAX_REPORT_EVENTS
         from services.web_evidence_export import export_web_evidence
-        from ui.web_evidence_report import WebEvidenceDialog
         from ui.report_export import ReportExportController
         from PyQt6.QtWidgets import QWidget, QPushButton
         from functools import partial

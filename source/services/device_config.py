@@ -153,16 +153,6 @@ class DeviceConfigRepository:
             ).fetchone()
         return self._from_row(row) if row else None
 
-    def get_by_host(self, host: str) -> DeviceConfig | None:
-        self._ensure_migrated()
-        with _open(commit=False) as conn:
-            row = conn.execute(
-                """SELECT slot,name,host,username,credential_ref,tls_mode,tls_fingerprint,enabled,model,serial,
-                          connection_status,last_checked_at,last_success_at,last_error,last_total
-                   FROM devices WHERE host=?""",
-                (host.strip(),),
-            ).fetchone()
-        return self._from_row(row) if row else None
 
     def replace_all(
         self,

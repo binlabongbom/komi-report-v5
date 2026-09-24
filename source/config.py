@@ -26,8 +26,6 @@ def _platform_value(default, *, windows=None, macos=None, linux=None):
 APP_TITLE = "KOMI Report"              # ชื่อโปรแกรม (แสดงใน title bar)
 APP_VER   = APP_VERSION                  # เวอร์ชันที่แสดงใน Desktop UI
 PACKAGE_VERSION = APP_VERSION            # เวอร์ชัน build/API (ตรงกับ authority)
-LOGO_TEXT = "🖨  KOMI Report"                  # ข้อความโลโก้ใน sidebar
-LOGO_SUB  = "Konica Minolta"               # ข้อความใต้โลโก้
 
 # ─── Database ─────────────────────────────────────────────
 DB_PATH  = RUNTIME_SETTINGS.db_path  # environment > runtime.toml > local default
@@ -84,7 +82,6 @@ F_LG   = _platform_value(13, windows=12)   # ใหญ่ (ตาราง, ฟ�
 F_XL   = _platform_value(16, windows=13)   # ใหญ่ขึ้น (ปุ่ม, nav)
 F_2XL  = _platform_value(28, windows=24)   # หัวข้อหน้า
 F_NUM  = _platform_value(40, windows=34)   # ตัวเลขหลัก stat card
-F_NMSM = _platform_value(14, windows=13)   # ตัวเลขรอง
 
 # ─── Default Font ──────────────────────────────────────────
 UI_FONT_FAMILY = _platform_value(
@@ -109,15 +106,7 @@ DEFAULT_WASTE_PCT = 2.0
 
 # ─── V5 background meter defaults ────────────────────────
 DEFAULT_ADMIN_USERNAME = "administrator"
-DEFAULT_ADMIN_PASSWORD = ""
 DEFAULT_SNMP_COMMUNITY = "public"
-DEFAULT_SNMP_INTERVAL_MINUTES = 5
-DEFAULT_WEB_INTERVAL_MINUTES = 15
-DEFAULT_PEAK_WEB_INTERVAL_MINUTES = 5
-DEFAULT_WORK_START = "08:00"
-DEFAULT_WORK_END = "17:00"
-DEFAULT_PEAK_BEFORE_MINUTES = 30
-DEFAULT_PEAK_AFTER_MINUTES = 30
 # วันสิ้นสุดรอบบิล: ถ้าเดือนนั้นไม่มีวันที่ระบุ ให้ใช้วันสุดท้ายของเดือน
 DEFAULT_BILLING_DAY = 31
 
@@ -135,7 +124,6 @@ DEFAULT_PRICE = {
 
 # ─── Window & Layout Dimensions ────────────────────────────
 WINDOW_MIN_WIDTH = 1024         # ความกว้างขั้นต่ำของหน้าต่าง
-WINDOW_MIN_HEIGHT = 768         # ความสูงขั้นต่ำของหน้าต่าง
 WINDOW_DEFAULT_WIDTH = _platform_value(1280, windows=1240)   # ความกว้างดีฟอลต์
 WINDOW_DEFAULT_HEIGHT = _platform_value(800, windows=780)    # ความสูงดีฟอลต์
 SIDEBAR_WIDTH = _platform_value(230, windows=228)            # ความกว้าง sidebar
@@ -161,29 +149,13 @@ PAGE_OVERVIEW_MARGIN_L = 16     # balanced outer breathing room
 PAGE_OVERVIEW_MARGIN_T = 14
 PAGE_OVERVIEW_MARGIN_R = 16
 PAGE_OVERVIEW_MARGIN_B = 14
-PAGE_OVERVIEW_SPACING = 8
 
-PAGE_SETTINGS_MARGIN_L = _platform_value(24, windows=20)   # margin ซ้าย Page Settings
-PAGE_SETTINGS_MARGIN_T = _platform_value(20, windows=16)   # margin บน Page Settings
-PAGE_SETTINGS_MARGIN_R = _platform_value(24, windows=20)   # margin ขวา Page Settings
-PAGE_SETTINGS_MARGIN_B = _platform_value(20, windows=16)   # margin ล่าง Page Settings
 
-CARD_MARGIN_L = 12              # shared card inner padding
-CARD_MARGIN_T = 10
-CARD_MARGIN_R = 12
-CARD_MARGIN_B = 10
-CARD_SPACING = 8
 
-GRID_SPACING = 12               # spacing between grid items
-PIE_ROW_SPACING = 10            # spacing between chart cards
-BAR_SPACING = 8                 # spacing inside trend cards
 
 # ─── Chart Heights ────────────────────────────────────────
-PIE_CHART_MIN_HEIGHT = _platform_value(150, windows=140)   # ความสูงขั้นต่ำของ pie chart (ลดลง)
-BAR_CHART_MIN_HEIGHT = _platform_value(250, windows=230)   # ความสูงขั้นต่ำของ bar chart (ลดลง)
 
 # ─── Status Bar ────────────────────────────────────────────
-STATUS_TEXT_COLOR = "#64748B"   # สีข้อความ status bar
 STATUS_PADDING = "4px 8px"      # padding status bar
 
 # ─── Graph Customization ────────────────────────────────────

@@ -8,7 +8,6 @@ from datetime import timedelta
 from services.polling import PollingPolicy, ScheduleWindow
 
 
-WEEKDAY_CODES = ("M", "T", "W", "TH", "F", "SA", "SU")
 WORKDAYS = frozenset(range(5))
 
 

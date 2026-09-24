@@ -14,9 +14,3 @@ def is_offline_edition() -> bool:
     if BUILD_EDITION not in {"normal", "offline"}:
         raise RuntimeError("Invalid KOMI build edition")
     return BUILD_EDITION == "offline"
-
-
-def edition_label() -> str:
-    """Return the stable user-facing edition name for diagnostics and UI."""
-
-    return "Offline Installation" if is_offline_edition() else "Online Registration"

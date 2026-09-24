@@ -6,7 +6,6 @@ replacement and parses all changed Python files before writing any of them.
 from __future__ import annotations
 import ast
 import json
-import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]

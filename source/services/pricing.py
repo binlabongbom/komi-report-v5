@@ -33,9 +33,6 @@ A3_EQUIVALENT_PAPER_SIZES = frozenset(
         "folio",
     }
 )
-A4_EQUIVALENT_PAPER_SIZES = frozenset(
-    {"a4", "a5", "a6", "a7", "a8", "b5", "b6", "b7", "b8"}
-)
 _PAPER_SIZE_PATTERN = re.compile(
     r"(?<![a-z0-9])(?:a[0-8]|b[0-8]|legal|folio)(?![a-z0-9])",
     re.IGNORECASE,

@@ -72,17 +72,6 @@ def effective_documents(conn, kind, documents, slots=None, *, start=None, end=No
     return [item for item in documents if _key(kind, item['row']) not in revisions] + (list(revisions.values()) if include_revisions else [])
 
 
-def iter_effective_documents(conn, kind, documents, slots=None, *, start=None, end=None, include_revisions=True):
-    """Apply the same revisions while consuming large history cursors once."""
-    revisions = current_revisions(conn, kind, slots, start=start, end=end, include_rows=include_revisions)
-    if not revisions:
-        yield from documents
-        return
-    for item in documents:
-        if _key(kind, item['row']) not in revisions:
-            yield item
-    if include_revisions:
-        yield from revisions.values()
 
 
 def iter_effective_rows(conn, kind, rows, columns, archived=(), slots=None, *,

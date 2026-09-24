@@ -28,7 +28,6 @@ from PyQt6.QtWidgets import (
 
 THAI = "th"
 ENGLISH = "en"
-SUPPORTED_LANGUAGES = (THAI, ENGLISH)
 _language = THAI
 _ITEM_SOURCE_ROLE = int(Qt.ItemDataRole.UserRole) + 37
 ITEM_TRANSLATABLE_ROLE = int(Qt.ItemDataRole.UserRole) + 38

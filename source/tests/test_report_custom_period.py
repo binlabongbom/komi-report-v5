@@ -102,7 +102,7 @@ def test_custom_period_keeps_users_inside_selected_dates(report, tab_index):
         assert cloud.overview_users.item(0, 0).text() == "Alice QA"
         assert cloud.overview_users.item(0, 2).text() == "18"
     else:
-        assert cloud.user_kpis["usage"].text() == "18"
+        assert cloud.users_table.item(0, 12).text() == "18"
     report.refresh()
     assert cloud.current_period() == CUSTOM
     assert cloud._subjects[0].period_usage == 18

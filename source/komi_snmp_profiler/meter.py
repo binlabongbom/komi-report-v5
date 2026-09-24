@@ -72,8 +72,6 @@ class MeterReader:
     def delete_credential(self, host: str) -> None:
         self.credential_store.delete(self._host(host))
 
-    def has_credential(self, host: str) -> bool:
-        return self.credential_store.load(self._host(host)) is not None
 
     def read(self, host: str, *, model: str = "") -> MeterReading:
         host = self._host(host)

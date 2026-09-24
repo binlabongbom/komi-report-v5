@@ -67,11 +67,6 @@ CATEGORY_FIELDS = (
     ("a3_color", "A3 สี"),
     ("a3_bw", "A3 ขาวดำ"),
 )
-DEVICE_SUBHEADERS = tuple(
-    item
-    for _field, label in CATEGORY_FIELDS
-    for item in (f"{label} (หน้า)", f"{label} (บาท)")
-) + ("Scan", "รวมหน้า", "ค่าใช้จ่ายรวม (บาท)")
 
 OPERATION_FIELDS = (
     ("print_a4_color", "Print A4 สี", "a4_color", "print"),

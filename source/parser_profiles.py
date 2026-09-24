@@ -2,22 +2,10 @@ from __future__ import annotations
 
 import copy
 import json
-from pathlib import Path
 
 
-PROFILES_PATH = Path(__file__)
 
-MODE_LABELS = {
-    "summary": "Summary mode",
-    "user": "User mode",
-    "label": "Label mode",
-}
 
-REPORT_TYPE_LABELS = {
-    "office_print": "Office print",
-    "production_print": "Production print",
-    "label_print": "Label print",
-}
 
 MODE_OPTIONS = ["summary", "user", "label"]
 REPORT_TYPE_OPTIONS = ["office_print", "production_print", "label_print"]
@@ -204,17 +192,6 @@ def render_registry(entries: list[dict]) -> str:
     return f"PARSER_REGISTRY: list[dict] = [\n{body}\n]"
 
 
-def replace_registry_block(content: str, entries: list[dict]) -> str:
-    start = content.find("PARSER_REGISTRY: list[dict] = [")
-    if start < 0:
-        raise ValueError("ไม่พบ PARSER_REGISTRY ใน parser_profiles.py")
-
-    end_marker = "# END PARSER_REGISTRY"
-    end = content.find(end_marker, start)
-    if end < 0:
-        raise ValueError("ไม่พบจุดสิ้นสุดของ PARSER_REGISTRY ใน parser_profiles.py")
-
-    return content[:start] + render_registry(entries) + "\n\n" + content[end:]
 
 
 

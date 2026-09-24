@@ -175,8 +175,9 @@ def test_hidden_settings_do_not_poll_network_and_cancel_pending_status(monkeypat
     assert calls == []
     try:
         settings.show()
-        settings.show_advanced()
-        page._set_active_editor('web', force=True)
+        network_tab = next(i for i in range(settings.section_tabs.count())
+                           if settings.section_tabs.tabText(i) == "การตั้งค่าเครือข่าย")
+        settings.section_tabs.setCurrentIndex(network_tab)
         wait_until(started.is_set)
         assert calls[0] != get_ident()
         before = page.web_service_status.text()
@@ -228,8 +229,9 @@ def test_reparented_network_card_restarts_status_checks(monkeypatch):
     calls = []
     monkeypatch.setattr(fleet._web_status_reader, 'request', lambda *_: calls.append(True))
     page.show()
-    page.show_advanced()
-    fleet._set_active_editor('web', force=True)
+    network_tab = next(i for i in range(page.section_tabs.count())
+                       if page.section_tabs.tabText(i) == "การตั้งค่าเครือข่าย")
+    page.section_tabs.setCurrentIndex(network_tab)
     wait_until(lambda: calls)
     assert not fleet.isVisible() and fleet.web_service_status.isVisible()
     assert fleet._web_status_timer.isActive()

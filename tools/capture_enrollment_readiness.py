@@ -6,7 +6,7 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT/'source'),str(ROOT/'source/tests')]
 # Installs the capture guard: no network, child processes, or shell calls.
-import capture_network_recovery
+import capture_network_recovery  # noqa: F401 — installs capture safety guards
 from PyQt6.QtWidgets import QApplication
 from PyQt6.QtCore import QDate
 from PyQt6.QtTest import QTest

@@ -34,7 +34,7 @@ def no_network(event, values):
         raise PermissionError('UI audit blocks network operations')
 sys.addaudithook(no_network)
 
-from PyQt6.QtCore import QPoint, QRect, Qt
+from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (QApplication, QWidget, QLabel, QPushButton, QAbstractButton,
     QScrollArea, QTabWidget, QLineEdit, QComboBox, QDateEdit, QTableWidget)
 from PyQt6.QtTest import QTest

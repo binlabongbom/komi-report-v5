@@ -16,8 +16,7 @@ from pathlib import Path
 
 
 from PyQt6.QtWidgets import (
-    QApplication, QMainWindow, QWidget, QSplitter,
-    QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
+    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QListWidget, QListWidgetItem, QTableWidget, QTableWidgetItem,
     QLineEdit, QComboBox, QFileDialog, QMessageBox,
     QFrame, QScrollArea, QHeaderView, QAbstractItemView,
@@ -250,7 +249,6 @@ def _parse_label(lines, machine_name, serial, date_str):
         col0 = row[0] if len(row) > 0 else ""
         col1 = row[1] if len(row) > 1 else ""
         col2 = row[2] if len(row) > 2 else ""
-        col3 = row[3] if len(row) > 3 else ""
         col4 = row[4] if len(row) > 4 else ""
         
         # ตรวจหากำลังเป็นหมวดหมู่หลัก (เช่น Copy, Printer, Color)

@@ -350,7 +350,7 @@ def test_cloud_reports_share_period_and_cross_filter_users_and_printers():
     widget._select_user_row(0, 0)
     assert widget.user_filter_badge.text() == "กำลังกรอง: alice"
     widget.tabs.setCurrentIndex(2)
-    widget._select_printer_row(0, 0)
+    widget.printers_table.setCurrentCell(0, 0)
     assert not hasattr(widget, "printer_compare_note")
     assert widget.printers_table.columnCount() == 9
     assert not hasattr(widget, 'printer_detail')
@@ -606,7 +606,7 @@ def test_usage_all_devices_checkboxes_filter_aggregate_but_keep_per_device_matri
     app.processEvents()
 
 
-def test_printer_charts_compare_all_devices_and_selection_only_changes_detail():
+def test_printer_charts_compare_all_devices_when_a_table_row_is_selected():
     app = QApplication.instance() or QApplication([])
     day = date(2026, 8, 6)
     first = _usage(day)
@@ -655,15 +655,15 @@ def test_printer_charts_compare_all_devices_and_selection_only_changes_detail():
     assert isinstance(overview, QStackedBarSeries)
     assert [bar.at(0) for bar in overview.barSets()] == [130, 26, 0, 0]
     assert [bar.at(1) for bar in overview.barSets()] == [0, 0, 80, 4]
-    widget._select_printer_row(1, 0)
-    assert widget._selected_printer == 'serial:SER-B'
+    widget.printers_table.setCurrentCell(1, 0)
+    assert widget.printers_table.currentItem().data(Qt.ItemDataRole.UserRole) == 'serial:SER-B'
     assert chart_labels(widget.printer_mix.chart()) == expected_mix
     assert chart_labels(widget.printer_trend.chart()) == expected_trend
     widget.close()
     app.processEvents()
 
 
-def test_keyboard_selection_updates_user_filter_and_printer_detail_immediately():
+def test_keyboard_selection_updates_user_filter_without_rebuilding_printer_charts():
     app = QApplication.instance() or QApplication([])
     day = date(2026, 8, 6)
     second = replace(
@@ -693,9 +693,11 @@ def test_keyboard_selection_updates_user_filter_and_printer_detail_immediately()
     assert widget.user_filter_badge.text() == "กำลังกรอง: alice"
 
     widget.tabs.setCurrentIndex(2)
+    original_charts = (widget.printer_mix.chart(), widget.printer_trend.chart())
     widget.printers_table.setCurrentCell(1, 0)
     app.processEvents()
-    assert widget._selected_printer == 'serial:SER-B'
+    assert widget.printers_table.currentItem().data(Qt.ItemDataRole.UserRole) == 'serial:SER-B'
+    assert (widget.printer_mix.chart(), widget.printer_trend.chart()) == original_charts
     widget.close()
     app.processEvents()
 
@@ -760,7 +762,7 @@ def test_cloud_reports_use_transparent_label_surfaces_and_consistent_table_align
 
 
 @pytest.mark.parametrize("mode", ["classified", "total_only", "missing", "partial_users"])
-def test_users_cards_separate_color_without_inventing_missing_counters(mode):
+def test_users_table_separates_color_without_inventing_missing_counters(mode):
     app = QApplication.instance() or QApplication([])
     day = date(2026, 9, 8)
     widget = CloudReportsWidget()
@@ -783,15 +785,15 @@ def test_users_cards_separate_color_without_inventing_missing_counters(mode):
                     last_sync_at=None)
     widget.tabs.setCurrentIndex(1)
     app.processEvents()
-    expected = ("3", "0", "0", "0") if mode == "classified" else ("—",) * 4
-    for key, value in zip(("color_print", "bw_print", "color_copy", "bw_copy"), expected):
-        card = widget.user_metric_cards[key]
-        assert card._full_value == value
-        assert card.layout().getItemPosition(card.layout().indexOf(card.lbl_val)) == (0, 1, 2, 1)
-    assert widget.user_metric_cards["usage"]._full_value == ("4" if mode == "partial_users" else "3")
-    assert widget.user_metric_cards["count"]._full_value == ("2" if mode == "partial_users" else "1")
+    expected = ("3", "0", "0", "0") if mode in ("classified", "partial_users") else ("—",) * 4
+    assert tuple(widget.users_table.item(0, col).text() for col in (3, 4, 8, 9)) == expected
+    assert widget.users_table.item(0, 12).text() == '3'
+    assert widget.users_table.rowCount() == (2 if mode == 'partial_users' else 1)
+    if mode == 'partial_users':
+        assert tuple(widget.users_table.item(1, col).text() for col in (3, 4, 8, 9)) == ('—',) * 4
+        assert widget.users_table.item(1, 12).text() == '1'
     widget.show_error("test error")
-    assert all(card._full_value == "—" for card in widget.user_metric_cards.values())
+    assert widget.error_label.text() == 'test error'
     widget.close()
 
 

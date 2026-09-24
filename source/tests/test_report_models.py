@@ -42,7 +42,6 @@ def test_snapshot_tabs_share_immutable_raw_and_invalidate_by_database(monkeypatc
     monthly = SimpleNamespace(period_start=date(2026, 8, 1), period_end=date(2026, 8, 31))
     calls = []
     monkeypatch.setattr(module, 'report_slots', lambda: [0])
-    monkeypatch.setattr(module, 'get_billing_day', lambda: 31)
     monkeypatch.setattr(module, 'load_usage_history', lambda *a, **kw: (monthly,))
     monkeypatch.setattr(module, 'load_subject_history', lambda *a, **kw: ())
     monkeypatch.setattr(module, 'load_imported_legacy_history', lambda: ())

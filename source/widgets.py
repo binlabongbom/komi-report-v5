@@ -55,12 +55,6 @@ def hline() -> QFrame:
     f.setStyleSheet(f"color: {C_BORDER}; background: {C_BORDER}; max-height: 1px;")
     return f
 
-def vline() -> QFrame:
-    """เส้นแบ่งแนวตั้ง"""
-    f = QFrame()
-    f.setFrameShape(QFrame.Shape.VLine)
-    f.setStyleSheet(f"color: {C_BORDER}; background: {C_BORDER}; max-width: 1px;")
-    return f
 
 def sec_title(text: str) -> QLabel:
     """หัวข้อหน้า — ขนาด F_2XL bold"""
@@ -1052,14 +1046,3 @@ def badge(text: str, bg: str = C_ACCENT, fg: str = "white") -> QLabel:
 # ══════════════════════════════════════════════════════════
 # INFO ROW — แสดงคู่ label:value
 # ══════════════════════════════════════════════════════════
-def info_row(label: str, value: str,
-             val_color: str = C_TEXT,
-             val_bold: bool = False) -> QHBoxLayout:
-    """สร้าง layout แถว label: value"""
-    lay = QHBoxLayout(); lay.setSpacing(8)
-    lbl = QLabel(f"{label}:"); lbl.setFont(fnt(F_MD))
-    lbl.setStyleSheet(f"color: {C_TEXT3};"); lbl.setFixedWidth(90)
-    val = QLabel(value); val.setFont(fnt(F_MD, val_bold))
-    val.setStyleSheet(f"color: {val_color};")
-    lay.addWidget(lbl); lay.addWidget(val); lay.addStretch()
-    return lay

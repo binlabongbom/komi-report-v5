@@ -51,7 +51,7 @@ def test_lazy_controls_inherit_period_and_support_resize_before_data(staged):
     for start, end in staged.period_edit_pairs:
         assert start.date().toString("yyyy-MM-dd") == period[0]
         assert end.date().toString("yyyy-MM-dd") == period[1]
-    assert all(card._full_value == "—" for card in staged.user_metric_cards.values())
+    assert staged.users_table.rowCount() == 0
     assert staged.include_waste_adjustment()
     staged.show_error("offline")
     assert not staged.has_data
@@ -68,10 +68,10 @@ def test_scoped_snapshots_never_render_other_tabs_data(staged, monkeypatch):
     staged.tabs.setCurrentIndex(1)
     assert not staged.has_data
     assert counts == {"users": 1, "printers": 1}
-    assert staged.user_metric_cards["usage"]._full_value == "—"
+    assert staged.users_table.rowCount() == 0
     deliver(staged, tab_index=1)
     assert counts == {"users": 2, "printers": 1}
-    assert staged.user_metric_cards["usage"]._full_value == "—"
+    assert staged.users_table.rowCount() == 0
     staged.tabs.setCurrentIndex(2)
     assert not staged.has_data
     assert staged.printers_table.rowCount() == 0
@@ -125,7 +125,7 @@ def test_per_tab_loading_tracks_visible_tab_and_guard_invalid_index(staged):
         staged.ensure_tab(5)
 
 
-@pytest.mark.parametrize("index,prefix,card_key", [(0, "overview", "total_usage"), (1, "users", "usage"), (2, "printers", None)])
+@pytest.mark.parametrize("index,prefix,card_key", [(0, "overview", "total_usage"), (1, "users", None), (2, "printers", None)])
 def test_tables_and_charts_yield_after_immediate_content(staged, monkeypatch, index, prefix, card_key):
     from PyQt6.QtTest import QTest
 
@@ -137,12 +137,10 @@ def test_tables_and_charts_yield_after_immediate_content(staged, monkeypatch, in
     monkeypatch.setattr(staged, chart_method, lambda: events.append("charts"))
     deliver(staged, tab_index=index)
     if card_key is not None:
-        cards = staged.overview_kpis if index == 0 else staged.user_metric_cards
-        assert cards[card_key]._full_value == "—"
+        assert staged.overview_kpis[card_key]._full_value == "—"
     else:
-        # Printers' KPI cards were removed; its table still paints on the next turn.
-        assert not hasattr(staged, 'printer_metric_cards')
-        assert staged.printers_table.rowCount() == 0
+        table = staged.users_table if index == 1 else staged.printers_table
+        assert table.rowCount() == 0
     assert events == [], "tables and charts must yield after immediate content"
     staged._render_tail_timer.stop()
     staged._run_render_tail()

@@ -1162,7 +1162,7 @@ def test_report_center_replaces_legacy_reports_with_cloud_overview_users_and_pri
             0, 1 + total_metric_index
         ).text() == "1,200"
         cloud.tabs.setCurrentIndex(2)
-        cloud._select_printer_row(0, 0)
+        cloud.printers_table.setCurrentCell(0, 0)
         assert not hasattr(cloud, "printer_compare_note")
         exported = []
         import services.report_export_job as export_job

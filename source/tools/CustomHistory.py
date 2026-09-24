@@ -12,18 +12,15 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
     QPushButton, QTabWidget, QListWidget, QListWidgetItem, QLineEdit,
-    QDoubleSpinBox, QSpinBox, QCheckBox, QGroupBox, QMessageBox, QInputDialog,
-    QAbstractItemView, QFrame, QGridLayout, QComboBox, QSizePolicy,
+    QGroupBox, QMessageBox, QAbstractItemView, QFrame, QGridLayout,
 )
-from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtGui import QFont, QColor
+from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QFont
 
 from config import (
-    SLOT_COLORS, SLOT_NAMES, SLOT_LIGHT,
-    C_ACCENT, C_BG, C_CARD, C_BORDER, C_TEXT, C_TEXT2, C_GREEN, C_RED, C_ORANGE,
-    F_XS, F_SM, F_MD, F_LG, F_XL, F_2XL, APP_VER,
+    C_ACCENT, C_BG, C_CARD, C_BORDER, C_TEXT, C_TEXT2, C_RED, F_XS, F_SM, F_MD, F_LG, F_XL, F_2XL, APP_VER,
 )
-from database import get_cfg, set_cfg, get_settings_password, set_settings_password, verify_settings_password
+from database import get_cfg, set_cfg, set_settings_password, verify_settings_password
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 

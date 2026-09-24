@@ -47,7 +47,10 @@ def test_standalone_and_initial_join_and_english():
     assert reader_role_text(runtime({0: 'REMOTE'}))[0] == 'Receiving shared data'
 
 
-def test_sidebar_retains_role_between_rounds_and_registration_pause_wins():
+def test_sidebar_retains_role_between_rounds_and_registration_pause_wins(monkeypatch):
+    from services.runtime_snapshots import RuntimeSnapshotStore
+    # This scenario starts without readings; peer tests may have populated RAM.
+    monkeypatch.setattr("services.runtime_snapshots.runtime_snapshots", RuntimeSnapshotStore())
     from app import MainWindow
     from PyQt6.QtWidgets import QApplication, QLabel
     app = QApplication.instance() or QApplication([])

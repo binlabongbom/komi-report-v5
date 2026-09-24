@@ -13,7 +13,6 @@ from PyQt6.QtCharts import (
     QBarSet,
     QChart,
     QChartView,
-    QLineSeries,
     QValueAxis,
 )
 from ui.chart_lifecycle import replace_chart
@@ -57,14 +56,12 @@ from ui.flow_layout import FlowLayout, FlowLabel, FlowWidget
 NAVY = "#123262"
 BLUE = "#1677C8"
 ORANGE = "#E58A18"
-CYAN = "#16A6C7"
 SLATE = "#56677A"
 GREEN = "#16805A"
 LINE = "#D9E2EA"
 MUTED = "#66788A"
 PANEL = "#FFFFFF"
 DEVICE_COLORS = (BLUE, ORANGE, "#D65364")
-COPY_COLORS = (ORANGE, "#7C3AED", "#64748B")
 FIVE_CATEGORIES = ('Print Color', 'Print B&W', 'Copy Color', 'Copy B&W', 'Scan')
 
 USAGE_METRICS = (
@@ -395,7 +392,6 @@ class CloudReportsWidget(QWidget):
         self._built_tabs: set[int] = set()
         self._tab_hosts: dict[int, QWidget] = {}
         self._tab_placeholders: dict[int, QLabel] = {}
-        self.user_metric_cards = {}
         self._usage_meter_baselines: tuple = ()
         self.users_page = self.printers_page = self.usage_page = None
         self.legacy_raw_page = self.legacy_history_page = None
@@ -414,7 +410,6 @@ class CloudReportsWidget(QWidget):
         self._preview_blocked_period: tuple[str, str] | None = None
         self._last_sync_at: str | None = None
         self._selected_user: str | None = None
-        self._selected_printer: str | None = None
         self._user_rows: list[dict] = []
         self._printer_rows: list[dict] = []
         self._usage_selected_slots: set[int] = set()
@@ -786,7 +781,7 @@ class CloudReportsWidget(QWidget):
         )
         self.setStyleSheet(self._base_qss + density_qss)
         self._header_subtitle.setVisible(True)
-        for card in (*self.overview_kpis.values(), *self.user_metric_cards.values()):
+        for card in self.overview_kpis.values():
             card.set_compact(compact)
 
     def _apply_responsive_layout(self) -> None:
@@ -961,29 +956,6 @@ class CloudReportsWidget(QWidget):
         layout.setContentsMargins(0, 4, 0, 0)
         layout.setSpacing(12)
         self._add_period_toolbar(layout)
-        self.user_kpi_panel = QFrame()
-        self.user_kpi_panel.setObjectName("cloud_overview_kpi_panel")
-        kpis = QGridLayout(self.user_kpi_panel)
-        kpis.setContentsMargins(12, 12, 12, 12)
-        kpis.setSpacing(8)
-        self.user_metric_cards = {
-            key: _CloudOverviewMetricCard(title, accent=accent)
-            for key, title, accent in (
-                ("color_print", "พิมพ์สี", BLUE),
-                ("bw_print", "พิมพ์ขาวดำ", "#18202C"),
-                ("color_copy", "สำเนาสี", "#F25C05"),
-                ("bw_copy", "สำเนาขาวดำ", "#56677A"),
-                ("usage", "ยอดใช้งานรวม", BLUE),
-                ("count", "ผู้ใช้ที่มีข้อมูล", NAVY),
-            )
-        }
-        self.user_kpis = {key: card.lbl_val for key, card in self.user_metric_cards.items()}
-        cards = tuple(self.user_metric_cards[key] for key in ("color_print", "bw_print", "usage", "color_copy", "bw_copy", "count"))
-        for column, card in enumerate(cards):
-            kpis.addWidget(card, 0, column)
-            kpis.setColumnStretch(column, 1)
-        self._responsive_grids.append((kpis, cards, 100, 6))
-        self.user_kpi_panel.hide()
         filter_row = QHBoxLayout()
         self.user_filter_badge = QLabel("เลือกผู้ใช้จากตารางเพื่อกรองกราฟ")
         self.user_filter_badge.setObjectName("cloud_filter_badge")
@@ -1101,11 +1073,6 @@ class CloudReportsWidget(QWidget):
         self.printers_table.setWordWrap(True)
         self.printers_table.setTextElideMode(Qt.TextElideMode.ElideNone)
         self.printers_table.horizontalHeader().setStretchLastSection(False)
-        self.printers_table.currentCellChanged.connect(
-            lambda row, column, _previous_row, _previous_column: self._select_printer_row(
-                row, column
-            )
-        )
         list_layout.addWidget(self.printers_table)
         bottom.addWidget(list_panel)
         layout.addLayout(bottom)
@@ -1509,7 +1476,7 @@ class CloudReportsWidget(QWidget):
         self._update_loading_visibility()
         if self._staged:
             return
-        for card in (*self.overview_kpis.values(), *self.user_metric_cards.values()):
+        for card in self.overview_kpis.values():
             card.set_metric("—", "")
 
     def set_data(
@@ -1871,8 +1838,6 @@ class CloudReportsWidget(QWidget):
             prepared = build_printer_rows(self._records, self._devices)
         field = self._cost_field()
         self._printer_rows = [dict(row, cost=row[field]) for row in prepared]
-        if self._selected_printer and not any(row["key"] == self._selected_printer for row in self._printer_rows):
-            self._selected_printer = None
 
     def _report_cost_detail(self):
         provisional = any(int(getattr(record, "provisional_days", 0) or 0) for record in self._records)
@@ -2000,28 +1965,6 @@ class CloudReportsWidget(QWidget):
     def _render_users(self) -> None:
         if self._staged and not self._can_render_tab(1):
             return
-        total = sum(row["usage"] for row in self._user_rows)
-        slots = [slot for row in self._user_rows for slot in row["by_slot"].values()]
-        for key, operation, color in (
-            ("color_print", "print", "color"), ("bw_print", "print", "bw"),
-            ("color_copy", "copy", "color"), ("bw_copy", "copy", "bw"),
-        ):
-            fields = (f"{operation}_a3_{color}", f"{operation}_a4_{color}")
-            # A partial user/device breakdown must not masquerade as a complete total.
-            available = bool(slots) and all(
-                set(fields).issubset(slot.get("available_fields", set())) for slot in slots
-            )
-            a3, a4 = (sum(slot.get(field, 0.0) for slot in slots) for field in fields)
-            card = self.user_metric_cards[key]
-            card.set_metric(_number(a3 + a4), f"A3 {_number(a3)}  |  A4 {_number(a4)}",
-                            available=available)
-            if not available:
-                card.set_metric("—", "ข้อมูลแยกประเภทยังไม่ครบ")
-        self.user_metric_cards["usage"].set_metric(_number(total), "ช่วงรายงานที่เลือก")
-        self.user_metric_cards["count"].set_metric(_number(len(self._user_rows)), "คน")
-        if not self._user_rows:
-            for card in self.user_metric_cards.values():
-                card.set_metric("—", tr("ไม่มีข้อมูลผู้ใช้ในช่วงนี้", "No user data in this period"))
         self._schedule_render_tail(1, self._render_users_table, self._render_users_charts)
 
     def _render_users_table(self) -> None:
@@ -2777,57 +2720,6 @@ class CloudReportsWidget(QWidget):
         return chart
 
     @staticmethod
-    def _multi_line_chart(
-        labels: tuple[str, ...],
-        series_data: tuple[tuple[str, tuple[float, ...], str], ...],
-    ) -> QChart:
-        if len(labels) == 1:
-            return CloudReportsWidget._bar_chart(labels, series_data)
-        chart = QChart()
-        chart.setBackgroundVisible(False)
-        chart.setMargins(QMargins(2, 2, 2, 2))
-        if not labels:
-            chart.setTitle("ยังไม่มีข้อมูล V4.6 หรือ V5 สำหรับสร้าง Timeline")
-            chart.legend().hide()
-            return chart
-        line_series: list[QLineSeries] = []
-        maximum = 0.0
-        for name, values, color in series_data:
-            series = QLineSeries()
-            series.setName(name)
-            series.setColor(QColor(color))
-            series.setPointsVisible(True)
-            from PyQt6.QtWidgets import QToolTip
-            from PyQt6.QtGui import QCursor
-            series.hovered.connect(lambda point, entered, name=name: QToolTip.showText(QCursor.pos(),
-                f'{name}: {point.y():,.2f}' if not point.y().is_integer() else f'{name}: {point.y():,.0f}')
-                if entered else QToolTip.hideText())
-            for index, value in enumerate(values):
-                series.append(float(index), float(value))
-                maximum = max(maximum, float(value))
-            chart.addSeries(series)
-            line_series.append(series)
-        axis_x = QBarCategoryAxis()
-        axis_x.append(list(labels))
-        axis_x.setLabelsAngle(-45)
-        axis_y = QValueAxis()
-        axis_y.setRange(0, max(1.0, maximum * 1.18))
-        axis_y.setLabelFormat('%.2f' if any(not float(v).is_integer() for _, values, _ in series_data for v in values) else '%.0f')
-        axis_y.setTickCount(4)
-        axis_y.applyNiceNumbers()
-        axis_font = QFont()
-        axis_font.setPointSize(9)
-        axis_x.setLabelsFont(axis_font)
-        axis_y.setLabelsFont(axis_font)
-        chart.addAxis(axis_x, Qt.AlignmentFlag.AlignBottom)
-        chart.addAxis(axis_y, Qt.AlignmentFlag.AlignLeft)
-        for series in line_series:
-            series.attachAxis(axis_x)
-            series.attachAxis(axis_y)
-        chart.legend().setVisible(True)
-        return chart
-
-    @staticmethod
     def _horizontal_like_chart(labels: list[str], values: list[float], color: str) -> QChart:
         from PyQt6.QtWidgets import QToolTip
         from PyQt6.QtGui import QCursor
@@ -2927,20 +2819,3 @@ class CloudReportsWidget(QWidget):
         self._selected_user = None
         self.users_table.clearSelection()
         self._render_users()
-
-    def _select_printer_row(self, row: int, _column: int) -> None:
-        if row < 0:
-            return
-        item = self.printers_table.item(row, 0)
-        if item is None:
-            return
-        key = item.data(Qt.ItemDataRole.UserRole)
-        if key is None or key == self._selected_printer:
-            return
-        self._selected_printer = key
-        self._render_printers()
-
-    def _clear_printer_filter(self) -> None:
-        self._selected_printer = None
-        self.printers_table.clearSelection()
-        self._render_printers()

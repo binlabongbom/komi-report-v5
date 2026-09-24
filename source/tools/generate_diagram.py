@@ -12,7 +12,6 @@ generate_diagram.py — สร้าง Diagram จากโค้ดโปร�
 """
 
 import ast
-import sys
 from pathlib import Path
 from datetime import datetime
 

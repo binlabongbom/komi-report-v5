@@ -2065,9 +2065,6 @@ class PageHistory(QWidget):
             tbl.setColumnHidden(base + 1, not show_diff)   # ครั้งก่อน
             tbl.setColumnHidden(base + 2, not show_diff)   # ส่วนต่าง
 
-    def _refresh_current(self, curr: dict, prev: dict, slot: int):
-        """(เดิม) ใช้ได้เมื่อ tbl_current ยังอยู่ — keep for backward compat"""
-        pass  # ถูกแทนที่ด้วย _refresh_current_all แล้ว
 
     def _refresh_monthly(self, slot: int):
         """อัปเดต Tab ย้อนหลังรายเดือน — แสดงทุกเครื่องในคอลัมน์"""
@@ -3511,15 +3508,6 @@ class PageHistory(QWidget):
             self._hidden_types.add(tk)
         self._refresh_graph()
 
-    def _toggle_user_legend(self, uname: str, checked: bool):
-        """เปิด/ปิด user ใน legend checkbox แล้ว redraw กราฟ"""
-        if not hasattr(self, '_hidden_users'):
-            self._hidden_users = set()
-        if checked:
-            self._hidden_users.discard(uname)
-        else:
-            self._hidden_users.add(uname)
-        self._refresh_graph()
 
     def _on_date_from_changed(self, text: str):
         """เมื่อเปลี่ยน 'From' date"""
@@ -4362,108 +4350,6 @@ class PageHistory(QWidget):
 # ══════════════════════════════════════════════════════════
 # PAGE: INDIVIDUAL — การใช้งานรายบุคคล
 # ══════════════════════════════════════════════════════════
-class PageIndividual(QWidget):
-    def __init__(self, get_data, parent=None):
-        super().__init__(parent)
-        self.get_data = get_data
-        self._rows = []
-        self._build()
-
-    def _build(self):
-        lay = QVBoxLayout(self)
-        lay.setContentsMargins(28, 24, 28, 24)
-        lay.setSpacing(16)
-
-        tr = QHBoxLayout()
-        tr.addWidget(sec_title("👤  การใช้งานรายบุคคล"))
-
-        # ── ปุ่มเลือกมุมมอง
-        tr.addSpacing(20)
-        tr.addWidget(QLabel("มุมมอง:", font=fnt(F_LG)))
-        self.view_btns_users = {}
-        view_buttons = [
-            ("รายวัน", "day"),
-            ("รายสัปดาห์", "week"),
-            ("รายเดือน", "month"),
-            ("รายปี", "year"),
-        ]
-        for lbl, mode in view_buttons:
-            b = btn(lbl, "outline" if mode != "month" else "primary")
-            b.setFixedWidth(110)
-            b.clicked.connect(lambda checked, m=mode: self._set_view_users(m))
-            tr.addWidget(b)
-            self.view_btns_users[mode] = b
-
-        tr.addStretch()
-        self.search = QLineEdit()
-        self.search.setPlaceholderText("🔍  ค้นหาชื่อ...")
-        self.search.setFixedWidth(220)
-        self.search.textChanged.connect(self._filter)
-        tr.addWidget(self.search)
-        lay.addLayout(tr)
-
-        self.lbl_count = QLabel("")
-        self.lbl_count.setFont(fnt(F_MD))
-        self.lbl_count.setStyleSheet(f"color:{C_TEXT2};")
-        lay.addWidget(self.lbl_count)
-
-        cols = ["ชื่อผู้ใช้",
-                "เครื่อง 1\nสี","เครื่อง 1\nขาวดำ","เครื่อง 1\nรวม",
-                "เครื่อง 2\nสี","เครื่อง 2\nขาวดำ","เครื่อง 2\nรวม",
-                "เครื่อง 3\nสี","เครื่อง 3\nขาวดำ","เครื่อง 3\nรวม",
-                "รวมสี","รวมขาวดำ","รวมทั้งหมด"]
-        self.tbl = make_table(cols, stretch_cols=[0],
-                              fixed_cols={i:88 for i in range(1,13)})
-        self.tbl.setAlternatingRowColors(True)
-        lay.addWidget(self.tbl)
-
-    def refresh(self):
-        slot_data = self.get_data()
-        user_map = defaultdict(lambda: [None]*3)
-        for i, (curr,_,__) in enumerate(slot_data):
-            if not curr or not curr.get("accounts"): continue
-            for a in curr["accounts"]:
-                user_map[a["name"]][i] = a
-
-        self._rows = []
-        for name, slots in sorted(user_map.items()):
-            rv = [name]; tc=tb=tt=0
-            for i in range(3):
-                a = slots[i]
-                if isinstance(a,dict) and a:
-                    c = a.get("color_a4",0) + a.get("color_a3",0)
-                    b = a.get("bw_a4",0)    + a.get("bw_a3",0)
-                    t = a.get("total", c+b)
-                    rv += [fn(c), fn(b), fn(t)]; tc+=c; tb+=b; tt+=t
-                else:
-                    rv += ["—","—","—"]
-            rv += [fn(tc), fn(tb), fn(tt)]
-            self._rows.append((tt, rv))
-        self._rows.sort(key=lambda x: x[0], reverse=True)
-        self.lbl_count.setText(f"พบ {len(self._rows)} ผู้ใช้งาน")
-        self._populate(self._rows)
-
-    def _populate(self, rows):
-        self.tbl.setRowCount(0)
-        for _, rv in rows:
-            r = self.tbl.rowCount(); self.tbl.insertRow(r)
-            self.tbl.setItem(r, 0, tbl_item(rv[0], Qt.AlignmentFlag.AlignVCenter|Qt.AlignmentFlag.AlignLeft))
-            for c in range(1, 13):
-                v = rv[c]
-                mi = (c-1)//3
-                color = SLOT_COLORS[mi] if v != "—" and c <= 9 else None
-                if c == 12: color = C_GREEN
-                self.tbl.setItem(r, c, tbl_item(v, color=color, bold=(c==12), mono=(c==12)))
-
-    def _filter(self, text):
-        self._populate([(t,rv) for t,rv in self._rows if text.lower() in rv[0].lower()])
-
-    def _set_view_users(self, mode: str):
-        """เปลี่ยนมุมมอง Users"""
-        for m, btn in self.view_btns_users.items():
-            btn.setObjectName("primary" if m == mode else "outline")
-            btn.style().unpolish(btn)
-            btn.style().polish(btn)
 
 
 # ══════════════════════════════════════════════════════════
@@ -4899,11 +4785,7 @@ class PageSettings(QWidget):
         # โหลด log ครั้งแรก (จะถูก refresh อีกครั้งหลัง unlock)
         self._refresh_log()
 
-    def _on_machine_type_changed(self, slot: int):
-        pass  # machine type selection removed — parser is now inline with machine name
 
-    def _save_machine_types(self):
-        pass  # removed — parser saving is now in _save_names()
 
     def _set_protected_visible(self, visible: bool):
         """Show/hide protected settings widgets based on authentication"""

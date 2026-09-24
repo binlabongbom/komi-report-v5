@@ -1316,19 +1316,6 @@ def get_config_log(limit: int = 100) -> list:
              "new_value": r[3], "changed_at": r[4]} for r in rows]
 
 
-def get_latest_read_date() -> str:
-    """[V4.5] คืนค่า read_date ล่าสุด — เรียงด้วย read_date_iso เพื่อให้ถูก format
-    fallback ไปเรียงด้วย imported_at ถ้า ISO ว่าง"""
-    with _open(commit=False) as c:
-        # ใช้ read_date_iso เป็นหลัก (เรียง string ISO ได้ถูก)
-        row = c.execute("""SELECT read_date FROM readings
-                           WHERE read_date_iso IS NOT NULL AND read_date_iso != ''
-                           ORDER BY read_date_iso DESC, id DESC LIMIT 1""").fetchone()
-        if row:
-            return row[0]
-        # fallback: เรียงตาม imported_at (เครื่อง record ล่าสุดที่ import)
-        row = c.execute("SELECT read_date FROM readings ORDER BY imported_at DESC, id DESC LIMIT 1").fetchone()
-    return row[0] if row else None
 
 
 def get_activity_log(limit: int = 200) -> list:
