@@ -1,36 +1,15 @@
 from __future__ import annotations
 
-from ui.styles import surfaces as surfaces_styles
-from ui.styles import text as text_styles
-from ui.styles import reports as report_styles
-from ui.styles.reports import (
-    NAVY,
-    BLUE,
-    ORANGE,
-    SLATE,
-    GREEN,
-    MUTED,
-    DEVICE_COLORS,
-)
-
 from collections import defaultdict
 from collections.abc import Iterable
 from datetime import date
 from html import escape
 
 from PyQt6.QtCharts import (
-    QBarCategoryAxis,
-    QCategoryAxis,
-    QBarSeries,
-    QStackedBarSeries,
-    QBarSet,
     QChart,
     QChartView,
-    QValueAxis,
 )
-from ui.chart_lifecycle import replace_chart
-from ui.components.metric_card import MetricCard
-from PyQt6.QtCore import QDate, QEvent, QMargins, QPointF, QSignalBlocker, Qt, QTimer, pyqtSignal
+from PyQt6.QtCore import QDate, QEvent, QPointF, QSignalBlocker, Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QColor, QFont, QFontMetrics, QMouseEvent, QPainter
 from PyQt6.QtWidgets import (
     QAbstractItemView,
@@ -40,8 +19,8 @@ from PyQt6.QtWidgets import (
     QHeaderView,
     QLabel,
     QLayout,
-    QPushButton,
     QProgressBar,
+    QPushButton,
     QScrollArea,
     QSizePolicy,
     QStackedWidget,
@@ -51,23 +30,52 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from i18n import ENGLISH, apply_language, get_language, translate_text, tr
-from ui.numeric_inputs import NumericDateEdit as QDateEdit
-from ui.page_tabs import PageTabs as QTabWidget
-from ui.page_tabs import PageHeading
+from i18n import ENGLISH, apply_language, get_language, tr, translate_text
 from services.legacy_history_import import build_legacy_usage_intervals
-from services.report_period_policy import (
-    ReportPeriodLimitError, current_preview_period, validate_preview_period,
+from services.report_chart_models import (
+    FIVE_CATEGORIES as FIVE_CATEGORIES,
+)
+from services.report_chart_models import (
+    build_overview_timeline,
+    build_paper_mix,
+    build_printer_timeline,
+    slot_label,
 )
 from services.report_models import (
-    RawCell, build_legacy_raw_tables, build_user_rows, build_printer_rows,
-    _combined, _record_total, _operation_available, _record_name,
+    RawCell,
+    _combined,
+    _operation_available,
+    _record_name,
+    _record_total,
+    build_legacy_raw_tables,
+    build_printer_rows,
+    build_user_rows,
 )
+from services.report_period_policy import (
+    ReportPeriodLimitError,
+    current_preview_period,
+    validate_preview_period,
+)
+from ui.chart_lifecycle import replace_chart
+from ui.components.metric_card import MetricCard
+from ui.flow_layout import FlowLabel, FlowLayout, FlowWidget
+from ui.numeric_inputs import NumericDateEdit as QDateEdit
+from ui.page_tabs import PageHeading
+from ui.page_tabs import PageTabs as QTabWidget
+from ui.reports.charts import bar_chart, horizontal_like_chart, paper_legend_entries, render_chart
+from ui.styles import reports as report_styles
+from ui.styles import surfaces as surfaces_styles
+from ui.styles import text as text_styles
+from ui.styles.reports import (
+    BLUE,
+    DEVICE_COLORS,
+    MUTED,
+    NAVY,
+    ORANGE,
+    SLATE,
+)
+from ui.usage_table import PrinterUsageTable, UsageTable
 from widgets import FrozenLeftTable, VisibleCheckBox
-from ui.usage_table import UsageTable, PrinterUsageTable
-from ui.flow_layout import FlowLayout, FlowLabel, FlowWidget
-
-FIVE_CATEGORIES = ('Print Color', 'Print B&W', 'Copy Color', 'Copy B&W', 'Scan')
 
 USAGE_METRICS = (
     ("print_a3_color", "Print A3 Color", "print"),
@@ -1858,22 +1866,13 @@ class CloudReportsWidget(QWidget):
 
     @staticmethod
     def _paper_legend_entries(*, scan=False):
-        entries = [f'<span style="color:{color}">■</span><span style="color:{QColor(color).lighter(155).name()}">■</span> '
-                   f'A4 | A3 {name}' for name, color in (('Print', BLUE), ('Copy', ORANGE))]
-        if scan:
-            entries.append(f'<span style="color:{GREEN}">■</span> Scan')
-        return entries
+        return paper_legend_entries(scan=scan)
 
     def _paper_mix_chart(self):
-        series = []
-        for operation, base, offset in (('print', BLUE, 0), ('copy', ORANGE, 2)):
-            for paper, shade in (('a4', base), ('a3', QColor(base).lighter(155).name())):
-                values = [0.0] * 5
-                for index, color in enumerate(('color', 'bw')):
-                    values[offset + index] = sum(_combined(record, f'{operation}_{paper}_{color}') for record in self._records)
-                series.append((f'{operation.title()} {paper.upper()}', tuple(values), shade))
-        series.append(('Scan', (0, 0, 0, 0, sum(_combined(record, 'scan') for record in self._records)), GREEN))
-        return self._stacked_bar_chart(FIVE_CATEGORIES if self._records else (), tuple(series), show_legend=False)
+        model = self._prepared_models.get('charts', {}).get('paper_mix')
+        if model is None:
+            model = build_paper_mix(self._records)
+        return render_chart(model)
 
     def _render_users(self) -> None:
         if self._staged and not self._can_render_tab(1):
@@ -2483,15 +2482,7 @@ class CloudReportsWidget(QWidget):
 
     @staticmethod
     def _slot_label(slot: int, devices_by_slot: dict[int, object], record=None) -> str:
-        device = devices_by_slot.get(slot)
-        name = str(getattr(device, "name", "") or "").strip()
-        if not name and record is not None:
-            name = str(
-                getattr(record, "device_name_snapshot", "")
-                or getattr(record, "machine_name", "")
-                or ""
-            ).strip()
-        return f"Slot {slot + 1} · {name or 'ยังไม่ได้ตั้งชื่อ'}"
+        return slot_label(slot, devices_by_slot, record)
 
     def _set_usage_granularity(self, granularity: str, checked: bool) -> None:
         if not checked:
@@ -2525,171 +2516,28 @@ class CloudReportsWidget(QWidget):
         self._render_usage()
 
     def _timeline_chart(self, identity: str | None) -> QChart:
-        grouped = defaultdict(lambda: [0.0] * 4)
-        for record in self._selected_chart_days:
-            if identity and _record_identity(record) != identity:
-                continue
-            day = str(record.period_start)[:10]
-            for index, (operation, paper) in enumerate((('print', 'a4'), ('print', 'a3'),
-                                                        ('copy', 'a4'), ('copy', 'a3'))):
-                grouped[day][index] += sum(_combined(record, f'{operation}_{paper}_{color}')
-                                           for color in ('color', 'bw'))
-        days = sorted(grouped)[-14:]
-        categories = tuple(f'{day[8:10]}/{day[5:7]} {operation}'
-                           for day in days for operation in ('P', 'C'))
-        series = []
-        for index, (name, color) in enumerate((
-            ('Print A4', BLUE), ('Print A3', QColor(BLUE).lighter(155).name()),
-            ('Copy A4', ORANGE), ('Copy A3', QColor(ORANGE).lighter(155).name()),
-        )):
-            values = tuple(grouped[day][index] if position % 2 == index // 2 else 0.0
-                           for day in days for position in range(2))
-            series.append((name, values, color))
-        chart = self._stacked_bar_chart(categories, tuple(series), show_legend=False)
-        if days:
-            # Two adjacent stacked bars per day, with one centered date label.
-            old_axis = chart.axes(Qt.Orientation.Horizontal)[0]
-            chart.removeAxis(old_axis)
-            old_axis.deleteLater()
-            axis = QCategoryAxis()
-            axis.setStartValue(-0.5)
-            for index, day in enumerate(days):
-                axis.append(f'{day[8:10]}/{day[5:7]}', index * 2 + 1.5)
-            axis.setRange(-0.5, len(days) * 2 - 0.5)
-            axis.setLabelsAngle(-45 if len(days) > 7 else 0)
-            chart.addAxis(axis, Qt.AlignmentFlag.AlignBottom)
-            chart.series()[0].attachAxis(axis)
-        return chart
+        model = self._prepared_models.get('charts', {}).get('overview_timeline') if identity is None else None
+        if model is None:
+            model = build_overview_timeline(self._selected_chart_days, identity=identity)
+        return render_chart(model)
 
     def _printer_timeline_chart(self, rows: list[dict]) -> QChart:
-        """One bar per day, stacking Color/B&W for every configured Slot."""
-        daily = defaultdict(lambda: [0.0, 0.0])
-        for record in self._selected_chart_days:
-            day = str(record.period_start)[:10]
-            slot = int(record.device_slot)
-            for index, color in enumerate(('color', 'bw')):
-                daily[(day, slot)][index] += sum(
-                    _combined(record, f'{operation}_{paper}_{color}')
-                    for operation in ('print', 'copy') for paper in ('a3', 'a4'))
-        slots = sorted({int(row['slot']) for row in rows})
-        dates = sorted({day for day, _slot in daily})[-14:]
-        devices = {int(d.slot): d for d in self._devices}
-        series = []
-        for index, slot in enumerate(slots):
-            name = self._slot_label(slot, devices)
-            dark = DEVICE_COLORS[index % len(DEVICE_COLORS)]
-            for shade, color in enumerate((dark, QColor(dark).lighter(155).name())):
-                series.append((f'{name} · {"Color" if shade == 0 else "B&W"}',
-                               tuple(daily[(day, slot)][shade] for day in dates), color))
-        chart = self._stacked_bar_chart(tuple(f'{day[8:10]}/{day[5:7]}' for day in dates),
-                                        tuple(series), show_legend=False)
-        if any('ค่าเฉลี่ยประมาณการ' in note for record in self._selected_chart_days for note in getattr(record, 'remarks', ())):
-            chart.setTitle(tr('วันที่ไม่มีข้อมูล Web แสดงค่าเฉลี่ยประมาณการ', 'Days without Web readings show estimated averages'))
-        return chart
+        model = self._prepared_models.get('charts', {}).get('printer_timeline')
+        if model is None:
+            model = build_printer_timeline(self._selected_chart_days, (int(row['slot']) for row in rows), self._devices)
+        return render_chart(model)
 
     @staticmethod
     def _stacked_bar_chart(categories, series_data, *, show_legend=True):
-        chart = QChart()
-        chart.setBackgroundVisible(False)
-        chart.setMargins(QMargins(2, 2, 2, 2))
-        if not categories or not series_data:
-            chart.setTitle(tr('ยังไม่มีข้อมูลสำหรับสร้างกราฟ', 'No chart data'))
-            chart.legend().hide()
-            return chart
-        series = QStackedBarSeries()
-        series.setBarWidth(0.68)
-        maxima = [0.0] * len(categories)
-        for name, values, color in series_data:
-            bar = QBarSet(name)
-            bar.append([float(value) for value in values])
-            bar.setColor(QColor(color))
-            for index, value in enumerate(values):
-                maxima[index] += float(value)
-            from PyQt6.QtWidgets import QToolTip
-            from PyQt6.QtGui import QCursor
-            bar.hovered.connect(lambda entered, index, values=values, name=name:
-                QToolTip.showText(QCursor.pos(), f'{categories[index]}\n{name}: {_number(values[index])}')
-                if entered else QToolTip.hideText())
-            series.append(bar)
-        chart.addSeries(series)
-        axis_x = QBarCategoryAxis()
-        axis_x.append(list(categories))
-        axis_x.setLabelsAngle(-45 if len(categories) > 7 else 0)
-        axis_y = QValueAxis()
-        axis_y.setTitleText(tr('หน้า', 'Pages'))
-        axis_y.setRange(0, max(1.0, max(maxima) * 1.15))
-        axis_y.setTickCount(4)
-        axis_y.setLabelFormat('%.2f' if any(value != int(value) for _, values, _ in series_data for value in values) else '%.0f')
-        axis_y.applyNiceNumbers()
-        axis_font = QFont()
-        axis_font.setPointSize(9)
-        axis_x.setLabelsFont(axis_font)
-        chart.addAxis(axis_x, Qt.AlignmentFlag.AlignBottom)
-        chart.addAxis(axis_y, Qt.AlignmentFlag.AlignLeft)
-        series.attachAxis(axis_x)
-        series.attachAxis(axis_y)
-        chart.legend().setVisible(show_legend)
-        chart.legend().setAlignment(Qt.AlignmentFlag.AlignBottom)
-        return chart
+        return bar_chart(categories, series_data, stacked=True, show_legend=show_legend)
 
     @staticmethod
     def _horizontal_like_chart(labels: list[str], values: list[float], color: str) -> QChart:
-        from PyQt6.QtWidgets import QToolTip
-        from PyQt6.QtGui import QCursor
-        short = [f"{index + 1}. {label if len(label) <= 15 else label[:10] + '…' + label[-4:]}"
-                 for index, label in enumerate(labels)]
-        chart = CloudReportsWidget._bar_chart(tuple(short), (("หน้า", tuple(values), color),))
-        # Exact names and values remain available by mouse and accessibility;
-        # the adjacent report tables expose the same data to keyboard users.
-        for series in chart.series():
-            for bar in series.barSets():
-                bar.hovered.connect(lambda entered, index: QToolTip.showText(QCursor.pos(),
-                    f"{labels[index]}: {_number(values[index])}") if entered else QToolTip.hideText())
-        return chart
+        return horizontal_like_chart(labels, values, color)
 
     @staticmethod
-    def _bar_chart(categories: tuple[str, ...], series_data: tuple[tuple[str, tuple[float, ...], str], ...]) -> QChart:
-        chart = QChart()
-        chart.setBackgroundVisible(False)
-        chart.setMargins(QMargins(2, 2, 2, 2))
-        if not categories:
-            chart.setTitle("ยังไม่มีข้อมูลสำหรับสร้างกราฟ")
-            chart.legend().hide()
-            return chart
-        series = QBarSeries()
-        maximum = 0.0
-        for name, values, color in series_data:
-            bar = QBarSet(name)
-            bar.append([float(value) for value in values])
-            bar.setColor(QColor(color))
-            from PyQt6.QtWidgets import QToolTip
-            from PyQt6.QtGui import QCursor
-            bar.hovered.connect(lambda entered, index, values=values, name=name: QToolTip.showText(QCursor.pos(),
-                f'{categories[index]}\n{name}: {values[index]:,.2f}' if not float(values[index]).is_integer()
-                else f'{categories[index]}\n{name}: {values[index]:,.0f}')
-                if entered else QToolTip.hideText())
-            maximum = max(maximum, *(float(value) for value in values), 0.0)
-            series.append(bar)
-        chart.addSeries(series)
-        axis_x = QBarCategoryAxis()
-        axis_x.append(list(categories))
-        axis_x.setLabelsAngle(-45 if len(categories) > 7 else 0)
-        axis_y = QValueAxis()
-        axis_y.setRange(0, max(1.0, maximum * 1.18))
-        axis_y.setLabelFormat('%.2f' if any(not float(v).is_integer() for _, values, _ in series_data for v in values) else '%.0f')
-        axis_y.setTickCount(4)
-        axis_y.applyNiceNumbers()
-        axis_font = QFont()
-        axis_font.setPointSize(9)
-        axis_x.setLabelsFont(axis_font)
-        axis_y.setLabelsFont(axis_font)
-        chart.addAxis(axis_x, Qt.AlignmentFlag.AlignBottom)
-        chart.addAxis(axis_y, Qt.AlignmentFlag.AlignLeft)
-        series.attachAxis(axis_x)
-        series.attachAxis(axis_y)
-        chart.legend().setVisible(len(series_data) > 1)
-        chart.legend().setAlignment(Qt.AlignmentFlag.AlignBottom)
-        return chart
+    def _bar_chart(categories, series_data) -> QChart:
+        return bar_chart(categories, series_data)
 
     @staticmethod
     def _fill_table(table: QTableWidget, rows: Iterable[Iterable[str]], empty: str = "") -> None:

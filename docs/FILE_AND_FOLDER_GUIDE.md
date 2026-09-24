@@ -56,9 +56,9 @@ Web browser
 | `app.py` | ทั้งหน้าบ้าน/ตัวประกอบระบบ | entrypoint Desktop, สร้าง `QApplication`, main window, tray และ lifecycle | ทุกครั้งที่เปิด Desktop |
 | `v5_pages.py`, `pages.py` | Compatibility | ส่งต่อ class/function เดิมไปยังไฟล์เจ้าของ ไม่มี implementation หน้าจอซ้ำ | สำหรับผู้เรียกเดิมและ test ความเข้ากันได้ |
 | `ui/pages/` | หน้าบ้าน Desktop | Overview, อุปกรณ์, Import, สถานะและประวัติ และหน้าเอกสารเดิม | เมื่อสร้างหน้า/เปลี่ยนเมนู |
-| `ui/setup/` | หน้าบ้าน Desktop | Wizard, worker ตรวจการเชื่อมต่อ, control และ Import ประวัติเดิม | ตั้งค่าครั้งแรก/แก้เครื่อง |
-| `ui/reports/` | หน้าบ้าน Desktop | โหลดรายงาน, อายุงาน background, Export dialog และรายงานฐานที่ยังใช้งาน | เปิดรายงาน/ส่งออก |
-| `ui/settings/` | หน้าบ้าน Desktop | แท็บ Settings, การทำงานอัตโนมัติ, control, billing audit และเครื่องมือเดิม | เปิด/แก้การตั้งค่า |
+| `ui/setup/` | หน้าบ้าน Desktop | Wizard ประสานงาน; `steps/` แยกบริษัท/เครื่อง/ราคา/ตรวจสอบ; worker และ Import ประวัติเดิม | ตั้งค่าครั้งแรก/แก้เครื่อง |
+| `ui/reports/` | หน้าบ้าน Desktop | โหลดรายงาน, อายุงาน background, ตัววาดกราฟกลาง, Export dialog และรายงานฐานที่ยังใช้งาน | เปิดรายงาน/ส่งออก |
+| `ui/settings/` | หน้าบ้าน Desktop | แท็บและตัวประสานงาน; `sections/` แยกรอบบิล/ตารางเวลา/เปิดอัตโนมัติ/ลงทะเบียน/เครือข่าย/ช่วยเหลือ | เปิด/แก้การตั้งค่า |
 | `ui/components/` | Component กลาง | แถบหมึก, label การ์ดสรุป, หัวการ์ด Settings และข้อความแจ้งขนาดกะทัดรัด | เรียกใช้ร่วมกันจากหลายหน้า |
 | `ui/parser_editor.py`, `ui/policy.py` | UI helper | อายุหน้าต่าง Parser editor และนโยบายแสดง entry point | หน้า Import/Settings/Setup |
 | `widgets.py` | หน้าบ้าน Desktop | component ใช้ร่วม เช่น card, table, status และ navigation widget | ตอน render หน้าจอ |
@@ -115,6 +115,8 @@ Web browser
 | `import_worker.py` | ทำ import ใน worker ไม่ให้ UI ค้าง | ระหว่าง import |
 | `summary_service.py` | สรุป KPI/overview | Overview และ report summary |
 | `reporting_facade.py` | facade รวม query สำหรับรายงาน | Desktop Reports และ API |
+| `report_snapshot.py`, `report_models.py` | เตรียม snapshot และข้อมูลตารางใน background พร้อม cache/cancellation | โหลดหรือเปลี่ยนช่วงรายงาน |
+| `report_chart_models.py` | รวมข้อมูลกราฟเป็นค่าที่แก้ไขไม่ได้ โดยไม่สร้าง Qt widget | เตรียมกราฟ Overview/Printers ก่อนวาดบน UI |
 | `report_scope.py` | filter ขอบเขตวัน/เครื่อง/subject | ก่อน query report |
 | `report_excel_export.py` | สร้าง Excel export | เมื่อกด Export |
 | `pipeline_log.py` | log เหตุการณ์ใน data pipeline | collect/import/cache/reconcile |
@@ -188,6 +190,8 @@ Profiler เป็น backend/support tool ไม่ใช่หน้าจอ�
 | `README.md` | วิธีใช้ Web Edition |
 
 ## `source/tests/` — หลักฐานอัตโนมัติ
+
+GitHub ตรวจ PR/main ด้วย `.github/workflows/desktop-regression.yml` และ `tools/ci/run_desktop_tests.py` ซึ่งใช้ฐานข้อมูลชั่วคราวและแยก process เป็นชุดเล็ก ดูขอบเขตและวิธีรันใน [DESKTOP_CI.md](DESKTOP_CI.md)
 
 ไฟล์ `test_*.py` ไม่ทำงานตอนผู้ใช้เปิดโปรแกรม แต่ใช้พิสูจน์แต่ละส่วน:
 

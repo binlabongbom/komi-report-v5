@@ -25,6 +25,7 @@ def test_background_payload_matches_existing_report_semantics(monkeypatch, index
     monkeypatch.setattr(report_snapshot, "build_user_rows", lambda *a, **kw: ("users-model",))
     monkeypatch.setattr(report_snapshot, "build_legacy_raw_tables", lambda *a, **kw: ("raw-model",))
     monkeypatch.setattr(report_snapshot, "build_printer_rows", lambda *a, **kw: ("printer-model",))
+    monkeypatch.setattr(report_snapshot, "build_report_chart_models", lambda *a, **kw: ("chart-model",))
     monkeypatch.setattr(report_page, "apply_language", lambda *args: None)
     monkeypatch.setattr("services.report_excel_export.build_daily_category_costs", lambda *args: ("costs",))
     captured = {}
@@ -41,6 +42,7 @@ def test_background_payload_matches_existing_report_semantics(monkeypatch, index
     expected = {"users": ("users-model",)} if index in {0, 1} else {"legacy_raw": ("raw-model",)} if index == 4 else {}
     if index in {0, 2}:
         expected['printers'] = ('printer-model',)
+        expected['charts'] = ('chart-model',)
     assert result.data["prepared_models"] == expected
 
 

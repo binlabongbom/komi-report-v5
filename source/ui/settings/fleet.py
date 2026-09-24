@@ -3,29 +3,20 @@ from __future__ import annotations
 
 import socket
 import webbrowser
-from collections.abc import Callable
-from datetime import datetime, time, timedelta
+from datetime import datetime
 from pathlib import Path
 
-from PyQt6.QtCore import Qt, QTime, QTimer, pyqtSignal
+from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtWidgets import (
-    QAbstractItemView,
     QApplication,
-    QButtonGroup,
-    QCheckBox,
     QDialog,
     QFileDialog,
     QFrame,
-    QGridLayout,
     QHBoxLayout,
-    QHeaderView,
     QLabel,
-    QLineEdit,
     QMessageBox,
     QPlainTextEdit,
     QPushButton,
-    QRadioButton,
-    QTableWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -58,17 +49,19 @@ from services.web_service import WebServiceStatus, web_service_manager
 from ui.common_dialogs import PinnedCountersDialog
 from ui.components.notices import show_compact_information
 from ui.components.task_header import TaskHeader
-from ui.numeric_inputs import NumericDoubleSpinBox as QDoubleSpinBox
-from ui.numeric_inputs import NumericSpinBox as QSpinBox
 from ui.policy import OFFLINE_ACTIVATION_ENABLED
-from ui.settings.controls import ScheduleTimeRangeEditor, WebAccessCodeDialog, WeekdaySelector
+from ui.settings.controls import WebAccessCodeDialog
+from ui.settings.sections.autostart import AutostartSection
+from ui.settings.sections.billing import BillingSection
+from ui.settings.sections.network import NetworkSection
+from ui.settings.sections.registration import RegistrationSection
+from ui.settings.sections.schedule import ScheduleSection
+from ui.settings.sections.support import SupportSection
 from ui.setup.wizard import SetupWizardV5
 from ui.shared_settings_confirmation import confirm_shared_settings
 from ui.styles import settings as settings_styles
-from ui.styles import surfaces as surfaces_styles
-from ui.styles import tables as tables_styles
 from ui.styles import text as text_styles
-from ui.styles.tokens import F_2XL, F_MD
+from ui.styles.tokens import F_2XL
 from widgets import btn, fnt
 
 
@@ -137,89 +130,21 @@ class PageFleetSettings(QWidget):
             "กำลังตรวจสอบสถานะ…",
             "ลองส่งอีกครั้ง",
         )
-        self.registration_summary.setAccessibleName("สถานะการลงทะเบียนโปรแกรม")
-        self.registration_retry_button.setAccessibleName("ลองส่งข้อมูลลงทะเบียนอีกครั้ง")
-        self.registration_retry_button.clicked.connect(self._retry_registration)
-        registration_row = registration_card.layout().itemAt(0).layout()
-        self.registration_privacy_button = btn("ดูข้อมูลที่ส่ง", "outline")
-        self.registration_privacy_button.setAccessibleName("เปิดดูประกาศข้อมูลการลงทะเบียน")
-        self.registration_privacy_button.clicked.connect(self._show_registration_privacy)
-        if registration_row is not None:
-            registration_row.insertWidget(
-                1,
-                self.registration_privacy_button,
-                0,
-                Qt.AlignmentFlag.AlignVCenter,
-            )
-        self.registration_notice_accept = QCheckBox(
-            tr(
-                "ฉันได้อ่านและรับทราบข้อมูลการลงทะเบียนเวอร์ชันปัจจุบัน",
-                "I have read and acknowledge the current Registration Data Notice",
-            )
+        self.registration_section = RegistrationSection(
+            registration_card, self.registration_summary, self.registration_retry_button,
+            parent=self, on_retry=self._retry_registration,
+            on_privacy=self._show_registration_privacy, on_notice=self._accept_registration_notice,
+            on_mode=self._set_registration_mode, on_export_request=self._export_offline_request,
+            on_import_license=self._import_offline_license,
         )
-        self.registration_notice_accept.setAccessibleName(
-            tr(
-                "รับทราบข้อมูลการลงทะเบียนเวอร์ชันปัจจุบัน",
-                "Acknowledge the current Registration Data Notice",
-            )
-        )
-        self.registration_notice_accept.clicked.connect(self._accept_registration_notice)
-        registration_card.layout().addWidget(self.registration_notice_accept)
-
-        registration_mode_row = QHBoxLayout()
-        registration_mode_label = QLabel(tr("โหมดการลงทะเบียน", "Registration mode"))
-        registration_mode_label.setStyleSheet(text_styles.label('#334155', font_weight='700', border='none'))
-        registration_mode_row.addWidget(registration_mode_label)
-        self.registration_mode_group = QButtonGroup(self)
-        self.registration_mode_group.setExclusive(True)
-        self.registration_online_mode = QRadioButton(
-            tr("ออนไลน์ · ลงทะเบียนอัตโนมัติ", "Online · automatic registration")
-        )
-        self.registration_online_mode.setAccessibleName(
-            tr("เลือกรับบริการแบบออนไลน์", "Use Online Registration")
-        )
-        self.registration_offline_mode = QRadioButton(
-            tr("ออฟไลน์ · ใช้ไฟล์ License", "Offline · use a license file")
-        )
-        self.registration_offline_mode.setAccessibleName(
-            tr("เลือกใช้งานแบบ Offline License", "Use an Offline License")
-        )
-        self.registration_mode_group.addButton(self.registration_online_mode)
-        self.registration_mode_group.addButton(self.registration_offline_mode)
-        registration_mode_row.addWidget(self.registration_online_mode)
-        registration_mode_row.addWidget(self.registration_offline_mode)
-        registration_mode_row.addStretch()
-        registration_card.layout().addLayout(registration_mode_row)
-        self.registration_online_mode.clicked.connect(lambda: self._set_registration_mode("online"))
-        self.registration_offline_mode.clicked.connect(lambda: self._set_registration_mode("offline"))
-        registration_mode_label.setVisible(OFFLINE_ACTIVATION_ENABLED)
-        self.registration_online_mode.setVisible(OFFLINE_ACTIVATION_ENABLED)
-        self.registration_offline_mode.setVisible(OFFLINE_ACTIVATION_ENABLED)
-
-        self.offline_license_summary = QLabel()
-        self.offline_license_summary.setWordWrap(True)
-        self.offline_license_summary.setAccessibleName(
-            tr("สถานะ Offline License", "Offline License status")
-        )
-        self.offline_license_summary.setStyleSheet(
-            settings_styles.FLEET_SETTINGS_OFFLINE_LICENSE_SUMMARY
-        )
-        registration_card.layout().addWidget(self.offline_license_summary)
-        offline_actions = QHBoxLayout()
-        self.offline_request_button = btn(tr("สร้างไฟล์คำขอ…", "Export request…"), "outline")
-        self.offline_request_button.setAccessibleName(
-            tr("สร้างคำขอ Offline License", "Export Offline License request")
-        )
-        self.offline_request_button.clicked.connect(self._export_offline_request)
-        offline_actions.addWidget(self.offline_request_button)
-        self.offline_import_button = btn(tr("นำเข้า License…", "Import license…"), "outline")
-        self.offline_import_button.setAccessibleName(
-            tr("นำเข้าไฟล์ Offline License", "Import Offline License file")
-        )
-        self.offline_import_button.clicked.connect(self._import_offline_license)
-        offline_actions.addWidget(self.offline_import_button)
-        offline_actions.addStretch()
-        registration_card.layout().addLayout(offline_actions)
+        self.registration_privacy_button = self.registration_section.registration_privacy_button
+        self.registration_notice_accept = self.registration_section.registration_notice_accept
+        self.registration_mode_group = self.registration_section.registration_mode_group
+        self.registration_online_mode = self.registration_section.registration_online_mode
+        self.registration_offline_mode = self.registration_section.registration_offline_mode
+        self.offline_license_summary = self.registration_section.offline_license_summary
+        self.offline_request_button = self.registration_section.offline_request_button
+        self.offline_import_button = self.registration_section.offline_import_button
         layout.addWidget(registration_card)
 
         (
@@ -233,48 +158,15 @@ class PageFleetSettings(QWidget):
             "กำลังโหลดข้อมูล…",
             closed_action="แก้ไข",
         )
-        billing_body = self.billing_editor.layout()
-        billing_grid = QGridLayout()
-        billing_grid.setHorizontalSpacing(24)
-        billing_grid.setVerticalSpacing(10)
-        billing_grid.setColumnStretch(0, 1)
-        billing_grid.setColumnStretch(1, 1)
-        self.billing_day = QSpinBox()
-        self.billing_day.setRange(1, 31)
-        self.billing_day.setSuffix(" ของเดือน")
-        self.billing_day.setAccessibleName("วันสิ้นสุดรอบบิล")
-        self.waste = QDoubleSpinBox()
-        self.waste.setRange(0, 100)
-        self.waste.setDecimals(1)
-        self.waste.setSuffix(" %")
-        self.waste.setAccessibleName("ส่วนลดกระดาษเสีย")
-        billing_grid.addWidget(
-            self._field("วันสิ้นสุดรอบบิล", self.billing_day, "ถ้าเดือนไม่มีวันที่เลือก ระบบใช้วันสุดท้ายของเดือน"),
-            0,
-            0,
+        self.billing_section = BillingSection(
+            self.billing_editor, on_save=self._save_billing,
+            on_cancel=lambda: self._cancel_section("billing"),
+            on_dirty=lambda: self._mark_dirty("billing"),
         )
-        billing_grid.addWidget(
-            self._field("ส่วนลดกระดาษเสีย", self.waste, "หักออกจากยอดค่าใช้จ่ายก่อนสรุปรอบบิล"),
-            0,
-            1,
-        )
-        billing_body.addLayout(billing_grid)
-        billing_impact = QLabel("การเปลี่ยนแปลงมีผลกับรายการใหม่เท่านั้น และไม่แก้ยอดย้อนหลัง")
-        billing_impact.setWordWrap(True)
-        billing_impact.setStyleSheet(
-            settings_styles.FLEET_SETTINGS_BILLING_IMPACT
-        )
-        billing_body.addWidget(billing_impact)
-        (
-            self.billing_save_status,
-            billing_actions,
-            self.billing_save_button,
-        ) = self._editor_actions(
-            "บันทึกรอบบิลและตรวจสอบ",
-            self._save_billing,
-            lambda: self._cancel_section("billing"),
-        )
-        billing_body.addLayout(billing_actions)
+        self.billing_day = self.billing_section.billing_day
+        self.waste = self.billing_section.waste
+        self.billing_save_status = self.billing_section.billing_save_status
+        self.billing_save_button = self.billing_section.billing_save_button
         layout.addWidget(billing_card)
 
         (
@@ -288,132 +180,31 @@ class PageFleetSettings(QWidget):
             "กำลังโหลดข้อมูล…",
             closed_action="จัดเวลา",
         )
-        schedule_body = self.schedule_task_editor.layout()
-        self.autostart = QCheckBox("เปิดโปรแกรมอัตโนมัติเมื่อเข้าสู่ระบบ")
-        self.autostart.setAccessibleName("เปิดโปรแกรมอัตโนมัติเมื่อเข้าสู่ระบบ")
-        self.autostart_status = QLabel()
-        self.autostart_status.setWordWrap(True)
-        self.schedule = QLabel()
-        self.schedule.setWordWrap(True)
-        self.schedule.setMinimumHeight(54)
-        self.schedule.setAccessibleName("สรุปเวลาการอ่านข้อมูลอัตโนมัติ")
-        self.schedule.setStyleSheet(
-            surfaces_styles.INFO_BOX
+        self.schedule_section = ScheduleSection(
+            self.schedule_task_editor, on_save=self._save_schedule,
+            on_cancel=lambda: self._cancel_section("schedule"),
+            on_dirty=lambda: self._mark_dirty("schedule"),
         )
-        schedule_body.addWidget(self.schedule)
-        self.advanced_schedule_button = btn(
-            tr("ปรับเวลาแบบละเอียด", "Edit detailed schedule"),
-            "outline",
-        )
-        self.advanced_schedule_button.setCheckable(True)
-        self.advanced_schedule_button.setAccessibleName(
-            tr(
-                "แสดงหรือซ่อนการตั้งเวลาแบบละเอียด",
-                "Show or hide the detailed schedule",
-            )
-        )
-        self.advanced_schedule_button.toggled.connect(self._toggle_schedule_editor)
-        schedule_body.addWidget(self.advanced_schedule_button, 0, Qt.AlignmentFlag.AlignLeft)
-
-        self.schedule_editor = QFrame()
-        self.schedule_editor.setObjectName("schedule_editor")
-        self.schedule_editor.setStyleSheet(settings_styles.FLEET_SETTINGS_SCHEDULE_EDITOR)
-        schedule_editor_layout = QVBoxLayout(self.schedule_editor)
-        schedule_editor_layout.setContentsMargins(10, 10, 10, 10)
-        schedule_editor_layout.setSpacing(8)
-        schedule_hint = QLabel(
-            tr(
-                "สำหรับเจ้าหน้าที่: กำหนดช่วงเวลา วัน และความถี่แยกตามแหล่งข้อมูล หากไม่แน่ใจให้ใช้ค่าเดิม",
-                "For staff: set time ranges, days, and reading intervals. Keep the defaults if you are unsure.",
-            )
-        )
-        schedule_hint.setWordWrap(True)
-        schedule_hint.setStyleSheet(text_styles.label('#64748B', border='none'))
-        schedule_editor_layout.addWidget(schedule_hint)
-        self.schedule_windows_table = QTableWidget(0, 6)
-        self.schedule_windows_table.setHorizontalHeaderLabels(
-            [
-                tr("ชื่อช่วงเวลา", "Window name"),
-                tr("เริ่ม–สิ้นสุด", "Start–end"),
-                tr("วันที่ทำงาน", "Days"),
-                tr("ตรวจสถานะ\n(นาที)", "Status check\n(min)"),
-                tr("อ่านมิเตอร์\n(นาที)", "Meter read\n(min)"),
-                "",
-            ]
-        )
-        self.schedule_windows_table.setAccessibleName(
-            tr("ตารางเวลาการอ่านข้อมูลแบบละเอียด", "Detailed reading schedule")
-        )
-        self.schedule_windows_table.verticalHeader().setVisible(False)
-        self.schedule_windows_table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
-        self.schedule_windows_table.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
-        self.schedule_windows_table.setMinimumHeight(230)
-        self.schedule_windows_table.setMaximumHeight(330)
-        self.schedule_windows_table.setAlternatingRowColors(True)
-        self.schedule_windows_table.setShowGrid(False)
-        self.schedule_windows_table.setFrameShape(QFrame.Shape.NoFrame)
-        header = self.schedule_windows_table.horizontalHeader()
-        header.setMinimumHeight(42)
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
-        for column in (3, 4):
-            header.setSectionResizeMode(column, QHeaderView.ResizeMode.Fixed)
-        header.setSectionResizeMode(5, QHeaderView.ResizeMode.Fixed)
-        self.schedule_windows_table.setColumnWidth(0, 126)
-        self.schedule_windows_table.setColumnWidth(3, 72)
-        self.schedule_windows_table.setColumnWidth(4, 72)
-        self.schedule_windows_table.setColumnWidth(5, 40)
-        self.schedule_windows_table.setStyleSheet(
-            tables_styles.SCHEDULE
-        )
-        schedule_editor_layout.addWidget(self.schedule_windows_table)
-        self.add_schedule_window_button = btn(
-            tr("เพิ่มช่วงเวลา", "Add time window"),
-            "outline",
-        )
-        self.add_schedule_window_button.clicked.connect(self._add_schedule_window)
-        schedule_editor_layout.addWidget(self.add_schedule_window_button, 0, Qt.AlignmentFlag.AlignLeft)
-        self._schedule_row_controls: list[
-            tuple[QLineEdit, ScheduleTimeRangeEditor, WeekdaySelector, QSpinBox, QSpinBox]
-        ] = []
-        self.schedule_editor.hide()
-        schedule_body.addWidget(self.schedule_editor)
-        (
-            self.schedule_save_status,
-            schedule_actions,
-            self.schedule_save_button,
-        ) = self._editor_actions(
-            "บันทึกเวลาและตรวจสอบ",
-            self._save_schedule,
-            lambda: self._cancel_section("schedule"),
-        )
-        schedule_body.addLayout(schedule_actions)
+        self.schedule = self.schedule_section.schedule
+        self.advanced_schedule_button = self.schedule_section.advanced_schedule_button
+        self.schedule_editor = self.schedule_section.schedule_editor
+        self.schedule_windows_table = self.schedule_section.schedule_windows_table
+        self.add_schedule_window_button = self.schedule_section.add_schedule_window_button
+        self.schedule_save_status = self.schedule_section.schedule_save_status
+        self.schedule_save_button = self.schedule_section.schedule_save_button
+        self._schedule_row_controls = self.schedule_section.row_controls
         layout.addWidget(schedule_card)
 
         self.autostart_program_card, autostart_body = self._task_card_shell()
-        autostart_title = QLabel("เปิดโปรแกรมอัตโนมัติ")
-        autostart_title.setFont(fnt(F_MD, True))
-        autostart_title.setStyleSheet(text_styles.label('#102A43', border='none'))
-        autostart_note = QLabel(
-            "กำหนดให้ KOMI Report เริ่มทำงานเมื่อผู้ใช้เข้าสู่ระบบปฏิบัติการ"
+        self.autostart_section = AutostartSection(
+            autostart_body, on_save=self._save_autostart,
+            on_cancel=lambda: self._cancel_section("autostart"),
+            on_dirty=lambda: self._mark_dirty("autostart"),
         )
-        autostart_note.setWordWrap(True)
-        autostart_note.setStyleSheet(text_styles.label('#52677D', border='none'))
-        autostart_body.addWidget(autostart_title)
-        autostart_body.addWidget(autostart_note)
-        autostart_body.addWidget(self.autostart)
-        autostart_body.addWidget(self.autostart_status)
-        (
-            self.autostart_save_status,
-            autostart_actions,
-            self.autostart_save_button,
-        ) = self._editor_actions(
-            "บันทึก Auto-start",
-            self._save_autostart,
-            lambda: self._cancel_section("autostart"),
-        )
-        autostart_body.addLayout(autostart_actions)
+        self.autostart = self.autostart_section.autostart
+        self.autostart_status = self.autostart_section.autostart_status
+        self.autostart_save_status = self.autostart_section.autostart_save_status
+        self.autostart_save_button = self.autostart_section.autostart_save_button
 
         (
             program_card,
@@ -427,10 +218,35 @@ class PageFleetSettings(QWidget):
             closed_action="จัดการ",
         )
         program_body = self.web_task_editor.layout()
-        from ui.network_settings import build_network_settings
-        build_network_settings(self, program_body)
+        self.network_section = NetworkSection(
+            program_body, parent=self, on_open=self._open_web, on_copy=self._copy_lan_url,
+            on_change_code=self._change_web_access_code, on_authorize=self._authorize_peer_sync,
+            on_peer_refresh=self._refresh_peer_sync_status, subscribe_changes=self.changed.connect,
+            on_save=self._save_web, on_cancel=lambda: self._cancel_section("web"),
+            on_dirty=lambda: self._mark_dirty("web"),
+        )
+        self.web_service_enabled = self.network_section.web_service_enabled
+        self.web_port = self.network_section.web_port
+        self.web_service_status = self.network_section.web_service_status
+        self.web_service_url = self.network_section.web_service_url
+        self.open_web_button = self.network_section.open_web_button
+        self.copy_web_button = self.network_section.copy_web_button
+        self.web_advanced_toggle = self.network_section.web_advanced_toggle
+        self.web_advanced_panel = self.network_section.web_advanced_panel
+        self.web_report_require_password = self.network_section.web_report_require_password
+        self.web_report_access_note = self.network_section.web_report_access_note
+        self.web_access_status = self.network_section.web_access_status
+        self.change_web_access_button = self.network_section.change_web_access_button
+        self.peer_sync_status = self.network_section.peer_sync_status
+        self.peer_sync_mode = self.network_section.peer_sync_mode
+        self.peer_sync_authorize_button = self.network_section.peer_sync_authorize_button
+        self.enroll_member_button = self.network_section.enroll_member_button
+        self.shared_history_button = self.network_section.shared_history_button
+        self.network_activity = self.network_section.network_activity
+        self.web_save_status = self.network_section.web_save_status
+        self.web_save_button = self.network_section.web_save_button
         # LAN/Web Report is an operational program setting.  It lives on the
-        # Advanced Settings page instead of competing with everyday pricing
+        # Network Settings tab instead of competing with everyday pricing
         # and schedule tasks on the main Settings page.
         self.web_program_card = program_card
 
@@ -445,102 +261,17 @@ class PageFleetSettings(QWidget):
             "สำหรับเจ้าหน้าที่และการตรวจสอบระบบ",
             closed_action="เปิด",
         )
-        support_body = self.support_task_editor.layout()
-        open_advanced = btn("เปิดการตั้งค่าขั้นสูง", "primary")
-        open_advanced.clicked.connect(self.advanced_tools_requested.emit)
-        support_body.addWidget(open_advanced, 0, Qt.AlignmentFlag.AlignLeft)
-        symptom_label = QLabel("พบปัญหาอะไร")
-        symptom_label.setStyleSheet(text_styles.label('#334155', font_weight='700', border='none'))
-        support_body.addWidget(symptom_label)
-        symptom_actions = QHBoxLayout()
-        stale_button = btn("ข้อมูลไม่อัปเดต", "outline")
-        stale_button.clicked.connect(self.activity_requested.emit)
-        symptom_actions.addWidget(stale_button)
-        mismatch_button = btn("ยอดไม่ตรง", "outline")
-        mismatch_button.clicked.connect(self.billing_audit_requested.emit)
-        symptom_actions.addWidget(mismatch_button)
-        web_problem_button = btn("เปิด Web ไม่ได้", "outline")
-        web_problem_button.clicked.connect(lambda: self._set_active_editor("web"))
-        symptom_actions.addWidget(web_problem_button)
-        symptom_actions.addStretch()
-        support_body.addLayout(symptom_actions)
-
-        staff_label = QLabel("ข้อมูลสำหรับเจ้าหน้าที่")
-        staff_label.setStyleSheet(settings_styles.FLEET_SETTINGS_STAFF_LABEL)
-        support_body.addWidget(staff_label)
-        self.support_toggle = btn("แสดงข้อมูลสำหรับเจ้าหน้าที่", "outline")
-        self.support_toggle.setCheckable(True)
-        self.support_toggle.setAccessibleName("แสดงหรือซ่อนข้อมูลสำหรับเจ้าหน้าที่")
-        self.support_toggle.toggled.connect(self._toggle_staff_tools)
-        support_body.addWidget(self.support_toggle, 0, Qt.AlignmentFlag.AlignLeft)
-
-        self.support_details = QFrame()
-        self.support_details.setObjectName("settings_support_details")
-        self.support_details.setStyleSheet(
-            settings_styles.FLEET_SETTINGS_SUPPORT_DETAILS
+        self.support_section = SupportSection(
+            self.support_task_editor, on_advanced=self.advanced_tools_requested.emit,
+            on_activity=self.activity_requested.emit, on_audit=self.billing_audit_requested.emit,
+            on_network=lambda: self._set_active_editor("web"), on_shortcuts=self._create_shortcuts,
         )
-        support_details_layout = QVBoxLayout(self.support_details)
-        support_details_layout.setContentsMargins(12, 12, 12, 12)
-        support_details_layout.setSpacing(10)
-        warning = QLabel(
-            "คำเตือน: รายละเอียดบางรายการมีผลต่อฐานข้อมูลและประวัติการใช้งาน โปรดอ่านข้อความยืนยันก่อนดำเนินการ"
-        )
-        warning.setWordWrap(True)
-        warning.setAccessibleName("คำเตือนสำหรับเครื่องมือเจ้าหน้าที่")
-        warning.setStyleSheet(
-            surfaces_styles.WARNING_NOTICE
-        )
-        support_details_layout.addWidget(warning)
-        support_actions = QHBoxLayout()
-        activity_button = btn("สถานะและประวัติการอ่าน", "outline")
-        activity_button.clicked.connect(self.activity_requested.emit)
-        support_actions.addWidget(activity_button)
-        audit_button = btn("ตรวจสอบรอบบิล", "outline")
-        audit_button.clicked.connect(self.billing_audit_requested.emit)
-        support_actions.addWidget(audit_button)
-        advanced_button = btn("เปิดการตั้งค่าขั้นสูง", "outline")
-        advanced_button.clicked.connect(self.advanced_tools_requested.emit)
-        support_actions.addWidget(advanced_button)
-        support_actions.addStretch()
-        support_details_layout.addLayout(support_actions)
-        self.active_database_path = QLabel()
-        self.active_database_path.setWordWrap(True)
-        self.active_database_path.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-        self.active_database_path.setAccessibleName("ตำแหน่งฐานข้อมูลที่กำลังใช้งาน")
-        self.active_database_path.setStyleSheet(
-            surfaces_styles.READONLY_SUMMARY
-        )
-        support_details_layout.addWidget(self.active_database_path)
-        self.registration_support_detail = QLabel(
-            tr("ยังไม่แสดงรายละเอียดทางเทคนิค", "Technical details are hidden")
-        )
-        self.registration_support_detail.setWordWrap(True)
-        self.registration_support_detail.setTextInteractionFlags(
-            Qt.TextInteractionFlag.TextSelectableByMouse
-            | Qt.TextInteractionFlag.TextSelectableByKeyboard
-        )
-        self.registration_support_detail.setAccessibleName(
-            tr("รายละเอียดสำหรับ Support", "Support details")
-        )
-        self.registration_support_detail.setStyleSheet(
-            surfaces_styles.READONLY_SUMMARY
-        )
-        support_details_layout.addWidget(self.registration_support_detail)
-        shortcut_button = btn("สร้าง Shortcut ใหม่", "outline")
-        shortcut_button.clicked.connect(self._create_shortcuts)
-        support_details_layout.addWidget(shortcut_button, 0, Qt.AlignmentFlag.AlignLeft)
-        self.support_details.hide()
-        support_body.addWidget(self.support_details)
+        self.support_toggle = self.support_section.support_toggle
+        self.support_details = self.support_section.support_details
+        self.active_database_path = self.support_section.active_database_path
+        self.registration_support_detail = self.support_section.registration_support_detail
         layout.addWidget(support_card)
 
-        for control in (self.billing_day, self.waste):
-            control.valueChanged.connect(lambda _value, section="billing": self._mark_dirty(section))
-        self.autostart.toggled.connect(lambda _checked: self._mark_dirty("autostart"))
-        self.web_service_enabled.toggled.connect(lambda _checked: self._mark_dirty("web"))
-        self.web_port.valueChanged.connect(lambda _value: self._mark_dirty("web"))
-        self.web_report_require_password.toggled.connect(
-            lambda _checked: self._mark_dirty("web")
-        )
         self._web_status_timer = QTimer(self)
         from ui.background_read import LatestRead
         self._web_status_reader = LatestRead(self)
@@ -571,7 +302,7 @@ class PageFleetSettings(QWidget):
         return super().eventFilter(watched, event)
 
     def _sync_runtime_visibility(self):
-        # The tabbed settings shell reparents the network card into Advanced.
+        # The tabbed settings shell reparents the card into Network Settings.
         # Observe that card as well as the original fleet container.
         if self.isVisible() or self.web_service_status.isVisible():
             self._web_status_timer.start()
@@ -650,26 +381,6 @@ class PageFleetSettings(QWidget):
         )
         return card, header.detail, editor, toggle
 
-    def _editor_actions(
-        self,
-        save_text: str,
-        save_handler: Callable[[], None],
-        cancel_handler: Callable[[], None],
-    ) -> tuple[QLabel, QHBoxLayout, QPushButton]:
-        row = QHBoxLayout()
-        row.setSpacing(8)
-        status = QLabel("ค่าปัจจุบันถูกบันทึกแล้ว")
-        status.setWordWrap(True)
-        status.setStyleSheet(text_styles.label('#64748B', border='none'))
-        row.addWidget(status, 1)
-        cancel = btn("ยกเลิก", "outline")
-        cancel.clicked.connect(cancel_handler)
-        row.addWidget(cancel)
-        save = btn(save_text, "success")
-        save.setEnabled(False)
-        save.clicked.connect(save_handler)
-        row.addWidget(save)
-        return status, row, save
 
     def _task_toggle_requested(self, key: str, checked: bool) -> None:
         if checked:
@@ -733,52 +444,12 @@ class PageFleetSettings(QWidget):
         self._active_editor = key
         return True
 
-    def _toggle_schedule_editor(self, visible: bool) -> None:
-        self.schedule_editor.setVisible(visible)
-        self.advanced_schedule_button.setText(
-            tr("ซ่อนการตั้งเวลาแบบละเอียด", "Hide detailed schedule")
-            if visible
-            else tr("ปรับเวลาแบบละเอียด", "Edit detailed schedule")
-        )
-
-    def _toggle_staff_tools(self, visible: bool) -> None:
-        self.support_details.setVisible(visible)
-        self.support_toggle.setText(
-            tr("ซ่อนข้อมูลสำหรับเจ้าหน้าที่", "Hide staff information")
-            if visible
-            else tr("แสดงข้อมูลสำหรับเจ้าหน้าที่", "Show staff information")
-        )
-
-
-    @staticmethod
-    def _field(label: str, control: QWidget, hint: str = "") -> QWidget:
-        field = QWidget()
-        field.setObjectName("settings_field")
-        field.setStyleSheet(
-            settings_styles.FLEET_SETTINGS_FIELD
-        )
-        body = QVBoxLayout(field)
-        body.setContentsMargins(0, 0, 0, 0)
-        body.setSpacing(5)
-        name = QLabel(label)
-        name.setStyleSheet(text_styles.label('#334155', background='transparent', border='none', font_weight='700'))
-        name.setBuddy(control)
-        body.addWidget(name)
-        control.setMinimumHeight(38)
-        control.setMaximumWidth(320)
-        body.addWidget(control)
-        if hint:
-            note = QLabel(hint)
-            note.setWordWrap(True)
-            note.setStyleSheet(text_styles.label('#64748B', background='transparent', border='none', font_size='10px'))
-            body.addWidget(note)
-        return field
 
     def _mark_dirty(self, section: str) -> None:
         if self._loading_config:
             return
         if section == 'schedule':
-            self._schedule_rendered_windows = None
+            self.schedule_section.invalidate()
         self._dirty_sections.add(section)
         widgets = {
             "billing": (self.billing_save_status, self.billing_save_button),
@@ -822,7 +493,7 @@ class PageFleetSettings(QWidget):
         self.billing_day.setValue(int(get_cfg("billing_day", "31") or 31))
         self.waste.setValue(float(get_cfg("waste_paper_pct", "2") or 2))
         stored_windows = load_schedule_windows(get_cfg("sync_schedule_windows", ""))
-        self._using_unsaved_default_schedule = stored_windows is None
+        self.schedule_section.using_defaults = stored_windows is None
         self._replace_schedule_windows(stored_windows if stored_windows is not None else default_schedule_windows())
         registration = self._autostart_registration_status()
         configured_autostart = get_cfg("autostart_enabled", "")
@@ -1273,36 +944,7 @@ class PageFleetSettings(QWidget):
         return registration_path.exists()
 
     def _refresh_autostart_status(self, registered: bool | None) -> None:
-        if registered is True:
-            self.autostart_status.setText(
-                tr(
-                    "พบ OS registration สำหรับเปิดอัตโนมัติแล้ว",
-                    "Automatic start is registered with the operating system",
-                )
-            )
-            self.autostart_status.setStyleSheet(
-                settings_styles.FLEET_SETTINGS_AUTOSTART_STATUS
-            )
-        elif registered is False:
-            self.autostart_status.setText(
-                tr(
-                    "ไม่พบ OS registration · เลือก checkbox แล้วกดบันทึกเพื่อเปิดใช้งาน",
-                    "No OS registration found. Select the checkbox and save to enable it.",
-                )
-            )
-            self.autostart_status.setStyleSheet(
-                settings_styles.FLEET_SETTINGS_AUTOSTART_STATUS_WARNING
-            )
-        else:
-            self.autostart_status.setText(
-                tr(
-                    "ตรวจ OS registration ไม่ได้ · checkbox แสดงค่าที่บันทึกไว้",
-                    "OS registration could not be checked. The checkbox shows the stored setting.",
-                )
-            )
-            self.autostart_status.setStyleSheet(
-                settings_styles.FLEET_SETTINGS_AUTOSTART_STATUS_INACTIVE
-            )
+        self.autostart_section.refresh_status(registered)
 
     @staticmethod
     def _web_runtime_matches(desired_enabled: bool, status: WebServiceStatus) -> bool:
@@ -1652,20 +1294,8 @@ class PageFleetSettings(QWidget):
             return False
 
     def _save_billing(self) -> None:
-        if not self._commit_shared_settings("billing", {
-            "billing_day": self.billing_day.value(),
-            "waste_paper_pct": round(self.waste.value(), 1),
-        }):
-            return
-        stored_day = int(get_cfg("billing_day", "31") or 31)
-        stored_waste = float(get_cfg("waste_paper_pct", "2") or 2)
-        if stored_day != self.billing_day.value() or stored_waste != round(self.waste.value(), 1):
-            self.billing_save_status.setText(
-                tr("บันทึกรอบบิลไม่สำเร็จ", "Could not save billing settings")
-            )
-            self.billing_save_status.setStyleSheet(text_styles.label('#B42318', font_weight='700', border='none'))
-            return
-        self._mark_section_saved("billing")
+        if self.billing_section.save(lambda changes: self._commit_shared_settings("billing", changes)):
+            self._mark_section_saved("billing")
 
     def _save_schedule(self) -> None:
         try:
@@ -1693,7 +1323,7 @@ class PageFleetSettings(QWidget):
                 text_styles.label('#B42318', font_weight='700', border='none')
             )
             return
-        self._using_unsaved_default_schedule = False
+        self.schedule_section.using_defaults = False
         self._refresh_schedule()
         self._mark_section_saved("schedule")
 
@@ -1804,150 +1434,18 @@ class PageFleetSettings(QWidget):
                 return
 
     def _refresh_schedule(self) -> None:
-        try:
-            windows = self._schedule_windows_from_table()
-        except ValueError:
-            windows = ()
-        if windows:
-            first_start = min(window.start for window in windows)
-            last_end = max(window.end for window in windows)
-            summary = tr(
-                f"ตั้งเวลาอ่านข้อมูลไว้ {len(windows)} ช่วง · "
-                f"ครอบคลุม {first_start:%H:%M}–{last_end:%H:%M}\n"
-                "หากไม่แน่ใจ ไม่จำเป็นต้องเปลี่ยนค่ารายละเอียด",
-                f"Reading schedule has {len(windows)} windows · "
-                f"covering {first_start:%H:%M}–{last_end:%H:%M}\n"
-                "If unsure, keep the recommended schedule.",
-            )
-        else:
-            summary = tr(
-                "ยังไม่ได้ตั้งเวลาอ่านข้อมูลอัตโนมัติ",
-                "No automatic reading schedule is configured",
-            )
-        default_prefix = (
-            tr("ใช้ค่าแนะนำของระบบ · ", "Using recommended defaults · ")
-            if getattr(self, "_using_unsaved_default_schedule", False)
-            else ""
-        )
-        self.schedule.setText(f"{default_prefix}{summary}")
+        self.schedule_section.refresh_summary()
 
     def _replace_schedule_windows(self, windows: tuple[ScheduleWindow, ...]) -> None:
-        signature = (windows, get_language())
-        if getattr(self, '_schedule_rendered_windows', None) == signature:
-            return
-        self.schedule_windows_table.setRowCount(0)
-        self._schedule_row_controls.clear()
-        for window in windows:
-            self._append_schedule_window(window, mark_dirty=False)
-        self._schedule_rendered_windows = signature
-        self._refresh_schedule()
+        self.schedule_section.replace_windows(windows)
 
-    def _append_schedule_window(self, window: ScheduleWindow, *, mark_dirty: bool) -> None:
-        row = self.schedule_windows_table.rowCount()
-        self.schedule_windows_table.insertRow(row)
-        self.schedule_windows_table.setRowHeight(row, 56)
-        display_labels = {
-            "Lazyload": tr("นอกเวลางาน", "Off hours"),
-            "Active": tr("ช่วงเร่งด่วน", "Active"),
-            "Standard": tr("เวลาทำงาน", "Standard"),
-        }
-        name = QLineEdit(display_labels.get(window.label, window.label))
-        name.setMinimumWidth(90)
-        clock_range = ScheduleTimeRangeEditor(window.start, window.end)
-        weekdays = WeekdaySelector(window.weekdays)
-        snmp_interval = QSpinBox()
-        snmp_interval.setRange(1, 1_440)
-        snmp_interval.setValue(int((window.snmp_interval or timedelta(minutes=5)).total_seconds() // 60))
-        web_interval = QSpinBox()
-        web_interval.setRange(1, 1_440)
-        web_interval.setValue(int(window.web_interval.total_seconds() // 60))
-        # Keep the action column narrow without clipping a translated word.
-        # The tooltip and accessible name retain the full action label.
-        remove = btn("✕", "outline")
-        remove.setAccessibleName(tr("ลบช่วงเวลานี้", "Remove this time window"))
-        remove.setToolTip(tr("ลบช่วงเวลานี้", "Remove this time window"))
-        remove.setMinimumWidth(30)
-        remove.setMaximumWidth(34)
-        remove.setStyleSheet(settings_styles.FLEET_SETTINGS_REMOVE)
-        snmp_interval.setMaximumWidth(78)
-        web_interval.setMaximumWidth(78)
-        for control in (name, snmp_interval, web_interval):
-            control.setMinimumHeight(32)
-        self.schedule_windows_table.setCellWidget(row, 0, name)
-        self.schedule_windows_table.setCellWidget(row, 1, clock_range)
-        self.schedule_windows_table.setCellWidget(row, 2, weekdays)
-        self.schedule_windows_table.setCellWidget(row, 3, snmp_interval)
-        self.schedule_windows_table.setCellWidget(row, 4, web_interval)
-        self.schedule_windows_table.setCellWidget(row, 5, remove)
-        controls = (name, clock_range, weekdays, snmp_interval, web_interval)
-        self._schedule_row_controls.append(controls)
-        remove.clicked.connect(lambda _checked=False, row_controls=controls: self._remove_schedule_window(row_controls))
-        name.textChanged.connect(self._mark_schedule_dirty)
-        clock_range.changed.connect(self._mark_schedule_dirty)
-        weekdays.changed.connect(self._mark_schedule_dirty)
-        snmp_interval.valueChanged.connect(self._mark_schedule_dirty)
-        web_interval.valueChanged.connect(self._mark_schedule_dirty)
-        if mark_dirty:
-            self._mark_dirty("schedule")
 
     def _add_schedule_window(self) -> None:
-        start = QTime.currentTime()
-        start = QTime(start.hour(), 0)
-        end = start.addSecs(60 * 60)
-        self._append_schedule_window(
-            ScheduleWindow(
-                start=time(start.hour(), start.minute()),
-                end=time(end.hour(), end.minute()),
-                web_interval=timedelta(minutes=60),
-                label=f"ช่วงที่ {len(self._schedule_row_controls) + 1}",
-                snmp_interval=timedelta(minutes=15),
-                weekdays=frozenset(range(5)),
-            ),
-            mark_dirty=True,
-        )
+        self.schedule_section.add_window()
 
-    def _remove_schedule_window(
-        self,
-        controls: tuple[QLineEdit, ScheduleTimeRangeEditor, WeekdaySelector, QSpinBox, QSpinBox],
-    ) -> None:
-        try:
-            index = self._schedule_row_controls.index(controls)
-        except ValueError:
-            return
-        self.schedule_windows_table.removeRow(index)
-        self._schedule_row_controls.pop(index)
-        self._mark_dirty("schedule")
-
-    def _mark_schedule_dirty(self, *_args) -> None:
-        self._mark_dirty("schedule")
 
     def _schedule_windows_from_table(self) -> tuple[ScheduleWindow, ...]:
-        windows: list[ScheduleWindow] = []
-        for index, (name, clock_range, weekdays, snmp_interval, web_interval) in enumerate(self._schedule_row_controls, start=1):
-            start_clock, end_clock = clock_range.values()
-            label = name.text().strip() or f"ช่วงที่ {index}"
-            if start_clock >= end_clock:
-                raise ValueError(f"{label}: เวลาสิ้นสุดต้องอยู่หลังเวลาเริ่ม")
-            selected_days = weekdays.values()
-            if not selected_days:
-                raise ValueError(f"{label}: เลือกอย่างน้อย 1 วันในสัปดาห์")
-            windows.append(
-                ScheduleWindow(
-                    start=start_clock,
-                    end=end_clock,
-                    web_interval=timedelta(minutes=web_interval.value()),
-                    label=label,
-                    snmp_interval=timedelta(minutes=snmp_interval.value()),
-                    weekdays=selected_days,
-                )
-            )
-        ordered = tuple(sorted(windows, key=lambda item: item.start))
-        for previous, current in zip(ordered, ordered[1:], strict=False):
-            if previous.end > current.start and previous.weekdays & current.weekdays:
-                raise ValueError(
-                    f"ช่วงเวลา {previous.label} และ {current.label} ซ้อนกันในวันเดียวกัน กรุณาแก้ไขก่อนบันทึก"
-                )
-        return ordered
+        return self.schedule_section.values()
 
     def _choose_counters(self) -> None:
         if PinnedCountersDialog(self.repository, self).exec() == QDialog.DialogCode.Accepted:

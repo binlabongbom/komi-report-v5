@@ -54,7 +54,7 @@ assert 'pyqtgraph' not in sys.modules
 
 def test_feature_modules_do_not_import_compatibility_facades():
     for folder in ("setup", "settings", "reports", "pages", "components"):
-        for path in (SOURCE / "ui" / folder).glob("*.py"):
+        for path in (SOURCE / "ui" / folder).rglob("*.py"):
             for node in ast.walk(ast.parse(path.read_text(encoding="utf8"))):
                 if isinstance(node, ast.Import):
                     imports = [entry.name for entry in node.names]
@@ -63,6 +63,8 @@ def test_feature_modules_do_not_import_compatibility_facades():
                 else:
                     continue
                 assert not {"pages", "v5_pages"}.intersection(imports), path
+                if {'steps', 'sections'}.intersection(path.parts):
+                    assert not {'ui.setup.wizard', 'ui.settings.fleet', 'ui.settings.page'}.intersection(imports), path
 
 
 def test_shared_components_do_not_depend_on_feature_pages_or_storage():

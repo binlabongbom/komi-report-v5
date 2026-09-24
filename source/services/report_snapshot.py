@@ -1,12 +1,12 @@
 """Read report data without touching Qt widgets; safe for background preparation."""
 from __future__ import annotations
 
+from collections import OrderedDict
+from collections.abc import Mapping
 from concurrent.futures import CancelledError
 from dataclasses import dataclass
 from datetime import date
 from threading import Event, Lock
-from collections import OrderedDict
-from collections.abc import Mapping
 from types import MappingProxyType
 from typing import Any
 
@@ -16,10 +16,11 @@ from services.device_config import DeviceConfigRepository
 from services.legacy_history_import import load_imported_legacy_history
 from services.monthly_history import load_usage_history
 from services.raw_counter_history import load_raw_counter_history, load_usage_meter_baselines
+from services.report_chart_models import build_report_chart_models
+from services.report_models import build_legacy_raw_tables, build_printer_rows, build_user_rows
+from services.report_period_policy import current_preview_period, validate_preview_period
 from services.report_scope import report_slots
 from services.subject_history import SubjectDailyCacheStore, load_subject_history
-from services.report_models import build_legacy_raw_tables, build_user_rows, build_printer_rows
-from services.report_period_policy import current_preview_period, validate_preview_period
 
 
 @dataclass(frozen=True)
@@ -131,6 +132,9 @@ def _load_report_snapshot(index, selected, *, cache, subject_cache, repository, 
     models = {}
     if index in {0, 2}:
         models["printers"] = read("printer_model", lambda: build_printer_rows(selected_monthly or daily, devices), selected)
+        models["charts"] = read(("chart_models", index), lambda: build_report_chart_models(
+            index, selected_monthly or daily, chart_daily, devices, models["printers"],
+            period=selected, cancelled=cancelled), selected)
     if index in {0, 1}:
         models["users"] = read(("user_model", index), lambda: build_user_rows(subjects, raw, category_costs=category_costs, cancelled=cancelled), selected)
     if index == 4:

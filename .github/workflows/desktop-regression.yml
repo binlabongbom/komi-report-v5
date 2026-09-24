@@ -1,0 +1,71 @@
+name: Desktop regression
+
+"on":
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-regression-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows-desktop:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      PYTHONUTF8: '1'
+      PYTHONDONTWRITEBYTECODE: '1'
+      QT_QPA_PLATFORM: offscreen
+      KOMI_DISCOVERY_DISABLED: '1'
+    steps:
+      # No ref override: validate this PR's merge commit or the current main push.
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7.0.0
+        with:
+          python-version-file: .python-version
+          cache: pip
+          cache-dependency-path: |
+            source/requirements-windows-x64.lock.txt
+            source/requirements-dev.lock.txt
+      - name: Install hash-locked runtime and development dependencies
+        run: |
+          python -m pip install --disable-pip-version-check --require-hashes --only-binary=:all: -r source/requirements-windows-x64.lock.txt -r source/requirements-dev.lock.txt
+          if ($LASTEXITCODE -ne 0) { throw 'Locked dependency installation failed' }
+      - name: Check runtime imports and unused code
+        run: |
+          New-Item -ItemType Directory -Path desktop-ci -Force | Out-Null
+          python -m ruff check source --exclude tests --select F401,F811,F821,F822,F823,F841 --output-format json --output-file desktop-ci/lint.json
+          if ($LASTEXITCODE -ne 0) { throw 'Runtime lint failed; see lint.json' }
+          python -m ruff check tools/ci --select F401,F811,F821,F822,F823,F841 --output-format json --output-file desktop-ci/runner-lint.json
+          if ($LASTEXITCODE -ne 0) { throw 'CI runner lint failed; see runner-lint.json' }
+      - name: Run isolated desktop regressions from this checkout
+        run: |
+          python tools/ci/run_desktop_tests.py --output-dir desktop-ci
+          if ($LASTEXITCODE -ne 0) { throw 'Desktop regression failed; see results.json and batch logs' }
+      - name: Upload regression evidence
+        if: always()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: desktop-regression-${{ github.run_id }}-${{ github.run_attempt }}
+          retention-days: 14
+          if-no-files-found: warn
+          path: |
+            desktop-ci/results.json
+            desktop-ci/collection.json
+            desktop-ci/collection.log
+            desktop-ci/lint.json
+            desktop-ci/runner-lint.json
+            desktop-ci/batch-*.json
+            desktop-ci/batch-*.xml
+            desktop-ci/batch-*.log

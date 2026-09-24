@@ -5,18 +5,14 @@ import ipaddress
 import webbrowser
 from collections.abc import Callable
 from datetime import date, datetime, timedelta
-from html import escape
 from pathlib import Path
 from uuid import uuid4
 
-from PyQt6.QtCore import QDate, Qt, QThread, QTimer, pyqtSlot
+from PyQt6.QtCore import Qt, QThread, QTimer, pyqtSlot
 from PyQt6.QtGui import QColor, QPalette
 from PyQt6.QtWidgets import (
-    QAbstractItemView,
-    QAbstractSpinBox,
     QApplication,
     QButtonGroup,
-    QCalendarWidget,
     QCheckBox,
     QComboBox,
     QDialog,
@@ -25,18 +21,14 @@ from PyQt6.QtWidgets import (
     QFrame,
     QGridLayout,
     QHBoxLayout,
-    QHeaderView,
     QLabel,
     QLineEdit,
     QPlainTextEdit,
     QProgressBar,
     QPushButton,
-    QRadioButton,
-    QScrollArea,
     QSizePolicy,
     QStackedWidget,
     QStyle,
-    QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
     QWidget,
@@ -53,19 +45,21 @@ from services.device_config import DeviceConfig, DeviceConfigRepository
 from services.legacy_history_import import detect_legacy_history_sources, load_imported_legacy_history
 from services.pricing import PriceList, PricingRepository
 from services.registration_data_notice import REGISTRATION_NOTICE_VERSION, registration_data_notice
-from services.registration_envelope import normalize_device_models, runtime_platform
+from services.registration_envelope import runtime_platform
 from services.registration_errors import error_message, safe_support_code
 from services.secondary_setup import SecondaryPeerCandidate, SecondarySetupError, normalize_primary_ipv4
 from services.setup_connectivity import SetupConnectivityCheck, SetupConnectivityReport
 from services.support_diagnostics import with_diagnostic
 from services.v5_2_runtime_state import V52RuntimeStateRepository
 from ui.button_system import install_button_system
-from ui.numeric_inputs import NumericDateEdit as QDateEdit
-from ui.numeric_inputs import NumericDoubleSpinBox as QDoubleSpinBox
-from ui.numeric_inputs import NumericSpinBox as QSpinBox
 from ui.policy import OFFLINE_ACTIVATION_ENABLED
-from ui.setup.controls import SetupDeviceStatusDelegate, WizardComboBox
+from ui.setup.appearance import style_wizard_combo
+from ui.setup.controls import WizardComboBox
 from ui.setup.legacy_import import LegacyHistoryImportDialog
+from ui.setup.steps.company import CompanyStep
+from ui.setup.steps.devices import DevicesStep
+from ui.setup.steps.pricing import PricingStep
+from ui.setup.steps.review import ReviewDevice, ReviewStep, SetupReviewData
 from ui.setup.workers import (
     DeviceTestResult,
     DeviceTestWorker,
@@ -77,7 +71,6 @@ from ui.setup.workers import (
 )
 from ui.shared_settings_confirmation import confirm_shared_settings
 from ui.styles import setup as setup_styles
-from ui.styles import surfaces as surfaces_styles
 from ui.styles import text as text_styles
 from ui.styles.tokens import C_GREEN, C_RED, C_TEXT2, F_2XL, F_LG, F_MD, F_XL
 from widgets import btn, fnt
@@ -228,27 +221,8 @@ class SetupWizardV5(QDialog):
                 field.setPlaceholderText(translate_text(field.placeholderText()))
 
     def _style_wizard_combo(self, combo: QComboBox, *, popup_width: int | None = None) -> None:
-        """Give non-editable choices the same light treatment on Mac and Windows."""
-        combo.setMinimumHeight(40)
-        combo.setStyleSheet(
-            setup_styles.CHOICE
-        )
-        view = combo.view()
-        view.setPalette(self.palette())
-        view.setStyleSheet(
-            setup_styles.SETUP_WIZARD_STYLE_WIZARD_COMBO
-        )
-        if popup_width is not None:
-            view.setMinimumWidth(popup_width)
+        style_wizard_combo(combo, self.palette(), popup_width=popup_width)
 
-    def _style_price_calendar(self, calendar: QCalendarWidget) -> None:
-        """Prevent the native dark calendar popup from escaping the Wizard theme."""
-        calendar.setPalette(self.palette())
-        calendar.setGridVisible(False)
-        calendar.setVerticalHeaderFormat(QCalendarWidget.VerticalHeaderFormat.NoVerticalHeader)
-        calendar.setStyleSheet(
-            setup_styles.PRICE_CALENDAR
-        )
 
     def _open_wizard_child(
         self,
@@ -452,338 +426,46 @@ class SetupWizardV5(QDialog):
         root.addLayout(nav)
 
     def _company_page(self) -> QWidget:
-        page = QWidget()
-        page_layout = QVBoxLayout(page)
-        page_layout.setContentsMargins(0, 0, 0, 0)
-        self.company_scroll = QScrollArea()
-        self.company_scroll.setWidgetResizable(True)
-        self.company_scroll.setMinimumSize(0, 0)
-        self.company_scroll.setSizePolicy(
-            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Ignored
-        )
-        self.company_scroll.setFrameShape(QFrame.Shape.NoFrame)
-        self.company_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self.company_scroll.setStyleSheet(setup_styles.SETUP_WIZARD_COMPANY_SCROLL)
-        content = QWidget()
-        content.setObjectName("company_setup_content")
-        content.setStyleSheet(setup_styles.SETUP_WIZARD_CONTENT)
-        layout = QVBoxLayout(content)
-        layout.setContentsMargins(0, 24, 0, 0)
-        layout.setSpacing(14)
-
-        intro = QLabel("ข้อมูลสำหรับเริ่มใช้งาน")
-        intro.setFont(fnt(F_XL, True))
-        intro.setStyleSheet(text_styles.label('#123262'))
-        layout.addWidget(intro)
-        description = QLabel(
-            "ระบุชื่อบริษัทสำหรับแสดงในรายงานและการลงทะเบียนโปรแกรม "
-            "ส่วนวันที่เริ่มใช้และ Version ระบบกำหนดให้เพื่อป้องกันข้อมูลผิด"
-        )
-        description.setWordWrap(True)
-        description.setStyleSheet(text_styles.label(C_TEXT2))
-        layout.addWidget(description)
-
-        self.secondary_join_card = QFrame()
-        self.secondary_join_card.setObjectName("secondary_join_card")
-        self.secondary_join_card.setFixedWidth(760)
-        self.secondary_join_card.setStyleSheet(
-            setup_styles.SETUP_WIZARD_SECONDARY_JOIN_CARD
-        )
-        secondary_layout = QVBoxLayout(self.secondary_join_card)
-        secondary_layout.setContentsMargins(14, 11, 14, 11)
-        secondary_top = QHBoxLayout()
-        secondary_copy = QVBoxLayout()
-        self.secondary_join_title = QLabel("มี KOMI Report เครื่องหลักอยู่แล้ว?")
-        self.secondary_join_title.setFont(fnt(F_MD, True))
-        self.secondary_join_status = QLabel(
-            "ค้นหาใน LAN แล้วดึงเฉพาะบริษัท เครื่องพิมพ์ ราคา และรอบบิล · ไม่คัดลอกรหัสผ่านหรือประวัติ"
-        )
-        self.secondary_join_status.setWordWrap(True)
-        self.secondary_join_status.setStyleSheet(text_styles.label('#52677D'))
-        secondary_copy.addWidget(self.secondary_join_title)
-        secondary_copy.addWidget(self.secondary_join_status)
-        secondary_top.addLayout(secondary_copy, 1)
-        self.secondary_join_button = btn("ค้นหาเครื่องหลัก", "outline")
-        self.secondary_join_button.setAccessibleName("ค้นหา KOMI Report เครื่องหลักใน LAN")
-        self.secondary_join_button.clicked.connect(self._secondary_join_clicked)
-        secondary_top.addWidget(self.secondary_join_button)
-        secondary_layout.addLayout(secondary_top)
-        self.secondary_manual_row = QWidget()
-        manual_primary_row = QHBoxLayout(self.secondary_manual_row)
-        manual_primary_row.setContentsMargins(0, 0, 0, 0)
-        manual_primary_label = QLabel(tr("หรือระบุ Primary IP", "Or enter Primary IP"))
-        manual_primary_label.setStyleSheet(text_styles.label('#52677D', font_weight='650'))
-        manual_primary_row.addWidget(manual_primary_label)
-        self.secondary_manual_ip = QLineEdit()
-        self.secondary_manual_ip.setObjectName("secondary_manual_primary_ip")
-        self.secondary_manual_ip.setPlaceholderText("192.168.1.10")
-        self.secondary_manual_ip.setAccessibleName(
-            tr("Primary IP สำหรับ Sync การตั้งค่า", "Primary IP for setup sync")
-        )
-        self.secondary_manual_ip.setMaximumWidth(190)
-        self.secondary_manual_ip.returnPressed.connect(
-            self._secondary_manual_join_clicked
-        )
-        manual_primary_row.addWidget(self.secondary_manual_ip)
-        manual_primary_row.addWidget(QLabel("Port"))
-        self.secondary_primary_port = QSpinBox()
-        self.secondary_primary_port.setRange(1024, 65535)
-        self.secondary_primary_port.setValue(3000)
-        self.secondary_primary_port.setMaximumWidth(100)
-        self.secondary_primary_port.setAccessibleName("Port ของเครื่อง Primary")
-        self.secondary_primary_port.valueChanged.connect(self._secondary_port_changed)
-        manual_primary_row.addWidget(self.secondary_primary_port)
-        self.secondary_manual_button = btn(tr("เชื่อมต่อ", "Connect"), "outline")
-        self.secondary_manual_button.setAccessibleName(
-            tr("ค้นหาเครื่องหลักตาม Primary IP", "Find Primary at this IP")
-        )
-        self.secondary_manual_button.clicked.connect(
-            self._secondary_manual_join_clicked
-        )
-        manual_primary_row.addWidget(self.secondary_manual_button)
-        manual_primary_row.addStretch()
-        secondary_layout.addWidget(self.secondary_manual_row)
-        layout.addWidget(self.secondary_join_card, 0, Qt.AlignmentFlag.AlignHCenter)
-        self.secondary_join_card.setVisible(False)
-
-        self.company_card = QFrame()
-        self.company_card.setObjectName("company_setup_card")
-        self.company_card.setFixedWidth(760)
-        self.company_card.setStyleSheet(
-            setup_styles.SETUP_WIZARD_COMPANY_CARD
-        )
-        self.company_form = QFormLayout(self.company_card)
-        self.company_form.setContentsMargins(24, 22, 24, 22)
-        self.company_form.setHorizontalSpacing(18)
-        self.company_form.setVerticalSpacing(14)
-        self.company_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
-        self.company_form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.DontWrapRows)
-        self.company_form.setLabelAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-        self.company_form.setFormAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
-        self.company_name_input = QLineEdit()
-        self.company_name_input.setObjectName("company_name_input")
-        self.company_name_input.setPlaceholderText("เช่น บริษัท ตัวอย่าง จำกัด")
-        self.company_name_input.setMaxLength(160)
-        self.company_name_input.setMinimumHeight(44)
-        self.company_name_input.setMinimumWidth(470)
-        self.company_name_input.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        self.company_name_input.setFont(fnt(F_LG))
-        self._company_name_normal_style = (
-            setup_styles.COMPANY_PAGE_COMPANY_NAME_NORMAL_STYLE
-        )
-        self._company_name_error_style = (
-            setup_styles.COMPANY_PAGE_COMPANY_NAME_ERROR_STYLE
-        )
-        self.company_name_input.setStyleSheet(self._company_name_normal_style)
-        self.company_name_error = QLabel("กรุณากรอกชื่อบริษัท")
-        self.company_name_error.setObjectName("company_name_error")
-        self.company_name_error.setStyleSheet(
-            text_styles.label('#B42318', background='transparent', border='none', font_weight='600')
-        )
-        self.company_name_error.setWordWrap(True)
-        self.company_name_error.setVisible(False)
-        self.company_name_container = QWidget()
-        company_name_layout = QVBoxLayout(self.company_name_container)
-        company_name_layout.setContentsMargins(0, 0, 0, 0)
-        company_name_layout.setSpacing(6)
-        company_name_layout.addWidget(self.company_name_input)
-        self.secondary_existing_button = QPushButton(
-            tr("มีเครื่องหลักอยู่แล้ว", "Already have a Primary")
-        )
-        self.secondary_existing_button.setObjectName("secondary_existing_button")
-        self.secondary_existing_button.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.secondary_existing_button.setAccessibleName(
-            tr(
-                "เชื่อมต่อ KOMI Report เครื่องหลักที่มีอยู่",
-                "Connect to an existing KOMI Report Primary",
-            )
-        )
-        self.secondary_existing_button.setStyleSheet(
-            setup_styles.SETUP_WIZARD_SECONDARY_EXISTING_BUTTON
-        )
-        self.secondary_existing_button.clicked.connect(
-            self._show_secondary_manual_options
-        )
-        company_name_layout.addWidget(
-            self.secondary_existing_button,
-            0,
-            Qt.AlignmentFlag.AlignLeft,
-        )
-        company_name_layout.addWidget(self.company_name_error)
-        self.company_name_input.textChanged.connect(self._clear_company_name_error)
-        self.first_started_input = QLineEdit()
-        self.first_started_input.setReadOnly(True)
-        self.first_started_input.setFixedSize(150, 38)
-        self.version_input = QLineEdit(PACKAGE_VERSION)
-        self.version_input.setReadOnly(True)
-        self.version_input.setFixedSize(100, 38)
-        readonly_style = (
-            setup_styles.COMPANY_PAGE_READONLY_STYLE
-        )
-        self.first_started_input.setStyleSheet(readonly_style)
-        self.version_input.setStyleSheet(readonly_style)
-
-        self.database_path_container = QWidget()
-        self.database_path_container.setMinimumHeight(92)
-        self.database_path_container.setSizePolicy(
-            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
-        )
-        database_layout = QVBoxLayout(self.database_path_container)
-        database_layout.setContentsMargins(0, 0, 0, 0)
-        database_layout.setSpacing(7)
-        database_path_row = QHBoxLayout()
-        database_path_row.setContentsMargins(0, 0, 0, 0)
-        database_path_row.setSpacing(8)
-        self.database_path_input = QLineEdit(str(self.selected_database_path))
-        self.database_path_input.setReadOnly(True)
-        self.database_path_input.setMinimumHeight(42)
-        self.database_path_input.setMinimumWidth(320)
-        self.database_path_input.setStyleSheet(readonly_style)
-        self.database_path_input.setToolTip(str(self.selected_database_path))
-        database_path_row.addWidget(self.database_path_input, 1)
-        self.choose_database_path_button = btn("Browse", "outline")
-        self.choose_database_path_button.clicked.connect(self._choose_database_destination)
-        database_path_row.addWidget(self.choose_database_path_button)
-        database_layout.addLayout(database_path_row)
-        database_actions = QHBoxLayout()
-        database_actions.setContentsMargins(0, 0, 0, 0)
-        database_actions.setSpacing(9)
-        self.legacy_import_button = btn("Import", "outline")
-        self.legacy_import_button.clicked.connect(self._open_legacy_history_import)
-        database_actions.addWidget(self.legacy_import_button)
-        self.database_path_status = QLabel("")
-        self.database_path_status.setWordWrap(True)
-        self.database_path_status.setStyleSheet(text_styles.label('#52677D', border='none'))
-        self.database_path_status.setVisible(False)
-        database_actions.addStretch(1)
-        database_layout.addLayout(database_actions)
-        database_layout.addWidget(self.database_path_status)
-
-        self.company_form_labels = []
-        metadata_container = QWidget()
-        metadata_layout = QHBoxLayout(metadata_container)
-        metadata_layout.setContentsMargins(0, 0, 0, 0)
-        metadata_layout.setSpacing(10)
-        metadata_layout.addWidget(self.first_started_input)
-        version_label = QLabel("Version ที่ใช้")
-        version_label.setFont(fnt(F_MD, True))
-        version_label.setStyleSheet(text_styles.label('#334155', background='transparent', border='none'))
-        version_label.setBuddy(self.version_input)
-        metadata_layout.addSpacing(12)
-        metadata_layout.addWidget(version_label)
-        metadata_layout.addWidget(self.version_input)
-        metadata_layout.addStretch(1)
-
-        for label_text, field in (
-            ("ชื่อบริษัท *", self.company_name_container),
-            ("วันที่เริ่มใช้งาน", metadata_container),
-            ("Database Path", self.database_path_container),
-        ):
-            label = QLabel(label_text)
-            label.setMinimumWidth(145)
-            label.setFont(fnt(F_MD, True))
-            label.setStyleSheet(text_styles.label('#334155', background='transparent', border='none'))
-            label.setBuddy(self.company_name_input if field is self.company_name_container else field)
-            self.company_form_labels.append(label)
-            self.company_form.addRow(label, field)
-        self.company_form_labels.append(version_label)
-        self.company_name_input.setAccessibleName("ชื่อบริษัท")
-        self.company_name_input.setAccessibleDescription("ใช้แสดงในรายงานและระบุการติดตั้งนี้")
-        layout.addWidget(self.company_card, 0, Qt.AlignmentFlag.AlignHCenter)
-
-        privacy_card = QFrame()
-        privacy_card.setObjectName("registration_privacy_card")
-        privacy_card.setFixedWidth(760)
-        privacy_card.setStyleSheet(
-            setup_styles.SETUP_WIZARD_PRIVACY_CARD
-        )
-        privacy_layout = QVBoxLayout(privacy_card)
-        privacy_layout.setContentsMargins(14, 12, 14, 12)
-        privacy_layout.setSpacing(8)
-        privacy_row = QHBoxLayout()
-        privacy_copy = QVBoxLayout()
-        privacy_title = QLabel("ประกาศข้อมูลการลงทะเบียน")
-        privacy_title.setFont(fnt(F_MD, True))
-        self.privacy_notice_status = QLabel()
-        self.privacy_notice_status.setWordWrap(True)
-        privacy_copy.addWidget(privacy_title)
-        privacy_copy.addWidget(self.privacy_notice_status)
-        privacy_row.addLayout(privacy_copy, 1)
-        self.view_privacy_notice_button = btn("ดูข้อมูลที่ส่ง", "outline")
-        self.view_privacy_notice_button.setAccessibleName("เปิดดูประกาศข้อมูลการลงทะเบียน")
-        self.view_privacy_notice_button.clicked.connect(self._show_privacy_notice)
-        privacy_row.addWidget(self.view_privacy_notice_button)
-        privacy_layout.addLayout(privacy_row)
-        self.company_notice = QLabel(
-            "<b>ขอบเขตข้อมูลที่ปลอดภัย:</b> ส่ง Serial Number, Model, สถานะเลือกใช้, "
-            "Status และ Aggregate Total Meter เท่านั้น · ไม่ส่ง IP, MAC, hostname, Credential, "
-            "Counter รายละเอียด, ผู้ใช้, เอกสาร หรือ Log"
-        )
-        self.company_notice.setWordWrap(True)
-        self.company_notice.setStyleSheet(
-            setup_styles.SETUP_WIZARD_COMPANY_NOTICE
-        )
-        privacy_layout.addWidget(self.company_notice)
-        # Retained as an internal compatibility value only. The customer no longer
-        # sees a checkbox; pressing Save records acknowledgement under the master
-        # agreement and Online Registration is mandatory.
-        self.privacy_notice_accepted = QCheckBox()
-        self.privacy_notice_accepted.setChecked(False)
-        self.privacy_notice_accepted.setVisible(False)
-        self.privacy_notice_status.setText(
-            tr(
-                f"ฉบับ {REGISTRATION_NOTICE_VERSION} · ต้องลงทะเบียนก่อนเริ่มใช้งาน",
-                f"Version {REGISTRATION_NOTICE_VERSION} · registration is required before use",
-            )
-        )
-        layout.addWidget(privacy_card, 0, Qt.AlignmentFlag.AlignHCenter)
-        # Keep hidden compatibility controls for older integrations while the
-        # customer Wizard follows one unambiguous Online-first path.
-        self.registration_mode_group = QButtonGroup(self)
-        self.registration_mode_group.setExclusive(True)
-        self.registration_online_mode = QRadioButton()
-        self.registration_offline_mode = QRadioButton()
-        self.registration_mode_group.addButton(self.registration_online_mode)
-        self.registration_mode_group.addButton(self.registration_offline_mode)
-        self.registration_online_mode.setChecked(True)
-        self.registration_online_mode.setVisible(False)
-        self.registration_offline_mode.setVisible(False)
-        if self.lab_mode:
-            lab_notice = QLabel(
-                "<b>SETUP LAB</b> · หน้านี้ใช้ Wizard ตัวจริง แต่ใช้ฐานข้อมูลชั่วคราวและ "
-                "Virtual Printer บน LAN ข้อมูลจะไม่ปนกับโปรแกรมที่ใช้งานอยู่"
-            )
-            lab_notice.setWordWrap(True)
-            lab_notice.setFixedWidth(760)
-            lab_notice.setStyleSheet(
-                surfaces_styles.WARNING_BOX
-            )
-            layout.addWidget(lab_notice, 0, Qt.AlignmentFlag.AlignHCenter)
-        layout.addStretch()
-        self.company_scroll.setWidget(content)
-        page_layout.addWidget(self.company_scroll)
-        return page
-
-    def _clear_company_name_error(self) -> None:
-        if self.company_name_error.isHidden():
-            return
-        self.company_name_error.setVisible(False)
-        self.company_name_input.setStyleSheet(self._company_name_normal_style)
-        self.company_name_input.setAccessibleDescription(
-            tr(
-                "ใช้แสดงในรายงานและระบุการติดตั้งนี้",
-                "Used in reports and to identify this installation",
-            )
-        )
-
-    def _show_company_name_error(self) -> None:
-        self.company_name_error.setText(
-            tr("กรุณากรอกชื่อบริษัท", "Enter the company name to continue")
-        )
-        self.company_name_error.setVisible(True)
-        self.company_name_input.setStyleSheet(self._company_name_error_style)
-        self.company_name_input.setAccessibleDescription(self.company_name_error.text())
-        self.company_name_input.setFocus()
+        self.company_step = step = CompanyStep(self.selected_database_path, lab_mode=self.lab_mode, parent=self)
+        step.primary_search_requested.connect(self._secondary_join_clicked)
+        step.primary_join_requested.connect(self._secondary_manual_join_clicked)
+        step.primary_port_changed.connect(self._secondary_port_changed)
+        step.primary_options_requested.connect(self._show_secondary_manual_options)
+        step.database_path_requested.connect(self._choose_database_destination)
+        step.legacy_import_requested.connect(self._open_legacy_history_import)
+        step.privacy_notice_requested.connect(self._show_privacy_notice)
+        # Explicit aliases preserve integrations that access wizard controls.
+        self.company_scroll = step.company_scroll
+        self.secondary_join_card = step.secondary_join_card
+        self.secondary_join_title = step.secondary_join_title
+        self.secondary_join_status = step.secondary_join_status
+        self.secondary_join_button = step.secondary_join_button
+        self.secondary_manual_row = step.secondary_manual_row
+        self.secondary_manual_ip = step.secondary_manual_ip
+        self.secondary_primary_port = step.secondary_primary_port
+        self.secondary_manual_button = step.secondary_manual_button
+        self.company_card = step.company_card
+        self.company_form = step.company_form
+        self.company_name_input = step.company_name_input
+        self.company_name_error = step.company_name_error
+        self.company_name_container = step.company_name_container
+        self.secondary_existing_button = step.secondary_existing_button
+        self.first_started_input = step.first_started_input
+        self.version_input = step.version_input
+        self.database_path_container = step.database_path_container
+        self.database_path_input = step.database_path_input
+        self.choose_database_path_button = step.choose_database_path_button
+        self.legacy_import_button = step.legacy_import_button
+        self.database_path_status = step.database_path_status
+        self.company_form_labels = step.company_form_labels
+        self.privacy_notice_status = step.privacy_notice_status
+        self.view_privacy_notice_button = step.view_privacy_notice_button
+        self.company_notice = step.company_notice
+        self.privacy_notice_accepted = step.privacy_notice_accepted
+        self.registration_mode_group = step.registration_mode_group
+        self.registration_online_mode = step.registration_online_mode
+        self.registration_offline_mode = step.registration_offline_mode
+        return step
 
     def _show_privacy_notice(self) -> None:
         dialog = QDialog(self)
@@ -1301,121 +983,28 @@ class SetupWizardV5(QDialog):
             label.setStyleSheet(style)
 
     def _device_page(self) -> QWidget:
-        page = QWidget()
-        layout = QVBoxLayout(page)
-        layout.setContentsMargins(0, 16, 0, 0)
-        intro = QLabel(
-            "ระบบจะค้นหาเฉพาะเครือข่าย LAN ที่เครื่องนี้เชื่อมต่อ · "
-            "เลือกเครื่องพิมพ์ได้สูงสุด 3 เครื่อง"
-        )
-        intro.setWordWrap(True)
-        intro.setStyleSheet(text_styles.label(C_TEXT2))
-        layout.addWidget(intro)
-
-        actions = QHBoxLayout()
-        self.scan_button = btn("ค้นหาเครื่องพิมพ์อัตโนมัติ", "primary")
-        self.scan_button.setAccessibleDescription("สแกน Konica Minolta ในเครือข่าย LAN ที่เชื่อมต่ออยู่")
-        self.scan_button.clicked.connect(lambda: self._scan_network())
-        actions.addWidget(self.scan_button)
-        self.cancel_scan_button = btn("ยกเลิกการค้นหา", "outline")
-        self.cancel_scan_button.clicked.connect(self._cancel_scan)
-        self.cancel_scan_button.setVisible(False)
-        actions.addWidget(self.cancel_scan_button)
-        self.fallback_toggle = btn("ค้นหาไม่พบ? ใช้วิธีอื่น", "outline")
-        self.fallback_toggle.setCheckable(True)
-        self.fallback_toggle.toggled.connect(self._toggle_fallback_actions)
-        actions.addWidget(self.fallback_toggle)
-        actions.addStretch()
-        self.selection_badge = QLabel("เลือกแล้ว 0/3")
-        self.selection_badge.setStyleSheet(setup_styles.SETUP_WIZARD_SELECTION_BADGE)
-        self.selection_badge.setAccessibleName("จำนวนเครื่องพิมพ์ที่เลือก")
-        actions.addWidget(self.selection_badge)
-        layout.addLayout(actions)
-
-        self.fallback_actions = QWidget()
-        fallback_layout = QHBoxLayout(self.fallback_actions)
-        fallback_layout.setContentsMargins(0, 0, 0, 0)
-        fallback_layout.setSpacing(10)
-        self.advanced_scan_button = btn("กำหนดช่วง IP", "outline")
-        self.advanced_scan_button.clicked.connect(self._advanced_scan)
-        fallback_layout.addWidget(self.advanced_scan_button)
-        self.manual_setup_button = btn("เพิ่ม IP ด้วยตนเอง", "outline")
-        self.manual_setup_button.clicked.connect(self._manual_setup)
-        fallback_layout.addWidget(self.manual_setup_button)
-        fallback_hint = QLabel("ใช้เมื่อเครื่องพิมพ์อยู่นอกช่วงเครือข่ายที่ค้นหาอัตโนมัติ")
-        fallback_hint.setStyleSheet(text_styles.label(C_TEXT2))
-        fallback_layout.addWidget(fallback_hint)
-        fallback_layout.addStretch()
-        self.fallback_actions.setVisible(False)
-        layout.addWidget(self.fallback_actions)
-
-        self.scan_status = QLabel("พร้อมค้นหา · ระบบยังไม่ได้สแกนเครือข่าย")
-        self.scan_status.setStyleSheet(text_styles.label('#245268', background='#EEF6F9', padding='8px 10px'))
-        self.scan_status.setAccessibleName("สถานะการค้นหาเครื่องพิมพ์")
-        layout.addWidget(self.scan_status)
-
-        self.scan_progress_bar = QProgressBar()
-        self.scan_progress_bar.setRange(0, 1)
-        self.scan_progress_bar.setValue(0)
-        self.scan_progress_bar.setTextVisible(True)
-        self.scan_progress_bar.setFormat("สแกน 0 / 0 IP (0%)")
-        self.scan_progress_bar.setAccessibleName("ความคืบหน้าการค้นหาเครื่องพิมพ์")
-        self.scan_progress_bar.setStyleSheet(
-            setup_styles.SETUP_WIZARD_SCAN_PROGRESS_BAR
-        )
-        self.scan_progress_bar.setVisible(False)
-        layout.addWidget(self.scan_progress_bar)
-
-        self.device_table = QTableWidget(0, 6)
-        self.device_table.setHorizontalHeaderLabels(
-            ("เลือก", "ชื่อรุ่น", "IP address", "Serial Number", "สถานะ", "สิทธิ์เข้าถึง")
-        )
-        self.device_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectItems)
-        self.device_table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
-        self.device_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        self.device_table.setAlternatingRowColors(False)
-        self.device_table.setObjectName("setup_device_table")
-        self.device_table.setWordWrap(False)
-        table_palette = QPalette(self.palette())
-        table_palette.setColor(QPalette.ColorRole.Base, QColor("#FFFFFF"))
-        table_palette.setColor(QPalette.ColorRole.AlternateBase, QColor("#F7FAFD"))
-        table_palette.setColor(QPalette.ColorRole.Text, QColor("#172033"))
-        table_palette.setColor(QPalette.ColorRole.Highlight, QColor("#DCEEFF"))
-        table_palette.setColor(QPalette.ColorRole.HighlightedText, QColor("#172033"))
-        self.device_table.setPalette(table_palette)
-        self.device_table.viewport().setAutoFillBackground(True)
-        self.device_table.setStyleSheet(
-            setup_styles.DEVICE_TABLE
-        )
-        self.device_table.setItemDelegate(SetupDeviceStatusDelegate(self.device_table))
-        self.device_table.verticalHeader().setVisible(False)
-        self.device_table.verticalHeader().setDefaultSectionSize(46)
-        header = self.device_table.horizontalHeader()
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
-        header.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)
-        self.device_table.setAccessibleName("รายการเครื่องพิมพ์ที่ค้นพบ")
-        self.device_table.cellClicked.connect(self._device_table_action)
-        layout.addWidget(self.device_table, 1)
-        actions = QHBoxLayout()
-        hint = QLabel("เลือกเครื่อง → ตรวจสอบ → สถานะพร้อมใช้งาน จึงกดถัดไปได้")
-        hint.setWordWrap(True)
-        hint.setStyleSheet(text_styles.label(C_TEXT2))
-        actions.addWidget(hint)
-        actions.addStretch()
-        self.test_button = btn("ตรวจสอบเครื่องที่เลือก", "outline")
-        self.test_button.setAccessibleDescription("ตรวจสอบ SNMP และ Web ของเครื่องพิมพ์ที่เลือก")
-        self.test_button.clicked.connect(self._test_all)
-        layout.addLayout(actions)
+        self.devices_step = step = DevicesStep(self)
+        step.scan_requested.connect(self._scan_network)
+        step.cancel_scan_requested.connect(self._cancel_scan)
+        step.advanced_scan_requested.connect(self._advanced_scan)
+        step.manual_setup_requested.connect(self._manual_setup)
+        step.device_action_requested.connect(self._device_table_action)
+        step.verify_requested.connect(self._test_all)
+        # Explicit aliases preserve integrations that access wizard controls.
+        self.scan_button = step.scan_button
+        self.cancel_scan_button = step.cancel_scan_button
+        self.fallback_toggle = step.fallback_toggle
+        self.selection_badge = step.selection_badge
+        self.fallback_actions = step.fallback_actions
+        self.advanced_scan_button = step.advanced_scan_button
+        self.manual_setup_button = step.manual_setup_button
+        self.scan_status = step.scan_status
+        self.scan_progress_bar = step.scan_progress_bar
+        self.device_table = step.device_table
+        self.test_button = step.test_button
         self.discovered_devices: list[dict] = []
-        return page
+        return step
 
-    def _toggle_fallback_actions(self, visible: bool) -> None:
-        self.fallback_actions.setVisible(visible)
-        self.fallback_toggle.setText("ซ่อนวิธีอื่น" if visible else "ค้นหาไม่พบ? ใช้วิธีอื่น")
 
     def _cancel_scan(self) -> None:
         if self._scan_thread is None:
@@ -1448,442 +1037,44 @@ class SetupWizardV5(QDialog):
         self._open_wizard_child(dialog, import_finished)
 
     def _review_page(self) -> QWidget:
-        page = QWidget()
-        layout = QVBoxLayout(page)
-        layout.setContentsMargins(0, 16, 0, 0)
-        title = QLabel("ตรวจสอบทีละส่วนก่อนบันทึก")
-        title.setFont(fnt(F_XL, True))
-        layout.addWidget(title)
-
-        review_scroll = QScrollArea()
-        review_scroll.setWidgetResizable(True)
-        review_scroll.setFrameShape(QFrame.Shape.NoFrame)
-        review_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        review_panel = QFrame()
-        review_panel.setObjectName("setup_review_panel")
-        review_panel.setStyleSheet(
-            setup_styles.SETUP_WIZARD_REVIEW_PANEL
-        )
-        panel_layout = QVBoxLayout(review_panel)
-        panel_layout.setContentsMargins(18, 8, 18, 8)
-        panel_layout.setSpacing(0)
-        self.review_sections: dict[str, QLabel] = {}
-        for key, section_title, target_step in (
-            ("organization", "องค์กร", 0),
-            ("devices", "เครื่องพิมพ์", 1),
-            ("pricing", "ราคา", 2),
-            ("billing", "รอบบิล", 2),
-            ("registration", "ข้อมูลลงทะเบียน", None),
-        ):
-            section = QFrame()
-            section.setStyleSheet(
-                setup_styles.SETUP_WIZARD_SECTION
-            )
-            section_layout = QHBoxLayout(section)
-            section_layout.setContentsMargins(2, 7, 2, 7)
-            copy = QVBoxLayout()
-            copy.setSpacing(3)
-            heading = QLabel(f"✓  {section_title}")
-            heading.setFont(fnt(F_MD, True))
-            heading.setStyleSheet(text_styles.label('#176B49', border='none'))
-            body = QLabel("")
-            # These summaries combine translated templates with customer data.
-            body.setProperty("i18n_data", True)
-            body.setWordWrap(True)
-            body.setTextInteractionFlags(
-                Qt.TextInteractionFlag.TextSelectableByMouse
-                | Qt.TextInteractionFlag.TextSelectableByKeyboard
-            )
-            body.setStyleSheet(text_styles.label('#334155', border='none'))
-            copy.addWidget(heading)
-            copy.addWidget(body)
-            section_layout.addLayout(copy, 1)
-            if target_step is None:
-                self.registration_status_label = QLabel("ยังไม่ส่ง")
-                self.registration_status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                self.registration_status_label.setFixedSize(86, 32)
-                self.registration_status_label.setStyleSheet(
-                    setup_styles.SETUP_WIZARD_REGISTRATION_STATUS_LABEL
-                )
-                section_layout.addWidget(
-                    self.registration_status_label, 0, Qt.AlignmentFlag.AlignTop
-                )
-            else:
-                edit = btn("แก้ไข", "outline")
-                edit.setFixedSize(78, 36)
-                edit.setAccessibleName(f"แก้ไข{section_title}")
-                edit.clicked.connect(
-                    lambda _checked=False, step=target_step: self._go_to_step(step)
-                )
-                section_layout.addWidget(edit, 0, Qt.AlignmentFlag.AlignTop)
-            panel_layout.addWidget(section)
-            self.review_sections[key] = body
-        review_scroll.setWidget(review_panel)
-        layout.addWidget(review_scroll, 1)
-
-        self.review_ready_note = QLabel(
-            "<b>พร้อมนำเครื่องพิมพ์เข้าระบบ</b><br>"
-            "เมื่อกดบันทึก ระบบจะเก็บการตั้งค่าในเครื่องและเริ่มตรวจมิเตอร์ตามรอบที่กำหนด"
-        )
-        self.review_ready_note.setWordWrap(True)
-        self.review_ready_note.setFont(fnt(F_LG))
-        self.review_ready_note.setStyleSheet(
-            setup_styles.SETUP_WIZARD_REVIEW_READY_NOTE
-        )
-        layout.addWidget(self.review_ready_note)
-        return page
+        self.review_step = step = ReviewStep(self)
+        step.edit_requested.connect(self._go_to_step)
+        # Explicit aliases preserve integrations that access wizard controls.
+        self.review_sections = step.review_sections
+        self.review_ready_note = step.review_ready_note
+        self.registration_status_label = step.registration_status_label
+        return step
 
     def _go_to_step(self, target_step: int) -> None:
         while self.stack.currentIndex() > target_step:
             self._back()
 
     def _price_page(self) -> QWidget:
-        page = QWidget()
-        page_layout = QVBoxLayout(page)
-        page_layout.setContentsMargins(0, 12, 0, 0)
-        self.price_scroll = QScrollArea()
-        self.price_scroll.setObjectName("wizard_price_scroll")
-        self.price_scroll.setWidgetResizable(True)
-        self.price_scroll.setFrameShape(QFrame.Shape.NoFrame)
-        self.price_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self.price_scroll.setAlignment(Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop)
-        price_palette = QPalette(self.palette())
-        price_palette.setColor(QPalette.ColorRole.Window, QColor("#F4F7FA"))
-        price_palette.setColor(QPalette.ColorRole.Base, QColor("#F4F7FA"))
-        price_palette.setColor(QPalette.ColorRole.Text, QColor("#172033"))
-        self.price_scroll.setPalette(price_palette)
-        self.price_scroll.viewport().setPalette(price_palette)
-        self.price_scroll.viewport().setAutoFillBackground(True)
-        self.price_scroll.setStyleSheet(
-            setup_styles.PRICE_SCROLL
-        )
-        content = QWidget()
-        content.setObjectName("wizard_price_content")
-        content.setMaximumWidth(1280)
-        content.setPalette(price_palette)
-        content.setAutoFillBackground(True)
-        content.setStyleSheet(setup_styles.SETUP_WIZARD_CONTENT_PRICE_PAGE)
-        self.price_content = content
-        layout = QVBoxLayout(content)
-        layout.setContentsMargins(12, 2, 12, 6)
-        layout.setSpacing(10)
-
-        self.price_intro = QLabel(
-            "กำหนดราคาต่อหน้าสำหรับ A4/A3 สีและขาวดำ · ราคา 0.00 หมายถึงไม่คิดค่าใช้จ่าย"
-        )
-        self.price_intro.setWordWrap(True)
-        self.price_intro.setFont(fnt(F_MD))
-        self.price_intro.setStyleSheet(text_styles.label(C_TEXT2, border='none', background='transparent'))
-
-        mode_section = QFrame()
-        mode_section.setObjectName("price_mode_section")
-        mode_section.setStyleSheet(setup_styles.SETUP_WIZARD_MODE_SECTION)
-        mode_layout = QVBoxLayout(mode_section)
-        mode_layout.setContentsMargins(0, 2, 0, 2)
-        mode_layout.setSpacing(6)
-        mode_header = QHBoxLayout()
-        mode_header.setSpacing(12)
-        mode_title = QLabel("วิธีใช้ราคา")
-        mode_title.setFont(fnt(F_LG, True))
-        mode_title.setStyleSheet(text_styles.label('#172033', border='none', background='transparent'))
-        mode_header.addWidget(mode_title)
-        mode_header.addWidget(self.price_intro, 1)
-        mode_layout.addLayout(mode_header)
-
-        mode_row = QHBoxLayout()
-        mode_row.setSpacing(12)
-        mode_row.addStretch()
-        self.shared_price_mode = QPushButton("ใช้ราคาเดียวกันทุกเครื่อง")
-        self.per_device_price_mode = QPushButton("ตั้งราคาแยกรายเครื่อง")
-        self.deferred_price_mode = QPushButton("ตั้งค่าราคาภายหลัง")
-        self.price_mode_group = QButtonGroup(self)
-        self.price_mode_group.setExclusive(True)
-        mode_style = (
-            setup_styles.PRICE_PAGE_MODE_STYLE
-        )
-        for button in (
-            self.shared_price_mode,
-            self.per_device_price_mode,
-            self.deferred_price_mode,
-        ):
-            button.setCheckable(True)
-            button.setFont(fnt(F_MD, True))
-            button.setStyleSheet(mode_style)
-            button.setMinimumHeight(50)
-            button.setMaximumWidth(480)
-            button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-            self.price_mode_group.addButton(button)
-        self.shared_price_mode.toggled.connect(self._price_mode_changed)
-        self.per_device_price_mode.toggled.connect(self._price_mode_changed)
-        self.deferred_price_mode.toggled.connect(self._price_mode_changed)
-        mode_row.addWidget(self.shared_price_mode)
-        mode_row.addWidget(self.per_device_price_mode)
-        mode_row.addWidget(self.deferred_price_mode)
-        mode_row.addStretch()
-        mode_layout.addLayout(mode_row)
-
-        self.effective_row_widget = QWidget()
-        effective_row = QHBoxLayout(self.effective_row_widget)
-        effective_row.setContentsMargins(0, 2, 0, 0)
-        effective_row.setSpacing(10)
-        effective_label = QLabel("วันที่เริ่มใช้ราคาชุดนี้")
-        effective_label.setStyleSheet(text_styles.label('#334155', font_weight='700', border='none', background='transparent'))
-        effective_row.addWidget(effective_label)
-        self.effective_date = QDateEdit(QDate.currentDate())
-        self.effective_date.setCalendarPopup(True)
-        self.effective_date.setDisplayFormat("dd/MM/yyyy")
-        self.effective_date.setMinimumWidth(150)
-        self.effective_date.setMaximumWidth(190)
-        self.effective_date.setMinimumHeight(38)
-        self.effective_date.setFont(fnt(F_MD, True))
-        self.effective_date.setStyleSheet(
-            setup_styles.SETUP_WIZARD_EFFECTIVE_DATE
-        )
-        self._style_price_calendar(self.effective_date.calendarWidget())
-        effective_row.addWidget(self.effective_date)
-        effective_hint = QLabel("รายการตั้งแต่วันนี้จะใช้ราคาชุดนี้")
-        effective_hint.setStyleSheet(text_styles.label(C_TEXT2, border='none', background='transparent'))
-        effective_row.addWidget(effective_hint)
-        effective_row.addStretch()
-        mode_layout.addWidget(self.effective_row_widget)
-        layout.addWidget(mode_section)
-
-        self.deferred_price_notice = QLabel(
-            "<b>ยังไม่คิดค่าใช้จ่ายในขณะนี้</b><br>"
-            "ระบบจะบันทึกราคา 0.00 ทุกประเภท และสามารถตั้งราคาจริงภายหลังได้จาก Settings"
-        )
-        self.deferred_price_notice.setWordWrap(True)
-        self.deferred_price_notice.setStyleSheet(
-            surfaces_styles.WARNING_BOX
-        )
-        self.deferred_price_notice.setVisible(False)
-        layout.addWidget(self.deferred_price_notice)
-
-        self.shared_price_box = QFrame()
-        self.shared_price_box.setObjectName("shared_price_box")
-        self.shared_price_box.setStyleSheet(setup_styles.SETUP_WIZARD_SHARED_PRICE_BOX)
-        shared_layout = QVBoxLayout(self.shared_price_box)
-        shared_layout.setContentsMargins(0, 2, 0, 4)
-        shared_layout.setSpacing(5)
-        shared_header = QHBoxLayout()
-        shared_header.setSpacing(12)
-        shared_title = QLabel("ราคาสำหรับทุกเครื่อง")
-        shared_title.setFont(fnt(F_LG, True))
-        shared_title.setStyleSheet(text_styles.label('#172033', border='none', background='transparent'))
-        shared_header.addWidget(shared_title)
-        shared_note = QLabel("หน่วย: บาทต่อหน้าที่พิมพ์ · ใส่ 0.00 สำหรับรายการที่ไม่คิดเงิน")
-        shared_note.setStyleSheet(text_styles.label(C_TEXT2, border='none', background='transparent'))
-        shared_header.addWidget(shared_note, 1)
-        shared_layout.addLayout(shared_header)
-        self.shared_price_row = self._price_inputs()
-        shared_layout.addWidget(self._price_grid(self.shared_price_row))
-        layout.addWidget(self.shared_price_box)
-
-        self.per_device_price_box = QFrame()
-        self.per_device_price_box.setObjectName("per_device_price_box")
-        self.per_device_price_box.setStyleSheet(setup_styles.SETUP_WIZARD_PER_DEVICE_PRICE_BOX)
-        device_layout = QVBoxLayout(self.per_device_price_box)
-        device_layout.setContentsMargins(0, 14, 0, 12)
-        device_layout.setSpacing(8)
-        device_title = QLabel("ราคาแยกรายเครื่อง")
-        device_title.setFont(fnt(F_XL, True))
-        device_title.setStyleSheet(text_styles.label('#172033', border='none', background='transparent'))
-        device_layout.addWidget(device_title)
-        device_note = QLabel("กำหนด 4 ราคาของแต่ละเครื่องแยกกัน · แสดงเฉพาะเครื่องที่เลือกในขั้นแรก")
-        device_note.setStyleSheet(text_styles.label(C_TEXT2, border='none', background='transparent'))
-        device_layout.addWidget(device_note)
-        self.price_rows: list[dict[str, QDoubleSpinBox]] = []
-        self.device_price_cards: list[tuple[QFrame, QLabel]] = []
-        for slot in range(3):
-            card = QFrame()
-            card.setObjectName(f"device_price_card_{slot}")
-            card.setStyleSheet(
-                setup_styles.device_price_card(slot)
-            )
-            card_layout = QVBoxLayout(card)
-            card_layout.setContentsMargins(0, 14, 0, 14)
-            card_layout.setSpacing(7)
-            card_title = QLabel(f"เครื่อง {slot + 1}")
-            card_title.setFont(fnt(F_MD, True))
-            card_title.setStyleSheet(text_styles.label('#172033', border='none', background='transparent'))
-            card_layout.addWidget(card_title)
-            row = self._price_inputs()
-            card_layout.addWidget(self._price_grid(row))
-            self.price_rows.append(row)
-            self.device_price_cards.append((card, card_title))
-            device_layout.addWidget(card)
-        layout.addWidget(self.per_device_price_box)
-
-        self.billing_section = QFrame()
-        self.billing_section.setObjectName("billing_section")
-        self.billing_section.setStyleSheet(setup_styles.SETUP_WIZARD_BILLING_SECTION)
-        billing_layout = QHBoxLayout(self.billing_section)
-        billing_layout.setContentsMargins(0, 8, 0, 4)
-        billing_layout.setSpacing(24)
-        billing_copy = QVBoxLayout()
-        billing_copy.setSpacing(3)
-        billing_title = QLabel("รอบบิลและส่วนลด")
-        billing_title.setFont(fnt(F_LG, True))
-        billing_title.setStyleSheet(text_styles.label('#172033', border='none', background='transparent'))
-        billing_copy.addWidget(billing_title)
-        self.billing_defaults = QLabel(
-            "ค่าแนะนำ: กระดาษเสีย 2% · ตัดรอบวันที่ 31"
-        )
-        self.billing_defaults.setWordWrap(True)
-        self.billing_defaults.setStyleSheet(
-            text_styles.label('#75510A', border='none', background='transparent')
-        )
-        billing_copy.addWidget(self.billing_defaults)
-        billing_copy.addStretch()
-        billing_layout.addLayout(billing_copy, 0)
-        billing = QGridLayout()
-        billing.setHorizontalSpacing(16)
-        billing.setVerticalSpacing(4)
-        self.waste_paper_pct = QDoubleSpinBox()
-        self.waste_paper_pct.setRange(0, 100)
-        self.waste_paper_pct.setDecimals(1)
-        self.waste_paper_pct.setSuffix(" %")
-        self.billing_end_day = WizardComboBox()
-        self.billing_end_day.setProperty("i18n_items", True)
-        for day in range(1, 32):
-            self.billing_end_day.addItem(f"วันที่ {day} ของเดือน", day)
-        billing_input_style = (
-            setup_styles.PRICE_PAGE_BILLING_INPUT_STYLE
-        )
-        for spin in (self.waste_paper_pct, self.billing_end_day):
-            spin.setMinimumHeight(38)
-            spin.setMaximumWidth(300)
-            spin.setFont(fnt(F_MD, True))
-            spin.setStyleSheet(billing_input_style)
-        self.waste_paper_pct.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.NoButtons)
-        self._style_wizard_combo(self.billing_end_day, popup_width=260)
-        waste_label = QLabel("ส่วนลดกระดาษเสีย")
-        waste_label.setStyleSheet(text_styles.label('#334155', font_weight='700', border='none', background='transparent'))
-        billing_day_label = QLabel("วันสิ้นสุดรอบบิล")
-        billing_day_label.setStyleSheet(text_styles.label('#334155', font_weight='700', border='none', background='transparent'))
-        billing.addWidget(waste_label, 0, 0)
-        billing.addWidget(billing_day_label, 0, 1)
-        billing.addWidget(self.waste_paper_pct, 1, 0)
-        billing.addWidget(self.billing_end_day, 1, 1)
-        waste_hint = QLabel("หักเปอร์เซ็นต์นี้ออกจากยอดค่าใช้จ่ายรวม")
-        waste_hint.setStyleSheet(text_styles.label(C_TEXT2, border='none', background='transparent'))
-        billing_hint = QLabel("เดือนที่ไม่มีวันที่เลือก จะใช้วันสุดท้ายของเดือน")
-        billing_hint.setStyleSheet(text_styles.label(C_TEXT2, border='none', background='transparent'))
-        billing.addWidget(waste_hint, 2, 0)
-        billing.addWidget(billing_hint, 2, 1)
-        billing.setColumnStretch(0, 1)
-        billing.setColumnStretch(1, 1)
-        billing_layout.addLayout(billing, 1)
-        layout.addWidget(self.billing_section)
-        layout.addStretch()
-        self.price_scroll.setWidget(content)
-        page_layout.addWidget(self.price_scroll)
-        return page
-
-    @staticmethod
-    def _price_inputs() -> dict[str, QDoubleSpinBox]:
-        inputs: dict[str, QDoubleSpinBox] = {}
-        for key in ("a4_color", "a4_bw", "a3_color", "a3_bw"):
-            spin = QDoubleSpinBox()
-            spin.setRange(0, 9999)
-            spin.setDecimals(2)
-            spin.setMinimumHeight(42)
-            spin.setMinimumWidth(150)
-            spin.setMaximumWidth(230)
-            spin.setFont(fnt(F_LG, True))
-            spin.setAlignment(Qt.AlignmentFlag.AlignRight)
-            spin.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.NoButtons)
-            spin.setStyleSheet(
-                setup_styles.SETUP_WIZARD_SPIN
-            )
-            inputs[key] = spin
-        return inputs
-
-    @staticmethod
-    def _price_cell(spin: QDoubleSpinBox) -> QWidget:
-        """Keep the number field clear; the unit belongs beside it, not inside it."""
-        cell = QWidget()
-        cell.setObjectName("price_value_cell")
-        cell.setStyleSheet(setup_styles.SETUP_WIZARD_CELL)
-        cell_layout = QHBoxLayout(cell)
-        cell_layout.setContentsMargins(10, 4, 10, 4)
-        cell_layout.setSpacing(8)
-        cell_layout.addStretch()
-        cell_layout.addWidget(spin)
-        unit = QLabel("บาท/หน้า")
-        unit.setStyleSheet(text_styles.label('#475569', font_weight='700', border='none', background='transparent'))
-        unit.setMinimumWidth(66)
-        cell_layout.addWidget(unit)
-        cell_layout.addStretch()
-        return cell
-
-    @staticmethod
-    def _price_grid(inputs: dict[str, QDoubleSpinBox]) -> QFrame:
-        matrix = QFrame()
-        matrix.setObjectName("price_matrix")
-        matrix.setStyleSheet(
-            setup_styles.SETUP_WIZARD_MATRIX
-        )
-        grid = QGridLayout(matrix)
-        grid.setContentsMargins(1, 1, 1, 1)
-        grid.setHorizontalSpacing(1)
-        grid.setVerticalSpacing(1)
-        headers = ("ขนาดกระดาษ", "สี (Color)", "ขาวดำ (B&W)")
-        for column, text in enumerate(headers):
-            header = QLabel(text)
-            header.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            header.setMinimumHeight(34)
-            if column == 1:
-                background = "#E5F5FA"
-                color = "#087A96"
-            elif column == 2:
-                background = "#EEF1F4"
-                color = "#334155"
-            else:
-                background = "#F1F5F9"
-                color = "#334155"
-            header.setStyleSheet(
-                text_styles.label(color, background=background, border='none', padding='4px 8px', font_weight='800')
-            )
-            grid.addWidget(header, 0, column)
-        for row, size in enumerate(("A4", "A3"), start=1):
-            size_label = QLabel(size)
-            size_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            size_label.setMinimumWidth(110)
-            size_label.setMinimumHeight(52)
-            size_label.setStyleSheet(
-                text_styles.label('#172033', background='#F8FAFC', border='none', padding='6px 10px', font_weight='800')
-            )
-            grid.addWidget(size_label, row, 0)
-        grid.addWidget(SetupWizardV5._price_cell(inputs["a4_color"]), 1, 1)
-        grid.addWidget(SetupWizardV5._price_cell(inputs["a4_bw"]), 1, 2)
-        grid.addWidget(SetupWizardV5._price_cell(inputs["a3_color"]), 2, 1)
-        grid.addWidget(SetupWizardV5._price_cell(inputs["a3_bw"]), 2, 2)
-        grid.setColumnMinimumWidth(0, 110)
-        grid.setColumnStretch(0, 0)
-        grid.setColumnStretch(1, 1)
-        grid.setColumnStretch(2, 1)
-        return matrix
-
-    def _price_mode_changed(self, _checked: bool = False) -> None:
-        deferred = self.deferred_price_mode.isChecked()
-        shared = self.shared_price_mode.isChecked() and not deferred
-        per_device = self.per_device_price_mode.isChecked() and not deferred
-        self.shared_price_box.setVisible(shared)
-        self.per_device_price_box.setVisible(per_device)
-        self.deferred_price_notice.setVisible(deferred)
-        self.effective_row_widget.setVisible(not deferred)
-        show_billing = not deferred and not self.edit_mode
-        self.billing_section.setVisible(show_billing)
-        self.billing_defaults.setVisible(show_billing)
+        self.pricing_step = step = PricingStep(edit_mode=self.edit_mode, parent=self)
+        # Explicit aliases preserve integrations that access wizard controls.
+        self.price_scroll = step.price_scroll
+        self.price_content = step.price_content
+        self.price_intro = step.price_intro
+        self.shared_price_mode = step.shared_price_mode
+        self.per_device_price_mode = step.per_device_price_mode
+        self.deferred_price_mode = step.deferred_price_mode
+        self.price_mode_group = step.price_mode_group
+        self.effective_row_widget = step.effective_row_widget
+        self.effective_date = step.effective_date
+        self.deferred_price_notice = step.deferred_price_notice
+        self.shared_price_box = step.shared_price_box
+        self.shared_price_row = step.shared_price_row
+        self.per_device_price_box = step.per_device_price_box
+        self.price_rows = step.price_rows
+        self.device_price_cards = step.device_price_cards
+        self.billing_section = step.billing_section
+        self.billing_defaults = step.billing_defaults
+        self.waste_paper_pct = step.waste_paper_pct
+        self.billing_end_day = step.billing_end_day
+        return step
 
     def _refresh_device_price_cards(self) -> None:
-        selected = {device.slot: device for device in self._configs()}
-        for slot, (card, title) in enumerate(self.device_price_cards):
-            device = selected.get(slot)
-            card.setVisible(device is not None)
-            if device is not None:
-                title.setText(f"{device.name} · ราคาเฉพาะเครื่อง")
+        self.pricing_step.set_devices(self._configs())
 
     def _load_existing(self) -> None:
         first_started = get_cfg("client_first_started_at", "") or date.today().isoformat()
@@ -1946,7 +1137,7 @@ class SetupWizardV5(QDialog):
         self.shared_price_mode.setChecked(mode not in {"per_device", "deferred"})
         self.per_device_price_mode.setChecked(mode == "per_device")
         self.deferred_price_mode.setChecked(mode == "deferred")
-        self._price_mode_changed()
+        self.pricing_step.refresh_mode()
 
     @staticmethod
     def _display_first_started(value: str) -> str:
@@ -2470,15 +1661,7 @@ class SetupWizardV5(QDialog):
         thread.start()
 
     def _scan_progress_changed(self, completed: int, total: int) -> None:
-        safe_total = max(1, int(total))
-        safe_completed = min(max(0, int(completed)), safe_total)
-        percent = round((safe_completed / safe_total) * 100)
-        self.scan_progress_bar.setRange(0, safe_total)
-        self.scan_progress_bar.setValue(safe_completed)
-        self.scan_progress_bar.setFormat(
-            f"สแกน {safe_completed:,} / {int(total):,} IP ({percent}%)"
-        )
-        self.scan_progress_bar.setVisible(True)
+        self.devices_step.set_scan_progress(completed, total)
 
     def _scan_parameters(self, hosts: list[str] | None) -> tuple[list[str] | None, int]:
         """Use virtual ports only for the explicit local simulator endpoint."""
@@ -2837,11 +2020,8 @@ class SetupWizardV5(QDialog):
     def _next(self) -> None:
         index = self.stack.currentIndex()
         if index == 0:
-            company_name = " ".join(self.company_name_input.text().split())
-            if not company_name:
-                self._show_company_name_error()
+            if not self.company_step.validate():
                 return
-            self.company_name_input.setText(company_name)
             if (
                 self.edit_mode
                 or self.lab_mode
@@ -3098,123 +2278,20 @@ class SetupWizardV5(QDialog):
         self._sync_language_switch()
 
     def _update_review(self) -> None:
-        devices = self._configs()
-        shared = self.shared_price_mode.isChecked()
-        deferred = self.deferred_price_mode.isChecked()
-        company = escape(self.company_name_input.text().strip())
-        self.review_sections["organization"].setText(
-            tr("<b>{company}</b> · เริ่มใช้งาน {started} · Version {version}",
-               "<b>{company}</b> · Started {started} · Version {version}").format(
-                   company=company, started=escape(self.first_started_input.text()), version=escape(PACKAGE_VERSION))
+        entries = {str(entry.get("host")): entry for entry in self._selected_entries()}
+        devices = tuple(
+            ReviewDevice(device.slot, device.name, device.model,
+                         entries.get(device.host, {}).get("result", {}).get("total"))
+            for device in self._configs()
         )
-        device_lines: list[str] = []
-        entries_by_host = {
-            str(entry.get("host")): entry for entry in self._selected_entries()
-        }
-        for device in devices:
-            meter = entries_by_host.get(device.host, {}).get("result", {}).get("total")
-            meter_text = f"{meter:,.0f}" if isinstance(meter, (int, float)) else "—"
-            device_lines.append(
-                tr("<b>{name}</b> · {model} · พร้อมใช้งาน · Meter {meter}",
-                   "<b>{name}</b> · {model} · Ready · Meter {meter}").format(
-                       name=escape(device.name), model=escape(device.model or tr("ไม่ทราบรุ่น", "Unknown model")), meter=meter_text)
-            )
-        self.review_sections["devices"].setText("<br>".join(device_lines))
-
-        if deferred:
-            pricing_text = tr(
-                "<b>ตั้งค่าภายหลัง</b> · ขณะนี้ราคา 0.00 ทุกประเภทและยังไม่คิดค่าใช้จ่าย",
-                "<b>Set up later</b> · All rates are currently 0.00; no charges are calculated")
-        elif shared:
-            pricing_text = (
-                tr("<b>ใช้ราคาเดียวกันทุกเครื่อง</b> · เริ่มใช้ ",
-                   "<b>One price list for all printers</b> · Effective ") +
-                f"{self.effective_date.date().toString('dd/MM/yyyy')}<br>"
-                f"{self._price_summary(self.shared_price_row)}"
-            )
-        else:
-            price_lines = [
-                tr("<b>ราคาแยกรายเครื่อง</b> · เริ่มใช้ ",
-                   "<b>Price list by printer</b> · Effective ") +
-                f"{self.effective_date.date().toString('dd/MM/yyyy')}"
-            ]
-            for device in devices:
-                price_lines.append(
-                    f"{escape(device.name)}: {self._price_summary(self.price_rows[device.slot])}"
-                )
-            pricing_text = "<br>".join(price_lines)
-        self.review_sections["pricing"].setText(pricing_text)
-
-        if self.edit_mode:
-            billing_text = tr("รอบบิลและส่วนลดจัดการจากหน้า Settings โดยไม่เปลี่ยนตาม Wizard นี้",
-                              "Manage the billing cycle and discount in Settings; this wizard keeps them unchanged.")
-        elif deferred:
-            billing_text = tr("ยังไม่เริ่มคิดค่าใช้จ่าย · ตั้งราคาและรอบบิลภายหลังได้จาก Settings",
-                              "Billing has not started. Set prices and the billing cycle later in Settings.")
-        else:
-            billing_text = (
-                tr("ส่วนลดกระดาษเสีย {discount:g}% · สิ้นสุดรอบวันที่ {day} ของเดือน",
-                   "Waste-paper discount {discount:g}% · Billing ends on day {day} of each month").format(
-                       discount=self.waste_paper_pct.value(), day=self._billing_day())
-            )
-        self.review_sections["billing"].setText(billing_text)
-        platform_name, architecture = runtime_platform()
-        if platform_name == "Darwin":
-            platform_name = "macOS"
-        model_rows = normalize_device_models(device.model for device in devices)
-        model_text = ", ".join(
-            f"{escape(str(row['model']))} × {row['quantity']}" for row in model_rows
-        ) or "—"
-        if is_offline_edition():
-            delivery_copy = (
-                f"<b>{tr('Offline Installation:', 'Offline Installation:')}</b> "
-                f"{tr('ใช้งานได้หลังตั้งค่าเสร็จโดยไม่ติดต่อ Host และไม่ต้องใช้ไฟล์ License', 'works after local setup without contacting the Host or importing a license file')}<br>"
-            )
-        else:
-            delivery_copy = (
-                f"<b>{tr('Online Registration:', 'Online Registration:')}</b> "
-                f"{tr('ระบบจะลงทะเบียนก่อนเปิดโปรแกรม และส่ง Status กับ Aggregate Total Meter ทุก 6 ชั่วโมงโดยประมาณ', 'the app registers before opening and sends Status and aggregate Total Meter about every 6 hours')}<br>"
-            )
-        data_heading = (
-            f"<b>{tr('ข้อมูลอยู่ภายในเครื่อง:', 'Data stays on this computer:')}</b> "
-            if is_offline_edition()
-            else f"<b>{tr('ข้อมูลที่อนุญาตเมื่อใช้ Online:', 'Allowed data in Online mode:')}</b> "
-        )
-        closing_copy = (
-            f"<b>{tr('การทำงาน:', 'Operation:')}</b> "
-            f"{tr('อ่าน SNMP, Web Connection, สร้างรายงาน และเปิด Web Report ใน LAN ได้ตามปกติ', 'SNMP, Web Connection, reports, and LAN Web Report remain available normally')}"
-            if is_offline_edition()
-            else f"<b>{tr('การแจ้งเตือน:', 'Alerts:')}</b> "
-            f"{tr('Host อาจแจ้งว่า Desktop ขาดการเชื่อมต่อหลัง 3 วัน; ข้อความนี้ไม่ใช่หลักฐานว่าเครื่องพิมพ์เสีย', 'the Host may report Desktop connectivity loss after 3 days; this is not proof of a printer fault')}"
-        )
-        self.review_sections["registration"].setText(
-            delivery_copy
-            + data_heading
-            + f"{tr('ชื่อบริษัท:', 'Company:')} {company} · Version {escape(PACKAGE_VERSION)} · "
-            + f"{escape(platform_name)} / {escape(architecture)} · "
-            + f"{tr('Serial Number + รุ่นเครื่อง + สถานะเลือกใช้ + Aggregate Total Meter', 'serial number + printer model + selected state + aggregate Total Meter')} "
-            + f"({model_text})<br>"
-            + f"<b>{tr('ไม่ส่ง:', 'Never sent:')}</b> "
-            + f"{tr('IP, MAC, hostname, Credential, Counter รายละเอียด, ผู้ใช้, เอกสาร, Print Job, Raw SNMP/XML/Error หรือ Log', 'IP, MAC, hostname, credentials, detailed counters, users, documents, print jobs, raw SNMP/XML/errors, or logs')}<br>"
-            + closing_copy
-        )
-        self.registration_status_label.setText(
-            tr("พร้อมใช้แบบ Offline", "Offline ready")
-            if is_offline_edition()
-            else tr("รอลงทะเบียน", "Pending")
-        )
+        self.review_step.render(SetupReviewData(
+            company_name=self.company_name_input.text(), first_started=self.first_started_input.text(),
+            version=PACKAGE_VERSION, devices=devices, pricing=self.pricing_step.selection(),
+            edit_mode=self.edit_mode, offline_edition=is_offline_edition(), platform=runtime_platform(),
+        ))
         apply_language(self)
         self._sync_language_switch()
 
-    @staticmethod
-    def _price_summary(inputs: dict[str, QDoubleSpinBox]) -> str:
-        return (
-            tr("A4 สี <b>{a4_color:,.2f}</b> · A4 ขาวดำ <b>{a4_bw:,.2f}</b> · "
-               "A3 สี <b>{a3_color:,.2f}</b> · A3 ขาวดำ <b>{a3_bw:,.2f}</b> บาท/หน้า",
-               "A4 color <b>{a4_color:,.2f}</b> · A4 B&W <b>{a4_bw:,.2f}</b> · "
-               "A3 color <b>{a3_color:,.2f}</b> · A3 B&W <b>{a3_bw:,.2f}</b> THB/page").format(
-                   **{key: control.value() for key, control in inputs.items()})
-        )
 
     def _save(self) -> None:
         if self._enrollment_commit_thread is not None:
@@ -3662,14 +2739,10 @@ class SetupWizardV5(QDialog):
         self.next_button.setEnabled(True)
 
     def _billing_day(self) -> int:
-        return int(self.billing_end_day.currentData() or DEFAULT_BILLING_DAY)
+        return self.pricing_step.selection().billing_day
 
     def _all_selected_prices_are_zero(self) -> bool:
-        if self.deferred_price_mode.isChecked():
-            return True
-        if self.shared_price_mode.isChecked():
-            rows = (self.shared_price_row,)
-        else:
-            selected_slots = {device.slot for device in self._configs()}
-            rows = tuple(self.price_rows[slot] for slot in sorted(selected_slots))
-        return all(spin.value() == 0 for row in rows for spin in row.values())
+        selection = self.pricing_step.selection()
+        # Shared/deferred modes do not require device configuration validation.
+        slots = tuple(sorted({device.slot for device in self._configs()})) if selection.mode == "per_device" else ()
+        return selection.all_selected_rates_are_zero(slots)
