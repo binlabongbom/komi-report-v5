@@ -23,6 +23,7 @@ from PyQt6.QtWidgets import (
 
 from config import PACKAGE_VERSION
 from i18n import tr
+from services.build_edition import is_offline_edition
 from services.registration_data_notice import REGISTRATION_NOTICE_VERSION
 from ui.numeric_inputs import NumericSpinBox as QSpinBox
 from ui.styles import setup as setup_styles
@@ -67,6 +68,9 @@ class CompanyStep(QWidget):
         intro.setStyleSheet(text_styles.label("#123262"))
         layout.addWidget(intro)
         description = QLabel(
+            tr("ระบุชื่อบริษัทสำหรับแสดงในรายงาน · Offline ไม่ต้องลงทะเบียนกับ Host",
+               "Enter the company name for reports. Offline does not require Host registration.")
+            if is_offline_edition() else
             "ระบุชื่อบริษัทสำหรับแสดงในรายงานและการลงทะเบียนโปรแกรม ส่วนวันที่เริ่มใช้และ Version ระบบกำหนดให้เพื่อป้องกันข้อมูลผิด"
         )
         description.setWordWrap(True)
@@ -294,6 +298,17 @@ class CompanyStep(QWidget):
                 f"Version {REGISTRATION_NOTICE_VERSION} · registration is required before use",
             )
         )
+        if is_offline_edition():
+            privacy_title.setText("Offline Installation")
+            self.privacy_notice_status.setText(tr(
+                "ไม่ต้องลงทะเบียนกับ Host และไม่ต้องใช้ไฟล์ Offline License",
+                "No Host registration or Offline License file is required.",
+            ))
+            self.company_notice.setText(tr(
+                "อ่านเครื่องพิมพ์ผ่าน LAN และทำรายงานในเครื่อง · ไม่ส่งข้อมูลลงทะเบียน สถานะ หรือมิเตอร์ไปยัง Host",
+                "Read printers over LAN and generate local reports. Registration, status and meter data are not sent to the Host.",
+            ))
+            self.view_privacy_notice_button.hide()
         layout.addWidget(privacy_card, 0, Qt.AlignmentFlag.AlignHCenter)
         # Keep hidden compatibility controls for older integrations while the
         # customer Wizard follows one unambiguous Online-first path.
