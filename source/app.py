@@ -1540,6 +1540,12 @@ if __name__ == "__main__":
     # Packaging smoke test: construct the complete startup shell against an
     # isolated KOMI_DB_PATH, then exit before setup dialogs or network services.
     if "--smoke-test" in sys.argv:
+        import json
+        from tools.edition_smoke import validate_edition
+        edition_evidence = json.dumps(validate_edition())
+        Path(get_db_path()).with_suffix(".edition-smoke.json").write_text(
+            edition_evidence, encoding="utf-8"
+        )
         splash.close()
         win._quitting = True
         win.close()
