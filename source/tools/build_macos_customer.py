@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import dis
+import hashlib
 import json
 import os
 import platform
@@ -124,8 +125,13 @@ def verify_build_receipt(app_bundle: Path, edition: str, commit: str) -> None:
     receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
     if (receipt.get("edition") != edition or receipt.get("source_commit") != commit
             or receipt.get("executable_sha256") != sha256_file(_main_executable(app_bundle))
+            or receipt.get("bundle_sha256") != bundle_digest(app_bundle)
             or frozen_edition(app_bundle) != edition):
         raise MacCustomerBuildError("Bundle edition/source does not match requested build")
+
+
+def bundle_digest(app_bundle: Path) -> str:
+    return hashlib.sha256(json.dumps(file_inventory(app_bundle), sort_keys=True).encode()).hexdigest()
 
 
 def build_app(edition: str, commit: str) -> Path:
@@ -134,6 +140,15 @@ def build_app(edition: str, commit: str) -> Path:
     # Schema 3 creates an Ed25519 installation identity locally. Never
     # inherit the legacy shared-bootstrap build hook from an operator shell.
     env.pop("KOMI_REGISTRATION_BOOTSTRAP_BUILD_FILE", None)
+    node = Path(env.get("KOMI_NODE_RUNTIME_BUILD_FILE", ""))
+    if not node.is_file():
+        raise MacCustomerBuildError("KOMI_NODE_RUNTIME_BUILD_FILE is required")
+    env["PATH"] = str(node.parent) + os.pathsep + env.get("PATH", "")
+    # Build from this exact clean checkout, never reuse an untracked .next tree.
+    web_build = _run([str(node.parent / "npm"), "run", "build"],
+                     cwd=PROJECT_ROOT / "web", env=env, timeout=600)
+    if web_build.returncode:
+        raise MacCustomerBuildError("Web build failed: " + web_build.stderr[-2000:])
     app_bundle = edition_bundle(edition)
     app_bundle.parent.mkdir(parents=True, exist_ok=True)
     (app_bundle.parent / "BUILD_RECEIPT.json").unlink(missing_ok=True)
@@ -165,6 +180,8 @@ def build_app(edition: str, commit: str) -> Path:
     (app_bundle.parent / "BUILD_RECEIPT.json").write_text(json.dumps({
         "source_commit": commit, "edition": edition,
         "executable_sha256": sha256_file(_main_executable(app_bundle)),
+        "bundle_sha256": bundle_digest(app_bundle),
+        "web_build_id": (PROJECT_ROOT / "web/.next/BUILD_ID").read_text().strip(),
     }, indent=2) + "\n", encoding="utf-8")
     return app_bundle
 

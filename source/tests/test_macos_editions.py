@@ -14,10 +14,16 @@ def test_receipt_rejects_wrong_source_edition_and_changed_binary(tmp_path, monke
     (bundle / "Contents" / "Info.plist").write_bytes(b"fixture")
     monkeypatch.setattr(builder, "frozen_edition", lambda _: edition)
     receipt = {"edition": edition, "source_commit": "a" * 40,
+               "bundle_sha256": builder.bundle_digest(bundle),
                "executable_sha256": builder.sha256_file(executable)}
     receipt_path = tmp_path / "BUILD_RECEIPT.json"
     receipt_path.write_text(json.dumps(receipt))
     builder.verify_build_receipt(bundle, edition, "a" * 40)
+    resource = bundle / "Contents" / "resource.txt"
+    resource.write_text("unexpected bundled resource")
+    with pytest.raises(builder.MacCustomerBuildError):
+        builder.verify_build_receipt(bundle, edition, "a" * 40)
+    resource.unlink()
     with pytest.raises(builder.MacCustomerBuildError):
         builder.verify_build_receipt(bundle, edition, "b" * 40)
     with pytest.raises(builder.MacCustomerBuildError):
@@ -35,6 +41,7 @@ def test_receipt_alone_cannot_override_actual_frozen_edition(tmp_path, monkeypat
     (bundle / "Contents" / "Info.plist").write_bytes(b"fixture")
     (tmp_path / "BUILD_RECEIPT.json").write_text(json.dumps({
         "edition": "offline", "source_commit": "a" * 40,
+        "bundle_sha256": builder.bundle_digest(bundle),
         "executable_sha256": builder.sha256_file(executable),
     }))
     monkeypatch.setattr(builder, "frozen_edition", lambda _: "normal")
