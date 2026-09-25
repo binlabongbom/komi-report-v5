@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import ipaddress
+import hashlib
+import json
 import socket
 from collections.abc import Callable
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor
@@ -32,6 +34,12 @@ from services.setup_connectivity import SetupConnectivityReport, check_setup_con
 from services.snmp_probe import SnmpTotalProbe
 
 
+def device_test_key(device: DeviceConfig) -> str:
+    """Bind a test to its connection settings without retaining plaintext secrets."""
+    values = (device.host, device.username, device.password, device.tls_mode, device.tls_fingerprint)
+    return hashlib.sha256(json.dumps(values).encode("utf-8")).hexdigest()
+
+
 @dataclass(frozen=True)
 class DeviceTestResult:
     """One immutable device-test result bound to a scan endpoint and test run."""
@@ -40,6 +48,7 @@ class DeviceTestResult:
     host: str
     slot: int
     payload: dict
+    connection_key: str = ""
 
 
 class DeviceTestWorker(QObject):
@@ -200,6 +209,11 @@ class DeviceTestWorker(QObject):
                     )
                 )
 
+            # Virtual printer endpoints use a separate Web port. Bind verified
+            # evidence to the configured device host, keeping unexpected hosts
+            # untouched so baseline validation can reject them.
+            if web_host != device.host and reading.host == web_host:
+                reading = replace(reading, host=device.host)
             pipeline_log.append(
                 stage="WEB",
                 action="Setup Web read complete",
@@ -264,6 +278,7 @@ class DeviceTestWorker(QObject):
             "serial": probe_result.serial if probe_result else "",
             "total": probe_result.total if probe_result else None,
             "web_ok": reading is not None,
+            "meter_reading": reading,
             "error": "\n\n".join(errors),
             "tls_mode": tls_mode,
             "tls_fingerprint": tls_fingerprint,
@@ -288,6 +303,7 @@ class DeviceTestWorker(QObject):
                         host=device.host,
                         slot=device.slot,
                         payload=payload,
+                        connection_key=device_test_key(device),
                     )
                 )
         self.finished.emit()

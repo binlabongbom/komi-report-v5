@@ -33,9 +33,6 @@ from PyQt6.QtWidgets import (
 from i18n import ENGLISH, apply_language, get_language, tr, translate_text
 from services.legacy_history_import import build_legacy_usage_intervals
 from services.report_chart_models import (
-    FIVE_CATEGORIES as FIVE_CATEGORIES,
-)
-from services.report_chart_models import (
     build_overview_timeline,
     build_paper_mix,
     build_printer_timeline,
@@ -45,7 +42,6 @@ from services.report_models import (
     RawCell,
     _combined,
     _operation_available,
-    _record_name,
     _record_total,
     build_legacy_raw_tables,
     build_printer_rows,
@@ -56,13 +52,14 @@ from services.report_period_policy import (
     current_preview_period,
     validate_preview_period,
 )
+from services.report_public_users import build_public_user_rows
 from ui.chart_lifecycle import replace_chart
 from ui.components.metric_card import MetricCard
 from ui.flow_layout import FlowLabel, FlowLayout, FlowWidget
 from ui.numeric_inputs import NumericDateEdit as QDateEdit
 from ui.page_tabs import PageHeading
 from ui.page_tabs import PageTabs as QTabWidget
-from ui.reports.charts import bar_chart, horizontal_like_chart, paper_legend_entries, render_chart
+from ui.reports.charts import paper_legend_entries, render_chart
 from ui.styles import reports as report_styles
 from ui.styles import surfaces as surfaces_styles
 from ui.styles import text as text_styles
@@ -71,8 +68,6 @@ from ui.styles.reports import (
     DEVICE_COLORS,
     MUTED,
     NAVY,
-    ORANGE,
-    SLATE,
 )
 from ui.usage_table import PrinterUsageTable, UsageTable
 from widgets import FrozenLeftTable, VisibleCheckBox
@@ -399,6 +394,8 @@ class CloudReportsWidget(QWidget):
         self._last_sync_at: str | None = None
         self._selected_user: str | None = None
         self._user_rows: list[dict] = []
+        self._public_user_rows: tuple = ()
+        self._show_public_users = False
         self._printer_rows: list[dict] = []
         self._usage_selected_slots: set[int] = set()
         self.usage_device_filters: dict[int, VisibleCheckBox] = {}
@@ -662,7 +659,7 @@ class CloudReportsWidget(QWidget):
                 page.layout().removeWidget(toolbar)
                 layout.addWidget(toolbar, 0, Qt.AlignmentFlag.AlignTop)
         page.layout().setContentsMargins(0, 0, 0, 0)
-        if page in (self.overview_page, self.users_page, self.printers_page):
+        if page in (self.overview_page, self.printers_page):
             page.layout().setAlignment(Qt.AlignmentFlag.AlignTop)
         scroll = QScrollArea()
         scroll.setObjectName("cloud_tab_scroll")
@@ -884,42 +881,28 @@ class CloudReportsWidget(QWidget):
         layout.setContentsMargins(0, 4, 0, 0)
         layout.setSpacing(12)
         self._add_period_toolbar(layout)
-        filter_row = QHBoxLayout()
-        self.user_filter_badge = QLabel("เลือกผู้ใช้จากตารางเพื่อกรองกราฟ")
-        self.user_filter_badge.setObjectName("cloud_filter_badge")
-        filter_row.addWidget(self.user_filter_badge)
-        filter_row.addStretch()
-        reset = QPushButton("ล้างตัวกรอง")
-        reset.setObjectName("cloud_reset")
-        reset.clicked.connect(self._clear_user_filter)
-        filter_row.addWidget(reset)
-        self.user_recovery_button = QPushButton("ดูสถานะการอ่าน")
-        self.user_recovery_button.setObjectName("cloud_reset")
-        self.user_recovery_button.clicked.connect(self.reading_status_requested)
-        filter_row.addWidget(self.user_recovery_button)
-        layout.addLayout(filter_row)
-        charts = QGridLayout()
-        top, top_layout = _panel("Top users", "เรียงตามยอดใช้งานในช่วงที่เลือก")
-        self.users_top_chart = self._chart_view()
-        self.users_top_chart.setFixedHeight(150)
-        top_layout.addWidget(self.users_top_chart)
-        charts.addWidget(top, 0, 0)
-        printer, printer_layout = _panel("Printers used", "กดผู้ใช้เพื่อดูการกระจายตามเครื่อง")
-        self.users_printer_chart = self._chart_view()
-        self.users_printer_chart.setFixedHeight(150)
-        printer_layout.addWidget(self.users_printer_chart)
-        charts.addWidget(printer, 0, 1)
-        self._responsive_grids.append((charts, (top, printer), 360, 2))
-        layout.addLayout(charts)
         table_panel, table_layout = _panel(
             "Users",
             "ค่าใช้จ่ายจัดสรรจากยอดรายวันของแต่ละเครื่อง · — หมายถึงข้อมูลยังไม่ครบสำหรับคำนวณ",
         )
+        table_panel.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        table_layout.setAlignment(Qt.AlignmentFlag(0))
         heading = table_layout.itemAt(0).layout()
         title = heading.takeAt(0).widget()
         title_row = QHBoxLayout()
         title_row.addWidget(title)
         title_row.addStretch()
+        self.user_recovery_button = QPushButton("ดูสถานะการอ่าน")
+        self.user_recovery_button.setObjectName("cloud_reset")
+        self.user_recovery_button.clicked.connect(self.reading_status_requested)
+        title_row.addWidget(self.user_recovery_button)
+        self.public_user_checkbox = VisibleCheckBox("Public User")
+        self.public_user_checkbox.setChecked(self._show_public_users)
+        self.public_user_checkbox.setToolTip(tr(
+            "รวมยอดของเครื่องที่ไม่มีข้อมูลแยกผู้ใช้ในช่วงที่เลือกเป็น Public User แถวเดียว",
+            "Combine printer totals without per-user data in the selected period into one Public User row"))
+        self.public_user_checkbox.toggled.connect(self._set_public_users_visible)
+        title_row.addWidget(self.public_user_checkbox)
         self.user_overview_button = QPushButton(tr('ภาพรวม', 'Overview'))
         self.user_printers_button = QPushButton(tr('รายเครื่อง', 'By printer'))
         self._user_table_mode = 'overview'
@@ -932,7 +915,7 @@ class CloudReportsWidget(QWidget):
         self.user_overview_button.setChecked(True)
         heading.insertLayout(0, title_row)
         self._expanded_user_printers = {'all'}
-        self.users_table = PrinterUsageTable()
+        self.users_table = PrinterUsageTable(fit_content_height=False)
         self.users_table._row_h = 34
         self.users_table._frozen_min_width = 180
         self.users_table._frozen_max_width = 240
@@ -944,17 +927,35 @@ class CloudReportsWidget(QWidget):
             table.setTextElideMode(Qt.TextElideMode.ElideNone)
             table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
             table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-        self.users_table.setMinimumHeight(340)
-        self.users_table.setMaximumHeight(620)
+        self.users_table.setMinimumHeight(240)
+        self.users_table.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.users_table._left.currentCellChanged.connect(
             lambda row, column, _previous_row, _previous_column: self._select_user_row(
-                row, column, toggle=False
+                row, column
             )
         )
         self.users_table.printer_toggled.connect(self._toggle_user_printer)
-        table_layout.addWidget(self.users_table)
-        layout.addWidget(table_panel)
+        table_layout.addWidget(self.users_table, 1)
+        layout.addWidget(table_panel, 1)
         return page
+
+    def _set_public_users_visible(self, checked: bool) -> None:
+        self._show_public_users = checked
+        if self._selected_user and not any(
+            row["key"] == self._selected_user for row in self._visible_user_rows()
+        ):
+            self._selected_user = None
+        self._render_users_table()
+
+    def _visible_user_rows(self):
+        if not self._show_public_users:
+            return self._user_rows
+        cost_field = self._cost_field()
+        public_rows = tuple(dict(row, by_slot={
+            slot: dict(values, cost=values.get(cost_field, values['cost']))
+            for slot, values in row['by_slot'].items()
+        }) for row in self._public_user_rows)
+        return (*self._user_rows, *public_rows)
 
     def _set_user_table_mode(self, mode: str) -> None:
         self._user_table_mode = mode
@@ -1004,6 +1005,9 @@ class CloudReportsWidget(QWidget):
         list_layout.addWidget(self.printers_table)
         bottom.addWidget(list_panel)
         layout.addLayout(bottom)
+        # Keep spare viewport height below the report. Otherwise the chart
+        # panels' legend-alignment stretches expand and push the table down.
+        layout.addStretch(1)
         return page
 
     def _build_usage(self) -> QWidget:
@@ -1506,10 +1510,11 @@ class CloudReportsWidget(QWidget):
         self._pending_render_tail = None
         self._render_tail_timer.stop()
 
-    def _schedule_render_tail(self, index: int, tables, charts) -> None:
+    def _schedule_render_tail(self, index: int, tables, charts=None) -> None:
         if not self._staged:
             tables()
-            charts()
+            if charts is not None:
+                charts()
             return
         self._cancel_render_tail()
         self._pending_render_tail = (
@@ -1532,16 +1537,18 @@ class CloudReportsWidget(QWidget):
             tables()
             if revision != self._data_revision or generation != self._render_generation:
                 return
-            # Yield once more so completed tables can paint before chart construction.
-            self._pending_render_tail = (revision, generation, index, None, charts)
-            self.loading_label.setText(tr("กำลังวาดกราฟ…", "Drawing charts…"))
-            self._render_tail_timer.start(0)
-        else:
+            if charts is not None:
+                # Let completed tables paint before chart construction.
+                self._pending_render_tail = (revision, generation, index, None, charts)
+                self.loading_label.setText(tr("กำลังวาดกราฟ…", "Drawing charts…"))
+                self._render_tail_timer.start(0)
+                return
+        elif charts is not None:
             charts()
-            if self._snapshot_token is not None:
-                self._rendered_tokens[index] = self._snapshot_token
-            self._update_loading_visibility()
-            self._layout_timer.start(0)
+        if self._snapshot_token is not None:
+            self._rendered_tokens[index] = self._snapshot_token
+        self._update_loading_visibility()
+        self._layout_timer.start(0)
 
     def closeEvent(self, event) -> None:  # noqa: N802 - Qt API
         self._cancel_render_tail()
@@ -1750,7 +1757,17 @@ class CloudReportsWidget(QWidget):
     def _build_user_rows(self) -> None:
         prepared = self._prepared_models.get("users")
         self._user_rows = list(prepared if prepared is not None else build_user_rows(self._subjects, self._raw_counter_records, category_costs=getattr(self, "_category_costs", ())))
-        if self._selected_user and not any(row["key"] == self._selected_user for row in self._user_rows):
+        public_rows = self._prepared_models.get("public_users")
+        if public_rows is None:
+            # A prepared user model may arrive without its source subjects.
+            # Its printer totals still establish attribution for this period.
+            attributed_slots = {slot for row in self._user_rows for slot in row["by_slot"]} if not self._subjects else set()
+            selected_days = tuple(record for record in self._daily_records if self._period is None or
+                                  self._period[0] <= record.period_start.isoformat() <= self._period[1])
+            selected_days = tuple(record for record in selected_days if record.device_slot not in attributed_slots)
+            public_rows = build_public_user_rows(selected_days, self._devices, subjects=self._subjects)
+        self._public_user_rows = tuple(public_rows)
+        if self._selected_user and not any(row["key"] == self._selected_user for row in self._visible_user_rows()):
             self._selected_user = None
 
     def _build_printer_rows(self) -> None:
@@ -1857,12 +1874,14 @@ class CloudReportsWidget(QWidget):
                 item.widget().deleteLater()
         for text in entries:
             label = FlowLabel(text)
+            label.setObjectName('cloud_chart_legend')
             label.setProperty('i18n_data', True)
             label.setWordWrap(True)
             label.setMinimumWidth(0)
             flow.addWidget(label)
         host.updateGeometry()
         host.refresh_height()
+        host.setVisible(bool(entries))
 
     @staticmethod
     def _paper_legend_entries(*, scan=False):
@@ -1877,15 +1896,16 @@ class CloudReportsWidget(QWidget):
     def _render_users(self) -> None:
         if self._staged and not self._can_render_tab(1):
             return
-        self._schedule_render_tail(1, self._render_users_table, self._render_users_charts)
+        self._schedule_render_tail(1, self._render_users_table)
 
     def _render_users_table(self) -> None:
+        user_rows = self._visible_user_rows()
         slots = tuple(
             sorted(
                 {int(device.slot) for device in self._devices}
                 | {
                     int(slot)
-                    for row in self._user_rows
+                    for row in user_rows
                     for slot in row["by_slot"]
                 }
             )
@@ -1901,7 +1921,7 @@ class CloudReportsWidget(QWidget):
         blockers = [QSignalBlocker(target) for target in (table, table._left, table._right)]
         table.set_printers('User / Account', groups, detail_labels, include_total=True)
         rows = []
-        for row in self._user_rows:
+        for row in user_rows:
             values = [row["name"]]
             if overview:
                 members = tuple(row['by_slot'].values())
@@ -1930,14 +1950,20 @@ class CloudReportsWidget(QWidget):
             rows.append(tuple(values))
         table.setRowCount(0)
         self._fill_table(table, rows, empty="ยังไม่มีข้อมูล User / Account ในช่วงนี้")
-        for index, row in enumerate(self._user_rows):
+        for index, row in enumerate(user_rows):
             table.item(index, 0).setData(Qt.ItemDataRole.UserRole, row["key"])
-            table.item(index, 0).setToolTip(row['name'])
+            name_tip = row['name']
+            if row.get('type') == 'public':
+                name_tip += "\n" + tr("รวมทุกเครื่องที่ไม่มีข้อมูลแยกผู้ใช้ในช่วงนี้ · ดูยอดแต่ละเครื่องในมุมมองรายเครื่อง",
+                                      "Combined usage without per-user data · See each printer's totals in the By printer view")
+            table.item(index, 0).setToolTip(name_tip)
             for identity, _name, _expanded in groups:
                 start, count = table.printer_columns[identity]
                 cell = table.item(index, start + count - 1)
                 cell.setToolTip(tr('ข้อมูลยอดแยกประเภทหรือค่าใช้จ่ายรายวันไม่ครบ จึงยังคำนวณค่าใช้จ่ายรวมของผู้ใช้นี้ไม่ได้',
                     'Incomplete category usage or daily cost evidence; a complete user cost cannot be calculated.') if cell.text() == '—' else
+                    tr('ค่าใช้จ่ายของยอดที่รวมเป็น Public User',
+                       'Cost of usage grouped under Public User') if row.get('type') == 'public' else
                     tr('ค่าใช้จ่ายจัดสรรจากสัดส่วนการใช้ A3/A4 สี/ขาวดำของแต่ละเครื่องในแต่ละวัน ไม่ใช่ใบแจ้งหนี้',
                        'Allocated from daily A3/A4 color and B&W usage per printer; not an invoice.'))
             if row['key'] == self._selected_user:
@@ -1945,6 +1971,14 @@ class CloudReportsWidget(QWidget):
                 table._right.selectRow(index)
         table.fit_columns()
         del blockers
+        self.user_recovery_button.setVisible(not user_rows)
+        public_hint = tr("รวมยอดของเครื่องที่ไม่มีข้อมูลแยกผู้ใช้ในช่วงที่เลือกเป็น Public User แถวเดียว",
+                         "Combine printer totals without per-user data in the selected period into one Public User row")
+        if not self._public_user_rows:
+            public_hint += "\n" + tr("ไม่มีเครื่องที่ต้องรวมยอดเป็น Public User ในช่วงวันที่เลือก",
+                                      "No printers need a Public User total in the selected period")
+        self.public_user_checkbox.setToolTip(public_hint)
+        apply_language(self)
 
     def _toggle_user_printer(self, identity: str) -> None:
         if identity in self._expanded_user_printers:
@@ -1956,74 +1990,6 @@ class CloudReportsWidget(QWidget):
         if button is not None:
             button.setFocus(Qt.FocusReason.OtherFocusReason)
 
-    def _render_users_charts(self) -> None:
-        users = self._user_rows[:8]
-        breakdown_available = any(
-            slot_row.get('print_available') or slot_row.get('copy_available') or slot_row.get('scan_available')
-            for row in self._user_rows for slot_row in row.get('by_slot', {}).values())
-        colors = (BLUE, QColor(BLUE).lighter(155).name(), ORANGE,
-                  QColor(ORANGE).lighter(155).name(), SLATE)
-        if breakdown_available:
-            top_series = []
-            for index, label in enumerate(FIVE_CATEGORIES):
-                values = tuple(sum(self._classified_user_slot(slot_row)[index]
-                                   for slot_row in row.get('by_slot', {}).values()) for row in users)
-                top_series.append((label, values, colors[index]))
-            top_chart = self._stacked_bar_chart(tuple(row['name'] for row in users), tuple(top_series))
-            top_chart.setTitle(tr('เฉพาะยอดที่แยกประเภทได้', 'Only classified usage'))
-            compact_labels = (tr('P สี', 'P Col'), tr('P ข/ด', 'P BW'),
-                              tr('C สี', 'C Col'), tr('C ข/ด', 'C BW'), tr('สแกน', 'Scan'))
-            for marker, compact in zip(top_chart.legend().markers(), compact_labels):
-                marker.setLabel(compact)
-        else:
-            top_chart = self._horizontal_like_chart(
-                [row['name'] for row in users], [row['usage'] for row in users], ORANGE)
-        replace_chart(self.users_top_chart, top_chart)
-        # Users can load before Printers in staged mode; resolve labels from this snapshot.
-        devices_by_slot = {int(device.slot): device for device in self._devices}
-        devices_by_identity = {}
-        for record in self._records:
-            devices_by_identity.setdefault(_record_identity(record), _record_name(record, devices_by_slot))
-        selected = next((row for row in self._user_rows if row["key"] == self._selected_user), None)
-        chosen = (selected,) if selected else self._user_rows
-        chosen_breakdown_available = any(
-            slot_row.get('print_available') or slot_row.get('copy_available') or slot_row.get('scan_available')
-            for row in chosen for slot_row in row.get('by_slot', {}).values())
-        if chosen_breakdown_available:
-            slots = sorted({int(slot) for row in chosen for slot in row.get('by_slot', {})})
-            series = []
-            for index, slot in enumerate(slots):
-                values = [0.0] * 5
-                for row in chosen:
-                    parts = self._classified_user_slot(row.get('by_slot', {}).get(slot, {}))
-                    values = [a + b for a, b in zip(values, parts)]
-                series.append((self._slot_label(slot, devices_by_slot), tuple(values),
-                               DEVICE_COLORS[index % len(DEVICE_COLORS)]))
-            chart = self._bar_chart(FIVE_CATEGORIES, tuple(series))
-            chart.setTitle(tr('P = Print · C = Copy · เฉพาะยอดที่แยกประเภทได้',
-                              'P = Print · C = Copy · Only classified usage'))
-        else:
-            source = selected["printers"] if selected else defaultdict(float)
-            if not selected:
-                for row in self._user_rows:
-                    for identity, usage in row["printers"].items():
-                        source[identity] += usage
-            labels = [devices_by_identity.get(key, key.replace("serial:", "")) for key in source]
-            chart = self._horizontal_like_chart(labels, list(source.values()), BLUE)
-        replace_chart(self.users_printer_chart, chart)
-        self.user_filter_badge.setText(
-            f"กำลังกรอง: {selected['name']}" if selected else "เลือกผู้ใช้จากตารางเพื่อกรองกราฟ"
-        )
-        self.user_recovery_button.setVisible(not self._user_rows)
-        apply_language(self)
-
-    @staticmethod
-    def _classified_user_slot(slot_row):
-        return tuple(sum(float(slot_row.get(f'{operation}_{paper}_{color}', 0.0))
-                         for paper in ('a3', 'a4'))
-                     for operation in ('print', 'copy') for color in ('color', 'bw')) + (
-            float(slot_row.get('scan', 0.0)),)
-
     def _render_printers(self) -> None:
         if self._staged and not self._can_render_tab(2):
             return
@@ -2033,6 +1999,7 @@ class CloudReportsWidget(QWidget):
         rows = self._printer_rows
         classified = self._printer_classified_totals()
         table_rows = []
+        row_details = []
         for row in rows:
             device = row["device"]
             status = "ควรตรวจสอบ" if row["review"] else (
@@ -2050,14 +2017,37 @@ class CloudReportsWidget(QWidget):
                     _money(row["cost"]) if row.get('cost_available', True) else '—',
                 )
             )
+            row_details.append((row['key'], row['slot'], row['name'], ''))
+        # Usage records are not the device roster: a newly configured printer
+        # can have a successful meter reading but no report interval yet.
+        # Keep it visible without inventing zero usage or adding to chart totals.
+        for device in sorted(self._devices, key=lambda item: int(item.slot)):
+            if not getattr(device, 'enabled', True):
+                continue
+            slot = int(device.slot)
+            serial = str(getattr(device, 'serial', '') or '').strip()
+            key = f'serial:{serial}' if serial else f'slot:{slot}'
+            if any(row['key'].casefold() == key.casefold()
+                   or (row['slot'] == slot and (not serial or row['key'] == f'slot:{slot}'))
+                   for row in rows):
+                continue
+            detail = tr(
+                'ไม่พบรายการยอดใช้งานของเครื่องนี้ในช่วงวันที่เลือก · — หมายถึงยังไม่มีข้อมูลสำหรับรายงาน ไม่ใช่ยอด 0',
+                'No usage entries for this printer in the selected period. — means report data is unavailable, not zero usage.')
+            detail += '\n' + tr('สถานะการเชื่อมต่อล่าสุด: ', 'Latest connection status: ') + str(getattr(device, 'connection_status', '—'))
+            table_rows.append((device.name, tr('ไม่มีรายการในช่วงนี้', 'No entries in this period'), *('—',) * 7))
+            row_details.append((key, slot, device.name, detail))
         printers_signal_blocker = QSignalBlocker(self.printers_table)
         self._fill_table(self.printers_table, table_rows, empty="ยังไม่มีข้อมูลเครื่องพิมพ์ในช่วงนี้")
-        for index, row in enumerate(rows):
+        for index, (key, slot, name, detail) in enumerate(row_details):
             item = self.printers_table.item(index, 0)
-            label = self._slot_label(row['slot'], {int(d.slot): d for d in self._devices})
+            label = f'Slot {slot + 1} · {name}'
             item.setText(label)
-            item.setToolTip(label)
-            item.setData(Qt.ItemDataRole.UserRole, row["key"])
+            item.setToolTip(label + ('\n' + detail if detail else ''))
+            item.setData(Qt.ItemDataRole.UserRole, key)
+            if detail:
+                for column in range(1, self.printers_table.columnCount()):
+                    self.printers_table.item(index, column).setToolTip(detail)
         self._size_printers_table()
         del printers_signal_blocker
 
@@ -2513,6 +2503,8 @@ class CloudReportsWidget(QWidget):
         self._build_printer_rows()
         self._render_overview()
         self._render_printers()
+        if self.users_page is not None:
+            self._render_users()
         self._render_usage()
 
     def _timeline_chart(self, identity: str | None) -> QChart:
@@ -2526,18 +2518,6 @@ class CloudReportsWidget(QWidget):
         if model is None:
             model = build_printer_timeline(self._selected_chart_days, (int(row['slot']) for row in rows), self._devices)
         return render_chart(model)
-
-    @staticmethod
-    def _stacked_bar_chart(categories, series_data, *, show_legend=True):
-        return bar_chart(categories, series_data, stacked=True, show_legend=show_legend)
-
-    @staticmethod
-    def _horizontal_like_chart(labels: list[str], values: list[float], color: str) -> QChart:
-        return horizontal_like_chart(labels, values, color)
-
-    @staticmethod
-    def _bar_chart(categories, series_data) -> QChart:
-        return bar_chart(categories, series_data)
 
     @staticmethod
     def _fill_table(table: QTableWidget, rows: Iterable[Iterable[str]], empty: str = "") -> None:
@@ -2562,21 +2542,10 @@ class CloudReportsWidget(QWidget):
                     item.setTextAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
                 table.setItem(row_index, column, item)
 
-    def _select_user_row(self, row: int, _column: int, *, toggle: bool = True) -> None:
+    def _select_user_row(self, row: int, _column: int) -> None:
+        """Remember selection across table modes without rebuilding the report."""
         if row < 0:
             return
         item = self.users_table.item(row, 0)
-        if item is None:
-            return
-        key = item.data(Qt.ItemDataRole.UserRole)
-        if key is None or (not toggle and key == self._selected_user):
-            return
-        self._selected_user = (
-            None if toggle and key == self._selected_user else key
-        )
-        self._render_users()
-
-    def _clear_user_filter(self) -> None:
-        self._selected_user = None
-        self.users_table.clearSelection()
-        self._render_users()
+        if item is not None and (key := item.data(Qt.ItemDataRole.UserRole)) is not None:
+            self._selected_user = key

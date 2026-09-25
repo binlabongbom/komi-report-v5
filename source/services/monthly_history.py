@@ -237,10 +237,34 @@ def _ledger_period_range(day: date, ledger: _LedgerDay, granularity: HistoryGran
     return history_period_range(day, ledger.billing_day, granularity)
 
 
-def _load_ledger_days(slots: list[int]) -> dict[int, _LedgerDay]:
+def _within_date_bounds(day, start, end):
+    return (start is None or day >= start) and (end is None or day <= end)
+
+
+def _date_bounds_sql(start, end, *, column="record_date"):
+    clauses, values = [], []
+    if start is not None:
+        clauses.append(f" AND {column}>=?")
+        values.append(start.isoformat())
+    if end is not None:
+        clauses.append(f" AND {column}<=?")
+        values.append(end.isoformat())
+    return "".join(clauses), values
+
+
+def _load_ledger_days(slots: list[int], *, period_start=None, period_end=None) -> dict[int, _LedgerDay]:
     if not slots:
         return {}
     placeholders = ",".join("?" for _ in slots)
+    scope, parameters = "", list(slots)
+    if period_start is not None or period_end is not None:
+        bounds, dates = _date_bounds_sql(period_start, period_end)
+        # A correction's creation time is not its usage date. Keep every
+        # posting/reversal/replacement for each selected source day.
+        scope = f""" AND source_daily_record_id IN (
+            SELECT source_daily_record_id FROM billing_ledger
+            WHERE device_slot IN ({placeholders}) {bounds})"""
+        parameters.extend([*slots, *dates])
     with _open(commit=False) as conn:
         rows = conn.execute(
             f"""SELECT id,entry_kind,source_daily_record_id,device_slot,record_date,
@@ -248,9 +272,9 @@ def _load_ledger_days(slots: list[int]) -> dict[int, _LedgerDay]:
                        delta_json,gross_cents,net_cents,device_identity,device_name_snapshot,
                        device_serial_snapshot,hold_reason,attestation_json
                 FROM billing_ledger
-                WHERE device_slot IN ({placeholders}) AND source_daily_record_id IS NOT NULL
+                WHERE device_slot IN ({placeholders}) AND source_daily_record_id IS NOT NULL {scope}
                 ORDER BY id""",
-            slots,
+            parameters,
         ).fetchall()
     accumulated: dict[int, dict] = {}
     for (
@@ -259,8 +283,8 @@ def _load_ledger_days(slots: list[int]) -> dict[int, _LedgerDay]:
         source_id,
         slot,
         record_date,
-        period_start,
-        period_end,
+        ledger_period_start,
+        ledger_period_end,
         billing_day,
         delta_json,
         gross,
@@ -281,8 +305,8 @@ def _load_ledger_days(slots: list[int]) -> dict[int, _LedgerDay]:
                 "source_daily_record_id": int(source_id),
                 "device_slot": int(slot),
                 "record_date": date.fromisoformat(record_date),
-                "period_start": date.fromisoformat(period_start),
-                "period_end": date.fromisoformat(period_end),
+                "period_start": date.fromisoformat(ledger_period_start),
+                "period_end": date.fromisoformat(ledger_period_end),
                 "billing_day": int(billing_day),
                 "delta_json": delta_json,
                 "device_identity": str(device_identity),
@@ -311,7 +335,27 @@ def _load_ledger_days(slots: list[int]) -> dict[int, _LedgerDay]:
             remarks=item["remarks"],
         )
         for source_id, item in accumulated.items()
+        if _within_date_bounds(item["record_date"], period_start, period_end)
     }
+
+
+def _closed_usage_days(slots):
+    """Read only overlap boundaries, including days outside a selected range."""
+    if not slots:
+        return set()
+    placeholders = ",".join("?" for _ in slots)
+    with _open(commit=False) as conn:
+        # Match the full loader's latest ledger row per source id, including
+        # frozen days whose mutable operational row has moved or disappeared.
+        ledger = {source_id: (int(slot), date.fromisoformat(day)) for source_id, slot, day in conn.execute(
+            f"""SELECT source_daily_record_id,device_slot,record_date FROM billing_ledger
+                WHERE device_slot IN ({placeholders}) AND source_daily_record_id IS NOT NULL
+                ORDER BY id""", slots)}
+        closed = set(ledger.values())
+        closed.update((int(slot), date.fromisoformat(day)) for source_id, slot, day in conn.execute(
+            f"SELECT id,device_slot,record_date FROM daily_meter_records WHERE device_slot IN ({placeholders})",
+            slots) if source_id not in ledger)
+    return closed
 
 
 def load_usage_history(
@@ -321,23 +365,39 @@ def load_usage_history(
     today: date | None = None,
     cache: DailyCacheStore | None = None,
     graph: bool = False,
+    period_start: date | None = None,
+    period_end: date | None = None,
 ) -> tuple[MonthlyUsage, ...]:
+    bounded = period_start is not None or period_end is not None
+    if bounded and granularity != "daily":
+        raise ValueError("Date bounds are supported only for daily history")
+    if period_start is not None and period_end is not None and period_start > period_end:
+        raise ValueError("Invalid daily history date range")
     current = today or date.today()
     cache_store = cache or DailyCacheStore()
     billing_day = get_billing_day()
     buckets: dict[tuple[int, str, date, date], dict] = {}
     finalized: set[tuple[int, date]] = set()
-    ledger_days = _load_ledger_days(slots)
+    ledger_days = _load_ledger_days(slots, period_start=period_start, period_end=period_end)
     posted_values = {}
 
     if slots:
         placeholders = ",".join("?" for _ in slots)
+        bounds, dates = _date_bounds_sql(period_start, period_end, column="d.record_date")
+        parameters = [*slots, *dates]
+        ledger_guard = ""
+        if bounded:
+            # A moved operational row remains represented by its frozen ledger
+            # day, even when that day lies outside this selection.
+            ledger_guard = f""" AND d.id NOT IN (SELECT source_daily_record_id FROM billing_ledger
+                WHERE source_daily_record_id IS NOT NULL AND device_slot IN ({placeholders}))"""
+            parameters.extend(slots)
         with _open(commit=False) as conn:
             rows = conn.execute(
                 f"""SELECT id,device_slot,record_date,incomplete,source_json
-                    FROM daily_meter_records WHERE device_slot IN ({placeholders})
+                    FROM daily_meter_records d WHERE device_slot IN ({placeholders}) {bounds} {ledger_guard}
                     ORDER BY record_date""",
-                slots,
+                parameters,
             ).fetchall()
     else:
         rows = []
@@ -467,7 +527,8 @@ def load_usage_history(
         hold_day(slot, day, bool(incomplete), source_json=source_json)
         finalized.add((slot, day))
 
-    closed_days = set(finalized)
+    closed_days = _closed_usage_days(slots) if bounded else set(finalized)
+    finalized.update(closed_days)
     from services.group_meter_scope import group_epoch_covers_day
     with _open(commit=False) as conn:
         grouped_current_slots = {
@@ -483,6 +544,10 @@ def load_usage_history(
                 # journal are the common source; keep local cache as evidence.
                 continue
             finalized.add((slot, current))
+            if not _within_date_bounds(current, period_start, period_end):
+                # Keep the overlap boundary but do not price or display an
+                # out-of-range provisional cache day.
+                continue
             # Safe current-day evidence is visible as provisional usage/cost,
             # but remains outside the append-only Billing Ledger until rollover.
             if _cache_meter_is_safe(state):
@@ -507,7 +572,8 @@ def load_usage_history(
     from services.shared_report_history import load_shared_counter_days
     from services.web_evidence_report import review_labels
     with _open(commit=False) as conn:
-        shared = load_shared_counter_days(conn, slots, kind='device', graph=graph)
+        shared = load_shared_counter_days(conn, slots, start=period_start, end=period_end,
+                                          kind='device', graph=graph)
     shared_days = {}
     for row in shared:
         if any((row.slot, day) in finalized for day in row.covered_days):

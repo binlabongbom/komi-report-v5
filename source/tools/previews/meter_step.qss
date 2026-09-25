@@ -1,0 +1,37 @@
+QWidget#meter_step_preview QLabel#meter_preview_notice {
+    color: #24506E;
+    background: #EAF3FA;
+    border-radius: 7px;
+    padding: 8px 10px;
+}
+QWidget#meter_step_preview QLabel#meter_identity {
+    color: #52677D;
+}
+QWidget#meter_step_preview QLabel#meter_baseline_status {
+    color: #173A63;
+    font-weight: 600;
+}
+QWidget#meter_step_preview QLabel#meter_hint {
+    color: #52677D;
+}
+QWidget#meter_step_preview QTabWidget::pane {
+    background: #FFFFFF;
+    border: 1px solid #C9D9E8;
+}
+QWidget#meter_step_preview QTabBar::tab {
+    color: #52677D;
+    background: #EAF1F7;
+    border: 1px solid #C9D9E8;
+    padding: 9px 20px;
+}
+QWidget#meter_step_preview QTabBar::tab:selected {
+    color: #075B98;
+    background: #FFFFFF;
+    border-bottom: 3px solid #0879C9;
+    font-weight: 700;
+}
+QWidget#meter_step_preview QCheckBox {
+    color: #173A63;
+    padding: 4px 0;
+    font-weight: 600;
+}

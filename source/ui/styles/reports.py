@@ -11,6 +11,7 @@ LINE = "#D9E2EA"
 MUTED = "#66788A"
 PANEL = "#FFFFFF"
 DEVICE_COLORS = (BLUE, ORANGE, "#D65364")
+CHART_LABEL_FONT_PX = 12
 
 
 def base_qss() -> str:
@@ -22,6 +23,7 @@ def base_qss() -> str:
         "QLabel#cloud_title{font-weight:700;color:#102A43;}"
         f"QLabel#cloud_subtitle,QLabel#cloud_panel_subtitle{{color:{MUTED};font-size:12px;}}"
         "QLabel#cloud_panel_title{font-size:15px;font-weight:750;color:#25364A;}"
+        f"QLabel#cloud_chart_legend{{font-size:{CHART_LABEL_FONT_PX}px;color:{NAVY};}}"
         f"QFrame#cloud_overview_kpi_panel{{background:{PANEL};border:1px solid {LINE};border-radius:12px;}}"
         "QFrame#cloud_overview_metric_card{background:#FFFFFF;border:1px solid #D7E0EA;border-radius:9px;}"
         "QWidget#cloud_overview_metric_content{background:transparent;border:none;}"
@@ -58,8 +60,6 @@ def base_qss() -> str:
         f"QPushButton#cloud_granularity{{background:#EEF3F7;color:{NAVY};border:1px solid {LINE};"
         "border-radius:5px;min-width:30px;padding:6px 8px;font-weight:800;}"
         f"QPushButton#cloud_granularity:checked{{background:{NAVY};color:white;border-color:{NAVY};}}"
-        f"QLabel#cloud_filter_badge{{background:#FFF2DE;color:#95570A;border:1px solid #F2D09B;"
-        "border-radius:11px;padding:5px 9px;font-weight:700;}"
         "QLabel#cloud_error{background:#FFF0F1;color:#A61D2D;border:1px solid #F1BBC1;"
         "border-radius:5px;padding:9px 12px;font-weight:700;}"
     )

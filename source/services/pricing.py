@@ -61,6 +61,26 @@ class PriceList:
         return 0.0 if category is CostCategory.NO_CHARGE else float(getattr(self, category.value))
 
 
+def price_change_dates(conn, slot: int) -> tuple[date, ...]:
+    """Return the first priced date and actual rate transitions, without writes.
+
+    Saving setup may repeat the same rates on a later effective date. Those
+    audit rows do not create an ambiguous price boundary for meter intervals.
+    Keep the first row, including zero rates, because earlier usage has no
+    price evidence. Compare all four rates so genuine changes remain held.
+    """
+    result, previous = [], None
+    for effective, *rates in conn.execute(
+        """SELECT effective_date,a3_color,a3_bw,a4_color,a4_bw FROM price_history
+           WHERE device_slot=? ORDER BY effective_date""", (slot,)
+    ):
+        current = tuple(rates)
+        if previous is None or current != previous:
+            result.append(date.fromisoformat(effective))
+        previous = current
+    return tuple(result)
+
+
 def default_cost_category(raw_key: str, label: str = "", category: str = "") -> CostCategory:
     text = " ".join((raw_key, label, category)).lower()
     if any(token in text for token in ("scan", "fax", "toner", "supply")):

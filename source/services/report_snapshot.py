@@ -19,7 +19,9 @@ from services.raw_counter_history import load_raw_counter_history, load_usage_me
 from services.report_chart_models import build_report_chart_models
 from services.report_models import build_legacy_raw_tables, build_printer_rows, build_user_rows
 from services.report_period_policy import current_preview_period, validate_preview_period
+from services.report_public_users import build_public_user_rows
 from services.report_scope import report_slots
+from services.report_user_counters import load_user_counter_history
 from services.subject_history import SubjectDailyCacheStore, load_subject_history
 
 
@@ -107,20 +109,22 @@ def _load_report_snapshot(index, selected, *, cache, subject_cache, repository, 
     # Printers uses posted monthly totals for its table, but its timeline
     # always needs daily points even when the billing period is canonical.
     needs_daily = index in {0, 1, 2, 3}
-    usage_daily = read("daily", lambda: tuple(load_usage_history(slots, granularity="daily", cache=cache))) if needs_daily else ()
-    checkpoint()
     start, end = map(date.fromisoformat, selected)
+    daily_range = dict(period_start=start, period_end=end) if index == 1 else {}
+    usage_daily = read("daily", lambda: tuple(load_usage_history(slots, granularity="daily", cache=cache,
+        **daily_range)), selected if index == 1 else None) if needs_daily else ()
+    checkpoint()
     daily = tuple(record for record in usage_daily if record.period_start <= end and record.period_end >= start)
     chart_daily = read('daily_graph', lambda: tuple(load_usage_history(
         slots, granularity='daily', cache=cache, graph=True))) if index in {0, 2, 3} else usage_daily
     selected_monthly = tuple(record for record in monthly if key(record) == selected)
     subject_range = {"period_start": start, "period_end": end} if not canonical else {"only_period": (start, end)}
     subjects = read("subjects", lambda: tuple(
-        record for record in load_subject_history(slots, cache=subject_cache, **subject_range)
+        record for record in load_subject_history(slots, cache=subject_cache, incremental=index == 1, **subject_range)
         if record.period_start == start and record.period_end == end
     ), selected) if index in {0, 1} else ()
     checkpoint()
-    raw = read("raw", lambda: load_raw_counter_history(slots, period_start=start, period_end=end), selected) if index in {1, 4} else ()
+    raw = read("raw", lambda: load_raw_counter_history(slots, period_start=start, period_end=end), selected) if index == 4 else ()
     checkpoint()
     legacy = read("legacy", lambda: tuple(load_imported_legacy_history())) if index in {3, 4} else ()
     baselines = read("baselines", lambda: tuple(load_usage_meter_baselines(slots))) if index == 3 else ()
@@ -136,7 +140,17 @@ def _load_report_snapshot(index, selected, *, cache, subject_cache, repository, 
             index, selected_monthly or daily, chart_daily, devices, models["printers"],
             period=selected, cancelled=cancelled), selected)
     if index in {0, 1}:
-        models["users"] = read(("user_model", index), lambda: build_user_rows(subjects, raw, category_costs=category_costs, cancelled=cancelled), selected)
+        def prepare_users():
+            # The GUI needs only the completed model. Do not keep hundreds of
+            # thousands of temporary Counter rows in either snapshot cache.
+            counters = (load_user_counter_history(slots, period_start=start, period_end=end, incremental=True)
+                        if index == 1 and subjects else ())
+            return build_user_rows(subjects, counters, category_costs=category_costs, cancelled=cancelled)
+        models["users"] = read(("user_model", index), prepare_users, selected)
+    if index == 1:
+        def prepare_public_users():
+            return build_public_user_rows(daily, devices, subjects=subjects, cancelled=cancelled)
+        models["public_users"] = read("public_user_model", prepare_public_users, selected)
     if index == 4:
         models["legacy_raw"] = read("raw_model", lambda: build_legacy_raw_tables(raw, devices, cancelled=cancelled), selected)
     checkpoint()

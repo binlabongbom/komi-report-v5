@@ -31,6 +31,8 @@ from services.monthly_history import HistoryGranularity, load_usage_history
 from services.polling import PollingPolicy
 from services.pricing import PricingRepository
 from services.report_scope import report_slots
+from services.report_subject_names import build_subject_name_index
+from services.report_user_counters import load_user_counter_history
 from services.reporting_facade import ReportReadService
 from services.peer_sync_authorization import (
     PeerSyncAuthorizationError,
@@ -416,6 +418,8 @@ class UserOut(ApiModel):
     subject_type: str
     subject_id: str
     subject_name: str
+    report_user_key: str = ""
+    report_device_identity: str = ""
     usage: float
     latest_total: float
     needs_review: bool
@@ -1199,6 +1203,13 @@ def report_users(
         if selected
         else ()
     )
+    # Resolve the full selection once, before any page is sliced. Subsequent
+    # pages reuse this payload so their names and grouping keys cannot drift.
+    counters = load_user_counter_history(
+        sorted({int(item.device_slot) for item in items}),
+        period_start=selected[0], period_end=selected[1], incremental=True,
+    ) if items else ()
+    names = build_subject_name_index(items, counters)
     payload = [
             {
                 "device_slot": item.device_slot,
@@ -1207,7 +1218,9 @@ def report_users(
                 "device_serial_snapshot": item.device_serial_snapshot,
                 "subject_type": item.subject_type,
                 "subject_id": item.subject_id,
-                "subject_name": item.subject_name,
+                "subject_name": names.name(item),
+                "report_user_key": names.group_key(item),
+                "report_device_identity": names.key(item)[1],
                 "usage": item.period_usage,
                 "latest_total": item.latest_total,
                 "needs_review": item.needs_review,

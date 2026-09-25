@@ -2,11 +2,11 @@
 from pathlib import Path
 
 import pytest
+from excel_export_fixture import report_for
 from PyQt6.QtCore import QPoint
 from PyQt6.QtTest import QSignalSpy, QTest
 from PyQt6.QtWidgets import QApplication
 
-from excel_export_fixture import report_for
 from i18n import set_language
 from ui.cloud_reports import CloudReportsWidget
 
@@ -52,7 +52,7 @@ def test_loading_and_retry_keep_all_report_viewports_in_place(language, width):
             controls = [widget.tabs, widget.tab_scrolls[index], widget.header_status,
                         widget.export_button, widget.refresh_button]
             controls += [getattr(widget, name) for name in (
-                ('overview_trend', 'overview_printers'), ('users_top_chart', 'users_table'),
+                ('overview_trend', 'overview_printers'), ('user_overview_button', 'users_table'),
                 ('printer_trend', 'printers_table'), ('usage_monthly_table', 'usage_printer_table'),
                 ('legacy_machine_table', 'legacy_user_table'))[index]]
             for usage_view in range(2 if index == 3 else 1):

@@ -198,10 +198,12 @@ def project_points(points, *, epoch_id, web_days, issues, billing_day, price_cha
             holds.add("normalization_schema_changed")
         if "same_time_counter_conflict" in issues:
             holds.add("same_time_counter_conflict")
-        # No clock precision can prove which side of these boundaries was used.
-        if billing_month_range(left.at.date(), billing_day) != billing_month_range(right.at.date(), billing_day):
+        # Positive usage spanning a boundary cannot be assigned to either side.
+        # An unchanged counter has nothing to allocate and must not hold later
+        # usage that is fully observed under the new price or billing period.
+        if amount > 0 and billing_month_range(left.at.date(), billing_day) != billing_month_range(right.at.date(), billing_day):
             holds.add("interval_crosses_billing_period")
-        if any(left.at.date() < day <= right.at.date() for day in changes):
+        if amount > 0 and any(left.at.date() < day <= right.at.date() for day in changes):
             holds.add("interval_crosses_price_change")
         middle_days = (right.at.date() - left.at.date()).days - 1
         if middle_days > len(empty_days):

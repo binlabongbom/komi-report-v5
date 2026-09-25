@@ -6,6 +6,8 @@ from services.support_diagnostics import CATALOG
 
 
 CHECKS = {
+    'attribution_rejected': 'หลักฐานมี request_mode=Admin, endpoint, AuthType/TrackType และ ResultInfo ที่ไม่ใช่ Ack; แยกจาก HTTP/TLS/รหัสผ่านและยอดผู้ใช้เป็นศูนย์ เพราะคำขอข้อมูลรายผู้ใช้ยังไม่สำเร็จ',
+    'slot_baseline_missing': 'พบเครื่องที่เปิดใช้และ revision การตั้งค่าแล้ว แต่ไม่พบฐานของ Slot ใน slot_meter_heads; ข้อผิดพลาดเกิดก่อนติดต่อเครื่องพิมพ์ จึงไม่ใช่ผลตรวจ TLS หรือรหัสผ่าน',
     'dns_failed': 'หลักฐานต้องเป็น DNS/socket.gaierror; ดูชื่อ Host ในช่องปลายทางของรายงาน',
     'connection_refused': 'ดู endpoint และ OS_code ที่ระบุ connection refused; ขั้นตอนยังไม่ถึงการเข้าสู่ระบบ',
     'connection_timeout': 'ดูขั้นตอน ปลายทาง และเวลา timeout ในรายงาน; ผลนี้ระบุตำแหน่งคำขอที่ล้มเหลว แต่ไม่ยืนยัน TLS ปิดหรือรหัสผิด',

@@ -34,7 +34,7 @@ def test_raw_index_preserves_zero_missing_review_sources_and_slot_replacement():
     assert new.opening_value == 90000  # absolute meter was never counted as usage
 
 
-def test_snapshot_tabs_share_immutable_raw_and_invalidate_by_database(monkeypatch, tmp_path):
+def test_users_snapshot_does_not_retain_raw_and_legacy_cache_is_scoped(monkeypatch, tmp_path):
     from services import report_snapshot as module
     from database import get_db_path
     period = ('2026-08-01', '2026-08-31')
@@ -44,6 +44,7 @@ def test_snapshot_tabs_share_immutable_raw_and_invalidate_by_database(monkeypatc
     monkeypatch.setattr(module, 'report_slots', lambda: [0])
     monkeypatch.setattr(module, 'load_usage_history', lambda *a, **kw: (monthly,))
     monkeypatch.setattr(module, 'load_subject_history', lambda *a, **kw: ())
+    monkeypatch.setattr(module, 'load_user_counter_history', lambda *a, **kw: pytest.fail('No subjects need no Counter evidence'))
     monkeypatch.setattr(module, 'load_imported_legacy_history', lambda: ())
     def read(*args, **kwargs):
         calls.append(str(get_db_path()))
@@ -53,7 +54,10 @@ def test_snapshot_tabs_share_immutable_raw_and_invalidate_by_database(monkeypatc
     kwargs = dict(cache=None, subject_cache=None, repository=SimpleNamespace(list=lambda **kw: ()), cancelled=Event(), shared=shared)
     users = load_report_snapshot(1, period, **kwargs)
     legacy = load_report_snapshot(4, period, **kwargs)
-    assert users.data['raw_counter_records'] is legacy.data['raw_counter_records']
+    assert users.data['raw_counter_records'] == ()
+    assert legacy.data['raw_counter_records'] == raw
+    again = load_report_snapshot(4, period, **kwargs)
+    assert again.data['raw_counter_records'] is legacy.data['raw_counter_records']
     assert users.data['monthly_records'] is legacy.data['monthly_records']
     assert len(calls) == 1
     with pytest.raises(TypeError):

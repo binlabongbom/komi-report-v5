@@ -220,7 +220,7 @@ def main():
         users = snapshot.data['prepared_models']['users']
         actual = {row['name']: row['usage'] for row in users}
         assert actual == expected, 'Preview user totals do not match selected source dates'
-        assert len(snapshot.data['raw_counter_records']) == expected_raw
+        assert not snapshot.data['raw_counter_records'], 'Users must retain only its prepared model'
         visible_error = center.error_label.text() if center.error_label.isVisible() else ''
         assert not visible_error, visible_error
         result['preview_validation'] = {'users': len(users), 'totals_match': True,
@@ -228,6 +228,7 @@ def main():
         save()
         for index in (0, 2, 3, 4):
             step(f'report_year_tab_{index}', lambda i=index: center.tabs.setCurrentIndex(i), reports_ready)
+        assert len(page._snapshot_cache[(4, period)].data['raw_counter_records']) == expected_raw
         result['year_all_tabs_data'] = report_rows()
         raw_snapshots = [snapshot.data['raw_counter_records'] for snapshot in page._snapshot_cache.values()
                          if snapshot.data.get('raw_counter_records')]

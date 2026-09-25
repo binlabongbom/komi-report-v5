@@ -9,7 +9,7 @@ from datetime import date
 from itertools import combinations
 
 import pytest
-from PyQt6.QtCore import QDate, QPoint, QRect
+from PyQt6.QtCore import QDate, QPoint, QRect, Qt
 from PyQt6.QtTest import QTest
 from PyQt6.QtWidgets import QApplication, QLabel, QScrollArea, QWidget
 
@@ -132,6 +132,10 @@ def report_widget():
 def test_visiting_tall_tabs_does_not_inflate_overview(report_widget):
     widget = report_widget
     scroll = _content_scroll(widget, widget.overview_page)
+    # Polish the visible chart's flow legends before capturing the baseline.
+    # With native fonts, their first rerender adds 4 px per card.
+    widget._render_selected_tab(0)
+    _settle()
     before = (
         widget.size(),
         scroll.viewport().size(),
@@ -152,7 +156,7 @@ def test_visiting_tall_tabs_does_not_inflate_overview(report_widget):
     assert widget.rect().contains(_rect_in(scroll, widget))
 
 
-@pytest.mark.parametrize("tab_index,content_name", [(0, "overview_page"), (1, "users_page"), (2, "printers_page")])
+@pytest.mark.parametrize("tab_index,content_name", [(0, "overview_page"), (2, "printers_page")])
 def test_header_and_period_stay_visible_while_report_content_scrolls(report_widget, tab_index, content_name):
     widget = report_widget
     widget.tabs.setCurrentIndex(tab_index)
@@ -173,6 +177,37 @@ def test_header_and_period_stay_visible_while_report_content_scrolls(report_widg
     for anchor, rect in zip(anchors, before, strict=True):
         assert widget.rect().contains(rect), anchor.objectName()
         assert not scroll.viewport().isAncestorOf(anchor)
+
+
+def test_users_table_scrolls_rows_without_moving_headers_or_report_controls(report_widget):
+    from excel_export_fixture import report_for
+
+    widget = report_widget
+    report = report_for(users=40, days=1, printers=1)
+    widget.resize(1000, 720)
+    widget.tabs.setCurrentIndex(1)
+    widget.set_data(
+        records=report.selected_records, daily_records=report.selected_daily_records,
+        subjects=report.subjects, devices=report.devices,
+        raw_counter_records=report.raw_counter_records,
+        period=report.period, last_sync_at=None,
+    )
+    _settle()
+    table = widget.users_table
+    scroll = _content_scroll(widget, widget.users_page)
+    anchors = [widget.export_button, widget.refresh_button, widget.tabs.tabBar(),
+               widget.user_overview_button, widget.user_printers_button, table._group_header]
+    anchors.extend(editor for pair in widget.period_edit_pairs for editor in pair if editor.isVisible())
+    before = [_rect_in(anchor, widget) for anchor in anchors]
+    assert scroll.verticalScrollBar().maximum() == 0
+    scrollbar = table._right.verticalScrollBar()
+    assert scrollbar.maximum() > 0, "Rows must scroll inside the full-height table"
+    first_row_top = table._right.visualRect(table._right.model().index(0, 0)).top()
+    scrollbar.setValue(scrollbar.maximum())
+    _settle()
+    assert table._right.visualRect(table._right.model().index(0, 0)).top() < first_row_top
+    assert table._left.verticalScrollBar().value() == scrollbar.value()
+    assert [_rect_in(anchor, widget) for anchor in anchors] == before
 
 
 @pytest.mark.parametrize("width", [800, 660])
@@ -350,8 +385,9 @@ def test_resize_and_tab_navigation_preserve_report_values_selection_and_period(r
     _settle()
     widget.users_table.setCurrentCell(0, 0)
     _settle()
-    selection = widget.user_filter_badge.text()
-    assert "Alice Example" in selection
+    selection = widget.users_table.item(0, 0).data(Qt.ItemDataRole.UserRole)
+    assert widget._selected_user == selection
+    assert widget.users_table.item(0, 0).text() == "Alice Example"
     emitted = []
     widget.period_changed.connect(emitted.append)
     widget.period_start_edit.setDate(QDate(2026, 8, 5))
@@ -361,7 +397,8 @@ def test_resize_and_tab_navigation_preserve_report_values_selection_and_period(r
         widget.resize(width, 620)
         widget.tabs.setCurrentIndex(index)
         _settle()
-    assert widget.user_filter_badge.text() == selection
+    assert widget._selected_user == selection
+    assert widget.users_table._left.currentItem().data(Qt.ItemDataRole.UserRole) == selection
     assert widget.current_period() == ("2026-08-05", "2026-08-06")
     for start, end in widget.period_edit_pairs:
         assert start.date() == QDate(2026, 8, 5)

@@ -42,6 +42,8 @@ class SetupReviewData:
     edit_mode: bool
     offline_edition: bool
     platform: tuple[str, str]
+    meter_summary: tuple[str, ...] = ()
+    meter_editable: bool = False
 
 
 def format_price_rates(rates: PriceRates) -> str:
@@ -81,8 +83,9 @@ class ReviewStep(QWidget):
         for key, section_title, target_step in (
             ("organization", "องค์กร", 0),
             ("devices", "เครื่องพิมพ์", 1),
-            ("pricing", "ราคา", 2),
-            ("billing", "รอบบิล", 2),
+            ("meter", tr("มิเตอร์เริ่มต้น", "Initial meter"), 2),
+            ("pricing", "ราคา", 3),
+            ("billing", "รอบบิล", 3),
             ("registration", "ข้อมูลลงทะเบียน", None),
         ):
             section = QFrame()
@@ -117,6 +120,11 @@ class ReviewStep(QWidget):
                 edit.setAccessibleName(f"แก้ไข{section_title}")
                 edit.clicked.connect(lambda _checked=False, step=target_step: self.edit_requested.emit(step))
                 section_layout.addWidget(edit, 0, Qt.AlignmentFlag.AlignTop)
+                if key == "meter":
+                    self.meter_edit_button = edit
+            if key == "meter":
+                self.meter_section = section
+                section.hide()
             panel_layout.addWidget(section)
             self.review_sections[key] = body
         review_scroll.setWidget(review_panel)
@@ -131,6 +139,9 @@ class ReviewStep(QWidget):
         layout.addWidget(self.review_ready_note)
 
     def render(self, data: SetupReviewData) -> None:
+        self.meter_section.setVisible(bool(data.meter_summary))
+        self.meter_edit_button.setVisible(bool(data.meter_summary) and data.meter_editable)
+        self.review_sections["meter"].setText("<br>".join(escape(line) for line in data.meter_summary))
         devices = data.devices
         shared = data.pricing.mode == "shared"
         deferred = data.pricing.mode == "deferred"

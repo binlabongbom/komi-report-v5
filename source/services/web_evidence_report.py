@@ -8,6 +8,7 @@ import sqlite3
 
 from services.web_observations import WebObservationStore
 from services.billing_periods import effective_billing_day
+from services.pricing import price_change_dates
 from services.web_usage_projection import CounterIdentity, project_counter
 
 MAX_REPORT_EVENTS = 4096
@@ -89,7 +90,7 @@ def load_evidence(database_path, *, slot, serial, start, end, calendar_timezone,
                 key = CounterIdentity(c["canonical_field"], c["subject_type"], c["subject_id"])
                 subject = f" · {c['subject_name'] or c['subject_id']} ({c['subject_id']})" if c["subject_type"] else ""
                 choices[key] = f"{c['label']}{subject}"
-        prices = [date.fromisoformat(row[0]) for row in conn.execute("SELECT DISTINCT effective_date FROM price_history WHERE device_slot=?", (slot,))]
+        prices = price_change_dates(conn, slot)
         row = conn.execute("SELECT value FROM settings WHERE key='billing_day'").fetchone()
         billing_day = effective_billing_day(row[0] if row else None)
         current = conn.execute("SELECT epoch_id FROM slot_meter_heads WHERE device_slot=?", (slot,)).fetchone()

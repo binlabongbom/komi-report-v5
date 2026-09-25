@@ -103,6 +103,10 @@ class PeerNetworkRuntime(QObject):
             return {'unchanged': True}
         access = self.membership_loader(path=self.path)
         access._secret(access.group())
+        from services.pending_slot_baselines import recover_pending_slot_baselines
+        repaired = recover_pending_slot_baselines(self.path)
+        if repaired:
+            log.info('Recovered pending initial meter baselines: slots=%s', repaired)
         from services.secondary_setup import _active_ipv4_subnets
         from services.lan_tls import discover_primary_lan_ip
         interfaces = _active_ipv4_subnets()

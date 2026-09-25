@@ -1,0 +1,20 @@
+/* Preview-only layout. Shared wizard buttons/palette come from SETUP_PANEL. */
+QScrollArea, QScrollArea > QWidget > QWidget { background: transparent; }
+QLabel#page_title { font-size: 22px; font-weight: 700; color: #102A43; }
+QLabel#section_title { font-size: 16px; font-weight: 700; }
+QDialog#setup_wizard_v5 QLabel#muted { color: #52677D; }
+QDialog#setup_wizard_v5 QLabel#badge { color: #075B98; background: #DCEEFF; padding: 7px 12px; border-radius: 7px; }
+QDialog#setup_wizard_v5 QLabel#step { color: #52677D; background: #E5ECF2; border-radius: 7px; padding: 11px; }
+QDialog#setup_wizard_v5 QLabel#step[active="true"] { color: white; background: #173A63; font-weight: 700; }
+QFrame#preview_card { background: white; border: 1px solid #C9D9E8; border-radius: 10px; }
+QDialog#setup_wizard_v5 QLabel#notice { background: #EEF6FC; color: #174F78; border-radius: 7px; padding: 12px; }
+QDialog#setup_wizard_v5 QLabel#success { color: #176B49; }
+QLineEdit, QDoubleSpinBox, QComboBox {
+    background: white; color: #172033; border: 1px solid #B8C8D8;
+    border-radius: 6px; padding: 7px; min-height: 26px;
+}
+QLineEdit:focus, QDoubleSpinBox:focus, QComboBox:focus { border: 2px solid #0879C9; }
+QCheckBox { spacing: 8px; padding: 5px 0; }
+QCheckBox::indicator { width: 19px; height: 19px; }
+QProgressBar { background: #E5ECF2; border: none; border-radius: 2px; }
+QProgressBar::chunk { background: #0879C9; }

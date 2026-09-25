@@ -29,6 +29,7 @@ from services.report_operation_breakdown import (
 from services.subject_history import SubjectPeriodUsage
 from services.report_export_options import ALL_REPORT_SECTIONS, validate_sections
 from services.report_period_policy import EXPORT_YEARS, validate_report_period
+from services.report_subject_names import build_subject_name_index, subject_device_identity
 
 NAVY = "123262"
 BLUE = "1677C8"
@@ -640,6 +641,11 @@ def _subject_costs(subject_records, device_key, evidence):
     return _allocate_subject_costs(subject_records, device_key, evidence, checkpoint=_checkpoint)
 
 
+def _sum_known_amounts(values):
+    amounts = tuple(values)
+    return round(sum(amounts), 2) if amounts and all(value is not None for value in amounts) else None
+
+
 def _write_machine_sheet(
     worksheet,
     records: tuple[MonthlyUsage, ...],
@@ -734,6 +740,18 @@ def _write_user_sheet(
     *,
     cost_note: str,
 ) -> None:
+    names = build_subject_name_index(subjects, raw_records, checkpoint=lambda _index: _checkpoint())
+    # The Users identity index can recognize an unambiguous slot-only legacy
+    # record as the same printer as a serial record. Apply that identity to
+    # columns as well as records, so the same Raw evidence appears only once.
+    user_devices = {}
+    for device in devices:
+        identity = (names.slot_identities.get(device.slot, device.identity)
+                    if device.identity == f"slot:{device.slot}" else device.identity)
+        key = device.slot, identity
+        if key not in user_devices or device.identity == identity:
+            user_devices[key] = _DeviceColumn(device.slot, identity, device.label)
+    devices = tuple(user_devices.values())
     fixed_columns = 3
     total_columns = fixed_columns + len(devices) * len(OPERATION_DEVICE_SUBHEADERS) + 2
     _sheet_title(
@@ -766,11 +784,10 @@ def _write_user_sheet(
     _header_cell(worksheet.cell(3, column + 1, "สถานะ"), NAVY)
     _header_cell(worksheet.cell(4, column + 1, "ผลตรวจ"), NAVY)
 
-    subject_groups: dict[tuple[str, str], dict[str, object]] = {}
+    subject_groups: dict[str, dict[str, object]] = {}
     for subject in subjects:
-        key = (subject.subject_type, subject.subject_id)
-        group = subject_groups.setdefault(key, {"name": subject.subject_name, "records": []})
-        group["name"] = subject.subject_name
+        key = names.group_key(subject)
+        group = subject_groups.setdefault(key, {"name": names.name(subject), "records": []})
         group["records"].append(subject)
     ordered_groups = sorted(
         subject_groups.items(),
@@ -780,50 +797,70 @@ def _write_user_sheet(
     for record in raw_records:
         if not record.is_subject:
             continue
-        identity = (
-            f"serial:{record.device_serial_snapshot}"
-            if record.device_serial_snapshot
-            else f"slot:{record.device_slot}"
-        )
+        _slot, identity, _kind, _subject_id = names.key(record)
         raw_groups[
             (record.subject_type, record.subject_id, (record.device_slot, identity))
         ].append(record)
-    evidence = _device_daily_evidence(raw_records, costs)
-    for row_index, ((subject_type, subject_id), group) in enumerate(ordered_groups, start=5):
+    evidence = names.compatible_device_evidence(_device_daily_evidence(raw_records, costs))
+    for row_index, (_group_key, group) in enumerate(ordered_groups, start=5):
         subject_records = tuple(group["records"])
-        row: list[object] = [group["name"], subject_type, subject_id]
+        subject_keys_by_device = defaultdict(set)
+        subject_usage = defaultdict(float)
+        for record in subject_records:
+            slot, identity, kind, subject_id = names.key(record)
+            subject_keys_by_device[(slot, identity)].add((kind, subject_id))
+            subject_usage[(slot, identity, kind, subject_id)] += record.period_usage
+        subject_ids = sorted({str(record.subject_id) for record in subject_records})
+        # Printer-local IDs can differ for the same display name. Retain their
+        # provenance while using the same presentation grouping as the screen.
+        id_label = subject_ids[0] if len(subject_ids) == 1 else " | ".join(
+            f"Slot {slot + 1}: {subject_id}"
+            for slot, subject_id in sorted({
+                (int(record.device_slot), str(record.subject_id)) for record in subject_records
+            })
+        )
+        row: list[object] = [group["name"], subject_records[0].subject_type, id_label]
         for device in devices:
             usage = sum(
-                record.period_usage
-                for record in subject_records
-                if _subject_device_key(record) == device.key
+                subject_usage[(*device.key, kind, subject_id)]
+                for kind, subject_id in subject_keys_by_device[device.key]
             )
-            subject_raw = tuple(
-                raw_groups.get((subject_type, subject_id, device.key), ())
-            )
-            breakdown = breakdown_from_raw_records(subject_raw)
-            amounts = _subject_costs(subject_raw, device.key, evidence)
+            details = []
+            total_amounts = []
+            for subject_type, subject_id in sorted(subject_keys_by_device[device.key]):
+                subject_raw = raw_groups.get((subject_type, subject_id, device.key), ())
+                # Derive and round each printer-local account before combining
+                # presentation rows, matching the screen and avoiding one
+                # account's counter format overriding another account's data.
+                breakdown = breakdown_from_raw_records(subject_raw)
+                amounts = _subject_costs(subject_raw, device.key, evidence)
+                details.append((breakdown, amounts))
+                if (subject_usage[(*device.key, subject_type, subject_id)]
+                        or breakdown.print_total or breakdown.copy_total):
+                    # A local account with usage but no price/counter evidence
+                    # must keep the combined cost unavailable, not partial.
+                    total_amounts.append(_subject_total_cost(breakdown, amounts))
             for field, _label, category_field, operation in OPERATION_FIELDS:
-                available = (
-                    breakdown.print_available
-                    if operation == "print"
-                    else breakdown.copy_available
-                )
+                available = any(getattr(breakdown, f"{operation}_available")
+                                for breakdown, _amounts in details)
                 row.extend(
                     (
-                        getattr(breakdown, field) if available else None,
-                        amounts[field]
-                        if available
-                        else None,
+                        sum(getattr(breakdown, field) for breakdown, _amounts in details)
+                        if available else None,
+                        _sum_known_amounts(amounts[field] for breakdown, amounts in details
+                                           if getattr(breakdown, field) > 0) if available else None,
                     )
                 )
             row.extend(
                 (
-                    breakdown.scan if breakdown.scan_available else None,
-                    breakdown.print_total if breakdown.print_available else None,
-                    breakdown.copy_total if breakdown.copy_available else None,
+                    sum(breakdown.scan for breakdown, _amounts in details)
+                    if any(breakdown.scan_available for breakdown, _amounts in details) else None,
+                    sum(breakdown.print_total for breakdown, _amounts in details)
+                    if any(breakdown.print_available for breakdown, _amounts in details) else None,
+                    sum(breakdown.copy_total for breakdown, _amounts in details)
+                    if any(breakdown.copy_available for breakdown, _amounts in details) else None,
                     usage,
-                    _subject_total_cost(breakdown, amounts),
+                    _sum_known_amounts(total_amounts),
                 )
             )
         row.extend(
@@ -1015,7 +1052,7 @@ def _record_device_key(record: MonthlyUsage) -> tuple[int, str]:
 
 
 def _subject_identity(subject: SubjectPeriodUsage) -> str:
-    return str(subject.device_identity or f"slot:{subject.device_slot}")
+    return subject_device_identity(subject)
 
 
 def _subject_device_key(subject: SubjectPeriodUsage) -> tuple[int, str]:

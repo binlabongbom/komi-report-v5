@@ -54,6 +54,40 @@ Rendering preserves the approved categories and meanings:
 - Printers timeline keeps one bar per day, stacking slots in slot order with dark Color/light B&W per printer. Slot names come from configuration.
 - Legends wrap whole entries and retain `A4 | A3 Print` / `C | BW Slot …` order. Existing chart replacement/disposal owns Qt lifetime.
 
+Users report snapshots prepare their complete table model in the worker using
+`services/report_user_counters.py`. This temporary projection keeps daily
+canonical counters, subject/physical-device identities and review flags for the
+existing breakdown and daily cost calculations. It uses the same effective Raw
+selector as Legacy, including archive, amendment and shared-history precedence.
+Only the completed Users model is sent to Qt; a Users snapshot has no
+full `raw_counter_records`. Legacy and Excel load full Raw independently.
+
+User display names use the shared placeholder predicate and name preference in
+`komi_snmp_profiler/subject_identity.py`. Subject daily cache and period aggregation
+keep a real name when a later observation contains only an ID or blank name.
+The real-name observation day is separate from the latest meter date; existing
+archive summary JSON optionally carries `_name_date` without a schema change.
+`services/report_subject_names.py` resolves selected Subject/Raw evidence once,
+scoped by slot, physical printer, subject type and exact subject ID. Modern Users
+table/chart models and the Users Excel sheet use this same index. Real names may
+retain the existing cross-printer presentation grouping; numeric placeholders
+cannot establish that grouping. Legacy Raw views retain original audit labels.
+
+Users requests bound daily usage reads to the selected preview period. Their
+process-local incremental read models live in `services/report_day_projection.py`:
+schema 34 tracks every hot Subject/Raw insertion, update and deletion by device
+and day. An unchanged day reuses its compressed immutable rows; dirty days alone
+fetch source payloads again. Daily category breakdowns also memoize exact
+canonical values. Period aggregation and daily price allocation remain fresh.
+
+The day cache retains at most 32 MiB of compressed payload, 2,400 entries and
+4 million source rows. It is separate from the UI snapshot generation, so a
+refresh can reuse validated days. Database generation/path, mutation tokens and
+amendment exclusions form its identity. Archive verification and shared-history
+reads retain their existing precedence. It uses no persisted serialized objects;
+restarting the application discards it. Schema migration uses the existing
+transactional upgrade and pre-upgrade backup path.
+
 ## Setup and Settings composition
 
 Setup steps communicate through explicit signals and values. `PricingSelection` and `SetupReviewData` capture values for validation/review without having the review component read arbitrary wizard controls. The wizard retains device I/O, registration, saving and async cancellation.

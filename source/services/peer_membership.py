@@ -33,6 +33,10 @@ FORMAT = 'komi.lan.enrollment.v1'
 CONTACT = 'komi.lan.member.v1'
 
 
+class SlotBaselineRequired(PermissionError):
+    diagnostic_code = 'slot_baseline_missing'
+
+
 def _json(value):
     return json.dumps(value, sort_keys=True, separators=(',', ':'), ensure_ascii=False, allow_nan=False)
 
@@ -376,8 +380,10 @@ class PeerMembership:
             device = conn.execute('SELECT serial FROM devices WHERE slot=? AND enabled=1', (slot,)).fetchone()
             epoch = conn.execute('SELECT epoch_id FROM slot_meter_heads WHERE device_slot=?', (slot,)).fetchone()
             revision = conn.execute("SELECT value FROM peer_settings_state WHERE key='head'").fetchone()
-        if not device or not epoch or not revision:
+        if not device or not revision:
             raise PermissionError('Shared Slot requires reviewed setup and meter baseline')
+        if not epoch:
+            raise SlotBaselineRequired('Shared Slot requires reviewed setup and meter baseline')
         scope = ReadScope(group['group_id'], slot, device[0], revision[0], epoch[0])
         scope.document()
         return scope

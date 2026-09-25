@@ -14,10 +14,11 @@ from excel_export_fixture import report_for
 from i18n import apply_language, set_language
 from services.error_codes import ERROR_CODES
 from services.error_reference import CHECKS
+from services.report_chart_models import FIVE_CATEGORIES
 from services.report_excel_export import export_cloud_reports_xlsx
 from services.report_export_options import ALL_REPORT_SECTIONS, REPORT_SECTIONS
 from services.support_diagnostics import diagnose
-from ui.cloud_reports import CloudReportsWidget, FIVE_CATEGORIES
+from ui.cloud_reports import CloudReportsWidget
 from ui.error_list import ErrorListPanel
 from ui.reports.export_dialog import ReportExportPeriodDialog
 

@@ -6,7 +6,7 @@ from dataclasses import replace
 from datetime import date
 
 import pytest
-from PyQt6.QtCharts import QBarSeries, QStackedBarSeries
+from PyQt6.QtCharts import QStackedBarSeries
 from PyQt6.QtCore import QDate, QLocale, QPoint, Qt, QTimer
 from PyQt6.QtTest import QSignalSpy, QTest
 from PyQt6.QtWidgets import QApplication, QDateEdit, QPushButton, QTableView, QToolButton
@@ -348,7 +348,7 @@ def test_cloud_reports_share_period_and_cross_filter_users_and_printers():
 
     widget.tabs.setCurrentIndex(1)
     widget._select_user_row(0, 0)
-    assert widget.user_filter_badge.text() == "กำลังกรอง: alice"
+    assert widget._selected_user == widget.users_table.item(0, 0).data(Qt.ItemDataRole.UserRole)
     widget.tabs.setCurrentIndex(2)
     widget.printers_table.setCurrentCell(0, 0)
     assert not hasattr(widget, "printer_compare_note")
@@ -521,6 +521,7 @@ def test_users_matrix_uses_real_names_and_slot_operation_detail_headers():
         ),
         subject_id="1",
         subject_name="TEST1",
+        device_serial_snapshot="SER-A",
     )
     widget = CloudReportsWidget()
     widget.set_data(
@@ -663,7 +664,7 @@ def test_printer_charts_compare_all_devices_when_a_table_row_is_selected():
     app.processEvents()
 
 
-def test_keyboard_selection_updates_user_filter_without_rebuilding_printer_charts():
+def test_keyboard_selection_preserves_users_table_and_printer_charts(monkeypatch):
     app = QApplication.instance() or QApplication([])
     day = date(2026, 8, 6)
     second = replace(
@@ -688,9 +689,17 @@ def test_keyboard_selection_updates_user_filter_without_rebuilding_printer_chart
     )
 
     widget.tabs.setCurrentIndex(1)
+    original_user = widget.users_table.item(0, 0)
+    original_value = widget.users_table.item(0, 1)
+    render_calls = []
+    monkeypatch.setattr(widget, "_render_users_table", lambda: render_calls.append(True))
     widget.users_table.setCurrentCell(0, 0)
     app.processEvents()
-    assert widget.user_filter_badge.text() == "กำลังกรอง: alice"
+    assert widget._selected_user == original_user.data(Qt.ItemDataRole.UserRole)
+    assert widget.users_table._left.currentRow() == 0
+    assert widget.users_table.item(0, 0) is original_user
+    assert widget.users_table.item(0, 1) is original_value
+    assert render_calls == [], "Selecting a user must not rebuild the report table"
 
     widget.tabs.setCurrentIndex(2)
     original_charts = (widget.printer_mix.chart(), widget.printer_trend.chart())
@@ -780,6 +789,8 @@ def test_users_table_separates_color_without_inventing_missing_counters(mode):
     elif mode == "total_only":
         counters.append(_raw(day, slot=0, field="counter.print.total", label="Print total",
                              delta=3, subject=True))
+    # These counters belong to the same physical printer as _subject(day).
+    counters = [replace(counter, device_serial_snapshot="SER-A") for counter in counters]
     widget.set_data(records=(), daily_records=(), subjects=subjects, devices=(),
                     raw_counter_records=counters, period=("2026-09-01", "2026-09-30"),
                     last_sync_at=None)

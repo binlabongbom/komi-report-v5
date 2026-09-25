@@ -28,6 +28,10 @@ def _summary(
     provisional: int = 0,
 ) -> dict:
     return {
+        "trend": {
+            "granularity": "day", "slots": [0], "machine_names": ["QA Printer"], "available": True,
+            "buckets": {"2026-07-27": {"machines": [30], "provisional_machines": [provisional]}},
+        },
         "all_monthly": {
             "2026-07": {
                 "total": 30,

@@ -114,7 +114,7 @@ class PageFleetSettings(QWidget):
         device_card, self.device_summary, edit_devices = self._action_task(
             "เครื่องพิมพ์และราคา",
             "กำลังโหลดข้อมูล…",
-            "เปลี่ยน",
+            "แก้ไข",
         )
         self.device_summary.setAccessibleName("รายชื่อเครื่องพิมพ์ที่ใช้งาน")
         choose = btn("ข้อมูลที่ใช้ในรายงาน", "outline")

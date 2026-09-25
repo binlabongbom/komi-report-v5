@@ -89,8 +89,9 @@ class PrinterUsageTable(UsageTable):
 
     printer_toggled = pyqtSignal(str)
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, *, fit_content_height=True):
         super().__init__(parent)
+        self._fit_content_height = fit_content_height
         self.toggle_buttons = {}
         self.printer_columns = {}
         self._printer_groups = ()
@@ -184,7 +185,8 @@ class PrinterUsageTable(UsageTable):
 
     def fit_columns(self):
         if self.columnCount() < 2:
-            self.setFixedHeight(self._group_header.height() + 60)
+            if self._fit_content_height:
+                self.setFixedHeight(self._group_header.height() + 60)
             return
         fm = QFontMetrics(self._right.font())
         header_fm = QFontMetrics(self._group_right.font())
@@ -224,7 +226,8 @@ class PrinterUsageTable(UsageTable):
                 table.setRowHeight(row, height)
             table.setFixedHeight(sum(heights) + 2)
         self._group_header.setFixedHeight(sum(heights) + 2)
-        rows = min(self.rowCount(), 16)
-        self.setFixedHeight(sum(heights) + sum(self.rowHeight(i) for i in range(rows))
-                            + self._right.horizontalScrollBar().sizeHint().height() + 8)
+        if self._fit_content_height:
+            rows = min(self.rowCount(), 16)
+            self.setFixedHeight(sum(heights) + sum(self.rowHeight(i) for i in range(rows))
+                                + self._right.horizontalScrollBar().sizeHint().height() + 8)
         self._refresh_viewport_alignment()

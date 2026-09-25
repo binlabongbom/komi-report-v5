@@ -12,7 +12,7 @@ from contextlib import closing
 from datetime import datetime
 from pathlib import Path
 
-CURRENT_SCHEMA_VERSION = 33
+CURRENT_SCHEMA_VERSION = 34
 
 
 class UnsupportedSchemaVersionError(RuntimeError):
@@ -24,6 +24,8 @@ class SchemaDriftError(RuntimeError):
 
 
 _REQUIRED_SCHEMA: dict[str, frozenset[str]] = {
+    'report_projection_generation': frozenset({'singleton', 'token'}),
+    'report_day_revisions': frozenset({'kind', 'device_slot', 'record_date', 'token'}),
     'lan_evidence_origins': frozenset({'member_id', 'origin', 'document'}),
     'shared_report_days': frozenset({'epoch_id', 'record_date', 'document_json', 'device_json'}),
     'shared_report_months': frozenset({'epoch_id', 'record_date', 'document_json', 'device_json'}),
@@ -193,6 +195,12 @@ _REQUIRED_SCHEMA: dict[str, frozenset[str]] = {
 }
 
 
+_REQUIRED_REPORT_DAY_TRIGGERS = frozenset(
+    f"report_day_revision_{kind}_{operation}"
+    for kind in ("subject", "raw") for operation in ("insert", "update", "delete")
+)
+
+
 def require_supported_schema_version(version: int) -> None:
     """Fail closed instead of silently downgrading a newer database."""
 
@@ -218,6 +226,9 @@ def validate_current_schema(connection: sqlite3.Connection) -> None:
         absent = sorted(required_columns - columns)
         if absent:
             missing.append(f"{table_name} columns: {', '.join(absent)}")
+    triggers = {str(row[0]) for row in connection.execute(
+        "SELECT name FROM sqlite_master WHERE type='trigger'")}
+    missing.extend(f"trigger {name}" for name in sorted(_REQUIRED_REPORT_DAY_TRIGGERS - triggers))
     if missing:
         raise SchemaDriftError("Database schema ไม่ครบ: " + "; ".join(missing))
 
@@ -827,6 +838,29 @@ def _migration_033_lan_evidence_origins(connection):
         member_id TEXT PRIMARY KEY, origin TEXT NOT NULL UNIQUE, document TEXT NOT NULL)''')
 
 
+def _migration_034_report_day_revisions(connection):
+    connection.execute('CREATE INDEX idx_report_raw_day ON daily_raw_counter_records(device_slot,record_date)')
+    connection.execute('''CREATE TABLE report_projection_generation (
+        singleton INTEGER PRIMARY KEY CHECK(singleton=1), token TEXT NOT NULL)''')
+    connection.execute('''INSERT INTO report_projection_generation(singleton,token)
+        VALUES(1,lower(hex(randomblob(16))))''')
+    connection.execute('''CREATE TABLE report_day_revisions (
+        kind TEXT NOT NULL, device_slot INTEGER NOT NULL, record_date TEXT NOT NULL,
+        token TEXT NOT NULL, PRIMARY KEY(kind,device_slot,record_date))''')
+    for kind, table in (("subject", "daily_subject_records"), ("raw", "daily_raw_counter_records")):
+        connection.execute(f'''INSERT INTO report_day_revisions(kind,device_slot,record_date,token)
+            SELECT ?,device_slot,record_date,lower(hex(randomblob(16)))
+            FROM (SELECT DISTINCT device_slot,record_date FROM {table})''', (kind,))
+        for operation in ("INSERT", "UPDATE", "DELETE"):
+            sources = ("OLD", "NEW") if operation == "UPDATE" else (("OLD",) if operation == "DELETE" else ("NEW",))
+            changes = "\n".join(f'''INSERT INTO report_day_revisions(kind,device_slot,record_date,token)
+                VALUES('{kind}',{source}.device_slot,{source}.record_date,lower(hex(randomblob(16))))
+                ON CONFLICT(kind,device_slot,record_date) DO UPDATE SET token=excluded.token;'''
+                for source in sources)
+            connection.execute(f'''CREATE TRIGGER report_day_revision_{kind}_{operation.lower()}
+                AFTER {operation} ON {table} BEGIN {changes} END''')
+
+
 MIGRATIONS: tuple[tuple[int, str, object], ...] = (
     (8, "record_schema_history_and_reporting_indexes", _migration_008_record_schema_history),
     (9, "add_legacy_usage_history_import_provenance", _migration_009_legacy_history_import),
@@ -854,6 +888,7 @@ MIGRATIONS: tuple[tuple[int, str, object], ...] = (
     (31, 'add_local_lan_member_enrollment', _migration_031_lan_peer_membership),
     (32, 'add_compact_shared_report_evidence', _migration_032_shared_report_days),
     (33, 'retain_peer_evidence_origins_without_session_access', _migration_033_lan_evidence_origins),
+    (34, 'track_report_day_projection_revisions', _migration_034_report_day_revisions),
 )
 
 

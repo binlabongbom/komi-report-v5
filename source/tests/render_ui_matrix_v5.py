@@ -89,6 +89,12 @@ def _overview_summary(device_count: int) -> dict:
         for index in range(device_count)
     ]
     return {
+        "trend": {
+            "granularity": "day", "slots": list(range(device_count)),
+            "machine_names": [f"QA Printer {index + 1}" for index in range(device_count)],
+            "available": bool(device_count),
+            "buckets": {"2026-07-27": {"machines": machines, "provisional_machines": [0] * device_count}},
+        },
         "all_monthly": {
             "2026-07": {
                 "machines": machines,

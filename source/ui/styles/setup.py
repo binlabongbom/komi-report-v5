@@ -315,3 +315,12 @@ UPDATE_PROGRESS_STYLE_ACTIVE = "background:#DCEEFF;color:#0B4F8A;border-radius:5
 
 
 UPDATE_PROGRESS_STYLE_INACTIVE = "background:#E9EEF4;color:#64748B;border-radius:5px;font-weight:600;"
+
+
+METER_VIEWS = (
+    "QTabWidget#setup_meter_views::pane{background:#FFFFFF;border:1px solid #C9D9E8;}"
+    "QTabWidget#setup_meter_views QTabBar::tab{background:#EAF1F7;color:#173A63;"
+    "border:1px solid #C9D9E8;padding:8px 16px;min-height:22px;}"
+    "QTabWidget#setup_meter_views QTabBar::tab:selected{background:#FFFFFF;color:#0065A3;"
+    "border-bottom:2px solid #0065A3;font-weight:700;}"
+)

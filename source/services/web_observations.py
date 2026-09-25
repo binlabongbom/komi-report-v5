@@ -109,32 +109,42 @@ class WebObservationStore:
     @notify_local_change
     def record(self, slot, reading, *, serial, printer_name, at=None, read_id=None, epoch_id=None):
         """Durably capture a completed Web result before updating presentations."""
-        stamp = at or datetime.now().astimezone()
         with closing(sqlite3.connect(self.path)) as conn, conn:
             conn.execute("PRAGMA foreign_keys=ON")
             conn.execute("BEGIN IMMEDIATE")
-            device = conn.execute("SELECT serial,host FROM devices WHERE slot=?", (slot,)).fetchone()
-            if not serial or not device or device != (serial, reading.host):
-                raise ValueError("Printer identity changed during Web reading")
-            row = conn.execute("SELECT value FROM web_observation_state WHERE key='origin'").fetchone()
-            origin = row[0] if row else str(uuid.uuid4())
-            conn.execute("INSERT OR IGNORE INTO web_observation_state VALUES('origin',?)", (origin,))
-            # The local observation origin is not company membership proof.
-            reading_dict = reading.to_dict()
-            reading_dict["counters"] = list(reading_dict["counters"])
-            reading_dict["warnings"] = list(reading_dict["warnings"])
-            payload = {"format": "komi.web.observation.v1", "origin": origin,
-                       "read_id": read_id or str(uuid.uuid4()), "slot": slot, "serial": serial,
-                       "printer_name": printer_name, "observed_at": stamp.isoformat(), "reading": reading_dict}
-            if epoch_id is not None:
-                from services.slot_epoch_store import SlotEpochStore
-                if SlotEpochStore._head(conn, slot) != epoch_id:
-                    raise ValueError("Slot meter epoch changed during Web reading")
-                payload.update(format="komi.web.observation.v2", meter_epoch_id=epoch_id)
-            event = {"id": hashlib.sha256(_json(payload).encode("utf-8")).hexdigest(), "payload": payload}
-            document = validate_event(event)
-            self._insert(conn, event, document)
-            conn.execute("INSERT OR IGNORE INTO web_observation_outbox VALUES(?)", (event["id"],))
+            return self.record_in_transaction(conn, slot, reading, serial=serial,
+                printer_name=printer_name, at=at, read_id=read_id, epoch_id=epoch_id)
+
+    def record_in_transaction(self, conn, slot, reading, *, serial, printer_name,
+                              at=None, read_id=None, epoch_id=None, origin=None):
+        """Join setup's transaction; the caller owns commit and change notification."""
+        if not conn.in_transaction:
+            raise ValueError("Recording requires an existing write transaction")
+        stamp = at or datetime.now().astimezone()
+        device = conn.execute("SELECT serial,host FROM devices WHERE slot=?", (slot,)).fetchone()
+        if not serial or not device or device != (serial, reading.host):
+            raise ValueError("Printer identity changed during Web reading")
+        row = conn.execute("SELECT value FROM web_observation_state WHERE key='origin'").fetchone()
+        if row and origin is not None and origin != row[0]:
+            raise ValueError("Web observation origin changed after review")
+        origin = row[0] if row else origin or str(uuid.uuid4())
+        conn.execute("INSERT OR IGNORE INTO web_observation_state VALUES('origin',?)", (origin,))
+        # The local observation origin is not company membership proof.
+        reading_dict = reading.to_dict()
+        reading_dict["counters"] = list(reading_dict["counters"])
+        reading_dict["warnings"] = list(reading_dict["warnings"])
+        payload = {"format": "komi.web.observation.v1", "origin": origin,
+                   "read_id": read_id or str(uuid.uuid4()), "slot": slot, "serial": serial,
+                   "printer_name": printer_name, "observed_at": stamp.isoformat(), "reading": reading_dict}
+        if epoch_id is not None:
+            from services.slot_epoch_store import SlotEpochStore
+            if SlotEpochStore._head(conn, slot) != epoch_id:
+                raise ValueError("Slot meter epoch changed during Web reading")
+            payload.update(format="komi.web.observation.v2", meter_epoch_id=epoch_id)
+        event = {"id": hashlib.sha256(_json(payload).encode("utf-8")).hexdigest(), "payload": payload}
+        document = validate_event(event)
+        self._insert(conn, event, document)
+        conn.execute("INSERT OR IGNORE INTO web_observation_outbox VALUES(?)", (event["id"],))
         return event
 
     @staticmethod

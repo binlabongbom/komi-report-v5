@@ -496,15 +496,29 @@ class BackgroundPollingCoordinator(QObject):
             future = self.executor.submit(self._poll_device, device, force_web)
             with self._lock:
                 self._futures[device.slot] = future
-            future.add_done_callback(lambda item, slot=device.slot: self._finished(slot, item))
+            future.add_done_callback(lambda item, slot=device.slot: self._finished(slot, item, device))
             self.activity_changed.emit()
 
-    def _finished(self, slot: int, future: Future) -> None:
+    def _finished(self, slot: int, future: Future, polled_device=None) -> None:
         try:
             saved = bool(future.result())
-        except Exception:
+        except Exception as error:
             log.exception("background device poll failed: slot=%s", slot)
             saved = False
+            # Preparation failures happen before the SNMP/Web handlers. Keep
+            # their cause for the reader status and manual-read feedback too.
+            try:
+                device = self.repository.get(slot)
+                if device and (polled_device is None or
+                        (device.host, device.serial, device.enabled) ==
+                        (polled_device.host, polled_device.serial, polled_device.enabled)):
+                    from services.support_diagnostics import diagnostic_report
+                    report = diagnostic_report(error, stage='POLICY / Meter preparation',
+                                               target=device.host, device=device.name)
+                    self.repository.update_runtime(slot, status='checking',
+                        checked_at=self.clock().isoformat(timespec='seconds'), error=report)
+            except Exception:
+                log.exception('Could not record failed meter preparation: slot=%s', slot)
         with self._lock:
             joined = self._scheduled_joined.pop(slot, None)
             if saved and joined is not None and slot in self.states:

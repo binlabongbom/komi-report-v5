@@ -11,6 +11,7 @@ import json
 from bisect import bisect_left, bisect_right
 
 from services.billing_periods import effective_billing_day
+from services.pricing import price_change_dates
 from services.slot_meter_continuity import _number
 from services.web_usage_projection import CounterPoint, project_points
 
@@ -135,8 +136,9 @@ def _load_shared_counter_days(conn, slots, *, start, end, kind, graph):
                 counters.setdefault(key, []).append((day, item, data['count']))
         if len(schemas) > 1:
             epoch_issues.add('normalization_schema_changed')
-        changes = prices.setdefault(slot, tuple(date.fromisoformat(r[0]) for r in conn.execute(
-            'SELECT DISTINCT effective_date FROM price_history WHERE device_slot=?', (slot,))))
+        if slot not in prices:
+            prices[slot] = price_change_dates(conn, slot)
+        changes = prices[slot]
         for key, days in counters.items():
             report_read_checkpoint()
             field, subject_type, subject_id = json.loads(key)

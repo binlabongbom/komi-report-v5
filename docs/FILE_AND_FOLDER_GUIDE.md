@@ -116,6 +116,9 @@ Web browser
 | `summary_service.py` | สรุป KPI/overview | Overview และ report summary |
 | `reporting_facade.py` | facade รวม query สำหรับรายงาน | Desktop Reports และ API |
 | `report_snapshot.py`, `report_models.py` | เตรียม snapshot และข้อมูลตารางใน background พร้อม cache/cancellation | โหลดหรือเปลี่ยนช่วงรายงาน |
+| `report_user_counters.py` | อ่าน Counter แบบย่อเพื่อคำนวณยอดผู้ใช้ แล้วปล่อยข้อมูลรายวันหลังสร้างโมเดลตาราง | Reports > Users; Legacy/Excel ยังอ่าน Raw เต็ม |
+| `report_subject_names.py` | เลือกชื่อจริงจากข้อมูลที่เลือก โดยจับคู่เครื่องจริง ประเภท และรหัสผู้ใช้ ป้องกันเลขรหัสทับชื่อ | ตาราง/กราฟ Users, Excel และ Web Users API |
+| `report_day_projection.py` | เก็บผลอ่านรายวันแบบบีบอัดในหน่วยความจำ และอ่านใหม่เฉพาะวัน/เครื่องที่ token เปลี่ยน | การรีเฟรช Users; schema 34 ติดตามการเพิ่ม/แก้ไข/ลบข้อมูล |
 | `report_chart_models.py` | รวมข้อมูลกราฟเป็นค่าที่แก้ไขไม่ได้ โดยไม่สร้าง Qt widget | เตรียมกราฟ Overview/Printers ก่อนวาดบน UI |
 | `report_scope.py` | filter ขอบเขตวัน/เครื่อง/subject | ก่อน query report |
 | `report_excel_export.py` | สร้าง Excel export | เมื่อกด Export |
@@ -182,6 +185,7 @@ Profiler เป็น backend/support tool ไม่ใช่หน้าจอ�
 | `app/dashboard-types.ts` | TypeScript types ของ dashboard/API |
 | `app/auth/session/route.ts` | route จัดการ session |
 | `lib/session.ts` | helper session/auth |
+| `lib/report-user-rows.ts` | รวมแถวผู้ใช้และยอดแยกเครื่องจากรหัสกลุ่มที่ API เลือกด้วยกฎเดียวกับ Desktop/Excel |
 | `proxy.ts` | request proxy/middleware layer |
 | `package.json`, `package-lock.json` | Node dependency และ lock |
 | `next.config.ts`, `tsconfig.json`, `next-env.d.ts` | Next.js/TypeScript config |

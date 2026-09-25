@@ -1,5 +1,5 @@
 """Atomic Wizard configuration, price history and shared audit revision."""
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime
 import json
 from pathlib import Path
@@ -10,6 +10,7 @@ from services.peer_settings_history import SettingsHistory, _json
 from services.pricing import PriceList, PricingRepository
 from services.secondary_setup import _setup_snapshot
 from services.shared_settings_document import PRICE_KEYS, from_connection, validate
+from services.setup_meter_baselines import BaselinePlan, SetupMeterBaselines
 
 # These local values may be saved by setup but must never enter peer history.
 LOCAL_KEYS = {"snmp_interval_minutes", "db_path", "installation_id", "v52_registration_mode",
@@ -42,6 +43,7 @@ class SetupPreview:
     prices_json: str
     devices: tuple
     inventory_json: str | None
+    baseline_plan: BaselinePlan | None = None
 
     @property
     def changes(self):
@@ -69,17 +71,36 @@ class SetupSettingsService:
     def __init__(self, repository):
         self.repository = repository
 
-    def preview(self, devices, settings, prices, *, registration_devices=None):
+    def preview(self, devices, settings, prices, *, registration_devices=None, baseline_plan=None):
         if not set(settings) <= LOCAL_KEYS | SHARED_KEYS or any(not isinstance(v, str) for v in settings.values()):
             raise ValueError("Unsupported setup settings")
         devices = tuple(devices)
+        baselines = SetupMeterBaselines()
+        if baseline_plan is not None:
+            baselines.validate_devices(baseline_plan, devices)
         # Read the OS vault migration before taking the snapshot, never during review.
         self.repository._ensure_migrated()
         with _open(commit=False) as conn:
             conn.execute("BEGIN")
             expected = _state(conn)
+            if baseline_plan is not None:
+                baselines.check_current(conn, baseline_plan)
             config = dict(expected["settings"])
             before = from_connection(conn) if config.get("company_name") and any(row[7] for row in expected["devices"]) else None
+            # A legacy successful read may still exist only in runtime-cache.
+            # Editing its label/price must not erase the SQL marker and make the
+            # next wizard mistake that established machine for a new slot.
+            previous = {row[0]: row[1:] for row in conn.execute(
+                "SELECT slot,host,serial,last_success_at FROM devices")}
+            baselined = {entry.slot for entry in baseline_plan.entries} if baseline_plan else set()
+            retained = []
+            for device in devices:
+                old = previous.get(device.slot)
+                same_identity = old and ((old[1] == device.serial) if old[1] and device.serial else old[0] == device.host)
+                if same_identity and device.slot not in baselined and old[2] and not device.last_success_at:
+                    device = replace(device, last_success_at=old[2])
+                retained.append(device)
+            devices = tuple(retained)
         config.update(settings)
         class EmptyPrices:
             def get_prices(self, *_args):
@@ -102,24 +123,30 @@ class SetupSettingsService:
         after = {"format_version": 2, "organization": snapshot["organization"],
                  "settings": snapshot["settings"], "devices": snapshot["devices"],
                  "price_history": [history[key] for key in sorted(history)]}
-        if expected["slot_epochs"]:
+        epochs = baseline_plan.slot_epochs if baseline_plan is not None else expected["slot_epochs"]
+        if epochs:
             after.update(format_version=3, slot_epochs=[{"slot": slot, "epoch_id": epoch}
-                for slot, epoch in expected["slot_epochs"]])
+                for slot, epoch in epochs])
         validate(after)
         for row in after["price_history"]:
             for key in PRICE_KEYS:
                 row[key] = float(row[key])
         return SetupPreview(str(Path(get_db_path()).resolve()), _json(expected), _json(before),
                             _json(after), _json(settings), _json(updates), devices,
-                            _json(list(registration_devices)) if registration_devices is not None else None)
+                            _json(list(registration_devices)) if registration_devices is not None else None,
+                            baseline_plan)
 
     @notify_local_change
     def commit(self, preview):
         history = SettingsHistory()
+        baselines = SetupMeterBaselines()
         result = []
         def before_write(conn):
             if str(Path(get_db_path()).resolve()) != preview.database_path or _json(_state(conn)) != preview.expected_json:
                 raise ValueError("การตั้งค่าเปลี่ยนหลังเปิดหน้าต่างยืนยัน กรุณาตรวจและบันทึกใหม่")
+            if preview.baseline_plan is not None:
+                baselines.validate_devices(preview.baseline_plan, preview.devices)
+                baselines.check_current(conn, preview.baseline_plan)
         def after_write(conn):
             before, after = json.loads(preview.before_json), json.loads(preview.after_json)
             settings = json.loads(preview.settings_json)
@@ -128,6 +155,8 @@ class SetupSettingsService:
             for row in json.loads(preview.prices_json):
                 PricingRepository.write_prices(conn, row["slot"], date.fromisoformat(row["effective_date"]),
                                                PriceList(**{key: row[key] for key in PRICE_KEYS}))
+            if preview.baseline_plan is not None:
+                baselines.apply(conn, preview.baseline_plan)
             if from_connection(conn) != after:
                 raise ValueError("Saved configuration differs from reviewed settings")
             head = history._state(conn, "head")

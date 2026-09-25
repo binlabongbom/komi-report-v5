@@ -102,13 +102,3 @@ def paper_legend_entries(*, scan=False):
     if scan:
         entries.append(f'<span style="color:{GREEN}">■</span> Scan')
     return entries
-
-
-def horizontal_like_chart(labels, values, color) -> QChart:
-    short = [f"{index + 1}. {label if len(label) <= 15 else label[:10] + '…' + label[-4:]}" for index, label in enumerate(labels)]
-    chart = bar_chart(tuple(short), (('หน้า', tuple(values), color),))
-    for series in chart.series():
-        for bar in series.barSets():
-            bar.hovered.connect(lambda entered, index: QToolTip.showText(QCursor.pos(), f'{labels[index]}: {values[index]:,.0f}')
-                                if entered else QToolTip.hideText())
-    return chart

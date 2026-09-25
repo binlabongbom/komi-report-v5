@@ -1,4 +1,4 @@
-"""Render the four real V5.2 Setup Wizard steps with synthetic offline data.
+"""Render the five real V5.2 Setup Wizard steps with synthetic offline data.
 
 This helper must never probe LAN printers or call Registration/Production.  It
 exists only to create repeatable customer-guide screenshots from the real Qt
@@ -20,10 +20,12 @@ from PyQt6.QtWidgets import QApplication
 
 import database
 from i18n import THAI, set_language
+from komi_snmp_profiler.models import MeterReading, WebAuthState, WebCounterValue
 from qt_render_environment import configure_offscreen_fonts
 from services.secondary_setup import SecondaryPeerCandidate
 from services.setup_connectivity import SetupConnectivityCheck, SetupConnectivityReport
-from v5_pages import SetupWizardV5
+from ui.setup.workers import device_test_key
+from v5_pages import DeviceTestResult, SetupWizardV5
 
 OUTPUT_DIR = Path(os.environ.get("KOMI_WIZARD_QA_DIR", "/tmp/komi-v52-wizard-guide"))
 
@@ -66,10 +68,21 @@ def _add_device(
                 "model": model,
                 "serial": serial,
                 "total": total,
+                "meter_reading": MeterReading.create(host, [
+                    WebCounterValue("counter.total.total", "Total", total, "Total", "Guide.Total"),
+                    WebCounterValue("counter.print.total", "Print", total, "Print", "Guide.Print.Total"),
+                    WebCounterValue("counter.print.full_color_total", "Print Color", total, "Print", "Guide.Print.Color"),
+                ], "web_connection_admin_read_only", WebAuthState.ADMIN),
             },
         },
         select=True,
     )
+    device = next(device for device in wizard._configs() if device.host == host)
+    entry = next(entry for entry in wizard.discovered_devices if entry["host"] == host)
+    wizard._test_result(DeviceTestResult(
+        generation=wizard._test_generation, host=host, slot=device.slot,
+        payload=entry["result"], connection_key=device_test_key(device),
+    ))
 
 
 def main() -> int:
@@ -148,14 +161,19 @@ def main() -> int:
             _capture(app, wizard, "02-setup-printers.png")
 
             wizard._next()
+            _capture(app, wizard, "03-setup-initial-meter.png")
+            for index in range(wizard.meter_step.device_combo.count()):
+                wizard.meter_step.device_combo.setCurrentIndex(index)
+                wizard.meter_step.confirmation.setChecked(True)
+            wizard._next()
             wizard.shared_price_row["a4_color"].setValue(2.00)
             wizard.shared_price_row["a4_bw"].setValue(0.20)
             wizard.shared_price_row["a3_color"].setValue(4.00)
             wizard.shared_price_row["a3_bw"].setValue(0.40)
-            _capture(app, wizard, "03-setup-pricing.png")
+            _capture(app, wizard, "04-setup-pricing.png")
 
             wizard._next()
-            _capture(app, wizard, "04-setup-review.png")
+            _capture(app, wizard, "05-setup-review.png")
             wizard.close()
             app.processEvents()
         finally:

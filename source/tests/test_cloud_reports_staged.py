@@ -1,4 +1,5 @@
 import os
+
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import pytest
@@ -125,7 +126,7 @@ def test_per_tab_loading_tracks_visible_tab_and_guard_invalid_index(staged):
         staged.ensure_tab(5)
 
 
-@pytest.mark.parametrize("index,prefix,card_key", [(0, "overview", "total_usage"), (1, "users", None), (2, "printers", None)])
+@pytest.mark.parametrize("index,prefix,card_key", [(0, "overview", "total_usage"), (2, "printers", None)])
 def test_tables_and_charts_yield_after_immediate_content(staged, monkeypatch, index, prefix, card_key):
     from PyQt6.QtTest import QTest
 
@@ -150,6 +151,23 @@ def test_tables_and_charts_yield_after_immediate_content(staged, monkeypatch, in
             break
         QTest.qWait(10)
     assert events == ["tables", "charts"]
+
+
+def test_users_loading_completes_after_the_table_without_a_chart_phase(staged, monkeypatch):
+    from PyQt6.QtTest import QTest
+
+    staged.tabs.setCurrentIndex(1)
+    events = []
+    monkeypatch.setattr(staged, "_render_users_table", lambda: events.append("table"))
+    deliver(staged, tab_index=1)
+    assert events == [], "The table must yield so loading status can paint"
+    staged._render_tail_timer.stop()
+    staged._run_render_tail()
+    assert events == ["table"]
+    assert staged._pending_render_tail is None
+    assert staged.loading_panel.isHidden()
+    QTest.qWait(20)
+    assert events == ["table"]
 
 
 @pytest.mark.parametrize("invalidate", ["tab", "reload", "error", "close"])
@@ -188,20 +206,28 @@ def test_new_snapshot_replaces_pending_tables_and_charts(staged, monkeypatch):
     assert events == [("tables", old_revision + 1), ("charts", old_revision + 1)]
 
 
-def test_users_chart_labels_do_not_depend_on_printers_tab_rows(staged, monkeypatch):
-    from types import SimpleNamespace
-    from PyQt6.QtCharts import QChart
+def test_users_per_printer_columns_load_before_the_printers_tab(staged):
+    from excel_export_fixture import report_for
+    from PyQt6.QtTest import QTest
 
-    staged.ensure_tab(1)
-    staged._records = (SimpleNamespace(device_identity="serial:KM123", device_slot=0,
-                                      device_name_snapshot="Finance printer"),)
-    staged._user_rows = [{"key": "user:a", "name": "Alice", "usage": 3,
-                          "printers": {"serial:KM123": 3}}]
-    staged._printer_rows = []
-    labels = []
-    def chart(names, _values, _color):
-        labels.append(names)
-        return QChart()
-    monkeypatch.setattr(staged, "_horizontal_like_chart", chart)
-    staged._render_users_charts()
-    assert labels == [["Alice"], ["Finance printer"]]
+    report = report_for(users=1, days=1, printers=3)
+    staged.tabs.setCurrentIndex(1)
+    staged.set_data(
+        records=report.selected_records, daily_records=report.selected_daily_records,
+        subjects=report.subjects, devices=report.devices,
+        raw_counter_records=report.raw_counter_records,
+        period=report.period, last_sync_at=None, tab_index=1,
+    )
+    for _ in range(50):
+        QTest.qWait(10)
+        if staged._pending_render_tail is None:
+            break
+    assert staged.built_tabs == {0, 1}
+    assert staged._printer_rows == []
+    staged.user_printers_button.click()
+    table = staged.users_table
+    assert table.item(0, 0).text() == "User 000"
+    for slot in range(3):
+        start, _count = table.printer_columns[f"slot:{slot}"]
+        assert table.groupedHeaderItem(0, start).text() == f"Slot {slot + 1} · Fixture {slot + 1}"
+        assert table.item(0, start).text() == "4"

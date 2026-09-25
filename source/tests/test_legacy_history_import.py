@@ -207,7 +207,7 @@ def test_setup_wizard_exposes_history_import_once_on_company_step(tmp_path):
     app = QApplication.instance() or QApplication([])
 
     wizard = SetupWizardV5(edit_mode=True, legacy_source_paths=[str(source)])
-    assert wizard.stack.count() == 4
+    assert wizard.stack.count() == 5
     assert wizard.stack.currentIndex() == 0
     assert not wizard.legacy_import_button.isHidden()
     assert wizard.legacy_import_button.text() == "Import"

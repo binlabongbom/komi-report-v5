@@ -83,6 +83,18 @@ def test_price_and_billing_boundaries_require_review():
     assert set(result.intervals[0].holds) == {"interval_crosses_price_change", "interval_crosses_billing_period"}
 
 
+@pytest.mark.parametrize('crossing_usage', [0, 50])
+def test_zero_boundary_interval_does_not_hold_later_usage(crossing_usage):
+    events = events_for(('2026-09-30T17:00', 1000),
+                        ('2026-10-01T08:00', 1000 + crossing_usage),
+                        ('2026-10-01T09:00', 1200 + crossing_usage))
+    result = project(events, price_change_dates=[date(2026, 10, 1)])
+    assert result.total_usage == 200 + crossing_usage
+    expected = {'interval_crosses_price_change', 'interval_crosses_billing_period'} if crossing_usage else set()
+    assert set(result.intervals[0].holds) == expected
+    assert result.intervals[1].holds == ()
+
+
 def test_other_printer_cannot_fill_this_printers_missing_day():
     events = events_for(("2026-09-18T17:00", 1000), ("2026-09-21T08:00", 1300))
     wrong = deepcopy(events[0])

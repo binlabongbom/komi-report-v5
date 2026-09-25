@@ -6,6 +6,7 @@ from time import sleep
 from types import MappingProxyType
 
 from services.report_operation_breakdown import breakdown_from_raw_records, raw_operation_label
+from services.report_subject_names import build_subject_name_index
 
 
 def freeze(value):
@@ -114,18 +115,17 @@ def _record_identity(record) -> str:
 
 def build_user_rows(subjects, raw_counter_records, *, category_costs=(), cancelled=None):
     from services.report_user_costs import device_daily_evidence, subject_costs, subject_total_cost
-    evidence = device_daily_evidence(raw_counter_records, category_costs) if category_costs else ({}, {})
+    names = build_subject_name_index(subjects, raw_counter_records,
+                                    checkpoint=lambda index: cooperate(cancelled, index))
+    evidence = names.compatible_device_evidence(
+        device_daily_evidence(raw_counter_records, category_costs)) if category_costs else ({}, {})
     grouped: dict[str, dict] = {}
-    subject_group_keys: dict[tuple[str, str, int], str] = {}
+    subject_group_keys: dict[tuple[int, str, str, str], str] = {}
     for item in subjects:
-        subject_name = str(item.subject_name or "").strip()
+        subject_name = names.name(item)
         slot = int(item.device_slot)
-        key = (
-            f"{item.subject_type}:name:{subject_name.casefold()}"
-            if subject_name and subject_name != str(item.subject_id)
-            else f"{item.subject_type}:slot:{slot}:id:{item.subject_id}"
-        )
-        subject_group_keys[(str(item.subject_type), str(item.subject_id), slot)] = key
+        key = names.group_key(item)
+        subject_group_keys[names.key(item)] = key
         row = grouped.setdefault(
             key,
             {
@@ -163,7 +163,7 @@ def build_user_rows(subjects, raw_counter_records, *, category_costs=(), cancell
                 "review": False,
             },
         )
-        identity = _record_identity(item)
+        identity = names.key(item)[1]
         row["usage"] += float(item.period_usage)
         if item.latest_total is not None:
             row["latest"] = max(row["latest"], float(item.latest_total))
@@ -178,20 +178,11 @@ def build_user_rows(subjects, raw_counter_records, *, category_costs=(), cancell
         subject_id = str(getattr(item, "subject_id", "") or "")
         if not subject_type or not subject_id:
             continue
-        serial = str(getattr(item, "device_serial_snapshot", "") or "").strip()
-        slot = int(item.device_slot)
-        identity = f"serial:{serial}" if serial else f"slot:{slot}"
+        slot, identity, _, _ = names.key(item)
         raw_groups[(subject_type, subject_id, slot, identity)].append(item)
     for group_index, ((subject_type, subject_id, slot, identity), raw_records) in enumerate(raw_groups.items()):
         cooperate(cancelled, group_index)
-        key = subject_group_keys.get((subject_type, subject_id, slot))
-        if key is None:
-            raw_name = str(getattr(raw_records[0], "subject_name", "") or "").strip()
-            key = (
-                f"{subject_type}:name:{raw_name.casefold()}"
-                if raw_name and raw_name != subject_id
-                else f"{subject_type}:slot:{slot}:id:{subject_id}"
-            )
+        key = subject_group_keys.get((slot, identity, subject_type, subject_id))
         row = grouped.get(key)
         if row is None:
             continue

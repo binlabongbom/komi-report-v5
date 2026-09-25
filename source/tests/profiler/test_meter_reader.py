@@ -110,7 +110,7 @@ def test_authenticated_connector_logs_out_and_clears_session() -> None:
     assert result.auth_state == WebAuthState.ADMIN
     assert result.counters[0].count == 2339
     assert result.warnings == (
-        "User Authentication และ Account Track ยังไม่ได้เปิดใช้งานบนเครื่อง",
+        "ยืนยันว่า User Authentication และ Account Track ปิดใช้งานบนเครื่อง",
     )
     assert ("POST_FORM", "login.cgi") in sessions[0].calls
     assert sessions[0].calls[-1] == ("POST_FORM", "a_user.cgi")

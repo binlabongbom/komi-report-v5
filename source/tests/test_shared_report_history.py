@@ -208,7 +208,11 @@ def test_report_snapshot_and_excel_input_use_received_subjects_without_local_cac
     snapshot = load_report_snapshot(1, ('2026-09-01', '2026-09-30'), cache=None, subject_cache=None,
         repository=DeviceConfigRepository(), cancelled=Event())
     assert snapshot.data['subjects'][0].period_usage == 301
-    assert sum(r.delta_value for r in snapshot.data['raw_counter_records'] if r.canonical_field == 'counter.user.total.total') == 301
+    assert snapshot.data['prepared_models']['users'][0]['usage'] == 301
+    assert snapshot.data['raw_counter_records'] == ()
+    # Legacy/Excel still load complete shared evidence independently of Users.
+    raw = load_raw_counter_history([0], period_start=date(2026, 9, 1), period_end=date(2026, 9, 30))
+    assert sum(r.delta_value for r in raw if r.canonical_field == 'counter.user.total.total') == 301
 
 
 def test_two_databases_converge_on_received_journal_without_financial_writes(tmp_path):

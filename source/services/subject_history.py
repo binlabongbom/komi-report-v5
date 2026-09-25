@@ -3,13 +3,15 @@ from __future__ import annotations
 import json
 import os
 import uuid
+from collections import namedtuple
 from functools import lru_cache
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from datetime import date, datetime
 from pathlib import Path
 
 from database import _open, get_billing_day, get_cfg, get_db_path
 from komi_snmp_profiler.models import MeterReading, WebCounterValue
+from komi_snmp_profiler.subject_identity import prefer_subject_name, subject_name_is_placeholder
 from services.billing_periods import billing_month_range
 from services.daily_cache import DailyCacheStore
 
@@ -107,6 +109,11 @@ class SubjectDailyRecord:
     device_serial_snapshot: str = ""
 
 
+# Report aggregation only needs immutable attribute access. Keep its temporary
+# daily rows compact without changing the public dataclass used by collectors.
+_SubjectDay = namedtuple("_SubjectDay", (field.name for field in fields(SubjectDailyRecord)))
+
+
 @dataclass(frozen=True)
 class SubjectPeriodUsage:
     device_slot: int
@@ -126,11 +133,15 @@ class SubjectPeriodUsage:
     device_identity: str = ""
     device_name_snapshot: str = ""
     device_serial_snapshot: str = ""
+    name_observed_on: date | None = None
 
     @property
     def needs_review(self) -> bool:
+        from services.shared_report_history import SHARED_REMARK
+
         return bool(self.reset_count or self.missing_baseline_days or any(
-            not note.startswith(('ฉบับแก้ไขจากหลักฐาน Web', 'ยอดสะสมช่วงขาดการอ่าน:')) for note in self.warnings))
+            note != SHARED_REMARK and not note.startswith(
+                ('ฉบับแก้ไขจากหลักฐาน Web', 'ยอดสะสมช่วงขาดการอ่าน:')) for note in self.warnings))
 
 
 def _number(value: int | float) -> float:
@@ -150,8 +161,8 @@ def extract_subject_totals(reading: MeterReading) -> tuple[SubjectCounter, ...]:
         expected = f"counter.{subject_type}.total.total"
         if counter.canonical_field != expected:
             continue
-        name = (counter.subject_name or counter.subject_id or "Unknown").strip() or "Unknown"
         raw_id = (counter.subject_id or "").strip()
+        name = str(counter.subject_name or "").strip() or raw_id or "Unknown"
         subject_id = raw_id or f"name:{name.casefold()}"
         grouped.setdefault((subject_type, subject_id, name), []).append(counter)
 
@@ -342,7 +353,8 @@ class SubjectDailyCacheStore:
                         "at": incoming_stamp,
                     }
                 )
-            item["subject_name"] = counter.subject_name
+            item["subject_name"] = prefer_subject_name(
+                counter.subject_id, item["subject_name"], counter.subject_name)
             item["latest_total"] = current
             item["last_success"] = incoming_stamp
             item["sample_count"] = int(item.get("sample_count", 0)) + 1
@@ -619,6 +631,7 @@ def load_subject_history(
     period_end: date | None = None,
     only_period: tuple[date, date] | None = None,
     only_periods: tuple[tuple[date, date], ...] | None = None,
+    incremental: bool = False,
 ) -> tuple[SubjectPeriodUsage, ...]:
     current = today or date.today()
     billing_day = get_billing_day()
@@ -636,7 +649,7 @@ def load_subject_history(
         source_start = min(start for start, _ in only_periods)
         source_end = max(end for _, end in only_periods)
     frozen_periods = {}
-    daily: list[tuple[SubjectDailyRecord, tuple[date, date] | None]] = []
+    daily: list[tuple[SubjectDailyRecord | _SubjectDay, tuple[date, date] | None]] = []
     archived_buckets = {}
     if slots:
         placeholders = ",".join("?" for _ in slots)
@@ -645,14 +658,12 @@ def load_subject_history(
             conn.execute("BEGIN")
             if period_start is None or period_end is None:
                 frozen_periods = _device_ledger_periods(conn, slots, period_start=source_start, period_end=source_end)
-            rows = conn.execute(
-                f"""SELECT device_slot,record_date,subject_type,subject_id,subject_name,
+            query = f"""SELECT device_slot,record_date,subject_type,subject_id,subject_name,
                            opening_total,closing_total,delta_total,reset_count,missing_baseline,
                            sample_count,first_success,last_success,incomplete,warnings_json,source_json
                     FROM daily_subject_records WHERE device_slot IN ({placeholders}) {filters}
-                    ORDER BY record_date,device_slot,subject_type,subject_id""",
-                [*slots, *parameters],
-            )
+                    ORDER BY record_date,device_slot,subject_type,subject_id"""
+            arguments = [*slots, *parameters]
             from services.report_detail_archive import ReportDetailArchive
             archive = ReportDetailArchive()
             archived = ()
@@ -661,10 +672,17 @@ def load_subject_history(
             else:
                 archived = archive.details(conn, "subject", slots, start=source_start, end=source_end)
             from services.report_detail_amendment import iter_effective_rows
-            effective_rows = iter_effective_rows(conn, 'subject', rows, SUBJECT_COLUMNS, archived, slots,
-                start=source_start, end=source_end, include_revisions=period_start is not None or period_end is not None)
-            for row, archived_period in effective_rows:
-                record = subject_record_from_row(row)
+            if incremental:
+                from services.report_day_projection import iter_projected_days
+                projected = iter_projected_days(conn, 'subject', query, arguments, SUBJECT_COLUMNS,
+                    _subject_day_from_row, archived, slots, start=source_start, end=source_end,
+                    include_revisions=period_start is not None or period_end is not None)
+            else:
+                effective_rows = iter_effective_rows(conn, 'subject', conn.execute(query, arguments),
+                    SUBJECT_COLUMNS, archived, slots, start=source_start, end=source_end,
+                    include_revisions=period_start is not None or period_end is not None)
+                projected = ((_subject_day_from_row(row), period) for row, period in effective_rows)
+            for record, archived_period in projected:
                 period = frozen_periods.get((record.device_slot, record.record_date))
                 if period is None and archived_period:
                     period = tuple(date.fromisoformat(value) for value in archived_period)
@@ -719,34 +737,77 @@ SUBJECT_COLUMNS = ("device_slot", "record_date", "subject_type", "subject_id", "
     "sample_count", "first_success", "last_success", "incomplete", "warnings_json", "source_json")
 
 
-def subject_record_from_row(row):
+@lru_cache(maxsize=4096)
+def _subject_source_metadata(source_json, slot):
+    """Reuse immutable identity and audit metadata, never subject row values."""
     try:
-        raw = _parsed_source_json(row[15] or '{}')
+        raw = _parsed_source_json(source_json)
     except (TypeError, ValueError):
         raw = {}
-    device_identity, device_name, device_serial = _identity_snapshot(raw, int(row[0]))
+    device_identity, device_name, device_serial = _identity_snapshot(raw, slot)
     audit = raw.get('report_amendment', {}) if isinstance(raw, dict) else {}
     remarks = ('ฉบับแก้ไขจากหลักฐาน Web', *audit.get('remarks', ())) if audit else ()
-    return SubjectDailyRecord(
-        device_slot=int(row[0]),
-        record_date=date.fromisoformat(row[1]),
-        subject_type=row[2],
-        subject_id=row[3],
-        subject_name=row[4],
-        opening_total=float(row[5]) if row[5] is not None else None,
-        closing_total=float(row[6]) if row[6] is not None else None,
-        delta_total=float(row[7]),
-        reset_count=int(row[8]),
-        missing_baseline=bool(row[9]),
-        sample_count=int(row[10]),
-        first_success=row[11],
-        last_success=row[12],
-        incomplete=bool(row[13]),
-        warnings=_parsed_warnings_json(row[14] or "[]") + remarks,
-        device_identity=device_identity,
-        device_name_snapshot=device_name,
-        device_serial_snapshot=device_serial,
+    return device_identity, device_name, device_serial, remarks
+
+
+def _subject_row_values(row):
+    """Convert one effective row in SubjectDailyRecord field order."""
+    slot = int(row[0])
+    source_json = row[15] or '{}'
+    try:
+        metadata = _subject_source_metadata(source_json, slot)
+    except TypeError:
+        # Preserve the existing fallback for an unhashable source value while
+        # still propagating malformed amendment metadata from the decoder.
+        metadata = _subject_source_metadata.__wrapped__(source_json, slot)
+    device_identity, device_name, device_serial, remarks = metadata
+    return (
+        slot,
+        date.fromisoformat(row[1]),
+        row[2],
+        row[3],
+        row[4],
+        float(row[5]) if row[5] is not None else None,
+        float(row[6]) if row[6] is not None else None,
+        float(row[7]),
+        int(row[8]),
+        bool(row[9]),
+        int(row[10]),
+        row[11],
+        row[12],
+        bool(row[13]),
+        _parsed_warnings_json(row[14] or "[]") + remarks,
+        device_identity,
+        device_name,
+        device_serial,
     )
+
+
+def subject_record_from_row(row):
+    return SubjectDailyRecord(*_subject_row_values(row))
+
+
+def _subject_day_from_row(row):
+    return _SubjectDay(*_subject_row_values(row))
+
+
+def update_subject_bucket_name(bucket, subject_id, candidate_name, candidate_date):
+    """Track the date of the real name independently of the latest counter.
+
+    The optional ISO date also survives existing archive summary JSON. Older
+    summaries use their latest counter date until a real-name date is known.
+    """
+    current_name = bucket["name"]
+    current_real = not subject_name_is_placeholder(subject_id, current_name)
+    if current_real and "_name_date" not in bucket:
+        bucket["_name_date"] = bucket["latest_date"].isoformat()
+    candidate_real = not subject_name_is_placeholder(subject_id, candidate_name)
+    at = candidate_date.isoformat() if isinstance(candidate_date, date) else str(candidate_date)
+    if candidate_real and (not current_real or at >= bucket["_name_date"]):
+        bucket["name"] = prefer_subject_name(subject_id, current_name, candidate_name)
+        bucket["_name_date"] = at
+    elif not current_real:
+        bucket["name"] = prefer_subject_name(subject_id, current_name, candidate_name)
 
 
 def aggregate_subject_days(daily, billing_day, *, period_start=None, period_end=None, only_period=None, only_periods=None, buckets=None):
@@ -774,9 +835,9 @@ def aggregate_subject_days(daily, billing_day, *, period_start=None, period_end=
             record.subject_type,
             record.subject_id,
         )
-        bucket = buckets.setdefault(
-            key,
-            {
+        bucket = buckets.get(key)
+        if bucket is None:
+            bucket = buckets[key] = {
                 "name": record.subject_name,
                 "device_name_snapshot": record.device_name_snapshot,
                 "device_serial_snapshot": record.device_serial_snapshot,
@@ -789,19 +850,19 @@ def aggregate_subject_days(daily, billing_day, *, period_start=None, period_end=
                 "latest_at": record.last_success,
                 "warnings": set(),
                 "latest_date": record.record_date,
-            },
-        )
+            }
         bucket["period_usage"] += record.delta_total
         bucket["reset_count"] += record.reset_count
         bucket["missing_baseline_days"] += int(record.missing_baseline)
         bucket["incomplete_days"] += int(record.incomplete)
         bucket["sample_count"] += record.sample_count
         bucket["warnings"].update(record.warnings)
+        if record.closing_total is not None:
+            update_subject_bucket_name(bucket, record.subject_id, record.subject_name, record.record_date)
         if record.closing_total is not None and (record.record_date >= bucket["latest_date"] or bucket['latest_total'] is None):
             bucket["latest_date"] = record.record_date
             bucket["latest_total"] = record.closing_total
             bucket["latest_at"] = record.last_success
-            bucket["name"] = record.subject_name
             bucket["device_name_snapshot"] = record.device_name_snapshot
             bucket["device_serial_snapshot"] = record.device_serial_snapshot
 
@@ -828,6 +889,9 @@ def subject_period_results(buckets):
             device_identity=device_identity,
             device_name_snapshot=bucket["device_name_snapshot"],
             device_serial_snapshot=bucket["device_serial_snapshot"],
+            name_observed_on=(date.fromisoformat(bucket["_name_date"]) if bucket.get("_name_date")
+                else bucket["latest_date"] if not subject_name_is_placeholder(subject_id, bucket["name"])
+                else None),
         )
         for (
             start,

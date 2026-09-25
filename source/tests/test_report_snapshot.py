@@ -1,11 +1,12 @@
+from concurrent.futures import CancelledError
 from datetime import date
 from threading import Event
 from types import SimpleNamespace
-from concurrent.futures import CancelledError
 
 import pytest
-from ui.reports import page as report_page
+
 from services import report_snapshot
+from ui.reports import page as report_page
 
 
 @pytest.mark.parametrize("index", range(5))
@@ -22,7 +23,9 @@ def test_background_payload_matches_existing_report_semantics(monkeypatch, index
         monkeypatch.setattr(module, "load_raw_counter_history", lambda *args, **kwargs: ("raw",))
         monkeypatch.setattr(module, "load_imported_legacy_history", lambda: ("legacy",))
         monkeypatch.setattr(module, "load_usage_meter_baselines", lambda *args: ("baseline",))
+    monkeypatch.setattr(report_snapshot, "build_public_user_rows", lambda *a, **kw: ("public-model",))
     monkeypatch.setattr(report_snapshot, "build_user_rows", lambda *a, **kw: ("users-model",))
+    monkeypatch.setattr(report_snapshot, "load_user_counter_history", lambda *a, **kw: ("compact",))
     monkeypatch.setattr(report_snapshot, "build_legacy_raw_tables", lambda *a, **kw: ("raw-model",))
     monkeypatch.setattr(report_snapshot, "build_printer_rows", lambda *a, **kw: ("printer-model",))
     monkeypatch.setattr(report_snapshot, "build_report_chart_models", lambda *a, **kw: ("chart-model",))
@@ -38,8 +41,14 @@ def test_background_payload_matches_existing_report_semantics(monkeypatch, index
           repository=SimpleNamespace(list=lambda **kwargs:devices),cancelled=Event())
     # Original monthly list is intentionally normalized to immutable tuple by the worker.
     captured["monthly_records"]=tuple(captured["monthly_records"])
+    if index == 1:
+        # Background Users passes the complete prepared model, releasing its
+        # temporary Counter evidence before data reaches the GUI.
+        captured["raw_counter_records"] = ()
     assert {key: value for key, value in result.data.items() if key != "prepared_models"} == captured
     expected = {"users": ("users-model",)} if index in {0, 1} else {"legacy_raw": ("raw-model",)} if index == 4 else {}
+    if index == 1:
+        expected["public_users"] = ("public-model",)
     if index in {0, 2}:
         expected['printers'] = ('printer-model',)
         expected['charts'] = ('chart-model',)

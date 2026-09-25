@@ -912,22 +912,26 @@ class MainWindow(QMainWindow):
         from services.reader_status import newest_time
         slots, started = feedback
         active = slots.intersection(self.polling.active_slots())
+        complete, failed = 0, []
+        for device in self.polling.repository.list(enabled_only=True):
+            if device.slot not in slots:
+                continue
+            snapshot = runtime_snapshots.get(device.slot)
+            stamp = newest_time((device.last_success_at, snapshot.collected_at if snapshot and (not device.serial or snapshot.serial == device.serial) else ''))
+            if stamp and datetime.fromisoformat(stamp).astimezone() >= started:
+                complete += 1
+            elif device.last_error and device.slot not in active:
+                from services.support_diagnostics import diagnose
+                diagnostic = diagnose(device.last_error)
+                failed.append(f'Slot {device.slot + 1} [{diagnostic.error_code}]')
         if active:
             text = tr('กำลังอ่านข้อมูล… ', 'Reading… ') + ', '.join(f'Slot {s + 1}' for s in sorted(active))
+            if failed:
+                text += tr(' · อ่านไม่สำเร็จ: ', ' · Failed: ') + ', '.join(failed)
         else:
-            complete, failed = 0, []
-            for device in self.polling.repository.list(enabled_only=True):
-                if device.slot not in slots:
-                    continue
-                snapshot = runtime_snapshots.get(device.slot)
-                stamp = newest_time((device.last_success_at, snapshot.collected_at if snapshot and (not device.serial or snapshot.serial == device.serial) else ''))
-                if stamp and datetime.fromisoformat(stamp).astimezone() >= started:
-                    complete += 1
-                elif device.last_error:
-                    failed.append(f'Slot {device.slot + 1}')
             text = tr('อ่านข้อมูลใหม่สำเร็จ {count}/{total} เครื่อง', 'New readings saved: {count}/{total} printers').format(count=complete, total=len(slots))
             if failed:
-                text += tr(' · ควรตรวจสอบ ', ' · Check ') + ', '.join(failed)
+                text += tr(' · อ่านไม่สำเร็จ: ', ' · Failed: ') + ', '.join(failed)
             elif complete < len(slots):
                 text += tr(' · ที่เหลือไม่มีข้อมูลใหม่', ' · No new data from the remaining printers')
             text += ' · ' + datetime.now().strftime('%H:%M:%S')

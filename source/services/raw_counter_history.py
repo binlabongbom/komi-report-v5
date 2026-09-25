@@ -414,12 +414,12 @@ def _review_metadata(review_json, resolutions_json):
     return pending, reviewed, remarks
 
 
-def load_raw_counter_history(
-    slots: tuple[int, ...] | list[int] | None = None,
-    *,
-    period_start: date | None = None,
-    period_end: date | None = None,
-) -> tuple[RawCounterDailyRecord, ...]:
+def iter_raw_counter_rows(connection, slots, columns, *, period_start=None, period_end=None):
+    """Select effective Raw evidence with one archive/revision precedence rule.
+
+    Callers choose columns, but both full Raw and compact Users reads include
+    the identity fields needed to replace superseded rows correctly.
+    """
     clauses: list[str] = []
     parameters: list[object] = []
     if slots:
@@ -433,19 +433,31 @@ def load_raw_counter_history(
         clauses.append("record_date<=?")
         parameters.append(period_end.isoformat())
     where = " WHERE " + " AND ".join(clauses) if clauses else ""
+    rows = connection.execute("SELECT " + ",".join(columns) + " FROM daily_raw_counter_records" + where
+                              + " ORDER BY device_slot,device_serial_snapshot,canonical_field,source_path,subject_type,subject_id,record_date,id",
+                              tuple(parameters))
+    from services.report_detail_archive import ReportDetailArchive
+    archived = ReportDetailArchive().details(connection, "raw", slots, start=period_start, end=period_end)
+    from services.report_detail_amendment import iter_effective_rows
+    for row, _period in iter_effective_rows(connection, 'raw', rows, columns, archived, slots,
+                                          start=period_start, end=period_end):
+        yield row
+
+
+def load_raw_counter_history(
+    slots: tuple[int, ...] | list[int] | None = None,
+    *,
+    period_start: date | None = None,
+    period_end: date | None = None,
+) -> tuple[RawCounterDailyRecord, ...]:
     columns = ("device_slot", "record_date", "canonical_field", "label", "source_path",
         "subject_type", "subject_id", "subject_name", "opening_value", "closing_value", "delta_value",
         "reset_count", "sample_count", "first_success", "last_success", "source_name", "device_name_snapshot",
         "device_serial_snapshot", "incomplete", "counter_review_json", "counter_resolutions_json")
     with _open(commit=False) as connection:
         connection.execute("BEGIN")
-        rows = connection.execute("SELECT " + ",".join(columns) + " FROM daily_raw_counter_records" + where,
-            tuple(parameters))
-        from services.report_detail_archive import ReportDetailArchive
-        archived = ReportDetailArchive().details(connection, "raw", slots, start=period_start, end=period_end)
-        from services.report_detail_amendment import iter_effective_rows
-        effective_rows = iter_effective_rows(connection, 'raw', rows, columns, archived, slots,
-                                             start=period_start, end=period_end)
+        rows = iter_raw_counter_rows(connection, slots, columns,
+                                     period_start=period_start, period_end=period_end)
         original = tuple(
             RawCounterDailyRecord(
                 device_slot=int(row[0]),
@@ -471,7 +483,7 @@ def load_raw_counter_history(
                 baseline_reviewed=metadata[1],
                 remarks=metadata[2],
             )
-            for row, _period in effective_rows
+            for row in rows
             for metadata in (_review_metadata(row[19], row[20]),)
         )
     from services.shared_report_history import raw_records

@@ -30,6 +30,7 @@ from PyQt6.QtWidgets import (
 import database
 from komi_version import APP_VERSION
 from ui.setup import wizard as setup_wizard
+from ui.setup.workers import device_test_key
 from komi_snmp_profiler.connectors import (
     WebConnectionCertificateError,
     WebConnectionSessionBusyError,
@@ -86,11 +87,53 @@ def _add_selected_device(wizard, name: str, host: str, *, total: int = 100) -> N
             "host": host,
             "model": "bizhub C450i",
             "serial": f"SN-{host.rsplit('.', 1)[-1]}",
-            "result": {"online": True, "web_ok": True, "model": "bizhub C450i", "total": total},
+            "result": {
+                "online": True, "web_ok": True, "model": "bizhub C450i", "total": total,
+                "serial": f"SN-{host.rsplit('.', 1)[-1]}",
+                "meter_reading": _meter_reading(host, total),
+            },
         },
         select=True,
     )
+    device = next(device for device in wizard._configs() if device.host == host)
+    entry = next(entry for entry in wizard.discovered_devices if entry["host"] == host)
+    wizard._test_result(DeviceTestResult(
+        generation=wizard._test_generation, host=host, slot=device.slot,
+        payload=entry["result"], connection_key=device_test_key(device),
+    ))
     wizard.privacy_notice_accepted.setChecked(True)
+
+
+def _meter_reading(host: str, total: int = 100) -> MeterReading:
+    values = {
+        "counter.total.total": total,
+        "counter.print.total": total,
+        "counter.print.full_color_total": total,
+        "counter.print.full_color_large": 0,
+        "counter.print.bw_total": 0,
+        "counter.print.bw_large": 0,
+        "counter.copy.total": 0,
+        "counter.copy.full_color_total": 0,
+        "counter.copy.full_color_large": 0,
+        "counter.copy.bw_total": 0,
+        "counter.copy.bw_large": 0,
+        "counter.scan_fax.document_read_total": 0,
+    }
+    return MeterReading.create(host, [
+        WebCounterValue(key, key, value, key.split(".")[1], f"fixture.{key}")
+        for key, value in values.items()
+    ], "web_connection_admin_read_only", WebAuthState.ADMIN)
+
+
+def _confirm_meter(wizard) -> None:
+    """Explicitly review every new printer through the real meter controls."""
+    wizard._enter_meter_step()
+    step = wizard.meter_step
+    for index in range(step.device_combo.count()):
+        step.device_combo.setCurrentIndex(index)
+        if not step.confirmation.isHidden() and step.confirmation.isEnabled():
+            step.confirmation.setChecked(True)
+    assert step.ready
 
 
 def _visible_thai_ui_texts(wizard) -> list[str]:
@@ -163,7 +206,7 @@ def test_successful_device_test_advances_once_and_failed_test_stays_on_device_st
         app.processEvents()
 
         assert wizard.stack.currentIndex() == 2
-        assert wizard.step_label.text() == "3 / 4"
+        assert wizard.step_label.text() == "3 / 5"
         wizard._test_finished()
         app.processEvents()
         assert wizard.stack.currentIndex() == 2
@@ -201,6 +244,7 @@ def test_setup_wizard_keeps_each_per_device_price_separate(tmp_path):
         pricing_review = wizard.review_sections["pricing"].text()
         assert "DMS Printer: A4 สี <b>2.00</b>" in pricing_review
         assert "Sales Printer: A4 สี <b>3.00</b>" in pricing_review
+        _confirm_meter(wizard)
         wizard._save()
 
         assert PricingRepository().get_prices(0, date.today()).a4_color == 2.0
@@ -212,13 +256,13 @@ def test_setup_wizard_keeps_each_per_device_price_separate(tmp_path):
         database.set_db_path(original_path)
 
 
-def test_setup_wizard_uses_the_approved_four_step_flow(tmp_path):
+def test_setup_wizard_uses_the_approved_five_step_flow(tmp_path):
     original_path = _wizard_database(tmp_path)
     app = QApplication.instance() or QApplication([])
     try:
         wizard = SetupWizardV5()
-        assert wizard.stack.count() == 4
-        assert wizard.step_label.text() == "1 / 4"
+        assert wizard.stack.count() == 5
+        assert wizard.step_label.text() == "1 / 5"
         assert wizard.company_name_input.text() == "บริษัท ทดสอบ จำกัด"
         assert wizard.first_started_input.isReadOnly()
         assert wizard.first_started_input.text() == "20/08/2026"
@@ -234,17 +278,22 @@ def test_setup_wizard_uses_the_approved_four_step_flow(tmp_path):
 
         wizard._next()
         assert wizard.stack.currentIndex() == 1
-        assert wizard.step_label.text() == "2 / 4"
+        assert wizard.step_label.text() == "2 / 5"
         wizard._next()
         assert wizard.stack.currentIndex() == 2
-        assert wizard.step_label.text() == "3 / 4"
+        assert wizard.step_label.text() == "3 / 5"
+        assert not wizard.next_button.isEnabled()
+        _confirm_meter(wizard)
+        wizard._next()
+        assert wizard.stack.currentIndex() == 3
+        assert wizard.step_label.text() == "4 / 5"
         wizard.shared_price_row["a4_color"].setValue(2.0)
         wizard.shared_price_row["a4_bw"].setValue(0.5)
         wizard.shared_price_row["a3_color"].setValue(4.0)
         wizard.shared_price_row["a3_bw"].setValue(1.0)
         wizard._next()
-        assert wizard.stack.currentIndex() == 3
-        assert wizard.step_label.text() == "4 / 4"
+        assert wizard.stack.currentIndex() == 4
+        assert wizard.step_label.text() == "5 / 5"
         assert "บริษัท ทดสอบ จำกัด" in wizard.review_sections["organization"].text()
         assert "DMS Printer" in wizard.review_sections["devices"].text()
         pricing_review = wizard.review_sections["pricing"].text()
@@ -518,6 +567,7 @@ def test_secondary_setup_persists_received_schedule_only_when_local_value_is_mis
             "settings": {"sync_schedule_windows": received_schedule},
         }
 
+        _confirm_meter(wizard)
         wizard._save()
 
         assert database.get_cfg("sync_schedule_windows") == received_schedule
@@ -617,6 +667,11 @@ def test_setup_wizard_english_mode_has_no_untranslated_visible_copy(tmp_path):
         app.processEvents()
         assert _visible_thai_ui_texts(wizard) == []
 
+        wizard._next()
+        app.processEvents()
+        assert _visible_thai_ui_texts(wizard) == []
+
+        _confirm_meter(wizard)
         wizard._next()
         app.processEvents()
         assert _visible_thai_ui_texts(wizard) == []
@@ -759,7 +814,7 @@ def test_setup_wizard_stays_readable_when_macos_uses_a_dark_palette(tmp_path):
         assert image.pixelColor(4, 4).name() == "#f4f7fa"
         table_image = wizard.device_table.viewport().grab().toImage()
         assert table_image.pixelColor(4, table_image.height() - 4).name() == "#ffffff"
-        wizard.stack.setCurrentIndex(2)
+        wizard.stack.setCurrentIndex(3)
         app.processEvents()
         price_image = wizard.price_scroll.viewport().grab().toImage()
         assert price_image.pixelColor(4, 4).name() == "#f4f7fa"
@@ -1155,6 +1210,8 @@ def test_device_test_worker_pins_first_self_signed_certificate(monkeypatch) -> N
     assert result["tls_mode"] == "fingerprint"
     assert result["tls_fingerprint"] == fingerprint
     assert result["web_auth_state"] == "admin"
+    assert result["meter_reading"].host == "192.0.2.10"
+    assert result["meter_reading"].counters[0].count == 100
 
 
 def test_device_test_worker_passes_pinned_policy_to_legacy_admin_connector(monkeypatch) -> None:
@@ -1240,6 +1297,7 @@ def test_device_test_worker_does_not_request_customer_password_for_tls_failure(m
     assert result["credential_required"] is False
     assert "Code: tls_handshake" in result["error"]
     assert "WebConnectionTlsError" in result["error"]
+    assert result["meter_reading"] is None
 
 
 def test_device_test_worker_reports_session_busy_without_requesting_password(monkeypatch) -> None:
@@ -1596,6 +1654,7 @@ def test_setup_wizard_shared_price_is_written_to_every_selected_device(tmp_path)
         wizard.shared_price_row["a3_bw"].setValue(2.0)
         wizard.billing_end_day.setCurrentIndex(30)
         wizard.waste_paper_pct.setValue(2.0)
+        _confirm_meter(wizard)
         wizard._save()
 
         assert [item.name for item in DeviceConfigRepository().list(enabled_only=True)] == ["DMS Printer", "Sales Printer"]
@@ -1652,6 +1711,7 @@ def test_setup_keeps_local_configuration_but_does_not_open_when_registration_enq
                 raise RuntimeError("synthetic outbox failure")
 
         wizard.registration_state = FailingRuntimeStateRepository()
+        _confirm_meter(wizard)
         wizard._save()
 
         assert wizard.result() == int(QDialog.DialogCode.Rejected)
@@ -1673,6 +1733,7 @@ def test_setup_records_current_v52_notice_acknowledgement(tmp_path):
 
         assert wizard.privacy_notice_accepted.isHidden()
         wizard.privacy_notice_accepted.setChecked(False)
+        _confirm_meter(wizard)
         wizard._save()
 
         state = V52RuntimeStateRepository().internal()
@@ -1700,6 +1761,7 @@ def test_setup_hidden_legacy_mode_cannot_bypass_online_registration(tmp_path):
         wizard.privacy_notice_accepted.setChecked(False)
         wizard.registration_runtime = None
 
+        _confirm_meter(wizard)
         wizard._save()
 
         assert wizard.result() == int(QDialog.DialogCode.Rejected)
@@ -1790,6 +1852,7 @@ def test_setup_records_notice_without_customer_checkbox(tmp_path):
         _add_selected_device(wizard, "DMS Printer", "192.0.2.10")
         wizard.privacy_notice_accepted.setChecked(False)
 
+        _confirm_meter(wizard)
         wizard._save()
 
         assert wizard.result() == int(QDialog.DialogCode.Accepted)
@@ -1826,6 +1889,7 @@ def test_setup_wizard_edit_mode_keeps_billing_settings_owned_by_settings(tmp_pat
         wizard.waste_paper_pct.setValue(9.0)
 
         assert wizard.billing_section.isHidden()
+        _confirm_meter(wizard)
         wizard._save()
 
         assert database.get_cfg("billing_day") == "17"
@@ -1901,6 +1965,7 @@ def test_edit_printer_invalidates_offline_binding_and_never_sends_after_restart(
         runtime = NoSendRuntime()
         wizard = SetupWizardV5(edit_mode=True, registration_runtime=runtime)
         _add_selected_device(wizard, "Replacement Printer", "192.0.2.22")
+        _confirm_meter(wizard)
         wizard._save()
 
         assert wizard.result() == int(QDialog.DialogCode.Accepted)
@@ -2034,6 +2099,8 @@ def test_setup_wizard_can_defer_pricing_with_explicit_no_charge_state(tmp_path):
         _add_selected_device(wizard, "DMS Printer", "192.0.2.10")
         wizard._next()
         wizard._next()
+        _confirm_meter(wizard)
+        wizard._next()
         wizard.deferred_price_mode.setChecked(True)
 
         assert wizard.shared_price_box.isHidden()
@@ -2042,9 +2109,10 @@ def test_setup_wizard_can_defer_pricing_with_explicit_no_charge_state(tmp_path):
         assert wizard.billing_section.isHidden()
 
         wizard._next()
-        assert wizard.stack.currentIndex() == 3
+        assert wizard.stack.currentIndex() == 4
         assert "ตั้งค่าภายหลัง" in wizard.review_sections["pricing"].text()
         assert "ยังไม่คิดค่าใช้จ่าย" in wizard.review_sections["pricing"].text()
+        _confirm_meter(wizard)
         wizard._save()
 
         assert database.get_cfg("pricing_mode") == "deferred"
@@ -2119,6 +2187,8 @@ def test_setup_wizard_requires_explicit_deferred_choice_for_all_zero_prices(
         _add_selected_device(wizard, "DMS Printer", "192.0.2.10")
         wizard._next()
         wizard._next()
+        _confirm_meter(wizard)
+        wizard._next()
         monkeypatch.setattr(
             wizard,
             "_show_wizard_message",
@@ -2127,7 +2197,7 @@ def test_setup_wizard_requires_explicit_deferred_choice_for_all_zero_prices(
 
         wizard._next()
 
-        assert wizard.stack.currentIndex() == 2
+        assert wizard.stack.currentIndex() == 3
         assert warnings[0][0] == "ราคายังเป็น 0.00 ทั้งหมด"
         assert "ตั้งค่าราคาภายหลัง" in warnings[0][1]
         wizard.close()
@@ -2162,7 +2232,7 @@ def test_setup_wizard_shared_pricing_and_billing_fit_without_scrolling(tmp_path)
     app = QApplication.instance() or QApplication([])
     try:
         wizard = SetupWizardV5(legacy_source_paths=[])
-        wizard.stack.setCurrentIndex(2)
+        wizard.stack.setCurrentIndex(3)
         wizard.resize(1120, 720)
         wizard.show()
         app.processEvents()
@@ -2196,6 +2266,7 @@ def test_setup_cancel_shared_review_does_not_configure_or_register(tmp_path, mon
         wizard = SetupWizardV5()
         _add_selected_device(wizard, "DMS Printer", "192.0.2.10")
         monkeypatch.setattr(setup_wizard, "confirm_shared_settings", lambda *_: False)
+        _confirm_meter(wizard)
         wizard._save()
         assert DeviceConfigRepository().list(enabled_only=True) == []
         assert V52RuntimeStateRepository().internal() is None
@@ -2220,6 +2291,7 @@ def test_setup_change_during_review_keeps_external_edit_and_draft(tmp_path, monk
             return True
         monkeypatch.setattr(setup_wizard, "confirm_shared_settings", review)
         monkeypatch.setattr(wizard, "_show_wizard_message", lambda *args: errors.append(args))
+        _confirm_meter(wizard)
         wizard._save()
         assert errors and "เปลี่ยน" in errors[0][1]
         assert database.get_cfg("billing_day") == "22"
@@ -2230,3 +2302,194 @@ def test_setup_change_during_review_keeps_external_edit_and_draft(tmp_path, monk
         app.processEvents()
     finally:
         database.set_db_path(original_path)
+
+
+def test_new_printer_save_cannot_bypass_meter_confirmation(monkeypatch):
+    QApplication.instance() or QApplication([])
+    database.set_cfg("company_name", "Meter review test")
+    wizard = SetupWizardV5(legacy_source_paths=[])
+    _add_selected_device(wizard, "New printer", "192.0.2.10")
+    messages = []
+    monkeypatch.setattr(wizard, "_show_wizard_message", lambda *args, **kwargs: messages.append(args))
+
+    wizard._save()
+
+    assert messages
+    assert DeviceConfigRepository().list(enabled_only=True) == []
+    with database._open(commit=False) as connection:
+        assert connection.execute("SELECT COUNT(*) FROM slot_meter_heads").fetchone()[0] == 0
+        assert connection.execute("SELECT COUNT(*) FROM web_observations").fetchone()[0] == 0
+        assert connection.execute("SELECT COUNT(*) FROM price_history").fetchone()[0] == 0
+    wizard.close()
+
+
+def test_three_printers_require_individual_confirmation_before_the_single_pricing_step():
+    QApplication.instance() or QApplication([])
+    database.set_cfg("company_name", "Meter review test")
+    wizard = SetupWizardV5(legacy_source_paths=[])
+    for index in range(3):
+        _add_selected_device(wizard, f"Printer {index + 1}", f"192.0.2.{10 + index}", total=100 + index)
+    wizard._next()
+    wizard._next()
+    assert wizard.stack.currentWidget() is wizard.meter_step
+    assert wizard.meter_step.device_combo.count() == 3
+    assert wizard.meter_step.views.count() == 2
+    assert not wizard.next_button.isEnabled()
+    pricing = wizard.pricing_step
+
+    for index in range(3):
+        wizard.meter_step.device_combo.setCurrentIndex(index)
+        assert wizard.meter_step.raw_table.rowCount() > 0
+        assert wizard.meter_step.parser_table.rowCount() > 0
+        wizard.meter_step.confirmation.setChecked(True)
+        assert wizard.next_button.isEnabled() is (index == 2)
+    assert wizard.meter_step.confirmed_slots == (0, 1, 2)
+    wizard._next()
+    assert wizard.stack.currentWidget() is pricing
+    assert wizard.step_label.text() == "4 / 5"
+    wizard._back()
+    assert wizard.stack.currentWidget() is wizard.meter_step
+    assert wizard.meter_step.confirmed_slots == (0, 1, 2)
+    wizard._next()
+    wizard.deferred_price_mode.setChecked(True)
+    wizard._next()
+    assert wizard.stack.currentWidget() is wizard.review_step
+    assert not wizard.review_step.meter_section.isHidden()
+    assert not wizard.review_step.meter_edit_button.isHidden()
+    assert "Slot 3" in wizard.review_sections["meter"].text()
+    wizard.review_step.meter_edit_button.click()
+    assert wizard.stack.currentWidget() is wizard.meter_step
+    assert wizard.meter_step.confirmed_slots == (0, 1, 2)
+    wizard._next()
+    wizard._next()
+    wizard._go_to_step(3)
+    assert wizard.stack.currentWidget() is pricing
+    wizard._save()
+    with database._open(commit=False) as connection:
+        assert connection.execute("SELECT COUNT(*) FROM slot_meter_heads").fetchone()[0] == 3
+        assert connection.execute("SELECT COUNT(*) FROM web_observations").fetchone()[0] == 3
+    wizard.close()
+
+
+def test_reading_refresh_requires_new_confirmation_and_stale_result_cannot_change_evidence():
+    QApplication.instance() or QApplication([])
+    database.set_cfg("company_name", "Meter review test")
+    wizard = SetupWizardV5(legacy_source_paths=[])
+    _add_selected_device(wizard, "New printer", "192.0.2.10")
+    _confirm_meter(wizard)
+    before = dict(wizard._meter_evidence)
+    wizard._test_result(DeviceTestResult(
+        generation=wizard._test_generation - 1, host="192.0.2.10", slot=0,
+        payload={"online": True, "web_ok": True, "serial": "WRONG-OLD-RESULT",
+                 "total": 999, "meter_reading": _meter_reading("192.0.2.10", 999)},
+    ))
+    assert wizard._meter_evidence == before
+    assert wizard.meter_step.confirmed_slots == (0,)
+
+    wizard._test_result(DeviceTestResult(
+        generation=wizard._test_generation, host="192.0.2.10", slot=0,
+        payload={"online": True, "web_ok": True, "serial": "SN-10",
+                 "total": 101, "meter_reading": _meter_reading("192.0.2.10", 101)},
+    ))
+    wizard._enter_meter_step()
+    assert wizard._meter_evidence != before
+    assert wizard.meter_step.confirmed_slots == ()
+    assert not wizard.next_button.isEnabled()
+    wizard.close()
+
+
+def test_legacy_printer_with_successful_history_skips_new_baseline_and_back_skips_meter():
+    QApplication.instance() or QApplication([])
+    database.set_cfg("company_name", "Existing customer")
+    repository = DeviceConfigRepository()
+    repository.replace_all([DeviceConfig(
+        0, "Legacy printer", "192.0.2.10", serial="SN-10", last_total=100,
+        last_success_at="2026-08-20T09:00:00+07:00",
+    )])
+    wizard = SetupWizardV5(legacy_source_paths=[])
+    _add_selected_device(wizard, "Legacy printer", "192.0.2.10", total=110)
+    wizard._next()
+    wizard._next()
+    assert wizard.stack.currentWidget() is wizard.pricing_step
+    assert wizard.meter_step.confirmed_slots == ()
+    wizard._back()
+    assert wizard.stack.currentWidget() is wizard.devices_step
+    with database._open(commit=False) as connection:
+        assert connection.execute("SELECT COUNT(*) FROM slot_meter_heads").fetchone()[0] == 0
+        assert connection.execute("SELECT last_total FROM devices WHERE slot=0").fetchone()[0] == 100
+    wizard.deferred_price_mode.setChecked(True)
+    wizard._save()
+    assert wizard.result() == int(QDialog.DialogCode.Accepted)
+    with database._open(commit=False) as connection:
+        assert connection.execute("SELECT last_success_at FROM devices WHERE slot=0").fetchone()[0] == "2026-08-20T09:00:00+07:00"
+    wizard.close()
+    reopened = SetupWizardV5(legacy_source_paths=[])
+    _add_selected_device(reopened, "Legacy printer", "192.0.2.10", total=111)
+    reopened._next()
+    reopened._next()
+    assert reopened.stack.currentWidget() is reopened.pricing_step
+    assert reopened.meter_step.confirmed_slots == ()
+    with database._open(commit=False) as connection:
+        assert connection.execute("SELECT COUNT(*) FROM slot_meter_heads").fetchone()[0] == 0
+    reopened.close()
+
+
+def test_confirmed_meter_is_committed_to_the_selected_first_run_database(tmp_path):
+    QApplication.instance() or QApplication([])
+    original_path = database.get_db_path()
+    database.set_cfg("company_name", "First run customer")
+    target = tmp_path / "customer-data" / "selected.sqlite3"
+    runtime_config = tmp_path / "selected-runtime.toml"
+    wizard = SetupWizardV5(legacy_source_paths=[], runtime_config_path=str(runtime_config))
+    try:
+        _add_selected_device(wizard, "New printer", "192.0.2.10", total=2475)
+        assert wizard._set_database_destination(str(target))
+        _confirm_meter(wizard)
+        wizard.deferred_price_mode.setChecked(True)
+        wizard._save()
+
+        assert wizard.result() == int(QDialog.DialogCode.Accepted)
+        assert database.get_db_path() == target.resolve()
+        assert load_runtime_settings(config_path=runtime_config).db_path == target.resolve()
+        with sqlite3.connect(target) as connection:
+            assert connection.execute("PRAGMA integrity_check").fetchone() == ("ok",)
+            assert connection.execute("SELECT serial FROM devices WHERE slot=0").fetchone() == ("SN-10",)
+            assert connection.execute("SELECT COUNT(*) FROM slot_meter_heads").fetchone()[0] == 1
+            assert connection.execute("SELECT COUNT(*) FROM web_observations").fetchone()[0] == 1
+        with sqlite3.connect(original_path) as connection:
+            assert connection.execute("SELECT COUNT(*) FROM devices").fetchone()[0] == 0
+            assert connection.execute("SELECT COUNT(*) FROM slot_meter_heads").fetchone()[0] == 0
+    finally:
+        wizard.close()
+        database.set_db_path(original_path)
+
+
+def test_authentication_edit_invalidates_evidence_and_rejects_inflight_old_connection_result():
+    app = QApplication.instance() or QApplication([])
+    database.set_cfg("company_name", "Meter review test")
+    wizard = SetupWizardV5(legacy_source_paths=[])
+    _add_selected_device(wizard, "New printer", "192.0.2.10")
+    _confirm_meter(wizard)
+    previous = wizard._configs()[0]
+    in_flight = DeviceTestResult(
+        generation=wizard._test_generation, host=previous.host, slot=previous.slot,
+        payload={"online": True, "web_ok": True, "serial": previous.serial,
+                 "total": 200, "meter_reading": _meter_reading(previous.host, 200)},
+        connection_key=device_test_key(previous),
+    )
+    wizard._open_credentials(previous.host)
+    dialog = wizard._wizard_child_dialogs[-1]
+    password = next(field for field in dialog.findChildren(QLineEdit)
+                    if field.echoMode() == QLineEdit.EchoMode.Password)
+    password.setText("synthetic-updated-password")
+    dialog.accept()
+    app.processEvents()
+    assert wizard._meter_evidence == {}
+    assert wizard.meter_step.confirmed_slots == ()
+    assert wizard._configs()[0].password == "synthetic-updated-password"
+
+    wizard._test_result(in_flight)
+
+    assert wizard._meter_evidence == {}
+    assert not wizard.discovered_devices[0]["result"]["web_ok"]
+    wizard.close()

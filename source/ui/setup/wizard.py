@@ -49,6 +49,8 @@ from services.registration_envelope import runtime_platform
 from services.registration_errors import error_message, safe_support_code
 from services.secondary_setup import SecondaryPeerCandidate, SecondarySetupError, normalize_primary_ipv4
 from services.setup_connectivity import SetupConnectivityCheck, SetupConnectivityReport
+from services.setup_meter_baselines import SetupMeterBaselines
+from services.parser_mapping import apply_parser_mapping_overrides
 from services.support_diagnostics import with_diagnostic
 from services.v5_2_runtime_state import V52RuntimeStateRepository
 from ui.button_system import install_button_system
@@ -58,6 +60,7 @@ from ui.setup.controls import WizardComboBox
 from ui.setup.legacy_import import LegacyHistoryImportDialog
 from ui.setup.steps.company import CompanyStep
 from ui.setup.steps.devices import DevicesStep
+from ui.setup.steps.meter import MeterReviewDevice, MeterStep
 from ui.setup.steps.pricing import PricingStep
 from ui.setup.steps.review import ReviewDevice, ReviewStep, SetupReviewData
 from ui.setup.workers import (
@@ -68,6 +71,7 @@ from ui.setup.workers import (
     SecondaryPeerDiscoveryWorker,
     SecondarySnapshotWorker,
     SetupConnectivityWorker,
+    device_test_key,
 )
 from ui.shared_settings_confirmation import confirm_shared_settings
 from ui.styles import setup as setup_styles
@@ -139,6 +143,8 @@ class SetupWizardV5(QDialog):
             self.legacy_source_paths or load_imported_legacy_history()
         )
         self.results: dict[int, dict] = {}
+        self._meter_evidence = {}
+        self._meter_step_required = False
         self._test_generation = 0
         self._auto_advance_pending = False
         self._registration_in_progress = False
@@ -382,7 +388,7 @@ class SetupWizardV5(QDialog):
         language_layout.addWidget(self.thai_language_button)
         language_layout.addWidget(self.english_language_button)
         header_tools.addWidget(self.language_switch)
-        self.step_label = QLabel("1 / 4")
+        self.step_label = QLabel("1 / 5")
         self.step_label.setStyleSheet(text_styles.label('#1769AA', font_weight='700'))
         self.step_label.setAccessibleName("ความคืบหน้าการตั้งค่า")
         header_tools.addWidget(self.step_label)
@@ -393,7 +399,7 @@ class SetupWizardV5(QDialog):
         progress = QHBoxLayout()
         progress.setSpacing(8)
         self.progress_labels: list[QLabel] = []
-        for step_name in ("องค์กร", "เครื่องพิมพ์", "ราคา", "ตรวจสอบ"):
+        for step_name in ("องค์กร", "เครื่องพิมพ์", "มิเตอร์เริ่มต้น", "ราคา", "ตรวจสอบ"):
             label = QLabel(step_name)
             label.setAlignment(Qt.AlignmentFlag.AlignCenter)
             label.setMinimumHeight(30)
@@ -405,15 +411,18 @@ class SetupWizardV5(QDialog):
         self.stack = QStackedWidget()
         self.stack.addWidget(self._company_page())
         self.stack.addWidget(self._device_page())
+        self.meter_step = MeterStep(self)
+        self.meter_step.readiness_changed.connect(self._meter_readiness_changed)
+        self.stack.addWidget(self.meter_step)
         self.stack.addWidget(self._price_page())
         self.stack.addWidget(self._review_page())
         root.addWidget(self.stack, 1)
 
         nav = QHBoxLayout()
         self.note = QLabel("ขั้นที่ 1: กรอกชื่อบริษัท · วันที่เริ่มใช้และ Version มาจากระบบอัตโนมัติ")
+        self.note.setWordWrap(True)
         self.note.setStyleSheet(text_styles.label(C_TEXT2))
-        nav.addWidget(self.note)
-        nav.addStretch()
+        nav.addWidget(self.note, 1)
         self.back_button = btn("← ย้อนกลับ", "outline")
         self.back_button.setVisible(False)
         self.back_button.clicked.connect(self._back)
@@ -496,6 +505,7 @@ class SetupWizardV5(QDialog):
         if hasattr(self, "review_sections") and self._selected_entries():
             self._update_review()
         apply_language(self)
+        self.meter_step.retranslate()
         self._sync_language_switch()
 
     def _sync_language_switch(self) -> None:
@@ -1047,7 +1057,12 @@ class SetupWizardV5(QDialog):
 
     def _go_to_step(self, target_step: int) -> None:
         while self.stack.currentIndex() > target_step:
+            previous = self.stack.currentIndex()
             self._back()
+            if self.stack.currentIndex() >= previous:
+                # A changed baseline can stop backward navigation with a
+                # validation message; do not spin on the GUI thread.
+                break
 
     def _price_page(self) -> QWidget:
         self.pricing_step = step = PricingStep(edit_mode=self.edit_mode, parent=self)
@@ -1150,6 +1165,8 @@ class SetupWizardV5(QDialog):
         return [entry for entry in self.discovered_devices if entry.get("selected")]
 
     def _selection_changed(self) -> None:
+        # A confirmation is for the selected physical printer in its Slot.
+        self.meter_step.invalidate()
         selected_count = len(self._selected_entries())
         self.selection_badge.setText(f"เลือกแล้ว {selected_count}/3")
         for row in range(len(self.discovered_devices)):
@@ -1371,6 +1388,10 @@ class SetupWizardV5(QDialog):
                 entry["password"] = password.text()
                 entry["credential_origin"] = "customer" if password.text() else ""
                 entry["result"] = {"online": True, "web_ok": False}
+                slot = entry.get("slot")
+                if slot is not None:
+                    self._meter_evidence.pop(int(slot), None)
+                    self.meter_step.invalidate(int(slot))
                 self._render_discovered_row(self.discovered_devices.index(entry))
                 self._update_device_actions()
 
@@ -1638,6 +1659,8 @@ class SetupWizardV5(QDialog):
         if self._scan_thread is not None or self._thread is not None:
             return
         self._test_generation += 1
+        self._meter_evidence.clear()
+        self.meter_step.invalidate()
         self.scan_button.setEnabled(False)
         self.advanced_scan_button.setEnabled(False)
         self.manual_setup_button.setEnabled(False)
@@ -1845,6 +1868,8 @@ class SetupWizardV5(QDialog):
         self._auto_advance_pending = False
         self._test_generation += 1
         generation = self._test_generation
+        self._meter_evidence.clear()
+        self.meter_step.invalidate()
         for entry in self._selected_entries():
             entry["result"] = {"testing": True, "online": False, "web_ok": False}
             self._render_discovered_row(self.discovered_devices.index(entry))
@@ -1911,6 +1936,10 @@ class SetupWizardV5(QDialog):
         entry = self.discovered_devices[row]
         if not entry.get("selected"):
             return
+        if report.connection_key:
+            current = next((d for d in self._configs() if d.host == report.host), None)
+            if current is None or device_test_key(current) != report.connection_key:
+                return
         entry["result"] = payload
         entry["model"] = payload.get("model") or entry["model"]
         entry["serial"] = payload.get("serial") or entry["serial"]
@@ -1932,6 +1961,20 @@ class SetupWizardV5(QDialog):
         current_slot = entry.get("slot")
         if current_slot is not None:
             self.results[int(current_slot)] = payload
+            self._meter_evidence.pop(int(current_slot), None)
+            self.meter_step.invalidate(int(current_slot))
+            reading = payload.get("meter_reading")
+            if reading is not None and payload.get("web_ok"):
+                device = next(d for d in self._configs() if d.host == report.host)
+                try:
+                    if str(payload.get("serial") or "").strip() in {"", "—", "-"}:
+                        raise ValueError(tr(
+                            "ยังยืนยัน Serial จากผลทดสอบครั้งนี้ไม่ได้ · ย้อนกลับไปตรวจสอบเครื่องพิมพ์อีกครั้ง",
+                            "The current test did not confirm the printer serial. Go back and verify the printer again.",
+                        ))
+                    self._meter_evidence[device.slot] = SetupMeterBaselines.capture(device, reading)
+                except (ValueError, TypeError) as error:
+                    payload["meter_error"] = str(error)
         self._render_discovered_row(row)
         self._update_device_actions()
 
@@ -2054,11 +2097,19 @@ class SetupWizardV5(QDialog):
                 )
                 return
             if QApplication.platformName() != "offscreen":
-                self._name_selected_devices(on_complete=self._enter_price_step)
+                self._name_selected_devices(on_complete=self._enter_meter_step)
+                return
+            self._enter_meter_step()
+            return
+        if index == 2:
+            try:
+                self._prepare_meter_plan()
+            except (ValueError, TypeError) as error:
+                self._show_wizard_message("ตรวจมิเตอร์เริ่มต้น", str(error))
                 return
             self._enter_price_step()
             return
-        if index == 2:
+        if index == 3:
             if self._all_selected_prices_are_zero() and not self.deferred_price_mode.isChecked():
                 self._show_wizard_message(
                     "ราคายังเป็น 0.00 ทั้งหมด",
@@ -2069,7 +2120,7 @@ class SetupWizardV5(QDialog):
                 return
             self._show_review_step()
             return
-        if index == 3:
+        if index == 4:
             self._save()
 
     def _start_setup_connectivity(self) -> None:
@@ -2188,7 +2239,7 @@ class SetupWizardV5(QDialog):
 
         self.stack.setCurrentIndex(1)
         self.title.setText("นำเครื่องพิมพ์เข้าระบบ")
-        self.step_label.setText("2 / 4")
+        self.step_label.setText("2 / 5")
         self.language_switch.setVisible(False)
         self.note.setText("ขั้นที่ 2: ค้นหา เลือก และตรวจสอบเครื่องพิมพ์ก่อนนำเข้าระบบ")
         self._update_progress(1)
@@ -2210,16 +2261,77 @@ class SetupWizardV5(QDialog):
                 lambda: self._scan_network(self.lab_hosts if self.lab_mode else None),
             )
 
-    def _enter_price_step(self) -> None:
+    def _meter_readiness_changed(self, ready: bool) -> None:
+        if hasattr(self, "next_button") and self.stack.currentIndex() == 2:
+            self.next_button.setEnabled(ready)
+
+    def _refresh_meter_step(self):
+        devices = self._configs()
+        service = SetupMeterBaselines()
+        requirements = {item.slot: item for item in service.classify(devices)}
+        entries = {entry["host"]: entry for entry in self._selected_entries()}
+        views = []
+        for device in devices:
+            result = entries[device.host].get("result", {})
+            evidence = self._meter_evidence.get(device.slot)
+            raw = result.get("meter_reading")
+            error = result.get("meter_error", "")
+            required = requirements[device.slot].requires_confirmation
+            if required:
+                try:
+                    service.validate_evidence(device, evidence)
+                    raw = evidence.reading
+                except (ValueError, TypeError) as exc:
+                    error = str(exc)
+            normalized = apply_parser_mapping_overrides(raw, device.serial) if raw is not None else None
+            views.append(MeterReviewDevice(device=device, reading=normalized,
+                requires_confirmation=required, error=error if required else "", raw_reading=raw))
+        self._meter_step_required = any(item.requires_confirmation for item in requirements.values())
+        self.meter_step.set_devices(views)
+        return devices
+
+    def _prepare_meter_plan(self, devices=None):
+        devices = devices if devices is not None else self._configs()
+        return SetupMeterBaselines().prepare(devices, self._meter_evidence,
+                                              self.meter_step.confirmed_slots)
+
+    def _enter_meter_step(self) -> None:
+        """Review new baselines; ordinary edits/upgrades retain existing history."""
+        if self.secondary_enrollment is not None:
+            self._enter_price_step()
+            return
+        try:
+            self._refresh_meter_step()
+        except (ValueError, TypeError) as error:
+            self._show_wizard_message("ตรวจมิเตอร์เริ่มต้น", str(error))
+            return
+        if not self._meter_step_required:
+            self._enter_price_step()
+            return
         self.stack.setCurrentIndex(2)
+        self.title.setText(tr("มิเตอร์เริ่มต้น", "Initial meter"))
+        self.step_label.setText("3 / 5")
+        self.note.setText(tr("ขั้นที่ 3: ตรวจค่ามิเตอร์และยืนยันฐานของเครื่องใหม่",
+                             "Step 3: Review meter readings and confirm new printer baselines"))
+        self._update_progress(2)
+        self.back_button.setVisible(True)
+        self.test_button.setVisible(False)
+        self.next_button.setText(tr("ไปหน้าราคา →", "Continue to prices →"))
+        self.next_button.setEnabled(self.meter_step.ready)
+        apply_language(self)
+        self._sync_language_switch()
+
+    def _enter_price_step(self) -> None:
+        self.stack.setCurrentIndex(3)
         self._refresh_device_price_cards()
         self.test_button.setVisible(False)
         self.title.setText("ตั้งค่าราคา")
-        self.step_label.setText("3 / 4")
+        self.step_label.setText("4 / 5")
         self.note.setText(
-            "ขั้นที่ 3: ตั้งราคาตอนนี้ หรือเลือกตั้งค่าภายหลังอย่างชัดเจน"
+            tr("ขั้นที่ 4: ตั้งราคาตอนนี้ หรือเลือกตั้งค่าภายหลังอย่างชัดเจน",
+               "Step 4: Set prices now or explicitly choose to set them later")
         )
-        self._update_progress(2)
+        self._update_progress(3)
         self.back_button.setVisible(True)
         self.next_button.setText("ตรวจสอบการตั้งค่า →")
         self.next_button.setEnabled(True)
@@ -2230,11 +2342,12 @@ class SetupWizardV5(QDialog):
         """Enter the shared final review from normal or Secondary setup flow."""
 
         self._update_review()
-        self.stack.setCurrentIndex(3)
+        self.stack.setCurrentIndex(4)
         self.title.setText("ตรวจสอบและเริ่มใช้งาน")
-        self.step_label.setText("4 / 4")
-        self.note.setText("ขั้นที่ 4: ตรวจสอบแต่ละส่วนก่อนนำเครื่องพิมพ์เข้าระบบ")
-        self._update_progress(3)
+        self.step_label.setText("5 / 5")
+        self.note.setText(tr("ขั้นที่ 5: ตรวจสอบแต่ละส่วนก่อนนำเครื่องพิมพ์เข้าระบบ",
+                             "Step 5: Review all settings before saving printers"))
+        self._update_progress(4)
         self.back_button.setVisible(True)
         self.test_button.setVisible(False)
         self.next_button.setEnabled(True)
@@ -2255,25 +2368,25 @@ class SetupWizardV5(QDialog):
         index = self.stack.currentIndex()
         if index <= 0:
             return
-        self.stack.setCurrentIndex(index - 1)
-        titles = ("ข้อมูลองค์กร", "นำเครื่องพิมพ์เข้าระบบ", "ตั้งค่าราคา")
-        button_text = ("ค้นหาเครื่องพิมพ์ →", "ถัดไป →", "ตรวจสอบการตั้งค่า →")
-        notes = (
-            "ขั้นที่ 1: กรอกชื่อบริษัท · วันที่เริ่มใช้และ Version มาจากระบบอัตโนมัติ",
-            "ขั้นที่ 2: ค้นหา เลือก และตรวจสอบเครื่องพิมพ์ก่อนนำเข้าระบบ",
-            "ขั้นที่ 3: ตั้งราคาตอนนี้ หรือเลือกตั้งค่าภายหลังอย่างชัดเจน",
-        )
-        self.title.setText(titles[index - 1])
-        self.step_label.setText(f"{index} / 4")
-        self.note.setText(notes[index - 1])
-        self._update_progress(index - 1)
-        self.back_button.setVisible(index - 1 > 0)
-        self.test_button.setVisible(index - 1 == 1)
-        self.language_switch.setVisible(index - 1 == 0)
-        self.next_button.setText(button_text[index - 1])
+        if index == 4:
+            self._enter_price_step()
+            return
+        if index == 3 and self._meter_step_required:
+            self._enter_meter_step()
+            return
+        if index in (2, 3):
+            self._enter_device_step()
+            return
+        self.stack.setCurrentIndex(0)
+        self.title.setText("ข้อมูลองค์กร")
+        self.step_label.setText("1 / 5")
+        self.note.setText("ขั้นที่ 1: กรอกชื่อบริษัท · วันที่เริ่มใช้และ Version มาจากระบบอัตโนมัติ")
+        self._update_progress(0)
+        self.back_button.setVisible(False)
+        self.test_button.setVisible(False)
+        self.language_switch.setVisible(True)
+        self.next_button.setText("ค้นหาเครื่องพิมพ์ →")
         self.next_button.setEnabled(True)
-        if index - 1 == 1:
-            self._update_device_actions()
         apply_language(self)
         self._sync_language_switch()
 
@@ -2288,6 +2401,8 @@ class SetupWizardV5(QDialog):
             company_name=self.company_name_input.text(), first_started=self.first_started_input.text(),
             version=PACKAGE_VERSION, devices=devices, pricing=self.pricing_step.selection(),
             edit_mode=self.edit_mode, offline_edition=is_offline_edition(), platform=runtime_platform(),
+            meter_summary=tuple(self.meter_step.summary_lines()),
+            meter_editable=self._meter_step_required,
         ))
         apply_language(self)
         self._sync_language_switch()
@@ -2330,6 +2445,9 @@ class SetupWizardV5(QDialog):
             if registration_mode not in {"online", "offline"}:
                 raise ValueError("สถานะ Registration เดิมไม่ถูกต้อง")
             devices = self._configs()
+            # Revalidate immediately before any write; direct Save must not
+            # bypass the meter review or accept an obsolete reading.
+            baseline_plan = None if self.secondary_enrollment is not None else self._prepare_meter_plan(devices)
             if self.lab_mode:
                 self.accept()
                 return
@@ -2337,6 +2455,9 @@ class SetupWizardV5(QDialog):
                 raise ValueError('ตำแหน่งฐานข้อมูลเปลี่ยน กรุณารับการตั้งค่ากลุ่มใหม่ก่อนบันทึก')
             self._activate_selected_database_path()
             from services.setup_settings import SetupSettingsService
+            if baseline_plan is not None and baseline_plan.database_path != str(Path(get_db_path()).resolve()):
+                # First-run setup can copy the database to the selected folder.
+                baseline_plan = self._prepare_meter_plan(devices)
             service = SetupSettingsService(self.repository)
             effective = self.effective_date.date().toPyDate()
             shared = self.shared_price_mode.isChecked()
@@ -2390,7 +2511,8 @@ class SetupWizardV5(QDialog):
             elif not get_cfg("desktop_role", ""):
                 settings["desktop_role"] = "primary"
             preview = service.preview(devices, settings, price_updates,
-                registration_devices=self._registration_devices() if self.edit_mode else None)
+                registration_devices=self._registration_devices() if self.edit_mode else None,
+                baseline_plan=baseline_plan)
             if preview.changes and not confirm_shared_settings(self, preview):
                 return
             service.commit(preview)

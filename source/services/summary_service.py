@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from config import SLOT_NAMES
 from database import (
@@ -9,13 +9,13 @@ from database import (
     get_monthly_summary,
     get_price,
 )
-from services.device_config import DeviceConfigRepository
+from komi_snmp_profiler.subject_identity import subject_name_is_placeholder as _subject_name_is_placeholder
 from services.daily_cache import DailyCacheStore
+from services.device_config import DeviceConfigRepository
 from services.monthly_history import load_usage_history
 from services.report_scope import report_slots
 from services.subject_history import load_subject_history
 from services.usage import current_device_identity
-from komi_snmp_profiler.subject_identity import subject_name_is_placeholder as _subject_name_is_placeholder
 
 
 def months_ago(billing_month: str, n_months: int) -> str:
@@ -53,6 +53,83 @@ def _runtime_status(device, *, now: datetime) -> str:
     except (TypeError, ValueError):
         return "stale"
     return "online"
+
+
+def _trend_periods(filter_key: str, monthly_keys: list[str]) -> list[str]:
+    if filter_key in {"month", "current"}:
+        return monthly_keys[-6:]
+    if filter_key in {"year", "1y"}:
+        return monthly_keys[-12:]
+    if filter_key == "3m":
+        return monthly_keys[-3:]
+    return monthly_keys
+
+
+def _usage_trend(records, slots, periods, *, granularity, configured_by_slot):
+    """Keep plotted values and frozen device labels in the same explicit slot order.
+
+    A missing or held-only observation is a gap, not a measured zero. Confirmed
+    and provisional values stay separate so the chart can expose their origin.
+    """
+    buckets = {
+        period: {"machines": [None for _slot in slots],
+                 "provisional_machines": [None for _slot in slots]}
+        for period in periods
+    }
+    indexes = {slot: index for index, slot in enumerate(slots)}
+    labels_by_slot = {slot: set() for slot in slots}
+    identities_by_slot = {slot: set() for slot in slots}
+    for record in records:
+        period = (record.period_start.isoformat() if granularity == "day"
+                  else record.period_end.strftime("%Y-%m"))
+        if period not in buckets or record.device_slot not in indexes:
+            continue
+        slot = record.device_slot
+        labels_by_slot[slot].add(_frozen_device_label(record, fallback=f"เครื่อง {slot + 1}"))
+        identities_by_slot[slot].add(record.device_identity)
+        if not (record.day_count or record.provisional_days):
+            continue
+        bucket = buckets[period]
+        index = indexes[slot]
+        for key, value in (("machines", record.total),
+                           ("provisional_machines", record.provisional_total)):
+            bucket[key][index] = (bucket[key][index] or 0.0) + value
+
+    names = []
+    for slot in slots:
+        labels = sorted(labels_by_slot[slot])
+        if len(identities_by_slot[slot]) > 1:
+            names.append(f"เครื่อง {slot + 1} · หลายเครื่อง ({' / '.join(labels)})")
+        elif labels:
+            names.append(labels[0])
+        else:
+            device = configured_by_slot.get(slot)
+            names.append(device.name if device is not None else f"เครื่อง {slot + 1}")
+    return {
+        "granularity": granularity,
+        "buckets": buckets,
+        "slots": list(slots),
+        "machine_names": names,
+        "available": any(value is not None for bucket in buckets.values()
+                         for value in bucket["machines"]),
+    }
+
+
+def _legacy_trend(summary, filter_key):
+    # Imported monthly totals cannot truthfully supply a daily trend.
+    periods = ([] if filter_key == "day"
+               else _trend_periods(filter_key, sorted(summary["all_monthly"])))
+    return {
+        "granularity": "day" if filter_key == "day" else "month",
+        "buckets": {
+            period: {"machines": list(summary["all_monthly"][period]["machines"]),
+                     "provisional_machines": [0.0, 0.0, 0.0]}
+            for period in periods
+        },
+        "slots": [0, 1, 2],
+        "machine_names": summary["machine_names"],
+        "available": bool(periods),
+    }
 
 
 def _build_legacy_overview_summary(filter_key: str, *, now: datetime | None = None) -> dict:
@@ -270,8 +347,18 @@ def _build_v5_overview_summary(filter_key: str, *, now: datetime) -> dict:
         filtered_months = sorted_months
 
     if normalized_filter == "day":
+        trend_start = now.date() - timedelta(days=13)
+        daily_records = load_usage_history(
+            slots, granularity="daily", today=now.date(),
+            period_start=trend_start, period_end=now.date(),
+        )
+        trend = _usage_trend(
+            daily_records, slots,
+            [(trend_start + timedelta(days=offset)).isoformat() for offset in range(14)],
+            granularity="day", configured_by_slot=configured_by_slot,
+        )
         selected_records = [
-            record for record in load_usage_history(slots, granularity="daily", today=now.date())
+            record for record in daily_records
             if record.period_start == now.date()
         ]
     elif normalized_filter == "year":
@@ -289,6 +376,12 @@ def _build_v5_overview_summary(filter_key: str, *, now: datetime) -> dict:
             record for record in records
             if record.period_end.strftime("%Y-%m") in filtered_months
         ]
+
+    if normalized_filter != "day":
+        trend = _usage_trend(
+            records, slots, _trend_periods(filter_key, sorted_months),
+            granularity="month", configured_by_slot=configured_by_slot,
+        )
 
     metrics = {
         "total": 0.0,
@@ -522,6 +615,7 @@ def _build_v5_overview_summary(filter_key: str, *, now: datetime) -> dict:
         "all_monthly": all_monthly,
         "filtered_months": filtered_months,
         "current_billing_month": current_key,
+        "trend": trend,
         "metrics": metrics,
         "machine_names": machine_names,
         "machine_values": display_machine_values,
@@ -561,4 +655,12 @@ def build_overview_summary(filter_key: str, *, now: datetime | None = None) -> d
         "month": "current",
         "year": "1y",
     }.get(filter_key, filter_key)
-    return _build_legacy_overview_summary(legacy_filter, now=current)
+    summary = _build_legacy_overview_summary(legacy_filter, now=current)
+    summary["trend"] = _legacy_trend(summary, filter_key)
+    if filter_key == "day":
+        summary["metrics_available"] = False
+        summary["metrics"] = {}
+        summary["machine_values"] = []
+        summary["type_values"] = []
+        summary["top_users"] = []
+    return summary

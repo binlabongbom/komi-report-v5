@@ -78,27 +78,37 @@ class ReportDetailArchive:
         cutoff = detail_cutoff(today or date.today()).isoformat()
         with closing(read_only_connection(self.path)) as conn:
             conn.execute("BEGIN")
-            # Display counts share the archive eligibility rules, but find the
-            # first/latest boundaries once per identity instead of probing each
-            # old row twice. Actual pruning still verifies every batch below.
             eligible = 0
             for kind, table in TABLES.items():
                 keys = ["device_slot", "subject_type", "subject_id"]
                 safety = "json_valid(r.source_json) AND json_extract(r.source_json,'$.counter_review') IS NULL"
                 if kind == "raw":
                     keys = ["device_slot", "device_serial_snapshot", "canonical_field", "source_path", "subject_type", "subject_id"]
-                    safety = "r.record_date>b.first_day AND r.counter_review_json='null'"
+                    safety = "r.counter_review_json='null'"
                 columns = ",".join(keys)
                 match = " AND ".join(f"b.{key}=r.{key}" for key in keys)
-                # Materialize the small identity set and probe it from a
-                # single detail scan. SQLite otherwise chooses the raw index's
-                # slot/serial prefix and rereads years once per user.
+                # Count review-safe old rows sequentially, then subtract only
+                # retained anchors. Joining every old detail to its bounds (or
+                # scanning the date index and fetching each large row) is much
+                # slower on a long history. Existing identity indexes cover the
+                # bounds; unique identity/day indexes resolve each anchor.
                 query = f"""WITH bounds AS MATERIALIZED (
                     SELECT {columns},MIN(record_date) first_day,MAX(record_date) last_day
                     FROM {table} GROUP BY {columns})
-                    SELECT COUNT(*) FROM {table} r CROSS JOIN bounds b ON {match}
-                    WHERE r.record_date<? AND r.record_date<b.last_day AND {safety}"""
-                eligible += conn.execute(query, (cutoff,)).fetchone()[0]
+                    SELECT (SELECT COUNT(*) FROM {table} r NOT INDEXED
+                            WHERE r.record_date<? AND {safety})
+                         - (SELECT COUNT(*) FROM bounds b CROSS JOIN {table} r
+                            ON {match} AND r.record_date=b.last_day
+                            WHERE r.record_date<? AND {safety})"""
+                parameters = [cutoff, cutoff]
+                if kind == "raw":
+                    # A single-row identity is both first and latest; subtract
+                    # it only once. Reviews remain hot regardless of age.
+                    query += f""" - (SELECT COUNT(*) FROM bounds b CROSS JOIN {table} r
+                        ON {match} AND r.record_date=b.first_day
+                        WHERE b.first_day<>b.last_day AND r.record_date<? AND {safety})"""
+                    parameters.append(cutoff)
+                eligible += conn.execute(query, parameters).fetchone()[0]
             archived, files = conn.execute("SELECT COALESCE(SUM(row_count),0),COUNT(*) FROM report_detail_archives").fetchone()
         return {"eligible": eligible, "archived": archived, "files": files}
 
@@ -249,6 +259,7 @@ class ReportDetailArchive:
 
     @staticmethod
     def subject_summaries(conn, slots, *, only_period=None, only_periods=None):
+        from services.subject_history import update_subject_bucket_name
         if not slots:
             return {}
         filters = "device_slot IN (" + ",".join("?" for _ in slots) + ")"
@@ -276,8 +287,11 @@ class ReportDetailArchive:
             for name in ("period_usage", "reset_count", "missing_baseline_days", "incomplete_days", "sample_count"):
                 current[name] += item[name]
             current["warnings"].update(item["warnings"])
+            if item['latest_total'] is not None:
+                update_subject_bucket_name(current, row[5], item["name"],
+                    item.get("_name_date") or item["latest_date"])
             if item['latest_total'] is not None and (item["latest_date"] >= current["latest_date"] or current['latest_total'] is None):
-                for name in ("latest_date", "latest_at", "latest_total", "name", "device_name_snapshot", "device_serial_snapshot"):
+                for name in ("latest_date", "latest_at", "latest_total", "device_name_snapshot", "device_serial_snapshot"):
                     current[name] = item[name]
         return buckets
 

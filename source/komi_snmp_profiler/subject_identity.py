@@ -19,6 +19,21 @@ def subject_name_is_placeholder(subject_id, subject_name):
     return False
 
 
+def prefer_subject_name(subject_id, current_name, candidate_name):
+    """Prefer a newly confirmed name without letting an ID erase a known name.
+
+    Callers must establish the same printer/subject identity and chronological
+    order first; matching display names alone never establishes identity.
+    """
+    current = str(current_name or "").strip()
+    candidate = str(candidate_name or "").strip()
+    if not subject_name_is_placeholder(subject_id, candidate):
+        return candidate
+    if not subject_name_is_placeholder(subject_id, current):
+        return current
+    return str(subject_id or "").strip() or candidate or current
+
+
 def numeric_name_aliases(names):
     """Only normalize unambiguous decimal IDs; never merge distinct accounts."""
     candidates = {}

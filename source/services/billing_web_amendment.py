@@ -138,8 +138,8 @@ def _preview(conn, slot, epoch_id, start, end, zone, today):
     if (type(discount) is not int or not 0 <= discount <= 10000
             or any(type(v) is not int or v < 0 for v in prices.values())):
         raise ValueError("นโยบายราคาเดิมไม่ถูกต้อง")
-    changes = [date.fromisoformat(r[0]) for r in conn.execute(
-        "SELECT effective_date FROM price_history WHERE device_slot=? ORDER BY effective_date", (slot,))]
+    from services.pricing import price_change_dates
+    changes = price_change_dates(conn, slot)
     allocations, intervals, revisions = {}, {}, {}
     for key in categories:
         projection = project_counter(events, slot=slot, serial=serial, epoch_id=epoch_id,

@@ -126,6 +126,8 @@ export type UserItem = {
   subject_type: string;
   subject_id: string;
   subject_name: string;
+  report_user_key?: string;
+  report_device_identity?: string;
   usage: number;
   latest_total: number;
   needs_review: boolean;

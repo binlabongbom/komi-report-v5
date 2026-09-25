@@ -77,6 +77,7 @@ def tr(thai: str, english: str) -> str:
 # Exact labels used throughout the six main workspaces and the setup wizard.
 # Longer/dynamic messages are handled by the phrase replacements below.
 _EN: dict[str, str] = {
+    "มิเตอร์เริ่มต้น": "Initial meter",
     "ลองโหลดอีกครั้ง": "Retry loading",
     "กำลังโหลดภาพรวม…": "Loading overview…",
     "โหลดภาพรวมไม่สำเร็จ · กดรีเฟรชเพื่อลองใหม่": "Overview could not be loaded. Refresh to retry.",
@@ -403,6 +404,7 @@ _EN: dict[str, str] = {
     "รายละเอียด": "Details",
     "ทั้งหมด": "All",
     "ปัจจุบัน": "Current",
+    "วันนี้": "Today",
     "รายวัน": "Daily",
     "รายสัปดาห์": "Weekly",
     "รายเดือน": "Monthly",

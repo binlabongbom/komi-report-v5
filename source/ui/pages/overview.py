@@ -111,7 +111,7 @@ class PageOverviewV2(QWidget):
     sync_requested = pyqtSignal()
 
     PERIODS = (
-        ("รายวัน", "day"),
+        ("วันนี้", "day"),
         ("รายเดือน", "month"),
         ("รายปี", "year"),
         ("ทั้งหมด", "all"),
@@ -120,8 +120,8 @@ class PageOverviewV2(QWidget):
     def __init__(self, get_data, parent=None):
         super().__init__(parent)
         self.get_data = get_data
-        self._ov_filter = "month"
-        self._all_monthly: dict = {}
+        self._ov_filter = "day"
+        self._trend: dict = {}
         self._overview_compact = True
         from ui.background_read import LatestRead
         self.summary_reader = LatestRead(self)
@@ -243,7 +243,8 @@ class PageOverviewV2(QWidget):
         layout.addWidget(printer_card)
 
         chart_header = QHBoxLayout()
-        chart_header.addWidget(sub_title("แนวโน้มการใช้งาน"))
+        self._trend_title = sub_title("แนวโน้มการใช้งาน")
+        chart_header.addWidget(self._trend_title)
         chart_header.addStretch()
 
         self.trend_card = QFrame()
@@ -319,53 +320,63 @@ class PageOverviewV2(QWidget):
         chart.setBackgroundBrush(QColor(C_CARD))
         chart.setDropShadowEnabled(False)
         chart.setMargins(QMargins(6, 6, 6, 2))
-        monthly = self._all_monthly
-        if not monthly:
-            chart.setTitle("ยังไม่มีข้อมูล")
+        buckets = self._trend.get('buckets') or {}
+        periods = sorted(buckets)
+        names = self._trend.get('machine_names') or []
+        if not periods or not self._trend.get('available', False):
+            chart.setTitle(tr("ยังไม่มีข้อมูลในช่วงนี้", "No data in this period"))
             chart.legend().hide()
             replace_chart(self.view_bar, chart)
             return
 
-        months = sorted(monthly)
-        if self._ov_filter == "day":
-            months = months[-1:]
-        elif self._ov_filter == "month":
-            months = months[-6:]
-        elif self._ov_filter == "year":
-            months = months[-12:]
         slot_count = max(
-            (len(monthly[month].get("machines", [])) for month in months),
+            (len(buckets[period].get("machines", [])) for period in periods),
             default=0,
         )
-        names = getattr(self, "_machine_names", [])
+        slots = self._trend.get('slots') or list(range(slot_count))
         colors = list(SLOT_COLORS)
         series_items = []
+        legend_series = []
         maximum = 0.0
-        for slot in range(slot_count):
-            line = QLineSeries()
-            line.setName(names[slot] if slot < len(names) else f"เครื่อง {slot + 1}")
-            line.setColor(QColor(colors[slot % len(colors)]))
-            pen = QPen(line.color(), 2.5)
-            line.setPen(pen)
-            line.setPointsVisible(True)
-            for index, month in enumerate(months):
-                item = monthly[month]
+        for column in range(slot_count):
+            slot = slots[column]
+            line = None
+            first_segment = True
+            for index, period in enumerate(periods):
+                item = buckets[period]
                 confirmed = item.get("machines", [])
                 provisional = item.get("provisional_machines", [])
-                value = float(confirmed[slot] if slot < len(confirmed) else 0.0)
-                value += float(provisional[slot] if slot < len(provisional) else 0.0)
+                value = confirmed[column] if column < len(confirmed) else None
+                pending = provisional[column] if column < len(provisional) else None
+                if value is None and pending is None:
+                    # Missing readings must not become zero points or a line
+                    # bridging an unknown day. Start another segment afterward.
+                    line = None
+                    continue
+                if line is None:
+                    line = QLineSeries()
+                    line.setName(names[column] if column < len(names) else f"เครื่อง {slot + 1}")
+                    line.setColor(QColor(colors[slot % len(colors)]))
+                    line.setPen(QPen(line.color(), 2.5))
+                    line.setPointsVisible(True)
+                    chart.addSeries(line)
+                    series_items.append(line)
+                    if first_segment:
+                        legend_series.append(line)
+                        first_segment = False
+                value = float(value or 0.0) + float(pending or 0.0)
                 maximum = max(maximum, value)
                 line.append(float(index), value)
-            chart.addSeries(line)
-            series_items.append(line)
 
         axis_x = QBarCategoryAxis()
         labels = []
-        for month in months:
+        daily = self._trend.get('granularity') == 'day'
+        for period in periods:
             try:
-                labels.append(datetime.strptime(month, "%Y-%m").strftime("%b %y"))
+                stamp = datetime.strptime(period, '%Y-%m-%d' if daily else '%Y-%m')
+                labels.append(stamp.strftime('%d/%m' if daily else '%b %y'))
             except ValueError:
-                labels.append(month)
+                labels.append(period)
         axis_x.append(labels)
         axis_x.setLabelsColor(QColor(C_TEXT2))
         axis_x.setGridLineColor(QColor(C_TABLE_BORDER))
@@ -384,6 +395,7 @@ class PageOverviewV2(QWidget):
         chart.legend().setAlignment(Qt.AlignmentFlag.AlignTop)
         for line in series_items:
             for marker in chart.legend().markers(line):
+                marker.setVisible(line in legend_series)
                 marker.setBrush(QBrush(line.color()))
                 marker.setPen(QPen(line.color(), 1.0))
         chart.setAnimationOptions(QChart.AnimationOption.NoAnimation)
@@ -399,7 +411,8 @@ class PageOverviewV2(QWidget):
         self.summary_reader.request(build_overview_summary, self._ov_filter)
 
     def _summary_failed(self, error) -> None:
-        self.overview_status.setText(tr("โหลดภาพรวมไม่สำเร็จ · กดรีเฟรชเพื่อลองใหม่", "Overview could not be loaded. Refresh to retry."))
+        self.overview_status.setText(tr(
+            "โหลดภาพรวมไม่สำเร็จ · กดรีเฟรชเพื่อลองใหม่", "Overview could not be loaded. Refresh to retry."))
         self.overview_status.setToolTip(error)
         self.overview_retry.show()
 
@@ -409,15 +422,17 @@ class PageOverviewV2(QWidget):
 
     def _apply_summary(self, summary) -> None:
         self.overview_status.setToolTip("")
-        self._all_monthly = summary.get("all_monthly") or {}
+        self._trend = summary.get('trend') or {}
         metrics = summary.get("metrics") or {}
+        metrics_available = summary.get('metrics_available', True)
         quality = summary.get("quality") or {}
         devices = summary.get("devices") or []
-        self._machine_names = (
-            [str(device.get("name") or f"เครื่อง {index + 1}") for index, device in enumerate(devices)]
-            or summary.get("machine_names")
-            or []
-        )
+        scope = {
+            'day': tr('14 วันล่าสุด รวมวันนี้', 'Last 14 days, including today'),
+            'month': tr('6 เดือนล่าสุด', 'Last 6 months'),
+            'year': tr('12 เดือนล่าสุด', 'Last 12 months'),
+        }.get(self._ov_filter, tr('รายเดือนทั้งหมด', 'All months'))
+        self._trend_title.setText(tr('แนวโน้มการใช้งาน', 'Usage trend') + ' · ' + scope)
 
         display_total = float(metrics.get("display_total", metrics.get("total", 0)) or 0)
         display_cost = float(metrics.get("display_cost", metrics.get("cost", 0)) or 0)
@@ -426,7 +441,8 @@ class PageOverviewV2(QWidget):
         last_sync = str(quality.get("last_sync_at") or "")
         if last_sync:
             try:
-                last_sync = datetime.fromisoformat(last_sync.replace("Z", "+00:00")).astimezone().strftime("%d/%m/%Y %H:%M")
+                last_sync = datetime.fromisoformat(last_sync.replace("Z", "+00:00")).astimezone().strftime(
+                    "%d/%m/%Y %H:%M")
             except ValueError:
                 pass
         else:
@@ -455,11 +471,12 @@ class PageOverviewV2(QWidget):
             self._detail(metrics.get("display_copy_a3_bw", 0), metrics.get("display_copy_a4_bw", 0)),
             available=copy_available,
         )
-        self.card_total_usage.lbl_val.setText(fn(display_total))
+        self.card_total_usage.lbl_val.setText(fn(display_total) if metrics_available else '—')
         self.card_total_usage.lbl_diff.setText(
             f"ยืนยัน {fn(metrics.get('total', 0))} · วันนี้ +{fn(provisional_total)}"
+            if metrics_available else tr('ไม่มีข้อมูลรายวัน', 'Daily data unavailable')
         )
-        if quality.get("provisional_cost_available", True):
+        if metrics_available and quality.get("provisional_cost_available", True):
             self.card_total_cost.lbl_val.setText(fmt_baht(display_cost))
         else:
             self.card_total_cost.lbl_val.setText("—")
@@ -469,6 +486,9 @@ class PageOverviewV2(QWidget):
         self.card_total_cost.setToolTip(
             tr('ยืนยันแล้ว {posted} · ประมาณการ {pending}', 'Posted {posted} · Estimated {pending}').format(
                 posted=fmt_baht(metrics.get('cost', 0)), pending=fmt_baht(metrics.get('provisional_cost', 0))))
+        if not metrics_available:
+            self.card_total_cost.lbl_diff.setText(tr('ไม่มีข้อมูลรายวัน', 'Daily data unavailable'))
+            self.card_total_cost.setToolTip('')
 
         while self.printer_list_layout.count():
             item = self.printer_list_layout.takeAt(0)
@@ -590,11 +610,10 @@ class PageOverviewV2(QWidget):
             no_device.setStyleSheet(text_styles.label(C_TEXT3, padding='18px'))
             self.printer_list_layout.addWidget(no_device)
 
-        has_data = bool(self._all_monthly)
-        self.trend_card.setVisible(has_data)
+        has_data = bool(self._trend.get('available'))
+        self.trend_card.setVisible(has_data or bool(devices))
         self.overview_empty.setVisible(not has_data and not devices)
-        if has_data:
-            self._redraw_bar()
+        self._redraw_bar()
         self.btn_sync_now.setText("อ่านข้อมูลทันที")
         self.btn_sync_now.setEnabled(True)
         self.lbl_time.setText(datetime.now().strftime("%H:%M:%S"))

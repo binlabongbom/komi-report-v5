@@ -6,6 +6,9 @@ from enum import StrEnum
 from ipaddress import ip_address
 from typing import Any
 
+# Persisted reading evidence: emitted only for explicit disabled auth and track modes.
+PUBLIC_USER_DISABLED_MARKER = "ยืนยันว่า User Authentication และ Account Track ปิดใช้งานบนเครื่อง"
+
 
 class Confidence(StrEnum):
     VERIFIED = "verified"
