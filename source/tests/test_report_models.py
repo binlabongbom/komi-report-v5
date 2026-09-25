@@ -5,6 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from services.monthly_history import MonthlyUsage
 from services.report_models import RawCell, build_legacy_raw_tables
 from services.report_snapshot import SnapshotDataCache, load_report_snapshot
 from test_cloud_reports_ui import _raw
@@ -39,10 +40,19 @@ def test_users_snapshot_does_not_retain_raw_and_legacy_cache_is_scoped(monkeypat
     from database import get_db_path
     period = ('2026-08-01', '2026-08-31')
     raw = (_raw(date(2026, 8, 6), slot=0, field='counter.print.total', label='Print', delta=7),)
-    monthly = SimpleNamespace(period_start=date(2026, 8, 1), period_end=date(2026, 8, 31))
+    daily = MonthlyUsage(
+        device_slot=0, period_start=date(2026, 8, 6), period_end=date(2026, 8, 6),
+        total=7, a3_color=0, a3_bw=0, a4_color=0, a4_bw=7, scan=0,
+        gross_cost=1.4, net_cost=1.4, day_count=1, incomplete_days=0,
+        device_identity='serial:SER-A', device_serial_snapshot='SER-A',
+        device_name_snapshot='Sales Printer', print_bw=7, print_a4_bw=7,
+        print_available=True, copy_available=True,
+    )
+    monthly = replace(daily, period_start=date(2026, 8, 1), period_end=date(2026, 8, 31))
     calls = []
     monkeypatch.setattr(module, 'report_slots', lambda: [0])
-    monkeypatch.setattr(module, 'load_usage_history', lambda *a, **kw: (monthly,))
+    monkeypatch.setattr(module, 'load_usage_history',
+                        lambda *a, **kw: (daily,) if kw.get('granularity') == 'daily' else (monthly,))
     monkeypatch.setattr(module, 'load_subject_history', lambda *a, **kw: ())
     monkeypatch.setattr(module, 'load_user_counter_history', lambda *a, **kw: pytest.fail('No subjects need no Counter evidence'))
     monkeypatch.setattr(module, 'load_imported_legacy_history', lambda: ())
@@ -55,6 +65,15 @@ def test_users_snapshot_does_not_retain_raw_and_legacy_cache_is_scoped(monkeypat
     users = load_report_snapshot(1, period, **kwargs)
     legacy = load_report_snapshot(4, period, **kwargs)
     assert users.data['raw_counter_records'] == ()
+    assert users.data['prepared_models']['users'] == ()
+    public_rows = users.data['prepared_models']['public_users']
+    assert len(public_rows) == 1
+    assert public_rows[0]['name'] == 'Public User'
+    assert public_rows[0]['by_slot'][0]['total'] == 7
+    assert public_rows[0]['by_slot'][0]['cost'] == 1.4
+    repeated_users = load_report_snapshot(1, period, **kwargs)
+    assert repeated_users.data['prepared_models']['public_users'] is public_rows
+    assert repeated_users.data['raw_counter_records'] == ()
     assert legacy.data['raw_counter_records'] == raw
     again = load_report_snapshot(4, period, **kwargs)
     assert again.data['raw_counter_records'] is legacy.data['raw_counter_records']
@@ -62,6 +81,8 @@ def test_users_snapshot_does_not_retain_raw_and_legacy_cache_is_scoped(monkeypat
     assert len(calls) == 1
     with pytest.raises(TypeError):
         users.data['raw_counter_records'] = ()
+    with pytest.raises(TypeError):
+        public_rows[0]['by_slot'][0]['total'] = 999
     with pytest.raises(TypeError):
         legacy.data['prepared_models']['legacy_raw'] = ()
     load_report_snapshot(4, period, database_path=tmp_path / 'other.db', **kwargs)
