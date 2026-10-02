@@ -54,7 +54,9 @@ def cleanup_qt_widgets(isolated_database):
         from PyQt6.QtWidgets import QApplication
     except ImportError:
         return
-    app = QApplication.instance()
+    # Lifecycle unit tests can monkeypatch instance() with an application
+    # double. Keep cleanup bound to the real session application instead.
+    app = _qt_app_keepalive or QApplication.instance()
     if app is None:
         return
     _qt_app_keepalive = app

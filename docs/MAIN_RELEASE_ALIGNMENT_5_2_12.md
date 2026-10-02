@@ -61,6 +61,28 @@ are recorded in [PR 41](https://github.com/binlabongbom/komi-report-v5/pull/41)
 before merge. The desktop runner deliberately excludes the five release-assembly
 suites documented in `DESKTOP_CI.md`; installers are not rebuilt in this task.
 
+### Current validation blocker
+
+The full Mac run on `6732990` completed all 2,134 planned cases with no missing
+cases: 2,133 passed, one failed and three teardown errors (the latter accompany
+otherwise passing cases). The teardown errors came from lifecycle tests mocking
+`QApplication.instance()`; cleanup now retains the real session application.
+The affected tray/UI suites passed 19/19 after that correction.
+
+The remaining failure is intermittent:
+`test_web_export_worker_keeps_ui_responsive[4096-pdf]` raises
+`RuntimeError: wrapped C/C++ object of type QAbstractTextDocumentLayout has been deleted`
+at `services/web_evidence_export.py:67`, while setting the PDF layout paint device.
+Three fresh repetitions of the exact eight-case batch passed twice and failed
+once; a diagnostic run independently captured the same source traceback. This
+is not resolved by the validated fixture changes, and the suite is not green.
+
+Keep the PR draft pending diagnosis and a validated resolution consistent with
+the source-alignment scope. No runtime workaround, skip, weakened assertion or
+merge bypass has been applied. These results concern source tests on Python
+3.14.7/Qt 6.11.2; they are not an installed-package reproduction. The published
+Mac verification records Python 3.14.3.
+
 Existing release evidence retains its documented signing, Host staging E2E,
 live-printer and tray/autostart limitations. This source merge does not change
 those results or claim a new production acceptance.
