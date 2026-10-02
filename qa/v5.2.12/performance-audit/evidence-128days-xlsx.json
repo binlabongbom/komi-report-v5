@@ -1,0 +1,71 @@
+{
+  "synthetic": true,
+  "mode": "evidence",
+  "started_at": "2026-09-19T07:28:40.392419",
+  "python": "3.14.7 (tags/v3.14.7:823f032, Aug  5 2026, 10:51:32) [MSC v.1944 64 bit (AMD64)]",
+  "platform": "win32",
+  "measurements": [
+    {
+      "name": "evidence_render_128days",
+      "seconds_until_ready": 1.5768705000009504,
+      "action_seconds": 1.5768652000042493,
+      "heartbeat_count": 2,
+      "max_event_loop_gap_ms": 1576.9146000020555,
+      "gaps_above_100ms": 1,
+      "before": {
+        "working_set_bytes": 63176704,
+        "private_bytes": 34992128,
+        "peak_working_set_bytes": 63176704,
+        "cpu_seconds": 1.3125
+      },
+      "after": {
+        "working_set_bytes": 93425664,
+        "private_bytes": 65024000,
+        "peak_working_set_bytes": 93425664,
+        "cpu_seconds": 2.90625
+      }
+    },
+    {
+      "name": "evidence_xlsx_128days",
+      "seconds_until_ready": 2.846372700005304,
+      "action_seconds": 2.8463713000019197,
+      "heartbeat_count": 3,
+      "max_event_loop_gap_ms": 2846.478000006755,
+      "gaps_above_100ms": 1,
+      "before": {
+        "working_set_bytes": 93544448,
+        "private_bytes": 65159168,
+        "peak_working_set_bytes": 93544448,
+        "cpu_seconds": 3.03125
+      },
+      "after": {
+        "working_set_bytes": 128655360,
+        "private_bytes": 332517376,
+        "peak_working_set_bytes": 128655360,
+        "cpu_seconds": 5.59375
+      }
+    }
+  ],
+  "blocked_operations": [],
+  "complete": true,
+  "scope": "Source/offscreen; no Host, real network, Web service, installer or release build",
+  "copy_migration_init_seconds": 0.07257200000458397,
+  "copy_schema": 30,
+  "fixture": {
+    "days": 128,
+    "reads_per_day": 32,
+    "points": 4096,
+    "intervals": 4095,
+    "counters": 1,
+    "format": "xlsx"
+  },
+  "in_progress": null,
+  "validation": {
+    "ขอบเขตข้อมูล": 8,
+    "อ่านจริง": 4097,
+    "ยอดตามช่วง": 4096,
+    "กราฟรายวัน": 129
+  },
+  "output_bytes": 197168,
+  "temporary_copy_cleaned": true
+}

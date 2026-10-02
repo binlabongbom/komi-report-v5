@@ -22,7 +22,9 @@ import database
 from config import DEFAULT_FONT_NAME, DEFAULT_FONT_SIZE
 from tools.virtual_printer import VirtualPrinterService
 from ui_consistency import install_button_system
-from v5_pages import SetupWizardV5
+from ui.numeric_inputs import configure_numeric_locale
+from services.application_identity import load_application_icon
+from ui.setup.wizard import SetupWizardV5
 
 
 @dataclass(frozen=True)
@@ -40,7 +42,9 @@ def lab_network(platform: str = sys.platform) -> LabNetwork:
 
 
 def main() -> int:
+    configure_numeric_locale()
     app = QApplication.instance() or QApplication(sys.argv)
+    app.setWindowIcon(load_application_icon())
     install_button_system(app)
     app.setFont(app.font().__class__(DEFAULT_FONT_NAME, DEFAULT_FONT_SIZE))
     with tempfile.TemporaryDirectory(prefix="komi-setup-lab-") as temp_dir:

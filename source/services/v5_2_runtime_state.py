@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 from typing import Literal
 
 from database import _open
+from services.registration_errors import SUPPORT_CODES
 from services.registration_data_notice import REGISTRATION_NOTICE_VERSION
 from services.registration_envelope import normalize_device_inventory
 
@@ -604,4 +605,4 @@ class V52RuntimeStateRepository:
             "vault_unavailable",
             "validation_error",
         }
-        return value if value in allowed else "needs_review"
+        return value if value in allowed | SUPPORT_CODES else "needs_review"

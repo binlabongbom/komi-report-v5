@@ -1,6 +1,10 @@
 """Separate V5.2 window for inspecting and correcting counter mappings."""
 
 from __future__ import annotations
+from ui.styles import surfaces as surfaces_styles
+from ui.styles import buttons as buttons_styles
+from ui.styles import text as text_styles
+from services.support_diagnostics import with_diagnostic
 
 from collections.abc import Callable
 
@@ -33,14 +37,7 @@ def _button(text: str, *, primary: bool = False) -> QPushButton:
     button = QPushButton(text)
     button.setMinimumHeight(38)
     button.setStyleSheet(
-        "QPushButton{border-radius:7px;padding:7px 14px;font-weight:700;"
-        + (
-            "background:#087FBE;color:#FFFFFF;border:1px solid #087FBE;}"
-            "QPushButton:hover{background:#076BA0;}"
-            if primary
-            else "background:#FFFFFF;color:#0B4F71;border:1px solid #B8CDE0;}"
-            "QPushButton:hover{background:#EEF7FC;}"
-        )
+        buttons_styles.parser_action(primary=primary)
     )
     return button
 
@@ -68,7 +65,7 @@ class ParserMappingInspector(QDialog):
         layout.setContentsMargins(22, 18, 22, 18)
         layout.setSpacing(12)
         title = QLabel("ตรวจสอบ Parser Mapping")
-        title.setStyleSheet("color:#102A43;font-size:24px;font-weight:800;")
+        title.setStyleSheet(text_styles.label('#102A43', font_size='24px', font_weight='800'))
         layout.addWidget(title)
         note = QLabel(
             "เปรียบเทียบชื่อ Counter ที่เครื่องส่งจริงกับช่องที่จะบันทึกใน Database · "
@@ -76,8 +73,7 @@ class ParserMappingInspector(QDialog):
         )
         note.setWordWrap(True)
         note.setStyleSheet(
-            "background:#EEF6F9;color:#245268;border:1px solid #C9DFE8;"
-            "border-radius:7px;padding:10px 12px;"
+            surfaces_styles.INFO_BOX
         )
         layout.addWidget(note)
 
@@ -88,7 +84,7 @@ class ParserMappingInspector(QDialog):
         self.device_combo.currentIndexChanged.connect(self.refresh)
         toolbar.addWidget(self.device_combo)
         self.device_detail = QLabel()
-        self.device_detail.setStyleSheet("color:#52677D;")
+        self.device_detail.setStyleSheet(text_styles.label('#52677D'))
         toolbar.addWidget(self.device_detail, 1)
         self.read_button = _button("อ่าน / ทดสอบอีกครั้ง")
         self.read_button.clicked.connect(self._read_again)
@@ -112,7 +108,7 @@ class ParserMappingInspector(QDialog):
 
         self.status = QLabel()
         self.status.setWordWrap(True)
-        self.status.setStyleSheet("color:#52677D;")
+        self.status.setStyleSheet(text_styles.label('#52677D'))
         layout.addWidget(self.status)
 
         actions = QHBoxLayout()
@@ -183,7 +179,7 @@ class ParserMappingInspector(QDialog):
                 f"Canonical เดิม: {record.canonical_field}\nSource: {record.source_path or '—'}"
             )
             self.table.setItem(row, 0, raw_item)
-            value = QTableWidgetItem(f"{record.closing_value:,.0f}")
+            value = QTableWidgetItem(f"{record.closing_value:,.0f}" if record.closing_value is not None else '—')
             value.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
             self.table.setItem(row, 1, value)
             combo = QComboBox()
@@ -246,7 +242,7 @@ class ParserMappingInspector(QDialog):
         try:
             changed = self._repository.replace_all(str(device.serial or ""), mappings)
         except (OSError, ValueError) as error:
-            QMessageBox.warning(self, "บันทึก Mapping ไม่สำเร็จ", str(error))
+            QMessageBox.warning(self, "บันทึก Mapping ไม่สำเร็จ", with_diagnostic(str(error), error, "บันทึก Mapping ไม่สำเร็จ"))
             return
         self.status.setText(
             f"บันทึกแล้ว {changed} การเปลี่ยนแปลง · มีผลกับข้อมูลที่อ่านใหม่หลังจากนี้"

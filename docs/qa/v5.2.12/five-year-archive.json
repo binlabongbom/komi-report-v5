@@ -1,0 +1,38 @@
+{
+  "synthetic": true,
+  "input": "C:\\Users\\User\\AppData\\Local\\Temp\\komi-five-year-299c6c6c88b44a69bb0503e207bacd20\\synthetic-history.sqlite3",
+  "copy": "C:\\Users\\User\\AppData\\Local\\Temp\\komi-five-year-archive-20260918-b\\synthetic-archived.sqlite3",
+  "source_bytes": 435490816,
+  "hot_file_bytes": 479129600,
+  "reusable_hot_bytes": 351895552,
+  "archive_bytes": 25554944,
+  "archive_files": 224,
+  "archived_rows": 876300,
+  "archive_seconds": 430.024,
+  "remaining_rows": {
+    "daily_subject_records": 109500,
+    "daily_raw_counter_records": 109800,
+    "archived_subject_periods": 45300
+  },
+  "verified_total_pages": 6573600.0,
+  "timings": {
+    "all_subject_months_ms": 9245.03,
+    "old_canonical_month_ms": 50.48,
+    "old_custom_week_ms": 230.37,
+    "old_raw_week_ms": 318.47
+  },
+  "verified": [
+    "all monthly page totals",
+    "old canonical month exact equality",
+    "old custom week exact equality",
+    "old raw week exact equality",
+    "quick_check"
+  ],
+  "notes": [
+    "Original synthetic fixture opened read-only; archive ran on a new copy",
+    "No VACUUM: freed SQLite pages are reusable; file does not shrink immediately",
+    "Query measurements are single runs after archival, not cold-start or real-printer timings"
+  ],
+  "source_commit": "b0b60cc",
+  "schema_at_start": 25
+}

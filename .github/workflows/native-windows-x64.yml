@@ -1,12 +1,7 @@
 name: Native Windows x64
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - '.github/workflows/native-windows-x64.yml'
-      - 'source/**'
-      - 'web/**'
+  # Legacy V5.2.6 installer assembly is separate from desktop regression CI.
   workflow_dispatch:
 
 permissions:
@@ -53,7 +48,7 @@ jobs:
           Write-Host "RunnerName=$env:RUNNER_NAME"
           Write-Host "Git=$(git --version)"
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
 
@@ -195,7 +190,7 @@ jobs:
           Get-ChildItem 'release/v5.2.6-installer' | Select-Object Name, Length
 
       - name: Upload V5.2.6 Windows installer
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7.0.1
         with:
           name: KOMI-Report-V5.2.6-Windows-x64-${{ github.sha }}
           retention-days: 30

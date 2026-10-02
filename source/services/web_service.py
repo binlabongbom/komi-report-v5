@@ -13,9 +13,12 @@ import sys
 import threading
 import time
 import traceback
+import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
+
+from services.web_port import read_web_port
 
 WebServiceState = Literal["stopped", "starting", "running", "external", "failed"]
 _PACKAGED_RUNTIME_STAMP = ".komi-packaged-runtime-build-id"
@@ -119,6 +122,8 @@ class WebServiceManager:
         self._packaged_thread: threading.Thread | None = None
         self._packaged_stop = threading.Event()
         self._last_start_failed = False
+        self._active_port: int | None = None
+        self._stop_file: Path | None = None
         self._lock = threading.RLock()
 
     def start(self) -> WebServiceStatus:
@@ -126,6 +131,7 @@ class WebServiceManager:
             current = self.status()
             if current.state in {"starting", "running", "external"}:
                 return current
+            self._active_port = read_web_port(self.runtime_root / ".env.local")
             frozen = bool(getattr(sys, "frozen", False))
             bundle_root = Path(
                 getattr(sys, "_MEIPASS", Path(sys.executable).resolve().parent)
@@ -160,8 +166,12 @@ class WebServiceManager:
                 return self.status(detail="ไม่พบ Web source กลาง กรุณารอ OneDrive sync ให้ครบ")
             self.log_path.parent.mkdir(parents=True, exist_ok=True)
             log_handle = self.log_path.open("ab")
+            python = Path(sys.executable)
+            if sys.platform.startswith("win") and python.name.lower() == "pythonw.exe":
+                python = python.with_name("python.exe")
+            self._stop_file = self.log_path.parent / f"web-worker-{uuid.uuid4().hex}.stop"
             command = [
-                sys.executable,
+                str(python),
                 str(worker),
                 "--project-root",
                 str(self.project_root),
@@ -169,6 +179,8 @@ class WebServiceManager:
                 str(self.runtime_root),
                 "--parent-pid",
                 str(os.getpid()),
+                "--stop-file",
+                str(self._stop_file),
             ]
             creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0) if sys.platform.startswith("win") else 0
             try:
@@ -191,35 +203,51 @@ class WebServiceManager:
     def stop(self) -> WebServiceStatus:
         with self._lock:
             packaged_thread = self._packaged_thread
+            process = self._process
             if packaged_thread is not None and packaged_thread.is_alive():
                 self._packaged_stop.set()
-            if self._process is not None and self._process.poll() is None:
-                self._process.terminate()
-                try:
-                    self._process.wait(timeout=10)
-                except subprocess.TimeoutExpired:
-                    self._process.kill()
-                    self._process.wait(timeout=3)
-            self._process = None
+        # A worker may acquire _lock while finishing: never join under it.
+        if process is not None and process.poll() is None:
+            if self._stop_file is not None:
+                self._stop_file.touch()
+            else:
+                process.terminate()
+            try:
+                process.wait(timeout=30)
+            except subprocess.TimeoutExpired:
+                # A first build may still be finishing. Keep ownership so a
+                # restart cannot race a second worker against the same ports.
+                return self.status(detail="กำลังหยุด Web service กรุณารอสักครู่แล้วลองใหม่")
         if packaged_thread is not None and packaged_thread.is_alive():
-            packaged_thread.join(timeout=12)
+            packaged_thread.join(timeout=30)
         with self._lock:
+            if packaged_thread is not None and packaged_thread.is_alive():
+                return self.status(detail="Web service ยังหยุดไม่สำเร็จ กรุณารอสักครู่แล้วลองใหม่")
+            self._process = None
             self._packaged_thread = None
+            self._active_port = None
+            if self._stop_file is not None:
+                self._stop_file.unlink(missing_ok=True)
+                self._stop_file = None
             self._last_start_failed = False
             return self.status()
 
     def restart(self) -> WebServiceStatus:
-        """Restart a worker owned by this Desktop process."""
+        """Reload settings by fully stopping either owned worker implementation."""
 
         with self._lock:
             current = self.status()
             if current.state == "external":
                 return self.status(
-                    detail="บันทึกรหัสแล้ว แต่ Web service เปิดจากโปรแกรมอื่น กรุณาปิดและเปิดใหม่"
+                    detail="บันทึกค่าแล้ว แต่ Web service เปิดจากโปรแกรมอื่น กรุณาปิดและเปิดใหม่"
                 )
+        stopped = self.stop()
+        with self._lock:
             if self._process is not None and self._process.poll() is None:
-                self.stop()
-            return self.start()
+                return stopped
+            if self._packaged_thread is not None and self._packaged_thread.is_alive():
+                return stopped
+        return self.start()
 
     def status(self, *, detail: str | None = None) -> WebServiceStatus:
         with self._lock:
@@ -228,7 +256,8 @@ class WebServiceManager:
             ) or (
                 self._packaged_thread is not None and self._packaged_thread.is_alive()
             )
-            web_ready = _port_open(3000)
+            port = self._active_port if process_running and self._active_port else read_web_port(self.runtime_root / ".env.local")
+            web_ready = _port_open(port)
             api_ready = _port_open(8766)
             if web_ready and api_ready:
                 state: WebServiceState = "running" if process_running else "external"
@@ -244,8 +273,8 @@ class WebServiceManager:
                 default_detail = "Web service ปิดอยู่"
             return WebServiceStatus(
                 state=state,
-                local_url="https://127.0.0.1:3000",
-                lan_url=f"https://{_lan_ip()}:3000",
+                local_url=f"https://127.0.0.1:{port}",
+                lan_url=f"https://{_lan_ip()}:{port}",
                 detail=detail or default_detail,
                 log_path=self.log_path,
             )
@@ -265,6 +294,7 @@ class WebServiceManager:
         proxy_server: http.server.ThreadingHTTPServer | None = None
         api_server = None
         try:
+            port = self._active_port or read_web_port(self.runtime_root / ".env.local")
             self._prepare_packaged_runtime(seed)
 
             from services.lan_tls import discover_primary_lan_ip, resolve_lan_tls
@@ -338,6 +368,7 @@ class WebServiceManager:
             proxy_server = self._https_proxy_server(
                 certificate=material.certificate_path,
                 private_key=material.private_key_path,
+                port=port,
             )
             proxy_thread = threading.Thread(
                 target=proxy_server.serve_forever,
@@ -345,13 +376,16 @@ class WebServiceManager:
                 daemon=True,
             )
             proxy_thread.start()
-            self._wait_for_port(3000, timeout=10)
+            self._wait_for_port(port, timeout=10)
 
             while not self._packaged_stop.wait(0.5):
                 if node_process.poll() is not None:
                     raise RuntimeError(f"Web service หยุดทำงาน (exit {node_process.returncode})")
                 if api_thread is not None and not api_thread.is_alive():
                     raise RuntimeError("Web API หยุดทำงาน")
+        except InterruptedError:
+            if not self._packaged_stop.is_set():
+                raise
         except Exception:
             with self.log_path.open("a", encoding="utf-8") as stream:
                 stream.write("\n[packaged-web-error]\n")
@@ -410,7 +444,7 @@ class WebServiceManager:
 
     @staticmethod
     def _https_proxy_server(
-        *, certificate: Path, private_key: Path
+        *, certificate: Path, private_key: Path, port: int = 3000
     ) -> http.server.ThreadingHTTPServer:
         """Expose the standalone Next server through TLS without build tooling."""
 
@@ -453,15 +487,15 @@ class WebServiceManager:
             def log_message(self, _format: str, *_args: object) -> None:
                 return
 
-        server = http.server.ThreadingHTTPServer(("0.0.0.0", 3000), ProxyHandler)
+        server = http.server.ThreadingHTTPServer(("0.0.0.0", port), ProxyHandler)
         context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
         context.minimum_version = ssl.TLSVersion.TLSv1_2
         context.load_cert_chain(certfile=str(certificate), keyfile=str(private_key))
         server.socket = context.wrap_socket(server.socket, server_side=True)
         return server
 
-    @staticmethod
     def _wait_for_port(
+        self,
         port: int,
         *,
         timeout: float,
@@ -469,6 +503,8 @@ class WebServiceManager:
     ) -> None:
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
+            if self._packaged_stop.is_set():
+                raise InterruptedError("Web service stop requested")
             if process is not None and process.poll() is not None:
                 raise RuntimeError(f"service หยุดก่อนพร้อมใช้งาน (exit {process.returncode})")
             if _port_open(port):

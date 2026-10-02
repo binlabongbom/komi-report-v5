@@ -1,4 +1,6 @@
 from PyQt6.QtWidgets import QApplication, QPushButton, QWidget
+from PyQt6.QtTest import QTest
+from time import monotonic
 
 from config import BUTTON_HEIGHT, BUTTON_ICON_SIZE, BUTTON_LARGE_HEIGHT, BUTTON_LINK_HEIGHT
 from ui_consistency import ButtonSystem, install_button_system
@@ -14,10 +16,14 @@ def test_button_system_normalizes_geometry_and_radius():
     large.setMinimumHeight(50)
     icon = QPushButton("⚙", root)
     icon.setFixedSize(30, 30)
+    calendar = QPushButton("📅", root)
+    calendar.setProperty("uiButtonRole", "compact-icon")
+    export = QPushButton("Export to Excel", root)
+    export.setProperty("uiButtonRole", "compact")
     link = QPushButton("Settings", root)
     link.setStyleSheet("background:transparent;border:none;text-decoration:underline;")
 
-    for button in (standard, large, icon, link):
+    for button in (standard, large, icon, calendar, export, link):
         button.show()
     root.show()
     app.processEvents()
@@ -25,6 +31,8 @@ def test_button_system_normalizes_geometry_and_radius():
     assert standard.height() == BUTTON_HEIGHT
     assert large.height() == BUTTON_LARGE_HEIGHT
     assert icon.width() == icon.height() == BUTTON_ICON_SIZE
+    assert calendar.width() == calendar.height() == 24
+    assert export.height() == 28
     assert link.height() == BUTTON_LINK_HEIGHT
     # Helper buttons must keep an empty local stylesheet so the application
     # primary and disabled selectors remain effective.
@@ -60,7 +68,7 @@ def test_import_primary_button_keeps_enabled_and_disabled_colors():
     button.setEnabled(False)
     app.processEvents()
     disabled_image = button.grab().toImage()
-    assert disabled_image.pixelColor(10, 10).name() == "#e8eef4"
+    assert disabled_image.pixelColor(10, 10).name() == "#edf1f5"
 
     window._quitting = True
     window.close()
@@ -68,7 +76,6 @@ def test_import_primary_button_keeps_enabled_and_disabled_colors():
 
 def test_heavy_pages_are_constructed_on_first_navigation():
     from app import MainWindow, _DeferredPage
-    from pages import PageManual
     from v5_pages import PageHistoryV5, PageSettingsV5
 
     _app = QApplication.instance() or QApplication([])
@@ -76,12 +83,15 @@ def test_heavy_pages_are_constructed_on_first_navigation():
 
     assert all(
         isinstance(window._page_widgets[index], _DeferredPage)
-        for index in range(2, 5)
+        for index in range(2, 4)
     )
 
-    expected = (PageHistoryV5, PageSettingsV5, PageManual)
-    for index, page_type in zip(range(2, 5), expected, strict=True):
+    expected = (PageHistoryV5, PageSettingsV5)
+    for index, page_type in zip(range(2, 4), expected, strict=True):
         window._nav(window.nav_btns[index])
+        deadline = monotonic() + 3
+        while isinstance(window._page_widgets[index], _DeferredPage) and monotonic() < deadline:
+            QTest.qWait(10)
         assert isinstance(window._page_widgets[index], page_type)
 
     window._quitting = True
@@ -94,6 +104,9 @@ def test_sidebar_navigation_warns_and_preserves_settings_draft(monkeypatch):
     qt_app = QApplication.instance() or QApplication([])
     window = app_module.MainWindow()
     window._nav(window.nav_btns[window._settings_index])
+    deadline = monotonic() + 3
+    while not hasattr(window.pg_settings, "fleet_content") and monotonic() < deadline:
+        QTest.qWait(10)
     settings = window.pg_settings
     settings.fleet_content._set_active_editor("billing")
     settings.fleet_content.waste.setValue(8.5)

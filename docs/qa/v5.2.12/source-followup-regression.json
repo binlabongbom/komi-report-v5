@@ -1,0 +1,37 @@
+{
+  "scope": "4 selected operational source files; each in a fresh pytest process",
+  "source_head": "8b3e31b239c56675769b49957dde858120397ac3",
+  "working_tree_status": " M docs/CUSTOMER_GUIDE_V5_2_12_DRAFT.md\n M docs/V5_2_12_WORK_PLAN.md\n M docs/customer-guide/KOMI_Report_5.2.12_Source_Guide.pdf\n M docs/qa/v5.2.12/source-followup-regression.json\n M source/database.py\n M source/pages.py\n M source/services/report_excel_export.py\n M source/tests/test_cloud_reports_ui.py\n M source/tests/test_history_v5_current.py\n M source/tests/test_report_excel_export.py\n M source/ui/cloud_reports.py\n M source/v5_pages.py\n M tools/run_source_regression.py\n?? docs/customer-guide/assets-v5.2.12-source/reports-excel.png\n?? source/services/report_export_job.py\n?? source/tests/excel_export_fixture.py\n?? source/tests/test_report_export_job.py\n?? source/ui/report_export.py\n?? tools/benchmark_excel_export.py\n?? tools/capture_excel_export.py\n",
+  "excluded_release_build_files": [],
+  "non_loopback_network": "denied by an audit hook in each pytest process; subprocess fixtures are separately isolated",
+  "installer_or_release_build": false,
+  "complete": true,
+  "results": [
+    {
+      "file": "test_report_export_job.py",
+      "exit_code": 0,
+      "seconds": 20.61,
+      "output": ".........                                                                [100%]\n9 passed in 17.57s\n"
+    },
+    {
+      "file": "test_report_excel_export.py",
+      "exit_code": 0,
+      "seconds": 8.13,
+      "output": ".......                                                                  [100%]\n7 passed in 5.14s\n"
+    },
+    {
+      "file": "test_settings_navigation.py",
+      "exit_code": 0,
+      "seconds": 18.22,
+      "output": "........                                                                 [100%]\n8 passed in 16.20s\n"
+    },
+    {
+      "file": "test_packaged_manual_assets.py",
+      "exit_code": 0,
+      "seconds": 3.33,
+      "output": "....                                                                     [100%]\n4 passed in 0.81s\n"
+    }
+  ],
+  "file_count": 4,
+  "failed_files": []
+}

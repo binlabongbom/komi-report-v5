@@ -11,7 +11,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from i18n import ENGLISH, THAI, apply_language, set_language, tr, translate_text
+from i18n import ITEM_TRANSLATABLE_ROLE, ENGLISH, THAI, apply_language, set_language, tr, translate_text
 
 
 def test_translates_and_restores_widget_tree():
@@ -20,12 +20,14 @@ def test_translates_and_restores_widget_tree():
     layout = QVBoxLayout(root)
     label = QLabel("ยอดใช้งานรวม")
     combo = QComboBox()
+    combo.setProperty("i18n_items", True)
     combo.addItems(["ภาพรวม", "อุปกรณ์"])
     tabs = QTabWidget()
     tabs.addTab(QWidget(), "แนวโน้ม")
     table = QTableWidget(1, 1)
     table.setHorizontalHeaderLabels(("สถานะ",))
     table.setItem(0, 0, QTableWidgetItem("ระหว่างวัน"))
+    table.item(0, 0).setData(ITEM_TRANSLATABLE_ROLE, True)
     billing_day = QSpinBox()
     billing_day.setSuffix(" ของเดือน")
     company = QLineEdit()

@@ -1,0 +1,233 @@
+{
+  "synthetic": true,
+  "mode": "charts",
+  "started_at": "2026-09-19T19:11:20.703937",
+  "python": "3.14.7 (tags/v3.14.7:823f032, Aug  5 2026, 10:51:32) [MSC v.1944 64 bit (AMD64)]",
+  "platform": "win32",
+  "measurements": [
+    {
+      "name": "replace_overview_charts_0",
+      "seconds_until_ready": 0.13154819999908796,
+      "action_seconds": 0.03742480000073556,
+      "heartbeat_count": 4,
+      "max_event_loop_gap_ms": 48.38919999929203,
+      "gaps_above_100ms": 0,
+      "before": {
+        "working_set_bytes": 88596480,
+        "private_bytes": 293662720,
+        "peak_working_set_bytes": 88596480,
+        "cpu_seconds": 2.859375
+      },
+      "after": {
+        "working_set_bytes": 91029504,
+        "private_bytes": 294998016,
+        "peak_working_set_bytes": 91029504,
+        "cpu_seconds": 3.03125
+      }
+    },
+    {
+      "name": "replace_overview_charts_1",
+      "seconds_until_ready": 0.07765499999914027,
+      "action_seconds": 0.014588999998522922,
+      "heartbeat_count": 3,
+      "max_event_loop_gap_ms": 60.66529999952763,
+      "gaps_above_100ms": 0,
+      "before": {
+        "working_set_bytes": 91058176,
+        "private_bytes": 295133184,
+        "peak_working_set_bytes": 91058176,
+        "cpu_seconds": 3.078125
+      },
+      "after": {
+        "working_set_bytes": 91992064,
+        "private_bytes": 295895040,
+        "peak_working_set_bytes": 91992064,
+        "cpu_seconds": 3.1875
+      }
+    },
+    {
+      "name": "replace_overview_charts_2",
+      "seconds_until_ready": 0.07403089999934309,
+      "action_seconds": 0.018697399998927722,
+      "heartbeat_count": 4,
+      "max_event_loop_gap_ms": 31.79920000002312,
+      "gaps_above_100ms": 0,
+      "before": {
+        "working_set_bytes": 92012544,
+        "private_bytes": 296030208,
+        "peak_working_set_bytes": 92012544,
+        "cpu_seconds": 3.203125
+      },
+      "after": {
+        "working_set_bytes": 92057600,
+        "private_bytes": 296030208,
+        "peak_working_set_bytes": 92057600,
+        "cpu_seconds": 3.3125
+      }
+    },
+    {
+      "name": "replace_overview_charts_3",
+      "seconds_until_ready": 0.08446679999906337,
+      "action_seconds": 0.025183899999319692,
+      "heartbeat_count": 3,
+      "max_event_loop_gap_ms": 50.295299999561394,
+      "gaps_above_100ms": 0,
+      "before": {
+        "working_set_bytes": 92073984,
+        "private_bytes": 296165376,
+        "peak_working_set_bytes": 92073984,
+        "cpu_seconds": 3.34375
+      },
+      "after": {
+        "working_set_bytes": 92114944,
+        "private_bytes": 296165376,
+        "peak_working_set_bytes": 92114944,
+        "cpu_seconds": 3.46875
+      }
+    },
+    {
+      "name": "replace_overview_charts_4",
+      "seconds_until_ready": 0.08686050000142131,
+      "action_seconds": 0.02567520000047807,
+      "heartbeat_count": 3,
+      "max_event_loop_gap_ms": 48.35339999954158,
+      "gaps_above_100ms": 0,
+      "before": {
+        "working_set_bytes": 92147712,
+        "private_bytes": 296165376,
+        "peak_working_set_bytes": 92147712,
+        "cpu_seconds": 3.5
+      },
+      "after": {
+        "working_set_bytes": 92188672,
+        "private_bytes": 296165376,
+        "peak_working_set_bytes": 92188672,
+        "cpu_seconds": 3.640625
+      }
+    },
+    {
+      "name": "replace_overview_charts_5",
+      "seconds_until_ready": 0.11091560000022582,
+      "action_seconds": 0.028001699998640106,
+      "heartbeat_count": 4,
+      "max_event_loop_gap_ms": 72.6488000000245,
+      "gaps_above_100ms": 0,
+      "before": {
+        "working_set_bytes": 92196864,
+        "private_bytes": 296165376,
+        "peak_working_set_bytes": 92196864,
+        "cpu_seconds": 3.65625
+      },
+      "after": {
+        "working_set_bytes": 92217344,
+        "private_bytes": 296165376,
+        "peak_working_set_bytes": 92217344,
+        "cpu_seconds": 3.828125
+      }
+    },
+    {
+      "name": "replace_overview_charts_6",
+      "seconds_until_ready": 0.09016549999978452,
+      "action_seconds": 0.028349899999739137,
+      "heartbeat_count": 4,
+      "max_event_loop_gap_ms": 60.83260000013979,
+      "gaps_above_100ms": 0,
+      "before": {
+        "working_set_bytes": 92217344,
+        "private_bytes": 296165376,
+        "peak_working_set_bytes": 92217344,
+        "cpu_seconds": 3.859375
+      },
+      "after": {
+        "working_set_bytes": 92225536,
+        "private_bytes": 296165376,
+        "peak_working_set_bytes": 92225536,
+        "cpu_seconds": 3.984375
+      }
+    },
+    {
+      "name": "replace_overview_charts_7",
+      "seconds_until_ready": 0.09613449999960721,
+      "action_seconds": 0.027971099998467253,
+      "heartbeat_count": 4,
+      "max_event_loop_gap_ms": 54.178500000489294,
+      "gaps_above_100ms": 0,
+      "before": {
+        "working_set_bytes": 92225536,
+        "private_bytes": 296165376,
+        "peak_working_set_bytes": 92225536,
+        "cpu_seconds": 4.0
+      },
+      "after": {
+        "working_set_bytes": 92225536,
+        "private_bytes": 296165376,
+        "peak_working_set_bytes": 92225536,
+        "cpu_seconds": 4.109375
+      }
+    },
+    {
+      "name": "replace_overview_charts_8",
+      "seconds_until_ready": 0.06746170000042184,
+      "action_seconds": 0.015522200001214514,
+      "heartbeat_count": 3,
+      "max_event_loop_gap_ms": 51.18429999856744,
+      "gaps_above_100ms": 0,
+      "before": {
+        "working_set_bytes": 92225536,
+        "private_bytes": 296165376,
+        "peak_working_set_bytes": 92225536,
+        "cpu_seconds": 4.125
+      },
+      "after": {
+        "working_set_bytes": 92225536,
+        "private_bytes": 296165376,
+        "peak_working_set_bytes": 92225536,
+        "cpu_seconds": 4.25
+      }
+    },
+    {
+      "name": "replace_overview_charts_9",
+      "seconds_until_ready": 0.061011199999484234,
+      "action_seconds": 0.015045599999211845,
+      "heartbeat_count": 3,
+      "max_event_loop_gap_ms": 48.301099999662256,
+      "gaps_above_100ms": 0,
+      "before": {
+        "working_set_bytes": 92225536,
+        "private_bytes": 296165376,
+        "peak_working_set_bytes": 92225536,
+        "cpu_seconds": 4.265625
+      },
+      "after": {
+        "working_set_bytes": 92225536,
+        "private_bytes": 296165376,
+        "peak_working_set_bytes": 92225536,
+        "cpu_seconds": 4.359375
+      }
+    }
+  ],
+  "blocked_operations": [],
+  "complete": true,
+  "scope": "Source/offscreen; no Host, real network, Web service, installer or release build",
+  "qt_version": "6.11.0",
+  "pyqt_version": "6.11.0",
+  "copy_migration_init_seconds": 0.07210269999995944,
+  "copy_schema": 30,
+  "chart_replacement_control": false,
+  "in_progress": null,
+  "charts_before_close": {
+    "watched": 22,
+    "destroyed": 20,
+    "alive": 2,
+    "views": 2
+  },
+  "charts_after_close": {
+    "watched": 22,
+    "destroyed": 22,
+    "alive": 0,
+    "live_wrappers_not_deleted": 0
+  },
+  "replacement_ownership": [],
+  "fixture": "90 synthetic users, three printers, two days, ten Overview data replacements; QObject destroyed signals; callbacks hold only integer pointers",
+  "temporary_copy_cleaned": true
+}

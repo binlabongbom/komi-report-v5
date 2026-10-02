@@ -14,8 +14,8 @@ set "PYTHON_BIN=%RUNTIME_ROOT%\Scripts\python.exe"
 set "STAMP_FILE=%RUNTIME_ROOT%\.komi-dependencies.sha256"
 set "LAUNCH_MODE=%~1"
 if "%LAUNCH_MODE%"=="" set "LAUNCH_MODE=desktop"
-if /i not "%LAUNCH_MODE%"=="desktop" if /i not "%LAUNCH_MODE%"=="doctor" if /i not "%LAUNCH_MODE%"=="lab" (
-  echo Usage: START_KOMI_REPORT.cmd [desktop^|doctor^|lab]
+if /i not "%LAUNCH_MODE%"=="desktop" if /i not "%LAUNCH_MODE%"=="doctor" if /i not "%LAUNCH_MODE%"=="lab" if /i not "%LAUNCH_MODE%"=="web" (
+  echo Usage: START_KOMI_REPORT.cmd [desktop^|doctor^|lab^|web]
   popd
   exit /b 2
 )
@@ -38,6 +38,7 @@ set "PYTHONDONTWRITEBYTECODE=1"
 
 set "DOCTOR_MODE=%LAUNCH_MODE%"
 if /i "%LAUNCH_MODE%"=="lab" set "DOCTOR_MODE=desktop"
+if /i "%LAUNCH_MODE%"=="web" set "DOCTOR_MODE=desktop"
 "%PYTHON_BIN%" "%SOURCE_ROOT%\tools\launch_doctor.py" "%DOCTOR_MODE%" || goto :source_error
 if /i "%LAUNCH_MODE%"=="doctor" (
   popd
@@ -50,7 +51,9 @@ if /i "%LAUNCH_MODE%"=="lab" (
   popd
   exit /b %APP_EXIT%
 )
-"%PYTHON_BIN%" "%SOURCE_ROOT%\app.py"
+set "APP_ARGS="
+if /i "%LAUNCH_MODE%"=="web" set "APP_ARGS=--open-web"
+"%PYTHON_BIN%" "%SOURCE_ROOT%\app.py" %APP_ARGS%
 set "APP_EXIT=%ERRORLEVEL%"
 popd
 exit /b %APP_EXIT%

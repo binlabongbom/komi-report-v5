@@ -12,6 +12,8 @@ class DevicePollState:
     web_failures: int = 0
     next_web_retry_at: datetime | None = None
     offline: bool = False
+    last_scheduled_web_at: datetime | None = None
+    scheduled_clock_initialized: bool = False
 
 
 @dataclass(frozen=True)
@@ -100,6 +102,10 @@ class PollingStateMachine:
     def __init__(self, policy: PollingPolicy | None = None) -> None:
         self.policy = policy or PollingPolicy()
 
+    def scheduled_web_due(self, state: DevicePollState, now: datetime) -> bool:
+        anchor = state.last_scheduled_web_at if state.scheduled_clock_initialized else state.last_web_at
+        return anchor is None or now - anchor >= self.policy.web_interval_at(now)
+
     def snmp_success(self, state: DevicePollState, total: int, now: datetime) -> PollDecision:
         previous = state.last_snmp_total
         state.last_snmp_total = max(0, int(total))
@@ -113,12 +119,11 @@ class PollingStateMachine:
         periodic_web_due = (
             window is not None
             and window.snmp_interval is not None
-            and (state.last_web_at is None or now - state.last_web_at >= window.web_interval)
+            and self.scheduled_web_due(state, now)
         )
         if not state.pending_detail and not periodic_web_due:
             return PollDecision(False, "online", "Total Meter ไม่เปลี่ยน")
-        interval = self.policy.web_interval_at(now)
-        if state.last_web_at is None or now - state.last_web_at >= interval:
+        if self.scheduled_web_due(state, now):
             reason = (
                 "ถึงรอบ Web/RAM ตาม Schedule"
                 if periodic_web_due and not state.pending_detail
@@ -134,7 +139,13 @@ class PollingStateMachine:
         due = state.next_web_retry_at is None or now >= state.next_web_retry_at
         return PollDecision(due, "checking", "SNMP ไม่ตอบ; ใช้ Web fallback" if due else "รอ Web retry")
 
-    def web_success(self, state: DevicePollState, now: datetime) -> None:
+    def web_success(self, state: DevicePollState, now: datetime, *, scheduled: bool = True,
+                    scheduled_at: datetime | None = None) -> None:
+        if not state.scheduled_clock_initialized:
+            state.last_scheduled_web_at = state.last_web_at
+            state.scheduled_clock_initialized = True
+        if scheduled:
+            state.last_scheduled_web_at = scheduled_at or now
         state.last_web_at = now
         state.pending_detail = False
         state.web_failures = 0

@@ -43,7 +43,6 @@ ROOT_FILES = (
     "database.py",
     "i18n.py",
     "komi_version.py",
-    "live_meter_page.py",
     "migrations.py",
     "observability.py",
     "pages.py",

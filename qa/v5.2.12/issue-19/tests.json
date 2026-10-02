@@ -1,0 +1,1420 @@
+{
+  "scope": "Latest result per unique test case; earlier failed attempts retained in XML",
+  "source_runs": [
+    "final-regression.xml",
+    "final-followup.xml",
+    "final-evidence-manual.xml"
+  ],
+  "summary": {
+    "passed": 281,
+    "failed": 0,
+    "skipped": 0
+  },
+  "cases": {
+    "tests.test_performance_issue19::test_latest_read_keeps_ui_responsive_and_discards_replaced_result": {
+      "status": "passed",
+      "source": "final-evidence-manual.xml",
+      "seconds": 0.2
+    },
+    "tests.test_performance_issue19::test_worker_database_is_pinned_and_old_database_result_is_not_emitted": {
+      "status": "passed",
+      "source": "final-evidence-manual.xml",
+      "seconds": 0.281
+    },
+    "tests.test_performance_issue19::test_cancel_interrupts_a_long_sql_query_and_does_not_deliver_error": {
+      "status": "passed",
+      "source": "final-evidence-manual.xml",
+      "seconds": 0.124
+    },
+    "tests.test_performance_issue19::test_archive_metadata_is_lazy_and_error_never_looks_like_zero": {
+      "status": "passed",
+      "source": "final-evidence-manual.xml",
+      "seconds": 0.28
+    },
+    "tests.test_performance_issue19::test_canonical_subject_periods_match_full_history_hot_and_archive": {
+      "status": "passed",
+      "source": "final-evidence-manual.xml",
+      "seconds": 1.46
+    },
+    "tests.test_performance_issue19::test_hidden_settings_do_not_poll_network_and_cancel_pending_status": {
+      "status": "passed",
+      "source": "final-evidence-manual.xml",
+      "seconds": 2.606
+    },
+    "tests.test_performance_issue19::test_overview_failure_offers_retry_and_close_discards_pending": {
+      "status": "passed",
+      "source": "final-evidence-manual.xml",
+      "seconds": 0.475
+    },
+    "tests.test_performance_issue19::test_reparented_network_card_restarts_status_checks": {
+      "status": "passed",
+      "source": "final-evidence-manual.xml",
+      "seconds": 1.544
+    },
+    "tests.test_report_models::test_raw_index_preserves_zero_missing_review_sources_and_slot_replacement": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.082
+    },
+    "tests.test_report_models::test_snapshot_tabs_share_immutable_raw_and_invalidate_by_database": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.091
+    },
+    "tests.test_report_models::test_warm_tab_restores_completed_render_without_rebuilding": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.47
+    },
+    "tests.test_report_snapshot::test_background_payload_matches_existing_report_semantics[selected0-0]": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.068
+    },
+    "tests.test_report_snapshot::test_background_payload_matches_existing_report_semantics[selected0-1]": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.064
+    },
+    "tests.test_report_snapshot::test_background_payload_matches_existing_report_semantics[selected0-2]": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.066
+    },
+    "tests.test_report_snapshot::test_background_payload_matches_existing_report_semantics[selected0-3]": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.067
+    },
+    "tests.test_report_snapshot::test_background_payload_matches_existing_report_semantics[selected0-4]": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.065
+    },
+    "tests.test_report_snapshot::test_background_payload_matches_existing_report_semantics[selected1-0]": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.067
+    },
+    "tests.test_report_snapshot::test_background_payload_matches_existing_report_semantics[selected1-1]": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.067
+    },
+    "tests.test_report_snapshot::test_background_payload_matches_existing_report_semantics[selected1-2]": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.066
+    },
+    "tests.test_report_snapshot::test_background_payload_matches_existing_report_semantics[selected1-3]": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.067
+    },
+    "tests.test_report_snapshot::test_background_payload_matches_existing_report_semantics[selected1-4]": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.068
+    },
+    "tests.test_report_snapshot::test_cancelled_snapshot_does_not_start_database_reads": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.072
+    },
+    "tests.test_reports_background_loading::test_first_shell_defers_legacy_and_menu_stays_responsive": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.445
+    },
+    "tests.test_reports_background_loading::test_refresh_keeps_old_snapshot_and_ignores_stale_result": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.55
+    },
+    "tests.test_reports_background_loading::test_prewarm_does_not_select_tabs_and_cached_navigation_avoids_read": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.997
+    },
+    "tests.test_reports_background_loading::test_failed_read_stops_loading_and_retry_succeeds": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.489
+    },
+    "tests.test_reports_background_loading::test_database_switch_refreshes_cache_roots_before_background_reads": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.5
+    },
+    "tests.test_reports_background_loading::test_new_period_keeps_explicit_old_period_notice_until_loaded": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.463
+    },
+    "tests.test_cloud_reports_ui::test_calendar_month_menu_and_day_click_allow_dates_outside_report_history[start-target0]": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.911
+    },
+    "tests.test_cloud_reports_ui::test_calendar_month_menu_and_day_click_allow_dates_outside_report_history[end-target1]": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 1.153
+    },
+    "tests.test_cloud_reports_ui::test_custom_calendar_range_survives_history_refresh_and_empty_report_data": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 1.556
+    },
+    "tests.test_cloud_reports_ui::test_cloud_reports_share_period_and_cross_filter_users_and_printers": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 2.018
+    },
+    "tests.test_cloud_reports_ui::test_cloud_reports_header_and_date_range_fit_desktop_minimum": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 1.733
+    },
+    "tests.test_cloud_reports_ui::test_usage_starts_with_reference_meter_without_counting_it_as_usage_or_cost": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 1.064
+    },
+    "tests.test_cloud_reports_ui::test_users_matrix_uses_real_names_and_slot_operation_detail_headers": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 1.303
+    },
+    "tests.test_cloud_reports_ui::test_usage_all_devices_checkboxes_filter_aggregate_but_keep_per_device_matrix": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 1.461
+    },
+    "tests.test_cloud_reports_ui::test_printer_charts_compare_all_devices_and_selection_only_changes_detail": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 1.529
+    },
+    "tests.test_cloud_reports_ui::test_keyboard_selection_updates_user_filter_and_printer_detail_immediately": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 1.508
+    },
+    "tests.test_cloud_reports_ui::test_empty_users_offer_a_reading_status_recovery_action": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.879
+    },
+    "tests.test_cloud_reports_ui::test_cloud_reports_use_transparent_label_surfaces_and_consistent_table_alignment": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.944
+    },
+    "tests.test_cloud_reports_ui::test_users_cards_separate_color_without_inventing_missing_counters[classified]": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.886
+    },
+    "tests.test_cloud_reports_ui::test_users_cards_separate_color_without_inventing_missing_counters[total_only]": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 1.475
+    },
+    "tests.test_cloud_reports_ui::test_users_cards_separate_color_without_inventing_missing_counters[missing]": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 1.315
+    },
+    "tests.test_cloud_reports_ui::test_users_cards_separate_color_without_inventing_missing_counters[partial_users]": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 1.412
+    },
+    "tests.test_cloud_reports_ui::test_printer_cards_match_overview_and_preserve_scan_summary": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 2.003
+    },
+    "tests.test_cloud_reports_staged::test_builds_only_overview_then_each_requested_tab_once": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 1.323
+    },
+    "tests.test_cloud_reports_staged::test_lazy_controls_inherit_period_and_support_resize_before_data": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.394
+    },
+    "tests.test_cloud_reports_staged::test_scoped_snapshots_never_render_other_tabs_data": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.826
+    },
+    "tests.test_cloud_reports_staged::test_loading_slow_and_error_preserve_snapshot_and_offer_retry": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.324
+    },
+    "tests.test_cloud_reports_staged::test_usage_can_load_without_constructing_user_or_printer_widgets": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.464
+    },
+    "tests.test_cloud_reports_staged::test_per_tab_loading_tracks_visible_tab_and_guard_invalid_index": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.471
+    },
+    "tests.test_cloud_reports_staged::test_cards_render_immediately_then_tables_then_charts[0-overview-total_usage]": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.965
+    },
+    "tests.test_cloud_reports_staged::test_cards_render_immediately_then_tables_then_charts[1-users-usage]": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.735
+    },
+    "tests.test_cloud_reports_staged::test_cards_render_immediately_then_tables_then_charts[2-printers-usage]": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.48
+    },
+    "tests.test_cloud_reports_staged::test_queued_tail_is_discarded_after_invalidation[tab]": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.394
+    },
+    "tests.test_cloud_reports_staged::test_queued_tail_is_discarded_after_invalidation[reload]": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.25
+    },
+    "tests.test_cloud_reports_staged::test_queued_tail_is_discarded_after_invalidation[error]": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.247
+    },
+    "tests.test_cloud_reports_staged::test_queued_tail_is_discarded_after_invalidation[close]": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.243
+    },
+    "tests.test_cloud_reports_staged::test_new_snapshot_replaces_pending_tables_and_charts": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.263
+    },
+    "tests.test_cloud_reports_staged::test_users_chart_labels_do_not_depend_on_printers_tab_rows": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.634
+    },
+    "tests.test_report_custom_period::test_custom_period_keeps_users_inside_selected_dates[0]": {
+      "status": "passed",
+      "source": "final-followup.xml",
+      "seconds": 1.677
+    },
+    "tests.test_report_custom_period::test_custom_period_keeps_users_inside_selected_dates[1]": {
+      "status": "passed",
+      "source": "final-followup.xml",
+      "seconds": 1.997
+    },
+    "tests.test_report_custom_period::test_empty_custom_period_clears_data_and_stays_selected[0]": {
+      "status": "passed",
+      "source": "final-followup.xml",
+      "seconds": 1.692
+    },
+    "tests.test_report_custom_period::test_empty_custom_period_clears_data_and_stays_selected[1]": {
+      "status": "passed",
+      "source": "final-followup.xml",
+      "seconds": 2.11
+    },
+    "tests.test_report_custom_period::test_empty_custom_period_clears_data_and_stays_selected[2]": {
+      "status": "passed",
+      "source": "final-followup.xml",
+      "seconds": 1.255
+    },
+    "tests.test_report_custom_period::test_printers_custom_period_loads_daily_but_preserves_canonical_ledger": {
+      "status": "passed",
+      "source": "final-followup.xml",
+      "seconds": 1.37
+    },
+    "tests.test_report_custom_period::test_canonical_subject_period_keeps_frozen_aggregation_path": {
+      "status": "passed",
+      "source": "final-followup.xml",
+      "seconds": 1.42
+    },
+    "tests.test_report_detail_archive::test_monthly_custom_and_exact_raw_results_survive_archive": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 1.02
+    },
+    "tests.test_report_detail_archive::test_next_read_uses_retained_anchor_without_archive_io": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.985
+    },
+    "tests.test_report_detail_archive::test_archive_failure_leaves_all_live_evidence_and_no_summary[verify]": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.789
+    },
+    "tests.test_report_detail_archive::test_archive_failure_leaves_all_live_evidence_and_no_summary[prune]": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.936
+    },
+    "tests.test_report_detail_archive::test_missing_or_changed_old_file_is_never_an_empty_success": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 1.041
+    },
+    "tests.test_report_detail_archive::test_archived_days_cannot_be_reinserted_or_changed_silently": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 1.027
+    },
+    "tests.test_report_detail_archive::test_source_change_between_file_verification_and_prune_aborts": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.715
+    },
+    "tests.test_report_detail_archive::test_frozen_billing_period_does_not_follow_current_settings": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 1.376
+    },
+    "tests.test_report_detail_archive::test_unresolved_raw_review_stays_hot_and_reported": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 1.201
+    },
+    "tests.test_report_detail_archive::test_backup_restore_and_usage_reset_preserve_archive_contract": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 1.831
+    },
+    "tests.test_report_detail_amendment::test_gap_and_backfill_revision_preserve_originals_and_monthly_totals[False]": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 1.251
+    },
+    "tests.test_report_detail_amendment::test_gap_and_backfill_revision_preserve_originals_and_monthly_totals[True]": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 1.053
+    },
+    "tests.test_report_detail_amendment::test_peer_recomputes_details_for_different_row_ids_and_forwards_once": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 1.867
+    },
+    "tests.test_report_detail_amendment::test_changed_evidence_failed_summary_and_missing_archive_roll_back": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 1.08
+    },
+    "tests.test_report_detail_amendment::test_revision_is_immutable_and_reset_clears_receipts": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.534
+    },
+    "tests.test_report_detail_amendment::test_monthly_revision_summary_reads_no_detail_payload": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.796
+    },
+    "tests.test_report_detail_amendment::test_revision_summaries_follow_explicit_period_change_and_backup": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 1.574
+    },
+    "tests.test_report_detail_amendment::test_detail_dialog_requires_review_and_can_cancel_without_writes": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.99
+    },
+    "tests.test_archive_recovery::test_portable_copy_preserves_archived_events_and_pending_queue[backup]": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.708
+    },
+    "tests.test_archive_recovery::test_portable_copy_preserves_archived_events_and_pending_queue[first_run]": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.662
+    },
+    "tests.test_archive_recovery::test_restore_to_different_folder_copies_archive_and_preserves_rollback": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 1.296
+    },
+    "tests.test_archive_recovery::test_bad_archive_never_publishes_new_database[missing]": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.525
+    },
+    "tests.test_archive_recovery::test_bad_archive_never_publishes_new_database[tampered]": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.509
+    },
+    "tests.test_archive_recovery::test_bad_archive_never_publishes_new_database[collision]": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.487
+    },
+    "tests.test_archive_recovery::test_bad_archive_never_publishes_new_database[escape]": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.513
+    },
+    "tests.test_archive_recovery::test_usage_reset_clears_catalog_but_preserves_backup_files": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.632
+    },
+    "tests.test_archive_settings_ui::test_metadata_panel_never_opens_archive_files": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.403
+    },
+    "tests.test_archive_settings_ui::test_completed_background_job_updates_counts_without_second_worker": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.673
+    },
+    "tests.test_archive_settings_ui::test_error_remains_visible_and_can_retry": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.392
+    },
+    "tests.test_archive_maintenance::test_start_is_delayed_and_busy_collection_wins": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.405
+    },
+    "tests.test_archive_maintenance::test_empty_archive_does_not_poll_files_or_network_every_tick": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.12
+    },
+    "tests.test_archive_maintenance::test_stop_drains_atomic_chunk_and_never_starts_another": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.116
+    },
+    "tests.test_archive_maintenance::test_failure_is_reported_once_then_waits_until_next_day": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.124
+    },
+    "tests.test_overview_v5_ui::test_overview_does_not_render_billing_quality_banner": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.22
+    },
+    "tests.test_overview_v5_ui::test_overview_reflows_bottom_cards_at_desktop_minimum_width": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.149
+    },
+    "tests.test_overview_v5_ui::test_overview_metric_cards_are_compact_and_style_a3_a4_details": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.186
+    },
+    "tests.test_overview_v5_ui::test_overview_marks_current_cache_as_provisional_and_exposes_actions": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.206
+    },
+    "tests.test_overview_v5_ui::test_overview_printer_rows_keep_status_and_all_toner_colours_visible": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.225
+    },
+    "tests.test_summary_service.SummaryServiceTests::test_build_overview_summary_all_combines_slots": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.28
+    },
+    "tests.test_summary_service.SummaryServiceTests::test_build_overview_summary_current_uses_latest_data_when_current_empty": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.261
+    },
+    "tests.test_summary_service.SummaryServiceTests::test_months_ago_crosses_year": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.172
+    },
+    "tests.test_summary_service.SummaryServiceTests::test_v5_current_overview_does_not_include_expired_cycle_with_same_month_key": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.428
+    },
+    "tests.test_summary_service.SummaryServiceTests::test_v5_current_overview_includes_all_overlapping_frozen_cycles": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.431
+    },
+    "tests.test_summary_service.SummaryServiceTests::test_v5_overview_flags_mixed_identities_without_losing_frozen_totals": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.46
+    },
+    "tests.test_summary_service.SummaryServiceTests::test_v5_overview_keeps_frozen_history_after_slot_is_disabled": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.357
+    },
+    "tests.test_summary_service.SummaryServiceTests::test_v5_overview_separates_confirmed_and_current_cache": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.349
+    },
+    "tests.test_summary_service.SummaryServiceTests::test_v5_overview_uses_frozen_ledger_and_excludes_held_usage": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.506
+    },
+    "tests.test_subject_history::test_requested_range_does_not_parse_unrelated_old_or_future_rows[start]": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.285
+    },
+    "tests.test_subject_history::test_requested_range_does_not_parse_unrelated_old_or_future_rows[end]": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.286
+    },
+    "tests.test_subject_history::test_requested_range_does_not_parse_unrelated_old_or_future_rows[both]": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.275
+    },
+    "tests.test_subject_history::test_extract_subject_totals_keeps_only_exact_total_counter": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.149
+    },
+    "tests.test_subject_history::test_subject_daily_cache_accumulates_every_delta_in_the_day": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.242
+    },
+    "tests.test_subject_history::test_finalized_subject_history_uses_frozen_device_billing_period": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.427
+    },
+    "tests.test_subject_history::test_subject_counter_reset_preserves_usage_and_requires_review": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.267
+    },
+    "tests.test_subject_history::test_daily_subject_record_is_append_only_and_becomes_next_day_baseline": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.332
+    },
+    "tests.test_subject_history::test_subject_cache_rejects_late_sample_without_treating_it_as_reset": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.236
+    },
+    "tests.test_subject_history::test_subject_late_same_day_evidence_is_retained_after_finalization": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.311
+    },
+    "tests.test_subject_history::test_subject_next_day_baseline_is_not_carried_across_slot_reuse": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.298
+    },
+    "tests.test_subject_history::test_subject_history_keeps_reused_slot_identities_as_separate_rows": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.392
+    },
+    "tests.test_subject_history::test_subject_cache_rejects_same_day_sample_after_device_identity_changes": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.255
+    },
+    "tests.test_subject_history::test_subject_history_remains_in_report_scope_after_slot_is_disabled": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.275
+    },
+    "tests.test_usage::test_default_usage_groups_preserve_unknown_when_cross_dimension_missing": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.072
+    },
+    "tests.test_usage::test_default_usage_groups_derive_a3_a4_from_total_and_large_pairs": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.069
+    },
+    "tests.test_usage::test_default_usage_groups_show_zero_for_a_baseline_reading": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.067
+    },
+    "tests.test_usage::test_current_period_usage_excludes_held_unposted_and_mutated_daily_rows": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.503
+    },
+    "tests.test_usage::test_current_and_latest_counters_do_not_attach_old_identity_to_reused_slot": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.491
+    },
+    "tests.test_usage::test_billing_period_uses_canonical_default_when_setting_is_absent": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.223
+    },
+    "tests.test_billing_audit_ui::test_billing_audit_ui_shows_effective_correction_and_open_hold_lifecycle": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.683
+    },
+    "tests.test_billing_audit_ui::test_billing_audit_load_more_search_and_export_include_over_100_rows": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.922
+    },
+    "tests.test_settings_v5::test_shared_billing_cancel_keeps_draft_and_does_not_write_history": {
+      "status": "passed",
+      "source": "final-followup.xml",
+      "seconds": 0.384
+    },
+    "tests.test_settings_v5::test_shared_billing_rejects_edit_made_while_confirmation_is_open": {
+      "status": "passed",
+      "source": "final-followup.xml",
+      "seconds": 0.408
+    },
+    "tests.test_settings_v5::test_shared_confirmation_shows_before_after_and_defaults_to_cancel": {
+      "status": "passed",
+      "source": "final-followup.xml",
+      "seconds": 0.275
+    },
+    "tests.test_settings_v5::test_fleet_settings_groups_fields_and_live_schedule": {
+      "status": "passed",
+      "source": "final-followup.xml",
+      "seconds": 2.208
+    },
+    "tests.test_settings_v5::test_fleet_settings_toggle_stops_web_service": {
+      "status": "passed",
+      "source": "final-followup.xml",
+      "seconds": 2.179
+    },
+    "tests.test_settings_v5::test_compact_settings_opens_one_editor_and_preserves_dirty_draft": {
+      "status": "passed",
+      "source": "final-followup.xml",
+      "seconds": 0.772
+    },
+    "tests.test_settings_v5::test_web_recovery_can_start_enabled_but_stopped_service_without_toggling": {
+      "status": "passed",
+      "source": "final-followup.xml",
+      "seconds": 2.832
+    },
+    "tests.test_settings_v5::test_web_access_dialog_validates_match_and_minimum_length": {
+      "status": "passed",
+      "source": "final-followup.xml",
+      "seconds": 0.132
+    },
+    "tests.test_settings_v5::test_desktop_changes_web_access_and_restarts_owned_service": {
+      "status": "passed",
+      "source": "final-followup.xml",
+      "seconds": 5.03
+    },
+    "tests.test_settings_v5::test_fleet_settings_allows_adding_and_removing_custom_schedule_windows": {
+      "status": "passed",
+      "source": "final-followup.xml",
+      "seconds": 0.779
+    },
+    "tests.test_settings_v5::test_fleet_autostart_reflects_missing_os_registration": {
+      "status": "passed",
+      "source": "final-followup.xml",
+      "seconds": 0.696
+    },
+    "tests.test_settings_v5::test_v5_database_path_tools_are_available_without_replacing_active_database": {
+      "status": "passed",
+      "source": "final-followup.xml",
+      "seconds": 1.426
+    },
+    "tests.test_settings_v5::test_v5_hides_duplicate_editors_and_opens_tools_without_password": {
+      "status": "passed",
+      "source": "final-followup.xml",
+      "seconds": 1.628
+    },
+    "tests.test_settings_v5::test_settings_tools_do_not_request_password": {
+      "status": "passed",
+      "source": "final-followup.xml",
+      "seconds": 1.434
+    },
+    "tests.test_settings_v5::test_settings_shows_simple_registration_status_and_manual_retry": {
+      "status": "passed",
+      "source": "final-followup.xml",
+      "seconds": 0.457
+    },
+    "tests.test_settings_v5::test_registration_settings_copy_switches_to_english": {
+      "status": "passed",
+      "source": "final-followup.xml",
+      "seconds": 0.41
+    },
+    "tests.test_settings_v5::test_settings_can_accept_current_privacy_notice_and_requeue": {
+      "status": "passed",
+      "source": "final-followup.xml",
+      "seconds": 0.476
+    },
+    "tests.test_settings_v5::test_settings_routes_local_enqueue_failure_back_to_setup": {
+      "status": "passed",
+      "source": "final-followup.xml",
+      "seconds": 0.494
+    },
+    "tests.test_settings_v5::test_offline_license_settings_are_hidden_while_activation_is_disabled": {
+      "status": "passed",
+      "source": "final-followup.xml",
+      "seconds": 0.574
+    },
+    "tests.test_settings_v5::test_disabled_offline_license_ui_does_not_call_export_runtime": {
+      "status": "passed",
+      "source": "final-followup.xml",
+      "seconds": 0.465
+    },
+    "tests.test_settings_v5::test_settings_v5_routes_support_details_through_section_tabs": {
+      "status": "passed",
+      "source": "final-followup.xml",
+      "seconds": 1.655
+    },
+    "tests.test_settings_v5::test_advanced_settings_and_nested_lan_stay_inline_without_horizontal_scroll": {
+      "status": "passed",
+      "source": "final-followup.xml",
+      "seconds": 1.811
+    },
+    "tests.test_settings_v5::test_schedule_delete_button_is_compact_and_removes_only_its_row": {
+      "status": "passed",
+      "source": "final-followup.xml",
+      "seconds": 0.491
+    },
+    "tests.test_settings_v5::test_v5_tools_hide_all_duplicate_device_and_billing_editors": {
+      "status": "passed",
+      "source": "final-followup.xml",
+      "seconds": 1.444
+    },
+    "tests.test_settings_v5::test_settings_opens_setup_without_a_nested_dialog_event_loop": {
+      "status": "passed",
+      "source": "final-followup.xml",
+      "seconds": 0.102
+    },
+    "tests.test_settings_v5::test_web_custom_port_is_saved_restarted_and_restored": {
+      "status": "passed",
+      "source": "final-followup.xml",
+      "seconds": 1.887
+    },
+    "tests.test_settings_v5::test_web_password_lock_sets_a_code_before_closing_reports": {
+      "status": "passed",
+      "source": "final-followup.xml",
+      "seconds": 4.284
+    },
+    "tests.test_settings_v5::test_cancel_password_setup_keeps_reports_open": {
+      "status": "passed",
+      "source": "final-followup.xml",
+      "seconds": 0.653
+    },
+    "tests.test_settings_v5::test_web_occupied_port_is_rejected_before_any_settings_change": {
+      "status": "passed",
+      "source": "final-followup.xml",
+      "seconds": 0.562
+    },
+    "tests.test_settings_v5::test_secondary_always_open_selector_restores_and_can_revoke": {
+      "status": "passed",
+      "source": "final-followup.xml",
+      "seconds": 0.588
+    },
+    "tests.test_manual_diagrams::test_manual_is_one_continuous_page_with_clickable_right_toc": {
+      "status": "passed",
+      "source": "final-evidence-manual.xml",
+      "seconds": 1.904
+    },
+    "tests.test_manual_diagrams::test_manual_reflows_at_desktop_minimum_and_uses_v52_report_copy": {
+      "status": "passed",
+      "source": "final-evidence-manual.xml",
+      "seconds": 1.799
+    },
+    "tests.test_manual_diagrams::test_manual_uses_customer_guide_document_style_and_shared_screenshots": {
+      "status": "passed",
+      "source": "final-evidence-manual.xml",
+      "seconds": 2.279
+    },
+    "tests.test_reports_startup_prefetch::test_splash_starts_overview_without_opening_other_pages": {
+      "status": "passed",
+      "source": "final-followup.xml",
+      "seconds": 0.004
+    },
+    "tests.test_reports_startup_prefetch::test_startup_refresh_completes_before_splash_report_prefetch": {
+      "status": "passed",
+      "source": "final-followup.xml",
+      "seconds": 0.003
+    },
+    "tests.test_reports_startup_prefetch::test_preparation_without_splash_preserves_deferred_initial_refresh": {
+      "status": "passed",
+      "source": "final-followup.xml",
+      "seconds": 0.003
+    },
+    "tests.test_reports_startup_prefetch::test_report_jobs_shutdown_only_on_actual_exit[False]": {
+      "status": "passed",
+      "source": "final-followup.xml",
+      "seconds": 0.004
+    },
+    "tests.test_reports_startup_prefetch::test_report_jobs_shutdown_only_on_actual_exit[True]": {
+      "status": "passed",
+      "source": "final-followup.xml",
+      "seconds": 0.003
+    },
+    "tests.test_reports_startup_prefetch::test_prewarm_yields_between_users_and_printers_and_only_schedules_once": {
+      "status": "passed",
+      "source": "final-followup.xml",
+      "seconds": 0.003
+    },
+    "tests.test_reports_startup_prefetch::test_prewarm_uses_loaded_report_and_stops_when_quitting": {
+      "status": "passed",
+      "source": "final-followup.xml",
+      "seconds": 0.003
+    },
+    "tests.test_reports_startup_prefetch::test_show_schedules_after_window_is_visible": {
+      "status": "passed",
+      "source": "final-followup.xml",
+      "seconds": 0.003
+    },
+    "tests.test_reports_startup_prefetch::test_reports_open_hook_runs_after_navigation_and_refresh": {
+      "status": "passed",
+      "source": "final-followup.xml",
+      "seconds": 0.003
+    },
+    "tests.test_reports_startup_prefetch::test_missing_optional_report_interfaces_are_harmless": {
+      "status": "passed",
+      "source": "final-followup.xml",
+      "seconds": 0.003
+    },
+    "tests.test_reports_startup_prefetch::test_visible_reports_reuses_prefetched_generation": {
+      "status": "passed",
+      "source": "final-followup.xml",
+      "seconds": 0.003
+    },
+    "tests.test_reports_startup_prefetch::test_data_updates_invalidate_reports_before_visible_refresh": {
+      "status": "passed",
+      "source": "final-followup.xml",
+      "seconds": 0.003
+    },
+    "tests.test_reports_startup_prefetch::test_splash_uses_indeterminate_activity_without_percentage": {
+      "status": "passed",
+      "source": "final-followup.xml",
+      "seconds": 0.074
+    },
+    "tests.test_startup_sync::test_startup_waits_for_configured_services_and_fresh_status_then_dispatches_once": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 1.262
+    },
+    "tests.test_startup_sync::test_startup_stays_pending_while_ineligible_and_runs_once_on_reactivation[deactivated]": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.304
+    },
+    "tests.test_startup_sync::test_startup_stays_pending_while_ineligible_and_runs_once_on_reactivation[offline_license_expired]": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.303
+    },
+    "tests.test_startup_sync::test_startup_stays_pending_while_ineligible_and_runs_once_on_reactivation[registration_unavailable]": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.319
+    },
+    "tests.test_startup_sync::test_startup_rechecks_eligibility_when_queued_status_is_revoked": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.28
+    },
+    "tests.test_startup_sync::test_quitting_cancels_queued_startup_dispatch": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.273
+    },
+    "tests.test_startup_sync::test_startup_reuses_active_slot_guard_and_preserves_later_sync[manual]": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.301
+    },
+    "tests.test_startup_sync::test_startup_reuses_active_slot_guard_and_preserves_later_sync[scheduled]": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.328
+    },
+    "tests.test_import_v5_layout::test_import_layout_matches_configured_device_count[1]": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.121
+    },
+    "tests.test_import_v5_layout::test_import_layout_matches_configured_device_count[2]": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.161
+    },
+    "tests.test_import_v5_layout::test_import_layout_matches_configured_device_count[3]": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.232
+    },
+    "tests.test_import_v5_layout::test_import_three_device_cards_reflow_without_overlap[794-2]": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.193
+    },
+    "tests.test_import_v5_layout::test_import_three_device_cards_reflow_without_overlap[1050-3]": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.218
+    },
+    "tests.test_import_v5_layout::test_import_three_device_cards_reflow_without_overlap[1210-3]": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.21
+    },
+    "tests.test_import_v5_layout::test_import_single_device_uses_available_content_width": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.123
+    },
+    "tests.test_import_v5_layout::test_import_refresh_can_clear_an_empty_device_grid": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.07
+    },
+    "tests.test_import_v5_layout::test_import_sync_button_emits_request_and_waits_for_completion": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.095
+    },
+    "tests.test_import_v5_layout::test_import_sync_status_uses_per_device_dots_and_hides_error_when_all_online": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.144
+    },
+    "tests.test_import_v5_layout::test_import_card_uses_clean_labels_and_dynamic_toner_bars": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.134
+    },
+    "tests.test_import_v5_layout::test_import_card_paper_rows_follow_fixed_order_and_hide_missing_trays": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.084
+    },
+    "tests.test_import_v5_layout::test_import_card_paper_rows_keep_physical_layout_with_four_or_two_trays_and_bypass": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.067
+    },
+    "tests.test_import_v5_layout::test_import_card_hides_paper_section_when_no_identifiable_tray_is_reported": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.069
+    },
+    "tests.test_import_v5_layout::test_toner_bar_rounded_corners_match_white_device_card": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 1.855
+    },
+    "tests.test_import_v5_layout::test_import_sync_log_button_opens_observability_page": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.161
+    },
+    "tests.test_import_v5_layout::test_import_can_hide_zero_web_counters_without_removing_data": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.17
+    },
+    "tests.test_import_v5_layout::test_import_uses_real_subject_name_from_runtime_snapshot": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.184
+    },
+    "tests.test_import_v5_layout::test_import_shows_needs_review_when_web_totals_do_not_reconcile": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.12
+    },
+    "tests.test_reports_responsive_layout::test_visiting_tall_tabs_does_not_inflate_overview": {
+      "status": "passed",
+      "source": "final-followup.xml",
+      "seconds": 2.321
+    },
+    "tests.test_reports_responsive_layout::test_header_and_period_stay_visible_while_report_content_scrolls[0-overview_page]": {
+      "status": "passed",
+      "source": "final-followup.xml",
+      "seconds": 1.498
+    },
+    "tests.test_reports_responsive_layout::test_header_and_period_stay_visible_while_report_content_scrolls[1-users_page]": {
+      "status": "passed",
+      "source": "final-followup.xml",
+      "seconds": 1.6
+    },
+    "tests.test_reports_responsive_layout::test_header_and_period_stay_visible_while_report_content_scrolls[2-printers_page]": {
+      "status": "passed",
+      "source": "final-followup.xml",
+      "seconds": 1.149
+    },
+    "tests.test_reports_responsive_layout::test_narrow_overview_keeps_kpi_text_and_panels_inside_content[800]": {
+      "status": "passed",
+      "source": "final-followup.xml",
+      "seconds": 1.004
+    },
+    "tests.test_reports_responsive_layout::test_narrow_overview_keeps_kpi_text_and_panels_inside_content[660]": {
+      "status": "passed",
+      "source": "final-followup.xml",
+      "seconds": 1.0
+    },
+    "tests.test_reports_responsive_layout::test_compact_typography_and_tabs_preserve_readable_kpi_values[800]": {
+      "status": "passed",
+      "source": "final-followup.xml",
+      "seconds": 3.855
+    },
+    "tests.test_reports_responsive_layout::test_compact_typography_and_tabs_preserve_readable_kpi_values[660]": {
+      "status": "passed",
+      "source": "final-followup.xml",
+      "seconds": 3.993
+    },
+    "tests.test_reports_responsive_layout::test_translated_kpi_glyphs_fit_vertically_and_full_values_survive_resize[th]": {
+      "status": "passed",
+      "source": "final-followup.xml",
+      "seconds": 3.669
+    },
+    "tests.test_reports_responsive_layout::test_translated_kpi_glyphs_fit_vertically_and_full_values_survive_resize[en]": {
+      "status": "passed",
+      "source": "final-followup.xml",
+      "seconds": 3.481
+    },
+    "tests.test_reports_responsive_layout::test_resize_and_tab_navigation_preserve_report_values_selection_and_period": {
+      "status": "passed",
+      "source": "final-followup.xml",
+      "seconds": 2.278
+    },
+    "tests.test_i18n::test_translates_and_restores_widget_tree": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.125
+    },
+    "tests.test_i18n::test_tr_selects_active_language": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.108
+    },
+    "tests.test_i18n::test_import_dynamic_messages_are_fully_english": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.107
+    },
+    "tests.test_ux_issue18::test_full_amount_fits_without_hidden_digits[\\u0e3f0.00-th]": {
+      "status": "passed",
+      "source": "final-followup.xml",
+      "seconds": 0.121
+    },
+    "tests.test_ux_issue18::test_full_amount_fits_without_hidden_digits[\\u0e3f0.00-en]": {
+      "status": "passed",
+      "source": "final-followup.xml",
+      "seconds": 0.121
+    },
+    "tests.test_ux_issue18::test_full_amount_fits_without_hidden_digits[\\u0e3f8,640.00-th]": {
+      "status": "passed",
+      "source": "final-followup.xml",
+      "seconds": 0.119
+    },
+    "tests.test_ux_issue18::test_full_amount_fits_without_hidden_digits[\\u0e3f8,640.00-en]": {
+      "status": "passed",
+      "source": "final-followup.xml",
+      "seconds": 0.114
+    },
+    "tests.test_ux_issue18::test_full_amount_fits_without_hidden_digits[\\u0e3f12,345,678.90-th]": {
+      "status": "passed",
+      "source": "final-followup.xml",
+      "seconds": 0.125
+    },
+    "tests.test_ux_issue18::test_full_amount_fits_without_hidden_digits[\\u0e3f12,345,678.90-en]": {
+      "status": "passed",
+      "source": "final-followup.xml",
+      "seconds": 0.101
+    },
+    "tests.test_ux_issue18::test_names_in_data_controls_never_translate_even_if_exact_ui_label": {
+      "status": "passed",
+      "source": "final-followup.xml",
+      "seconds": 0.089
+    },
+    "tests.test_ux_issue18::test_removed_tab_does_not_reuse_another_pages_title": {
+      "status": "passed",
+      "source": "final-followup.xml",
+      "seconds": 0.084
+    },
+    "tests.test_ux_issue18::test_export_copy_is_complete_english": {
+      "status": "passed",
+      "source": "final-followup.xml",
+      "seconds": 0.088
+    },
+    "tests.test_ux_issue18::test_wizard_review_translates_templates_without_changing_customer_data": {
+      "status": "passed",
+      "source": "final-followup.xml",
+      "seconds": 1.012
+    },
+    "tests.test_ux_issue18::test_billing_audit_status_translates_while_printer_name_is_preserved": {
+      "status": "passed",
+      "source": "final-followup.xml",
+      "seconds": 0.433
+    },
+    "tests.test_ux_issue18::test_unavailable_pinned_counter_survives_save_and_clear_requires_explicit_confirmation": {
+      "status": "passed",
+      "source": "final-followup.xml",
+      "seconds": 0.178
+    },
+    "tests.test_ux_issue18::test_replacing_charts_destroys_every_released_native_chart": {
+      "status": "passed",
+      "source": "final-followup.xml",
+      "seconds": 0.111
+    },
+    "tests.test_ux_issue18::test_missing_readings_are_not_displayed_as_zero": {
+      "status": "passed",
+      "source": "final-followup.xml",
+      "seconds": 1.255
+    },
+    "tests.test_ux_issue18::test_long_counter_can_be_opened_and_copied_with_keyboard": {
+      "status": "passed",
+      "source": "final-followup.xml",
+      "seconds": 0.144
+    },
+    "tests.test_report_export_job::test_90_users_export_keeps_qt_responsive_and_verifies_workbook": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 15.208
+    },
+    "tests.test_report_export_job::test_incomplete_export_preserves_destination_and_removes_temporary_files[cancel]": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.227
+    },
+    "tests.test_report_export_job::test_incomplete_export_preserves_destination_and_removes_temporary_files[fail]": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.212
+    },
+    "tests.test_report_export_job::test_incomplete_export_preserves_destination_and_removes_temporary_files[locked]": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.794
+    },
+    "tests.test_report_export_job::test_controller_cancel_then_retry_and_failure_restore_buttons": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 1.313
+    },
+    "tests.test_report_export_job::test_background_read_database_is_pinned_readonly_and_does_not_leak_settings": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.368
+    },
+    "tests.test_report_export_job::test_export_job_reads_selected_user_and_raw_dates_from_database[False]": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 1.306
+    },
+    "tests.test_report_export_job::test_export_job_reads_selected_user_and_raw_dates_from_database[True]": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 1.237
+    },
+    "tests.test_report_export_job::test_page_date_cancel_does_not_read_database_and_export_busy_survives_refresh": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.581
+    },
+    "tests.test_report_export_job::test_page_export_stays_responsive_during_slow_database_read": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 1.06
+    },
+    "tests.test_report_excel_export::test_cloud_reports_export_writes_six_wide_safe_views": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.606
+    },
+    "tests.test_report_excel_export::test_excel_can_export_cost_before_waste_adjustment": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.486
+    },
+    "tests.test_report_excel_export::test_daily_view_has_one_row_per_date_even_with_multiple_printers": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.772
+    },
+    "tests.test_report_excel_export::test_legacy_sheets_separate_replacement_printers_in_same_slot": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.588
+    },
+    "tests.test_report_excel_export::test_excel_export_neutralizes_untrusted_formula_strings": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.679
+    },
+    "tests.test_report_excel_export::test_user_cost_uses_each_days_evidence_and_keeps_missing_cost_unavailable": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 1.102
+    },
+    "tests.test_report_excel_export::test_excel_cell_writer_preserves_program_authored_formula": {
+      "status": "passed",
+      "source": "final-regression.xml",
+      "seconds": 0.12
+    },
+    "tests.test_web_evidence_export_job::test_incomplete_web_export_preserves_old_destination[cancel-xlsx]": {
+      "status": "passed",
+      "source": "final-evidence-manual.xml",
+      "seconds": 0.209
+    },
+    "tests.test_web_evidence_export_job::test_incomplete_web_export_preserves_old_destination[cancel-pdf]": {
+      "status": "passed",
+      "source": "final-evidence-manual.xml",
+      "seconds": 0.207
+    },
+    "tests.test_web_evidence_export_job::test_incomplete_web_export_preserves_old_destination[locked-xlsx]": {
+      "status": "passed",
+      "source": "final-evidence-manual.xml",
+      "seconds": 0.245
+    },
+    "tests.test_web_evidence_export_job::test_incomplete_web_export_preserves_old_destination[locked-pdf]": {
+      "status": "passed",
+      "source": "final-evidence-manual.xml",
+      "seconds": 0.331
+    },
+    "tests.test_web_evidence_export_job::test_incomplete_web_export_preserves_old_destination[fail-xlsx]": {
+      "status": "passed",
+      "source": "final-evidence-manual.xml",
+      "seconds": 0.086
+    },
+    "tests.test_web_evidence_export_job::test_incomplete_web_export_preserves_old_destination[fail-pdf]": {
+      "status": "passed",
+      "source": "final-evidence-manual.xml",
+      "seconds": 0.174
+    },
+    "tests.test_web_evidence_export_job::test_web_export_worker_keeps_ui_responsive[960-xlsx]": {
+      "status": "passed",
+      "source": "final-evidence-manual.xml",
+      "seconds": 0.919
+    },
+    "tests.test_web_evidence_export_job::test_web_export_worker_keeps_ui_responsive[960-pdf]": {
+      "status": "passed",
+      "source": "final-evidence-manual.xml",
+      "seconds": 2.001
+    },
+    "tests.test_web_evidence_export_job::test_web_export_worker_keeps_ui_responsive[4096-xlsx]": {
+      "status": "passed",
+      "source": "final-evidence-manual.xml",
+      "seconds": 3.427
+    },
+    "tests.test_web_evidence_export_job::test_web_export_worker_keeps_ui_responsive[4096-pdf]": {
+      "status": "passed",
+      "source": "final-evidence-manual.xml",
+      "seconds": 8.77
+    },
+    "tests.test_web_evidence_export_job::test_cancel_before_write_and_before_publish_keeps_destination[1-xlsx]": {
+      "status": "passed",
+      "source": "final-evidence-manual.xml",
+      "seconds": 0.126
+    },
+    "tests.test_web_evidence_export_job::test_cancel_before_write_and_before_publish_keeps_destination[1-pdf]": {
+      "status": "passed",
+      "source": "final-evidence-manual.xml",
+      "seconds": 0.122
+    },
+    "tests.test_web_evidence_export_job::test_cancel_before_write_and_before_publish_keeps_destination[95-xlsx]": {
+      "status": "passed",
+      "source": "final-evidence-manual.xml",
+      "seconds": 0.349
+    },
+    "tests.test_web_evidence_export_job::test_cancel_before_write_and_before_publish_keeps_destination[95-pdf]": {
+      "status": "passed",
+      "source": "final-evidence-manual.xml",
+      "seconds": 0.44
+    },
+    "tests.test_web_evidence_export_job::test_destination_creation_error_is_reported_without_changing_existing_file[error0]": {
+      "status": "passed",
+      "source": "final-evidence-manual.xml",
+      "seconds": 0.102
+    },
+    "tests.test_web_evidence_export_job::test_destination_creation_error_is_reported_without_changing_existing_file[error1]": {
+      "status": "passed",
+      "source": "final-evidence-manual.xml",
+      "seconds": 0.103
+    },
+    "tests.test_web_evidence_export_job::test_closing_evidence_window_cancels_its_worker_without_waiting": {
+      "status": "passed",
+      "source": "final-evidence-manual.xml",
+      "seconds": 0.175
+    },
+    "tests.test_web_evidence_report::test_range_filter_uses_instants_and_archived_payload_is_loaded_only_on_request": {
+      "status": "passed",
+      "source": "final-evidence-manual.xml",
+      "seconds": 0.451
+    },
+    "tests.test_web_evidence_report::test_bounded_explicit_request_does_not_silently_truncate": {
+      "status": "passed",
+      "source": "final-evidence-manual.xml",
+      "seconds": 0.177
+    },
+    "tests.test_web_evidence_report::test_exports_preserve_decimal_estimates_remarks_and_escape_labels": {
+      "status": "passed",
+      "source": "final-evidence-manual.xml",
+      "seconds": 0.423
+    },
+    "tests.test_web_evidence_report::test_dialog_loads_only_on_click_and_resets_exports_after_date_change": {
+      "status": "passed",
+      "source": "final-evidence-manual.xml",
+      "seconds": 0.207
+    },
+    "tests.test_web_evidence_report::test_missing_history_shows_unavailable_instead_of_zero_result": {
+      "status": "passed",
+      "source": "final-evidence-manual.xml",
+      "seconds": 0.157
+    },
+    "tests.test_web_evidence_report::test_reviewed_reset_epochs_are_separate_in_projection_dialog_and_export": {
+      "status": "passed",
+      "source": "final-evidence-manual.xml",
+      "seconds": 0.602
+    },
+    "tests.test_web_evidence_report::test_projector_rejects_bound_events_from_other_epoch": {
+      "status": "passed",
+      "source": "final-evidence-manual.xml",
+      "seconds": 0.266
+    },
+    "tests.test_web_evidence_report::test_single_reading_still_shows_pending_epoch_conflict": {
+      "status": "passed",
+      "source": "final-evidence-manual.xml",
+      "seconds": 0.296
+    },
+    "tests.test_manual_diagrams::test_manual_constructs_selected_language_only_and_reuses_it": {
+      "status": "passed",
+      "source": "final-evidence-manual.xml",
+      "seconds": 1.449
+    }
+  }
+}

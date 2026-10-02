@@ -135,6 +135,7 @@ def _generate_pair(
     *,
     dns_names: tuple[str, ...],
     ip_addresses: tuple[str, ...],
+    client_auth: bool = False,
 ) -> None:
     private_key = rsa.generate_private_key(public_exponent=65537, key_size=3072)
     now = datetime.now(UTC)
@@ -151,7 +152,8 @@ def _generate_pair(
         .not_valid_after(now + timedelta(days=397))
         .add_extension(x509.BasicConstraints(ca=False, path_length=None), critical=True)
         .add_extension(x509.SubjectAlternativeName(san_values), critical=False)
-        .add_extension(x509.ExtendedKeyUsage([ExtendedKeyUsageOID.SERVER_AUTH]), critical=False)
+        .add_extension(x509.ExtendedKeyUsage([ExtendedKeyUsageOID.SERVER_AUTH] +
+            ([ExtendedKeyUsageOID.CLIENT_AUTH] if client_auth else [])), critical=False)
         .sign(private_key, hashes.SHA256())
     )
     _atomic_write(
@@ -171,6 +173,7 @@ def ensure_generated_certificate(
     *,
     hostname: str | None = None,
     lan_ips: Iterable[str] | None = None,
+    client_auth: bool = False,
 ) -> LanTlsMaterial:
     """Create or safely rotate a per-install leaf certificate when local identities change."""
 
@@ -181,6 +184,8 @@ def ensure_generated_certificate(
     metadata_path = tls_root / "metadata.json"
     dns_names, ip_addresses = _local_identities(hostname=hostname, lan_ips=lan_ips)
     expected = {"dns_names": list(dns_names), "ip_addresses": list(ip_addresses)}
+    if client_auth:
+        expected['client_auth'] = True
     regenerate = True
     if certificate_path.is_file() and private_key_path.is_file() and metadata_path.is_file():
         try:
@@ -189,6 +194,7 @@ def ensure_generated_certificate(
             regenerate = (
                 metadata.get("dns_names") != expected["dns_names"]
                 or metadata.get("ip_addresses") != expected["ip_addresses"]
+                or bool(metadata.get('client_auth')) != client_auth
                 or certificate.not_valid_after_utc <= datetime.now(UTC) + timedelta(days=30)
             )
         except (LanTlsError, OSError, json.JSONDecodeError, TypeError):
@@ -199,6 +205,7 @@ def ensure_generated_certificate(
             private_key_path,
             dns_names=dns_names,
             ip_addresses=ip_addresses,
+            client_auth=client_auth,
         )
         _atomic_write(
             metadata_path,

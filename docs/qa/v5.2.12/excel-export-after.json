@@ -1,0 +1,14 @@
+{
+  "synthetic": true,
+  "users": 90,
+  "printers": 3,
+  "days": 30,
+  "raw_rows": 65520,
+  "seconds": 8.887,
+  "bytes": 53883,
+  "verified_user_rows": 90,
+  "totals_verified": true,
+  "gui_timer_ticks": 567,
+  "navigation_clicks": 567,
+  "maximum_tick_gap_ms": 26.0
+}

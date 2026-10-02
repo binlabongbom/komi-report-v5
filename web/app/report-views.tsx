@@ -2,11 +2,10 @@
 
 import { useMemo } from "react";
 import type { HistoryGranularity, HistoryItem, SettingsData, SyncStatus } from "./dashboard-types";
-import { formatDate, type Language, tr } from "./i18n";
+import { formatDate, type Language, tr, num, money } from "./i18n";
+export { num, money } from "./i18n";
 
 export const slotColors = ["#0879db", "#e38b18", "#e45461"];
-export const num = (value?: number) => new Intl.NumberFormat("th-TH", { maximumFractionDigits: 0 }).format(value ?? 0);
-export const money = (value?: number) => new Intl.NumberFormat("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value ?? 0);
 
 export function StatusBadge({ status, language = "th" }: { status: string; language?: Language }) {
   const normalized = status.toLowerCase();

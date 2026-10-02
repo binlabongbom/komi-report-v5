@@ -8,6 +8,8 @@ internal installation checks but can never be promoted to RELEASE READY.
 from __future__ import annotations
 
 import argparse
+import dis
+import hashlib
 import json
 import os
 import platform
@@ -15,6 +17,7 @@ import plistlib
 import re
 import subprocess
 import sys
+import tarfile
 import tempfile
 import tomllib
 from datetime import datetime
@@ -90,18 +93,97 @@ def require_clean_source(expected_commit: str) -> tuple[str, str]:
     return commit, source_state
 
 
-def build_app() -> None:
+def edition_label(edition: str) -> str:
+    if edition not in {"normal", "offline"}:
+        raise MacCustomerBuildError("Invalid build edition")
+    return "Offline" if edition == "offline" else "Online"
+
+
+def edition_bundle(edition: str) -> Path:
+    edition_label(edition)
+    return SOURCE_ROOT / "dist" / edition / f"{APP_NAME}.app"
+
+
+def frozen_edition(app_bundle: Path) -> str:
+    from PyInstaller.archive.readers import CArchiveReader
+
+    archive = CArchiveReader(str(_main_executable(app_bundle)))
+    pyz = archive.open_embedded_archive("PYZ.pyz")
+    code = pyz.extract("services.build_edition")
+    instructions = list(dis.get_instructions(code))
+    for previous, current in zip(instructions, instructions[1:], strict=False):
+        if current.opname == "STORE_NAME" and current.argval == "BUILD_EDITION":
+            if previous.opname == "LOAD_CONST" and previous.argval in {"normal", "offline"}:
+                return previous.argval
+    raise MacCustomerBuildError("Frozen build edition is missing or invalid")
+
+
+def verify_build_receipt(app_bundle: Path, edition: str, commit: str) -> None:
+    receipt_path = app_bundle.parent / "BUILD_RECEIPT.json"
+    if not receipt_path.is_file():
+        raise MacCustomerBuildError("Build receipt missing; rebuild instead of --skip-build")
+    receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+    if (receipt.get("edition") != edition or receipt.get("source_commit") != commit
+            or receipt.get("executable_sha256") != sha256_file(_main_executable(app_bundle))
+            or receipt.get("bundle_sha256") != bundle_digest(app_bundle)
+            or frozen_edition(app_bundle) != edition):
+        raise MacCustomerBuildError("Bundle edition/source does not match requested build")
+
+
+def bundle_digest(app_bundle: Path) -> str:
+    return hashlib.sha256(json.dumps(file_inventory(app_bundle), sort_keys=True).encode()).hexdigest()
+
+
+def build_app(edition: str, commit: str) -> Path:
+    edition_label(edition)
     env = os.environ.copy()
     # Schema 3 creates an Ed25519 installation identity locally. Never
     # inherit the legacy shared-bootstrap build hook from an operator shell.
     env.pop("KOMI_REGISTRATION_BOOTSTRAP_BUILD_FILE", None)
-    _run(
-        [sys.executable, "-m", "PyInstaller", "--noconfirm", "--clean", "app.spec"],
-        cwd=SOURCE_ROOT,
-        env=env,
-        check=True,
-        timeout=1800,
-    )
+    node = Path(env.get("KOMI_NODE_RUNTIME_BUILD_FILE", ""))
+    if not node.is_file():
+        raise MacCustomerBuildError("KOMI_NODE_RUNTIME_BUILD_FILE is required")
+    env["PATH"] = str(node.parent) + os.pathsep + env.get("PATH", "")
+    # Build from this exact clean checkout, never reuse an untracked .next tree.
+    web_build = _run([str(node.parent / "npm"), "run", "build"],
+                     cwd=PROJECT_ROOT / "web", env=env, timeout=600)
+    if web_build.returncode:
+        raise MacCustomerBuildError("Web build failed: " + web_build.stderr[-2000:])
+    app_bundle = edition_bundle(edition)
+    app_bundle.parent.mkdir(parents=True, exist_ok=True)
+    (app_bundle.parent / "BUILD_RECEIPT.json").unlink(missing_ok=True)
+    with tempfile.TemporaryDirectory(prefix=f"komi-macos-{edition}-") as temp:
+        stage = Path(temp)
+        archive_path = stage / "source.tar"
+        _run(["git", "archive", "--format=tar", "-o", str(archive_path), commit],
+             cwd=PROJECT_ROOT, check=True)
+        with tarfile.open(archive_path) as archive:
+            archive.extractall(stage, filter="data")
+        (stage / "web" / ".next").symlink_to(PROJECT_ROOT / "web" / ".next", target_is_directory=True)
+        edition_path = stage / "source" / "services" / "build_edition.py"
+        source = edition_path.read_text(encoding="utf-8")
+        if source.count('BUILD_EDITION = "normal"') != 1:
+            raise MacCustomerBuildError("Unexpected staged build-edition authority")
+        edition_path.write_text(source.replace('BUILD_EDITION = "normal"',
+                               f'BUILD_EDITION = "{edition}"'), encoding="utf-8")
+        result = _run(
+            [sys.executable, "-m", "PyInstaller", "--noconfirm", "--clean",
+             "--distpath", str(app_bundle.parent), "--workpath",
+             str(SOURCE_ROOT / "build" / edition), "app.spec"],
+            cwd=stage / "source", env=env, timeout=1800,
+        )
+        (app_bundle.parent / "BUILD_OUTPUT.txt").write_text(
+            result.stdout + result.stderr, encoding="utf-8")
+        result.check_returncode()
+    if frozen_edition(app_bundle) != edition:
+        raise MacCustomerBuildError("Built bundle has the wrong frozen edition")
+    (app_bundle.parent / "BUILD_RECEIPT.json").write_text(json.dumps({
+        "source_commit": commit, "edition": edition,
+        "executable_sha256": sha256_file(_main_executable(app_bundle)),
+        "bundle_sha256": bundle_digest(app_bundle),
+        "web_build_id": (PROJECT_ROOT / "web/.next/BUILD_ID").read_text().strip(),
+    }, indent=2) + "\n", encoding="utf-8")
+    return app_bundle
 
 
 def _main_executable(app_bundle: Path) -> Path:
@@ -116,22 +198,32 @@ def smoke_test(app_bundle: Path) -> dict[str, object]:
     executable = _main_executable(app_bundle)
     with tempfile.TemporaryDirectory(prefix="komi-macos-customer-smoke-") as temp:
         app_home = Path(temp) / "app-home"
-        env = os.environ.copy()
+        env = {key: value for key, value in os.environ.items() if not key.startswith("KOMI_")}
         env.update(
             {
+                "HOME": temp,
+                "XDG_CONFIG_HOME": str(Path(temp) / "config"),
+                "XDG_DATA_HOME": str(Path(temp) / "data"),
+                "XDG_CACHE_HOME": str(Path(temp) / "cache"),
                 "KOMI_APP_HOME": str(app_home),
                 "KOMI_DB_PATH": str(app_home / "KOMI_Report_V5.db"),
                 "KOMI_LOG_DIR": str(app_home / "logs"),
+                "KOMI_RUNTIME_CONFIG": str(app_home / "runtime.toml"),
+                "KOMI_V46_DATABASE": str(app_home / "absent.sqlite3"),
+                "KOMI_DISCOVERY_DISABLED": "1",
                 "PYTHONDONTWRITEBYTECODE": "1",
                 "QT_QPA_PLATFORM": "offscreen",
             }
         )
         result = _run([str(executable), "--smoke-test"], env=env, timeout=120)
+        evidence_path = app_home / "KOMI_Report_V5.edition-smoke.json"
+        edition_evidence = json.loads(evidence_path.read_text()) if evidence_path.is_file() else {}
         return {
             "command": "bundle-main-executable --smoke-test",
             "exit_code": result.returncode,
             "database_created": (app_home / "KOMI_Report_V5.db").is_file(),
-            "graceful_exit": result.returncode == 0,
+            "graceful_exit": result.returncode == 0 and bool(edition_evidence),
+            "edition_evidence": edition_evidence,
             "stdout_tail": result.stdout[-1000:],
             "stderr_tail": result.stderr[-1000:],
         }
@@ -209,11 +301,12 @@ def packaged_runtime_dependency_roots(app_bundle: Path) -> tuple[str, ...]:
     )
 
 
-def create_archives(app_bundle: Path, output_dir: Path) -> tuple[Path, Path]:
+def create_archives(app_bundle: Path, output_dir: Path, edition: str = "normal") -> tuple[Path, Path]:
     output_dir.mkdir(parents=True, exist_ok=True)
     version_tag = VERSION.replace(".", "_")
-    archive = output_dir / f"KOMI_Report_V{version_tag}_macOS_arm64.zip"
-    dmg = output_dir / f"KOMI_Report_V{version_tag}_macOS_arm64.dmg"
+    label = edition_label(edition)
+    archive = output_dir / f"KOMI_Report_V{version_tag}_macOS_arm64_{label}.zip"
+    dmg = output_dir / f"KOMI_Report_V{version_tag}_macOS_arm64_{label}.dmg"
     archive.unlink(missing_ok=True)
     dmg.unlink(missing_ok=True)
     _run(
@@ -262,9 +355,11 @@ def build_customer_package(
     *,
     expected_commit: str = "",
     skip_build: bool = False,
+    edition: str = "normal",
     joint_e2e_evidence_file: Path | None = None,
 ) -> dict[str, object]:
     require_macos_arm64()
+    edition_label(edition)
     commit, source_state = require_clean_source(expected_commit)
     try:
         joint_e2e = load_joint_e2e_evidence(
@@ -274,25 +369,25 @@ def build_customer_package(
         )
     except ReleaseContractError as exc:
         raise MacCustomerBuildError(str(exc)) from exc
-    if not skip_build:
-        build_app()
-    packaged_bootstrap = tuple(APP_BUNDLE.rglob(LEGACY_REGISTRATION_BOOTSTRAP_FILENAME))
+    app_bundle = edition_bundle(edition) if skip_build else build_app(edition, commit)
+    verify_build_receipt(app_bundle, edition, commit)
+    packaged_bootstrap = tuple(app_bundle.rglob(LEGACY_REGISTRATION_BOOTSTRAP_FILENAME))
     if packaged_bootstrap:
         raise MacCustomerBuildError("macOS bundle contains a forbidden legacy Registration bootstrap")
     packaged_offline_public_keys = tuple(
-        APP_BUNDLE.rglob("public-verification-keys.json")
+        app_bundle.rglob("public-verification-keys.json")
     )
-    structure = inspect_structure(APP_BUNDLE)
+    structure = inspect_structure(app_bundle)
     if structure["short_version"] != VERSION or structure["architectures"] != ["arm64"]:
         raise MacCustomerBuildError(
             f"bundle version or architecture does not match V{VERSION} arm64"
         )
-    smoke = smoke_test(APP_BUNDLE)
+    smoke = smoke_test(app_bundle)
     if not smoke["graceful_exit"]:
         raise MacCustomerBuildError("built macOS app failed the isolated smoke test")
-    signing = inspect_signing(APP_BUNDLE)
-    archive, dmg = create_archives(APP_BUNDLE, output_dir)
-    inventory = file_inventory(APP_BUNDLE)
+    signing = inspect_signing(app_bundle)
+    archive, dmg = create_archives(app_bundle, output_dir, edition)
+    inventory = file_inventory(app_bundle)
     (output_dir / "FILE_INVENTORY.json").write_text(
         json.dumps(inventory, indent=2) + "\n", encoding="utf-8"
     )
@@ -325,12 +420,15 @@ def build_customer_package(
         blockers.append("macOS Developer ID signing/notarization is not verified")
     if joint_e2e["verified"] is not True:
         blockers.append("Joint Desktop-Staging E2E evidence is missing or did not pass")
-    if not packaged_offline_public_keys:
+    if edition == "normal" and not packaged_offline_public_keys:
         blockers.append("Host Offline License public verification key is not bundled")
     manifest = {
         "schema_version": 1,
         "product": "KOMI Report V5",
         "version": VERSION,
+        "edition": edition,
+        "frozen_edition_verified": True,
+        "external_host_traffic": "disabled" if edition == "offline" else "registration-status-meter",
         "contract_version": CONTRACT_VERSION,
         "contract_sha256": CONTRACT_SHA256,
         "release_profile": "customer-production-behavior",
@@ -338,7 +436,7 @@ def build_customer_package(
         "source_state": source_state,
         "target": "macOS arm64",
         "build_environment": f"macos-{platform.mac_ver()[0]}-arm64-native",
-        "artifact_identity": f"komi-report-v5-macos-arm64-customer-{VERSION}-{commit[:12]}",
+        "artifact_identity": f"komi-report-v5-macos-arm64-{edition}-{VERSION}-{commit[:12]}",
         "artifacts": [
             {"name": name, "sha256": digest, "size": (output_dir / name).stat().st_size}
             for name, digest in checksums.items()
@@ -355,7 +453,7 @@ def build_customer_package(
         "registration_runtime": "schema3-ed25519-public-client-no-shared-bootstrap",
         "registration_bootstrap": "not-applicable-schema3",
         "offline_license_public_keys": (
-            "bundled-public-only"
+            "not-required-offline-edition" if edition == "offline" else "bundled-public-only"
             if packaged_offline_public_keys
             else "absent-online-only"
         ),
@@ -379,6 +477,7 @@ def main() -> int:
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument("--expected-source-commit", default="")
     parser.add_argument("--skip-build", action="store_true")
+    parser.add_argument("--edition", choices=("normal", "offline"), default="normal")
     parser.add_argument(
         "--joint-e2e-evidence",
         type=Path,
@@ -389,6 +488,7 @@ def main() -> int:
         args.output.resolve(),
         expected_commit=args.expected_source_commit,
         skip_build=args.skip_build,
+        edition=args.edition,
         joint_e2e_evidence_file=args.joint_e2e_evidence,
     )
     for artifact in manifest["artifacts"]:

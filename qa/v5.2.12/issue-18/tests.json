@@ -1,0 +1,1353 @@
+{
+  "unique_cases": 269,
+  "passed": 269,
+  "failed": 0,
+  "note": "Latest result per case across a combined run and targeted reruns. The 90-user timing benchmark uses a fresh QApplication/process with the real theme. Long-running Windows performance is not claimed.",
+  "cases": [
+    {
+      "case": "tests.test_ux_issue18::test_full_amount_fits_without_hidden_digits[\\u0e3f0.00-th]",
+      "result": "passed",
+      "evidence": "ux18-final-language-tests.xml"
+    },
+    {
+      "case": "tests.test_ux_issue18::test_full_amount_fits_without_hidden_digits[\\u0e3f0.00-en]",
+      "result": "passed",
+      "evidence": "ux18-final-language-tests.xml"
+    },
+    {
+      "case": "tests.test_ux_issue18::test_full_amount_fits_without_hidden_digits[\\u0e3f8,640.00-th]",
+      "result": "passed",
+      "evidence": "ux18-final-language-tests.xml"
+    },
+    {
+      "case": "tests.test_ux_issue18::test_full_amount_fits_without_hidden_digits[\\u0e3f8,640.00-en]",
+      "result": "passed",
+      "evidence": "ux18-final-language-tests.xml"
+    },
+    {
+      "case": "tests.test_ux_issue18::test_full_amount_fits_without_hidden_digits[\\u0e3f12,345,678.90-th]",
+      "result": "passed",
+      "evidence": "ux18-final-language-tests.xml"
+    },
+    {
+      "case": "tests.test_ux_issue18::test_full_amount_fits_without_hidden_digits[\\u0e3f12,345,678.90-en]",
+      "result": "passed",
+      "evidence": "ux18-final-language-tests.xml"
+    },
+    {
+      "case": "tests.test_ux_issue18::test_names_in_data_controls_never_translate_even_if_exact_ui_label",
+      "result": "passed",
+      "evidence": "ux18-final-language-tests.xml"
+    },
+    {
+      "case": "tests.test_ux_issue18::test_removed_tab_does_not_reuse_another_pages_title",
+      "result": "passed",
+      "evidence": "ux18-final-language-tests.xml"
+    },
+    {
+      "case": "tests.test_ux_issue18::test_export_copy_is_complete_english",
+      "result": "passed",
+      "evidence": "ux18-final-language-tests.xml"
+    },
+    {
+      "case": "tests.test_ux_issue18::test_unavailable_pinned_counter_survives_save_and_clear_requires_explicit_confirmation",
+      "result": "passed",
+      "evidence": "ux18-final-language-tests.xml"
+    },
+    {
+      "case": "tests.test_ux_issue18::test_replacing_charts_destroys_every_released_native_chart",
+      "result": "passed",
+      "evidence": "ux18-final-language-tests.xml"
+    },
+    {
+      "case": "tests.test_ux_issue18::test_missing_readings_are_not_displayed_as_zero",
+      "result": "passed",
+      "evidence": "ux18-final-language-tests.xml"
+    },
+    {
+      "case": "tests.test_ux_issue18::test_long_counter_can_be_opened_and_copied_with_keyboard",
+      "result": "passed",
+      "evidence": "ux18-final-language-tests.xml"
+    },
+    {
+      "case": "tests.test_cloud_reports_ui::test_calendar_month_menu_and_day_click_allow_dates_outside_report_history[start-target0]",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_cloud_reports_ui::test_calendar_month_menu_and_day_click_allow_dates_outside_report_history[end-target1]",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_cloud_reports_ui::test_custom_calendar_range_survives_history_refresh_and_empty_report_data",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_cloud_reports_ui::test_cloud_reports_share_period_and_cross_filter_users_and_printers",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_cloud_reports_ui::test_cloud_reports_header_and_date_range_fit_desktop_minimum",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_cloud_reports_ui::test_usage_starts_with_reference_meter_without_counting_it_as_usage_or_cost",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_cloud_reports_ui::test_users_matrix_uses_real_names_and_slot_operation_detail_headers",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_cloud_reports_ui::test_usage_all_devices_checkboxes_filter_aggregate_but_keep_per_device_matrix",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_cloud_reports_ui::test_printer_charts_compare_all_devices_and_selection_only_changes_detail",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_cloud_reports_ui::test_keyboard_selection_updates_user_filter_and_printer_detail_immediately",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_cloud_reports_ui::test_empty_users_offer_a_reading_status_recovery_action",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_cloud_reports_ui::test_cloud_reports_use_transparent_label_surfaces_and_consistent_table_alignment",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_cloud_reports_ui::test_users_cards_separate_color_without_inventing_missing_counters[classified]",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_cloud_reports_ui::test_users_cards_separate_color_without_inventing_missing_counters[total_only]",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_cloud_reports_ui::test_users_cards_separate_color_without_inventing_missing_counters[missing]",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_cloud_reports_ui::test_users_cards_separate_color_without_inventing_missing_counters[partial_users]",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_cloud_reports_ui::test_printer_cards_match_overview_and_preserve_scan_summary",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_cloud_reports_staged::test_builds_only_overview_then_each_requested_tab_once",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_cloud_reports_staged::test_lazy_controls_inherit_period_and_support_resize_before_data",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_cloud_reports_staged::test_scoped_snapshots_never_render_other_tabs_data",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_cloud_reports_staged::test_loading_slow_and_error_preserve_snapshot_and_offer_retry",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_cloud_reports_staged::test_usage_can_load_without_constructing_user_or_printer_widgets",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_cloud_reports_staged::test_per_tab_loading_tracks_visible_tab_and_guard_invalid_index",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_cloud_reports_staged::test_cards_render_immediately_then_tables_then_charts[0-overview-total_usage]",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_cloud_reports_staged::test_cards_render_immediately_then_tables_then_charts[1-users-usage]",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_cloud_reports_staged::test_cards_render_immediately_then_tables_then_charts[2-printers-usage]",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_cloud_reports_staged::test_queued_tail_is_discarded_after_invalidation[tab]",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_cloud_reports_staged::test_queued_tail_is_discarded_after_invalidation[reload]",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_cloud_reports_staged::test_queued_tail_is_discarded_after_invalidation[error]",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_cloud_reports_staged::test_queued_tail_is_discarded_after_invalidation[close]",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_cloud_reports_staged::test_new_snapshot_replaces_pending_tables_and_charts",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_cloud_reports_staged::test_users_chart_labels_do_not_depend_on_printers_tab_rows",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_settings_v5::test_shared_billing_cancel_keeps_draft_and_does_not_write_history",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_settings_v5::test_shared_billing_rejects_edit_made_while_confirmation_is_open",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_settings_v5::test_shared_confirmation_shows_before_after_and_defaults_to_cancel",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_settings_v5::test_fleet_settings_groups_fields_and_live_schedule",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_settings_v5::test_fleet_settings_toggle_stops_web_service",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_settings_v5::test_compact_settings_opens_one_editor_and_preserves_dirty_draft",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_settings_v5::test_web_recovery_can_start_enabled_but_stopped_service_without_toggling",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_settings_v5::test_web_access_dialog_validates_match_and_minimum_length",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_settings_v5::test_desktop_changes_web_access_and_restarts_owned_service",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_settings_v5::test_fleet_settings_allows_adding_and_removing_custom_schedule_windows",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_settings_v5::test_fleet_autostart_reflects_missing_os_registration",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_settings_v5::test_v5_database_path_tools_are_available_without_replacing_active_database",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_settings_v5::test_v5_hides_duplicate_editors_and_opens_tools_without_password",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_settings_v5::test_settings_tools_do_not_request_password",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_settings_v5::test_settings_shows_simple_registration_status_and_manual_retry",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_settings_v5::test_registration_settings_copy_switches_to_english",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_settings_v5::test_settings_can_accept_current_privacy_notice_and_requeue",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_settings_v5::test_settings_routes_local_enqueue_failure_back_to_setup",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_settings_v5::test_offline_license_settings_are_hidden_while_activation_is_disabled",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_settings_v5::test_disabled_offline_license_ui_does_not_call_export_runtime",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_settings_v5::test_settings_v5_routes_support_details_through_section_tabs",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_settings_v5::test_advanced_settings_and_nested_lan_stay_inline_without_horizontal_scroll",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_settings_v5::test_schedule_delete_button_is_compact_and_removes_only_its_row",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_settings_v5::test_v5_tools_hide_all_duplicate_device_and_billing_editors",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_settings_v5::test_settings_opens_setup_without_a_nested_dialog_event_loop",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_settings_v5::test_web_custom_port_is_saved_restarted_and_restored",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_settings_v5::test_web_password_lock_sets_a_code_before_closing_reports",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_settings_v5::test_cancel_password_setup_keeps_reports_open",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_settings_v5::test_web_occupied_port_is_rejected_before_any_settings_change",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_settings_v5::test_secondary_always_open_selector_restores_and_can_revoke",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_settings_navigation::test_sections_use_one_tab_shell_and_share_the_schedule[th]",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_settings_navigation::test_sections_use_one_tab_shell_and_share_the_schedule[en]",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_settings_navigation::test_schedule_shortcut_opens_editor_in_the_same_settings_window",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_settings_navigation::test_tab_switch_preserves_unsaved_values_then_save_keeps_form_open",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_settings_navigation::test_embedded_plan_still_refreshes_when_status_tab_is_hidden",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_settings_navigation::test_settings_and_report_tabs_start_at_the_left_edge[824]",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_settings_navigation::test_settings_and_report_tabs_start_at_the_left_edge[1080]",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_settings_navigation::test_settings_and_report_tabs_start_at_the_left_edge[1205]",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_billing_audit_ui::test_billing_audit_ui_shows_effective_correction_and_open_hold_lifecycle",
+      "result": "passed",
+      "evidence": "ux18-final-language-tests.xml"
+    },
+    {
+      "case": "tests.test_billing_audit_ui::test_billing_audit_load_more_search_and_export_include_over_100_rows",
+      "result": "passed",
+      "evidence": "ux18-final-language-tests.xml"
+    },
+    {
+      "case": "tests.test_billing_manual_review::test_closed_hold_review_preserves_source_flags_and_can_be_shared",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_billing_manual_review::test_stale_evidence_and_retry_difference_cannot_write",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_billing_manual_review::test_audit_dialog_cancel_review_then_confirm",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_i18n::test_translates_and_restores_widget_tree",
+      "result": "passed",
+      "evidence": "ux18-final-language-tests.xml"
+    },
+    {
+      "case": "tests.test_i18n::test_tr_selects_active_language",
+      "result": "passed",
+      "evidence": "ux18-final-language-tests.xml"
+    },
+    {
+      "case": "tests.test_i18n::test_import_dynamic_messages_are_fully_english",
+      "result": "passed",
+      "evidence": "ux18-final-language-tests.xml"
+    },
+    {
+      "case": "tests.test_web_evidence_report::test_range_filter_uses_instants_and_archived_payload_is_loaded_only_on_request",
+      "result": "passed",
+      "evidence": "ux18-export-controls-final.xml"
+    },
+    {
+      "case": "tests.test_web_evidence_report::test_bounded_explicit_request_does_not_silently_truncate",
+      "result": "passed",
+      "evidence": "ux18-export-controls-final.xml"
+    },
+    {
+      "case": "tests.test_web_evidence_report::test_exports_preserve_decimal_estimates_remarks_and_escape_labels",
+      "result": "passed",
+      "evidence": "ux18-export-controls-final.xml"
+    },
+    {
+      "case": "tests.test_web_evidence_report::test_dialog_loads_only_on_click_and_resets_exports_after_date_change",
+      "result": "passed",
+      "evidence": "ux18-export-controls-final.xml"
+    },
+    {
+      "case": "tests.test_web_evidence_report::test_missing_history_shows_unavailable_instead_of_zero_result",
+      "result": "passed",
+      "evidence": "ux18-export-controls-final.xml"
+    },
+    {
+      "case": "tests.test_web_evidence_report::test_reviewed_reset_epochs_are_separate_in_projection_dialog_and_export",
+      "result": "passed",
+      "evidence": "ux18-export-controls-final.xml"
+    },
+    {
+      "case": "tests.test_web_evidence_report::test_projector_rejects_bound_events_from_other_epoch",
+      "result": "passed",
+      "evidence": "ux18-export-controls-final.xml"
+    },
+    {
+      "case": "tests.test_web_evidence_report::test_single_reading_still_shows_pending_epoch_conflict",
+      "result": "passed",
+      "evidence": "ux18-export-controls-final.xml"
+    },
+    {
+      "case": "tests.test_report_export_job::test_90_users_export_keeps_qt_responsive_and_verifies_workbook",
+      "result": "passed",
+      "evidence": "ux18-export-controls-final.xml"
+    },
+    {
+      "case": "tests.test_report_export_job::test_incomplete_export_preserves_destination_and_removes_temporary_files[cancel]",
+      "result": "passed",
+      "evidence": "ux18-export-controls-final.xml"
+    },
+    {
+      "case": "tests.test_report_export_job::test_incomplete_export_preserves_destination_and_removes_temporary_files[fail]",
+      "result": "passed",
+      "evidence": "ux18-export-controls-final.xml"
+    },
+    {
+      "case": "tests.test_report_export_job::test_incomplete_export_preserves_destination_and_removes_temporary_files[locked]",
+      "result": "passed",
+      "evidence": "ux18-export-controls-final.xml"
+    },
+    {
+      "case": "tests.test_report_export_job::test_controller_cancel_then_retry_and_failure_restore_buttons",
+      "result": "passed",
+      "evidence": "ux18-export-controls-final.xml"
+    },
+    {
+      "case": "tests.test_report_export_job::test_background_read_database_is_pinned_readonly_and_does_not_leak_settings",
+      "result": "passed",
+      "evidence": "ux18-export-controls-final.xml"
+    },
+    {
+      "case": "tests.test_report_export_job::test_export_job_reads_selected_user_and_raw_dates_from_database",
+      "result": "passed",
+      "evidence": "ux18-export-controls-final.xml"
+    },
+    {
+      "case": "tests.test_report_export_job::test_page_date_cancel_does_not_read_database_and_export_busy_survives_refresh",
+      "result": "passed",
+      "evidence": "ux18-export-controls-final.xml"
+    },
+    {
+      "case": "tests.test_report_export_job::test_page_export_stays_responsive_during_slow_database_read",
+      "result": "passed",
+      "evidence": "ux18-export-controls-final.xml"
+    },
+    {
+      "case": "tests.test_network_activity::test_status_uses_per_member_durable_receipts_without_changing_them",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_network_activity::test_only_unresolved_incoming_history_counts_as_review",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_network_activity::test_missing_database_does_not_create_an_empty_file",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_network_activity::test_panel_uses_actual_state_keeps_failed_transfer_and_empty_state_honest",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_network_activity::test_status_error_preserves_last_data_and_no_hidden_periodic_queries",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_network_activity::test_display_pagination_does_not_limit_members",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_network_activity::test_async_english_status_is_complete_and_member_name_is_preserved",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_shared_settings_history_ui::test_history_browse_and_cancel_undo_never_write",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_shared_settings_history_ui::test_history_undo_appends_without_overwriting_unrelated_edit",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_shared_settings_history_ui::test_history_stale_undo_leaves_newer_value",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_shared_settings_history_ui::test_history_pages_are_read_only_and_do_not_skip_or_repeat",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_shared_settings_history_ui::test_conflict_dialog_reviews_choice_and_keeps_both_parents[incoming]",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_shared_settings_history_ui::test_conflict_dialog_reviews_choice_and_keeps_both_parents[local]",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_shared_settings_history_ui::test_conflict_dialog_reviews_choice_and_keeps_both_parents[cancel]",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_web_evidence_export_job::test_incomplete_web_export_preserves_old_destination[cancel-xlsx]",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_web_evidence_export_job::test_incomplete_web_export_preserves_old_destination[cancel-pdf]",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_web_evidence_export_job::test_incomplete_web_export_preserves_old_destination[locked-xlsx]",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_web_evidence_export_job::test_incomplete_web_export_preserves_old_destination[locked-pdf]",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_web_evidence_export_job::test_incomplete_web_export_preserves_old_destination[fail-xlsx]",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_web_evidence_export_job::test_incomplete_web_export_preserves_old_destination[fail-pdf]",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_web_evidence_export_job::test_web_export_worker_keeps_ui_responsive[960-xlsx]",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_web_evidence_export_job::test_web_export_worker_keeps_ui_responsive[960-pdf]",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_web_evidence_export_job::test_web_export_worker_keeps_ui_responsive[4096-xlsx]",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_web_evidence_export_job::test_web_export_worker_keeps_ui_responsive[4096-pdf]",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_web_evidence_export_job::test_cancel_before_write_and_before_publish_keeps_destination[1-xlsx]",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_web_evidence_export_job::test_cancel_before_write_and_before_publish_keeps_destination[1-pdf]",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_web_evidence_export_job::test_cancel_before_write_and_before_publish_keeps_destination[95-xlsx]",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_web_evidence_export_job::test_cancel_before_write_and_before_publish_keeps_destination[95-pdf]",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_web_evidence_export_job::test_destination_creation_error_is_reported_without_changing_existing_file[error0]",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_web_evidence_export_job::test_destination_creation_error_is_reported_without_changing_existing_file[error1]",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_web_evidence_export_job::test_closing_evidence_window_cancels_its_worker_without_waiting",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_billing_repricing::test_reprice_appends_exact_reversal_and_dated_replacement",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_billing_repricing::test_price_change_after_preview_is_rejected_without_reversal",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_billing_repricing::test_repricing_failure_rolls_back_compensating_entry",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_billing_repricing::test_manual_adjustment_cannot_be_relabelled_as_automatic_safe_usage",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_billing_repricing::test_second_price_correction_uses_latest_revision_without_double_counting",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_billing_repricing::test_dialog_cancel_and_stale_preview_cannot_write",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_billing_repricing::test_audit_page_opens_and_applies_reviewed_price_correction",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_billing_repricing_batch::test_batch_preview_confirm_retry_preserves_originals_and_skips_held",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_billing_repricing_batch::test_second_replacement_failure_rolls_back_entire_batch_and_receipt",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_billing_repricing_batch::test_changed_range_after_preview_requires_review_again[new_day]",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_billing_repricing_batch::test_changed_range_after_preview_requires_review_again[new_price]",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_billing_repricing_batch::test_batch_retry_with_different_reason_is_rejected",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_billing_repricing_batch::test_dialog_preview_cancel_is_read_only_and_confirmation_requires_reason",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_billing_repricing_batch::test_dialog_confirmation_applies_all_changed_rows",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_billing_repricing_batch::test_discount_only_batch_preserves_issued_rows_and_periods_and_retry",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_billing_repricing_batch::test_discount_change_after_preview_rejects_without_writing_anything",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_billing_repricing_batch::test_invalid_current_discount_does_not_silently_skip_postings[nan]",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_billing_repricing_batch::test_invalid_current_discount_does_not_silently_skip_postings[inf]",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_billing_repricing_batch::test_invalid_current_discount_does_not_silently_skip_postings[-1]",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_billing_repricing_batch::test_invalid_current_discount_does_not_silently_skip_postings[101]",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_billing_repricing_batch::test_invalid_current_discount_does_not_silently_skip_postings[invalid]",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_billing_repricing_batch::test_discount_batch_failure_rolls_back_all_changes",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_billing_repricing_batch::test_dialog_discount_toggle_invalidates_preview_and_displays_reviewed_rate",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_billing_repricing_batch::test_current_period_is_opt_in_stale_checked_and_keeps_amounts",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_billing_repricing_batch::test_dialog_remains_responsive_and_cannot_dismiss_pending_commit",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_billing_web_amendment::test_gap_allocation_and_later_backfill_preserve_total_and_issued_evidence",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_billing_web_amendment::test_changes_after_preview_do_not_write_partial_amendments[new_evidence]",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_billing_web_amendment::test_changes_after_preview_do_not_write_partial_amendments[manual]",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_billing_web_amendment::test_changes_after_preview_do_not_write_partial_amendments[price_boundary]",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_billing_web_amendment::test_atomic_rollback_if_receipt_write_fails",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_billing_web_amendment::test_partial_window_and_current_day_are_rejected",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_billing_web_amendment::test_archive_evidence_keeps_amendment_available",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_billing_web_amendment::test_conflicting_same_instant_is_not_hidden_by_baseline_selection",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_billing_web_amendment::test_original_source_change_is_not_recertified",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_billing_web_amendment::test_retry_requires_identical_actor_and_reason",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_billing_web_amendment::test_repricing_uses_corrected_daily_delta_and_keeps_proof",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_billing_web_amendment::test_dialog_cancel_preview_and_confirm_use_separate_steps",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_billing_web_amendment::test_excel_report_contains_current_amendment_notes",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_billing_web_amendment::test_local_web_api_returns_amended_history_and_notes",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_shared_slot_review::test_slot_review_atomically_links_epoch_to_settings_and_survives_other_edits",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_shared_slot_review::test_failure_rolls_back_epoch_settings_head_and_all_delivery_records[journal]",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_shared_slot_review::test_failure_rolls_back_epoch_settings_head_and_all_delivery_records[outbox]",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_shared_slot_review::test_failure_rolls_back_epoch_settings_head_and_all_delivery_records[receipt]",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_shared_slot_review::test_settings_change_or_new_read_invalidates_review_and_replacement_does_not_jump",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_shared_slot_review::test_invalid_shared_epoch_references_are_rejected[refs0]",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_shared_slot_review::test_invalid_shared_epoch_references_are_rejected[refs1]",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_shared_slot_review::test_invalid_shared_epoch_references_are_rejected[refs2]",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_shared_slot_review::test_invalid_shared_epoch_references_are_rejected[refs3]",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_shared_slot_review::test_history_ui_shows_slot_reference_and_dialog_checks_reason_cancel_and_stale",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_shared_slot_review::test_slot_dialog_cancel_preserves_database",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_counter_review_ui::test_subject_and_raw_reviews_use_their_own_store",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_counter_review_ui::test_cancel_does_not_modify_counter_and_requires_reason_and_verification",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_counter_review_ui::test_confirmation_clears_row_and_writes_audit",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_counter_review_ui::test_new_reading_while_dialog_open_rejects_stale_confirmation",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_ui_consistency::test_button_system_normalizes_geometry_and_radius",
+      "result": "passed",
+      "evidence": "ux18-guide-labels-final.xml"
+    },
+    {
+      "case": "tests.test_ui_consistency::test_short_text_button_is_not_misclassified_from_temporary_width",
+      "result": "passed",
+      "evidence": "ux18-guide-labels-final.xml"
+    },
+    {
+      "case": "tests.test_ui_consistency::test_import_primary_button_keeps_enabled_and_disabled_colors",
+      "result": "passed",
+      "evidence": "ux18-guide-labels-final.xml"
+    },
+    {
+      "case": "tests.test_ui_consistency::test_heavy_pages_are_constructed_on_first_navigation",
+      "result": "passed",
+      "evidence": "ux18-guide-labels-final.xml"
+    },
+    {
+      "case": "tests.test_ui_consistency::test_sidebar_navigation_warns_and_preserves_settings_draft",
+      "result": "passed",
+      "evidence": "ux18-guide-labels-final.xml"
+    },
+    {
+      "case": "tests.test_manual_diagrams::test_manual_is_one_continuous_page_with_clickable_right_toc",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_manual_diagrams::test_manual_reflows_at_desktop_minimum_and_uses_v52_report_copy",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_manual_diagrams::test_manual_uses_customer_guide_document_style_and_shared_screenshots",
+      "result": "passed",
+      "evidence": "ux18-final-tests.xml"
+    },
+    {
+      "case": "tests.test_packaged_manual_assets::test_current_in_app_and_pdf_guide_share_bilingual_screenshots",
+      "result": "passed",
+      "evidence": "ux18-guide-labels-final.xml"
+    },
+    {
+      "case": "tests.test_packaged_manual_assets::test_app_spec_packages_every_customer_guide_screenshot",
+      "result": "passed",
+      "evidence": "ux18-guide-labels-final.xml"
+    },
+    {
+      "case": "tests.test_packaged_manual_assets::test_windows_customer_payload_builder_packages_manual_assets",
+      "result": "passed",
+      "evidence": "ux18-guide-labels-final.xml"
+    },
+    {
+      "case": "tests.test_packaged_manual_assets::test_source_release_packages_manual_assets_for_cross_platform_builds",
+      "result": "passed",
+      "evidence": "ux18-guide-labels-final.xml"
+    },
+    {
+      "case": "tests.test_packaged_manual_assets::test_updated_guide_links_remain_available_after_copy",
+      "result": "passed",
+      "evidence": "ux18-guide-labels-final.xml"
+    },
+    {
+      "case": "tests.test_ux_issue18::test_wizard_review_translates_templates_without_changing_customer_data",
+      "result": "passed",
+      "evidence": "ux18-final-language-tests.xml"
+    },
+    {
+      "case": "tests.test_ux_issue18::test_billing_audit_status_translates_while_printer_name_is_preserved",
+      "result": "passed",
+      "evidence": "ux18-final-language-tests.xml"
+    },
+    {
+      "case": "tests.test_setup_wizard_v5::test_setup_wizard_switches_between_shared_and_per_device_prices",
+      "result": "passed",
+      "evidence": "ux18-final-language-tests.xml"
+    },
+    {
+      "case": "tests.test_setup_wizard_v5::test_successful_device_test_advances_once_and_failed_test_stays_on_device_step",
+      "result": "passed",
+      "evidence": "ux18-final-language-tests.xml"
+    },
+    {
+      "case": "tests.test_setup_wizard_v5::test_setup_wizard_keeps_each_per_device_price_separate",
+      "result": "passed",
+      "evidence": "ux18-final-language-tests.xml"
+    },
+    {
+      "case": "tests.test_setup_wizard_v5::test_setup_wizard_uses_the_approved_four_step_flow",
+      "result": "passed",
+      "evidence": "ux18-final-language-tests.xml"
+    },
+    {
+      "case": "tests.test_setup_wizard_v5::test_secondary_snapshot_populates_setup_and_requires_fresh_device_verification",
+      "result": "passed",
+      "evidence": "ux18-final-language-tests.xml"
+    },
+    {
+      "case": "tests.test_setup_wizard_v5::test_secondary_manual_primary_ip_uses_one_validated_host",
+      "result": "passed",
+      "evidence": "ux18-final-language-tests.xml"
+    },
+    {
+      "case": "tests.test_setup_wizard_v5::test_secondary_setup_stays_compact_until_a_primary_is_found_or_requested",
+      "result": "passed",
+      "evidence": "ux18-final-language-tests.xml"
+    },
+    {
+      "case": "tests.test_setup_wizard_v5::test_setup_connectivity_passes_silently_and_failure_opens_copyable_details",
+      "result": "passed",
+      "evidence": "ux18-final-language-tests.xml"
+    },
+    {
+      "case": "tests.test_setup_wizard_v5::test_secondary_setup_persists_received_schedule_only_when_local_value_is_missing",
+      "result": "passed",
+      "evidence": "ux18-final-language-tests.xml"
+    },
+    {
+      "case": "tests.test_setup_wizard_v5::test_verify_selected_devices_passes_current_configs_to_worker",
+      "result": "passed",
+      "evidence": "ux18-final-language-tests.xml"
+    },
+    {
+      "case": "tests.test_setup_wizard_v5::test_advanced_scan_enter_uses_the_requested_ipv4_range",
+      "result": "passed",
+      "evidence": "ux18-final-language-tests.xml"
+    },
+    {
+      "case": "tests.test_setup_wizard_v5::test_setup_wizard_uses_compact_language_toggle_only_on_first_step",
+      "result": "passed",
+      "evidence": "ux18-final-language-tests.xml"
+    },
+    {
+      "case": "tests.test_setup_wizard_v5::test_setup_wizard_english_mode_has_no_untranslated_visible_copy",
+      "result": "passed",
+      "evidence": "ux18-final-language-tests.xml"
+    },
+    {
+      "case": "tests.test_setup_wizard_v5::test_setup_wizard_modals_keep_light_palette_and_complete_english",
+      "result": "passed",
+      "evidence": "ux18-final-language-tests.xml"
+    },
+    {
+      "case": "tests.test_setup_wizard_v5::test_setup_wizard_flow_does_not_use_nested_dialog_exec",
+      "result": "passed",
+      "evidence": "ux18-final-language-tests.xml"
+    },
+    {
+      "case": "tests.test_setup_wizard_v5::test_setup_wizard_uses_a_centered_screen_bounded_window",
+      "result": "passed",
+      "evidence": "ux18-final-language-tests.xml"
+    },
+    {
+      "case": "tests.test_setup_wizard_v5::test_setup_wizard_stays_readable_when_macos_uses_a_dark_palette",
+      "result": "passed",
+      "evidence": "ux18-final-language-tests.xml"
+    },
+    {
+      "case": "tests.test_setup_wizard_v5::test_setup_wizard_lab_selects_only_snmp_discovered_virtual_printer",
+      "result": "passed",
+      "evidence": "ux18-final-language-tests.xml"
+    },
+    {
+      "case": "tests.test_setup_wizard_v5::test_setup_lab_uses_real_ports_for_user_supplied_lan_range",
+      "result": "passed",
+      "evidence": "ux18-final-language-tests.xml"
+    },
+    {
+      "case": "tests.test_setup_wizard_v5::test_setup_wizard_manual_setup_keeps_explicit_admin_credentials_only_in_memory",
+      "result": "passed",
+      "evidence": "ux18-final-language-tests.xml"
+    },
+    {
+      "case": "tests.test_setup_wizard_v5::test_setup_wizard_preserves_existing_slot_when_rows_change_order",
+      "result": "passed",
+      "evidence": "ux18-final-language-tests.xml"
+    },
+    {
+      "case": "tests.test_setup_wizard_v5::test_setup_wizard_requires_fresh_verification_for_saved_online_device",
+      "result": "passed",
+      "evidence": "ux18-final-language-tests.xml"
+    },
+    {
+      "case": "tests.test_setup_wizard_v5::test_setup_wizard_shortens_konica_model_for_default_name",
+      "result": "passed",
+      "evidence": "ux18-final-language-tests.xml"
+    },
+    {
+      "case": "tests.test_setup_wizard_v5::test_setup_wizard_uses_neutral_192_168_1_ip_examples",
+      "result": "passed",
+      "evidence": "ux18-final-language-tests.xml"
+    },
+    {
+      "case": "tests.test_setup_wizard_v5::test_network_discovery_cancel_does_not_wait_for_probe_timeout",
+      "result": "passed",
+      "evidence": "ux18-final-language-tests.xml"
+    },
+    {
+      "case": "tests.test_setup_wizard_v5::test_network_discovery_reports_completed_host_progress",
+      "result": "passed",
+      "evidence": "ux18-final-language-tests.xml"
+    },
+    {
+      "case": "tests.test_setup_wizard_v5::test_setup_wizard_shows_exact_ip_scan_progress",
+      "result": "passed",
+      "evidence": "ux18-final-language-tests.xml"
+    },
+    {
+      "case": "tests.test_setup_wizard_v5::test_setup_wizard_cancel_restores_scan_controls_immediately",
+      "result": "passed",
+      "evidence": "ux18-final-language-tests.xml"
+    },
+    {
+      "case": "tests.test_setup_wizard_v5::test_setup_wizard_requests_active_threads_to_stop_before_close",
+      "result": "passed",
+      "evidence": "ux18-final-language-tests.xml"
+    },
+    {
+      "case": "tests.test_setup_wizard_v5::test_setup_wizard_selects_scanned_rows_without_a_default_password",
+      "result": "passed",
+      "evidence": "ux18-final-language-tests.xml"
+    },
+    {
+      "case": "tests.test_setup_wizard_v5::test_device_test_worker_pins_first_self_signed_certificate",
+      "result": "passed",
+      "evidence": "ux18-final-language-tests.xml"
+    },
+    {
+      "case": "tests.test_setup_wizard_v5::test_device_test_worker_passes_pinned_policy_to_legacy_admin_connector",
+      "result": "passed",
+      "evidence": "ux18-final-language-tests.xml"
+    },
+    {
+      "case": "tests.test_setup_wizard_v5::test_device_test_worker_does_not_request_customer_password_for_tls_failure",
+      "result": "passed",
+      "evidence": "ux18-final-language-tests.xml"
+    },
+    {
+      "case": "tests.test_setup_wizard_v5::test_device_test_worker_reports_session_busy_without_requesting_password",
+      "result": "passed",
+      "evidence": "ux18-final-language-tests.xml"
+    },
+    {
+      "case": "tests.test_setup_wizard_v5::test_device_test_worker_accepts_public_meter_for_public_capable_press_even_if_password_was_entered",
+      "result": "passed",
+      "evidence": "ux18-final-language-tests.xml"
+    },
+    {
+      "case": "tests.test_setup_wizard_v5::test_setup_wizard_keeps_selected_table_text_stable_and_marks_failed_test",
+      "result": "passed",
+      "evidence": "ux18-final-language-tests.xml"
+    },
+    {
+      "case": "tests.test_setup_wizard_v5::test_setup_wizard_marks_customer_password_required_without_exposing_a_default",
+      "result": "passed",
+      "evidence": "ux18-final-language-tests.xml"
+    },
+    {
+      "case": "tests.test_setup_wizard_v5::test_setup_wizard_marks_session_busy_and_opens_printer_web_instead_of_password",
+      "result": "passed",
+      "evidence": "ux18-final-language-tests.xml"
+    },
+    {
+      "case": "tests.test_setup_wizard_v5::test_setup_wizard_keeps_successful_public_factory_password_only_in_memory_until_save",
+      "result": "passed",
+      "evidence": "ux18-final-language-tests.xml"
+    },
+    {
+      "case": "tests.test_setup_wizard_v5::test_setup_wizard_binds_test_results_to_host_and_ignores_stale_generation",
+      "result": "passed",
+      "evidence": "ux18-final-language-tests.xml"
+    },
+    {
+      "case": "tests.test_setup_wizard_v5::test_setup_wizard_keeps_verified_certificate_pin_in_device_config",
+      "result": "passed",
+      "evidence": "ux18-final-language-tests.xml"
+    },
+    {
+      "case": "tests.test_setup_wizard_v5::test_setup_wizard_shared_price_is_written_to_every_selected_device",
+      "result": "passed",
+      "evidence": "ux18-final-language-tests.xml"
+    },
+    {
+      "case": "tests.test_setup_wizard_v5::test_setup_keeps_local_configuration_but_does_not_open_when_registration_enqueue_fails",
+      "result": "passed",
+      "evidence": "ux18-final-language-tests.xml"
+    },
+    {
+      "case": "tests.test_setup_wizard_v5::test_setup_records_current_v52_notice_acknowledgement",
+      "result": "passed",
+      "evidence": "ux18-final-language-tests.xml"
+    },
+    {
+      "case": "tests.test_setup_wizard_v5::test_setup_hidden_legacy_mode_cannot_bypass_online_registration",
+      "result": "passed",
+      "evidence": "ux18-final-language-tests.xml"
+    },
+    {
+      "case": "tests.test_setup_wizard_v5::test_registration_progress_can_be_cancelled_back_to_review",
+      "result": "passed",
+      "evidence": "ux18-final-language-tests.xml"
+    },
+    {
+      "case": "tests.test_setup_wizard_v5::test_offline_registration_entry_point_is_disabled_without_creating_runtime",
+      "result": "passed",
+      "evidence": "ux18-final-language-tests.xml"
+    },
+    {
+      "case": "tests.test_setup_wizard_v5::test_setup_records_notice_without_customer_checkbox",
+      "result": "passed",
+      "evidence": "ux18-final-language-tests.xml"
+    },
+    {
+      "case": "tests.test_setup_wizard_v5::test_setup_wizard_edit_mode_keeps_billing_settings_owned_by_settings",
+      "result": "passed",
+      "evidence": "ux18-final-language-tests.xml"
+    },
+    {
+      "case": "tests.test_setup_wizard_v5::test_edit_printer_invalidates_offline_binding_and_never_sends_after_restart",
+      "result": "passed",
+      "evidence": "ux18-final-language-tests.xml"
+    },
+    {
+      "case": "tests.test_setup_wizard_v5::test_edit_printer_missing_registration_state_saves_nothing",
+      "result": "passed",
+      "evidence": "ux18-final-language-tests.xml"
+    },
+    {
+      "case": "tests.test_setup_wizard_v5::test_setup_wizard_does_not_scan_before_user_enters_device_step",
+      "result": "passed",
+      "evidence": "ux18-final-language-tests.xml"
+    },
+    {
+      "case": "tests.test_setup_wizard_v5::test_setup_wizard_creates_and_persists_selected_database_path",
+      "result": "passed",
+      "evidence": "ux18-final-language-tests.xml"
+    },
+    {
+      "case": "tests.test_setup_wizard_v5::test_setup_wizard_can_defer_pricing_with_explicit_no_charge_state",
+      "result": "passed",
+      "evidence": "ux18-final-language-tests.xml"
+    },
+    {
+      "case": "tests.test_setup_wizard_v5::test_setup_wizard_company_validation_is_inline_and_recovers_on_typing",
+      "result": "passed",
+      "evidence": "ux18-final-language-tests.xml"
+    },
+    {
+      "case": "tests.test_setup_wizard_v5::test_setup_wizard_owned_alert_keeps_copy_and_action_inside_dialog",
+      "result": "passed",
+      "evidence": "ux18-final-language-tests.xml"
+    },
+    {
+      "case": "tests.test_setup_wizard_v5::test_setup_wizard_requires_explicit_deferred_choice_for_all_zero_prices",
+      "result": "passed",
+      "evidence": "ux18-final-language-tests.xml"
+    },
+    {
+      "case": "tests.test_setup_wizard_v5::test_setup_wizard_price_fields_keep_currency_outside_the_input",
+      "result": "passed",
+      "evidence": "ux18-final-language-tests.xml"
+    },
+    {
+      "case": "tests.test_setup_wizard_v5::test_setup_wizard_shared_pricing_and_billing_fit_without_scrolling",
+      "result": "passed",
+      "evidence": "ux18-final-language-tests.xml"
+    },
+    {
+      "case": "tests.test_setup_wizard_v5::test_setup_cancel_shared_review_does_not_configure_or_register",
+      "result": "passed",
+      "evidence": "ux18-final-language-tests.xml"
+    },
+    {
+      "case": "tests.test_setup_wizard_v5::test_setup_change_during_review_keeps_external_edit_and_draft",
+      "result": "passed",
+      "evidence": "ux18-final-language-tests.xml"
+    }
+  ]
+}

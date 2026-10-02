@@ -36,8 +36,10 @@ from PyQt6.QtWidgets import (
 )
 
 import database
-import pages
-import v5_pages
+from ui.pages import overview as overview_page
+from ui.pages import devices as devices_page
+from ui.settings import fleet as fleet_settings
+from ui.reports import page as report_page
 from app import MainWindow
 from database import _open
 from i18n import apply_language
@@ -47,6 +49,7 @@ from services.monthly_history import MonthlyUsage
 from services.pricing import PriceList, PricingRepository
 from services.runtime_snapshots import runtime_snapshots
 from services import web_service
+from qt_render_environment import configure_offscreen_fonts
 
 
 VIEWPORTS = tuple(
@@ -61,7 +64,7 @@ DEVICE_COUNTS = tuple(
     for value in os.environ.get("KOMI_UI_QA_DEVICE_COUNTS", "1,2,3").split(",")
     if value.strip()
 )
-PAGE_NAMES = ("Overview", "Import", "Reports", "Settings", "Manual")
+PAGE_NAMES = ("Overview", "Import", "Reports", "Settings")
 OUTPUT_DIR = Path(
     os.environ.get(
         "KOMI_UI_QA_OUTPUT_DIR",
@@ -86,6 +89,12 @@ def _overview_summary(device_count: int) -> dict:
         for index in range(device_count)
     ]
     return {
+        "trend": {
+            "granularity": "day", "slots": list(range(device_count)),
+            "machine_names": [f"QA Printer {index + 1}" for index in range(device_count)],
+            "available": bool(device_count),
+            "buckets": {"2026-07-27": {"machines": machines, "provisional_machines": [0] * device_count}},
+        },
         "all_monthly": {
             "2026-07": {
                 "machines": machines,
@@ -135,7 +144,7 @@ def _overview_summary(device_count: int) -> dict:
 
 
 def _usage_records(slots: list[int]) -> tuple[MonthlyUsage, ...]:
-    period_start, period_end = v5_pages.history_period_range(
+    period_start, period_end = report_page.history_period_range(
         date.today(),
         1,
         "monthly",
@@ -343,6 +352,7 @@ def _contact_sheet(images: list[tuple[str, QImage]], title: str, target: Path) -
 def main() -> None:
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     app = QApplication.instance() or QApplication([])
+    configure_offscreen_fonts(app)
     original_db = database.get_db_path()
     network_attempts: list[str] = []
     current_count = {"value": 1}
@@ -355,18 +365,18 @@ def main() -> None:
     # Status labels must remain deterministic and offline in visual QA.
     web_service._port_open = lambda _port: False
     web_service._lan_ip = lambda: "127.0.0.1"
-    pages.build_overview_summary = lambda _filter: _overview_summary(current_count["value"])
-    v5_pages.latest_counters = lambda slot: {
+    overview_page.build_overview_summary = lambda _filter: _overview_summary(current_count["value"])
+    devices_page.latest_counters = lambda slot: {
         "counter.total.total": 10_000 + slot,
         "counter.print.full_color_total": 1_000,
         "counter.print.black_total": 4_000,
     }
-    v5_pages.load_usage_history = lambda slots, **_kwargs: _usage_records(slots)
-    v5_pages.load_monthly_usage = lambda slots, **_kwargs: _usage_records(slots)
-    v5_pages.load_subject_history = lambda slots, **_kwargs: ()
+    report_page.load_usage_history = lambda slots, **_kwargs: _usage_records(slots)
+    report_page.load_monthly_usage = lambda slots, **_kwargs: _usage_records(slots)
+    report_page.load_subject_history = lambda slots, **_kwargs: ()
 
     temp_root = Path(tempfile.mkdtemp(prefix="komi-ui-matrix-"))
-    v5_pages.configure_autostart = (
+    fleet_settings.configure_autostart = (
         lambda _enabled, *, apply=True: temp_root / "synthetic-autostart-registration"
     )
     results: list[tuple[int, str, str]] = []
@@ -468,26 +478,6 @@ def main() -> None:
                     elif page_name == "Settings":
                         assert window.pg_settings.fleet.horizontalScrollBar().maximum() == 0
                         assert str(db_path) in window.pg_settings.fleet_content.active_database_path.text()
-                    elif page_name == "Manual":
-                        assert window.pg_manual.manual_scroll.horizontalScrollBar().maximum() == 0
-                        if device_count == 3 and width == 1024:
-                            assert not window.pg_manual.manual_toc_frame.isVisible()
-                            assert window.pg_manual.manual_toc_combo.isVisible()
-                            for section_index, slug in enumerate(
-                                ("start", "workflow", "reports", "settings", "system")
-                            ):
-                                window.pg_manual._scroll_to_manual_section(section_index)
-                                app.processEvents()
-                                assert not _visible_clips(
-                                    window,
-                                    root=window.pg_manual,
-                                ), (slug, _visible_clips(window, root=window.pg_manual))
-                                window.grab().save(
-                                    str(OUTPUT_DIR / f"v5-1024-3dev-manual-{slug}.png"),
-                                    "PNG",
-                                )
-                            window.pg_manual._scroll_to_manual_section(0)
-                            app.processEvents()
                     capture = window.grab().toImage()
                     captures.append((page_name, capture))
                     if device_count == 3 and (width, height) == (1024, 768):
@@ -500,6 +490,14 @@ def main() -> None:
                             settings_bar = settings_scroll.verticalScrollBar()
                             settings_content = window.pg_settings.fleet_content
                             for task_key in ("billing", "schedule", "support"):
+                                window.pg_settings._select_section(
+                                    {"billing": 0, "schedule": 1, "support": 3}[task_key]
+                                )
+                                settings_scroll = {
+                                    "billing": window.pg_settings.fleet,
+                                    "schedule": window.pg_settings.schedule_page,
+                                    "support": window.pg_settings.advanced_page,
+                                }[task_key]
                                 assert settings_content._set_active_editor(task_key)
                                 settings_scroll.ensureWidgetVisible(
                                     settings_content._task_editors[task_key],
@@ -594,35 +592,13 @@ def main() -> None:
                                     )
                                     assert settings_content._set_active_editor("support")
                                     app.processEvents()
-                            settings_content._set_active_editor(None, force=True)
+                            window.pg_settings.show_main()
+                            settings_scroll = window.pg_settings.fleet
+                            settings_bar = settings_scroll.verticalScrollBar()
                             settings_bar.setValue(0)
                             app.processEvents()
-                            # Collapsing the large inline Advanced section changes
-                            # the scroll range in a second layout pass on Qt/macOS.
-                            # Re-anchor twice so the button itself, not a stale
-                            # pre-collapse coordinate, is what we capture.
-                            for _layout_pass in range(2):
-                                app.processEvents()
-                                toggle_y = settings_content.support_section_toggle.mapTo(
-                                    settings_scroll.viewport(), QPoint(0, 0)
-                                ).y()
-                                settings_bar.setValue(
-                                    max(0, settings_bar.value() + toggle_y - 20)
-                                )
-                            app.processEvents()
-                            assert _visible_in_scroll(
-                                settings_scroll,
-                                window.pg_settings.fleet_content.support_section_toggle,
-                            ), (
-                                settings_content.support_section_toggle.isVisibleTo(window),
-                                settings_content.support_section_toggle.isHidden(),
-                                settings_content.support_section_toggle.mapTo(
-                                    settings_scroll.viewport(), QPoint(0, 0)
-                                ),
-                                settings_content.support_section_toggle.size(),
-                                settings_bar.value(),
-                                settings_bar.maximum(),
-                            )
+                            assert settings_content.billing_editor.isVisibleTo(window)
+                            assert window.pg_settings.section_tabs.currentIndex() == 0
                             window.grab().save(
                                 str(OUTPUT_DIR / "v5-1024-3dev-settings-bottom.png"),
                                 "PNG",

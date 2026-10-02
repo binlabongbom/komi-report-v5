@@ -13,7 +13,7 @@ from PyQt6.QtCore import QTime
 from PyQt6.QtWidgets import QAbstractButton, QApplication, QDialog, QLabel, QWidget
 
 import database
-import v5_pages
+from ui.settings import fleet as fleet_page
 from i18n import apply_language, set_language
 from pages import PageSettings
 from services.device_config import DeviceConfig, DeviceConfigRepository
@@ -106,10 +106,11 @@ class _WebServiceDouble:
         self.runtime_root = root / "web-runtime"
 
     def _status(self, state: str = "stopped") -> WebServiceStatus:
+        port = fleet_page.read_web_port(self.runtime_root / ".env.local")
         return WebServiceStatus(
             state=state,
-            local_url="http://127.0.0.1:3000",
-            lan_url="http://192.0.2.1:3000",
+            local_url=f"http://127.0.0.1:{port}",
+            lan_url=f"http://192.0.2.1:{port}",
             detail="test web service",
             log_path=self.log_path,
         )
@@ -133,7 +134,8 @@ class _WebServiceDouble:
 @pytest.fixture(autouse=True)
 def fake_web_service(monkeypatch, tmp_path):
     service = _WebServiceDouble(tmp_path)
-    monkeypatch.setattr(v5_pages, "web_service_manager", lambda: service)
+    monkeypatch.setattr(fleet_page, "web_service_manager", lambda: service)
+    monkeypatch.setattr(fleet_page, "confirm_shared_settings", lambda *_: True)
     return service
 
 
@@ -141,6 +143,9 @@ def _database(tmp_path):
     original = database.get_db_path()
     database.set_db_path(tmp_path / "settings.sqlite3")
     database.init_db()
+    database.set_cfg("company_name", "Synthetic settings company")
+    database.set_cfg("billing_day", "31")
+    database.set_cfg("waste_paper_pct", "2")
     DeviceConfigRepository().replace_all(
         [DeviceConfig(0, "DMS Printer", "192.0.2.10", model="bizhub C450i", serial="SERIAL-1")]
     )
@@ -153,6 +158,66 @@ def _read_values(path: Path) -> dict[str, str]:
         for line in path.read_text(encoding="utf-8").splitlines()
         if "=" in line and not line.lstrip().startswith("#")
     )
+
+
+def test_shared_billing_cancel_keeps_draft_and_does_not_write_history(tmp_path, monkeypatch):
+    from services.peer_settings_history import SettingsHistory
+    original = _database(tmp_path)
+    page = PageFleetSettings()
+    try:
+        old = database.get_cfg("billing_day")
+        page.billing_day.setValue(15)
+        previews = []
+        monkeypatch.setattr(fleet_page, "confirm_shared_settings", lambda _parent, preview: previews.append(preview) or False)
+        page._save_billing()
+        assert previews[0].changes["billing_day"] == (int(old), 15)
+        assert database.get_cfg("billing_day") == old
+        assert page.billing_day.value() == 15
+        assert page.billing_save_button.isEnabled()
+        with database._open(commit=False) as conn:
+            assert SettingsHistory._state(conn, "head") is None
+    finally:
+        page.close()
+        database.set_db_path(original)
+
+
+def test_shared_billing_rejects_edit_made_while_confirmation_is_open(tmp_path, monkeypatch):
+    original = _database(tmp_path)
+    page = PageFleetSettings()
+    try:
+        page.billing_day.setValue(15)
+
+        def concurrent_change(_parent, _preview):
+            database.set_cfg("billing_day", "20")
+            return True
+
+        monkeypatch.setattr(fleet_page, "confirm_shared_settings", concurrent_change)
+        page._save_billing()
+        assert database.get_cfg("billing_day") == "20"
+        assert page.billing_save_button.isEnabled()
+        assert "เปลี่ยนหลังเปิด" in page.billing_save_status.text()
+    finally:
+        page.close()
+        database.set_db_path(original)
+
+
+def test_shared_confirmation_shows_before_after_and_defaults_to_cancel(tmp_path):
+    from PyQt6.QtWidgets import QDialogButtonBox
+    from services.shared_settings import SharedSettingsService
+    from ui.shared_settings_confirmation import SharedSettingsConfirmation
+    original = _database(tmp_path)
+    try:
+        preview = SharedSettingsService().preview({"billing_day": 15, "waste_paper_pct": 3.5}, reason="UI check")
+        dialog = SharedSettingsConfirmation(preview)
+        assert dialog.table.rowCount() == 2
+        assert dialog.table.item(0, 2).text() == "15"
+        assert dialog.table.item(1, 2).text() == "3.5%"
+        assert dialog.buttons.button(QDialogButtonBox.StandardButton.Cancel).isDefault()
+        assert any("บนคอมพิวเตอร์นี้" in label.text() for label in dialog.findChildren(QLabel))
+        assert any("ส่งการตั้งค่าให้สมาชิกกลุ่มอัตโนมัติ" in label.text() for label in dialog.findChildren(QLabel))
+        dialog.close()
+    finally:
+        database.set_db_path(original)
 
 
 def test_fleet_settings_groups_fields_and_live_schedule(tmp_path, monkeypatch, fake_web_service):
@@ -173,7 +238,7 @@ def test_fleet_settings_groups_fields_and_live_schedule(tmp_path, monkeypatch, f
 
     try:
         monkeypatch.setattr(
-            v5_pages,
+            fleet_page,
             "configure_autostart",
             fake_configure_autostart,
         )
@@ -182,6 +247,9 @@ def test_fleet_settings_groups_fields_and_live_schedule(tmp_path, monkeypatch, f
         page.show()
         app.processEvents()
 
+        # This isolated Fleet widget has no mounted Advanced network card.
+        # Render the known status here; the embedded async lifecycle is tested separately.
+        page._refresh_web_status(fake_web_service.status())
         assert "DMS Printer" in page.device_summary.text()
         assert "SERIAL-1" not in page.device_summary.text()
         assert "192.0.2.10" not in page.device_summary.text()
@@ -202,7 +270,7 @@ def test_fleet_settings_groups_fields_and_live_schedule(tmp_path, monkeypatch, f
         assert "ใช้ค่าแนะนำของระบบ" in page.schedule.text()
         assert "รอการบันทึก" not in page.schedule.text()
         assert [controls[0].text() for controls in page._schedule_row_controls] == [
-            "Lazyload", "Active", "Standard", "Active", "Lazyload"
+            "นอกเวลางาน", "ช่วงเร่งด่วน", "เวลาทำงาน", "ช่วงเร่งด่วน", "นอกเวลางาน"
         ]
 
         page._set_active_editor("schedule")
@@ -231,7 +299,9 @@ def test_fleet_settings_groups_fields_and_live_schedule(tmp_path, monkeypatch, f
         assert all(apply is False for _enabled, apply in planned)
         stored_windows = load_schedule_windows(database.get_cfg("sync_schedule_windows"))
         assert stored_windows is not None
-        assert [item.label for item in stored_windows] == ["Lazyload", "Active", "Standard", "Active", "Lazyload"]
+        assert [item.label for item in stored_windows] == [
+            "นอกเวลางาน", "ช่วงเร่งด่วน", "เวลาทำงาน", "ช่วงเร่งด่วน", "นอกเวลางาน"
+        ]
         assert int(stored_windows[2].snmp_interval.total_seconds() // 60) == 20
         assert int(stored_windows[2].web_interval.total_seconds() // 60) == 75
         assert stored_windows[2].weekdays == frozenset(range(5))
@@ -259,7 +329,7 @@ def test_fleet_settings_toggle_stops_web_service(tmp_path, monkeypatch, fake_web
     original = _database(tmp_path)
     registration = tmp_path / "autostart.registered"
     try:
-        monkeypatch.setattr(v5_pages, "configure_autostart", lambda _enabled, *, apply=True: registration)
+        monkeypatch.setattr(fleet_page, "configure_autostart", lambda _enabled, *, apply=True: registration)
         database.set_cfg("web_service_enabled", "1")
         page = PageFleetSettings()
         page.web_service_enabled.setChecked(False)
@@ -285,12 +355,12 @@ def test_compact_settings_opens_one_editor_and_preserves_dirty_draft(
     notices: list[tuple[str, str]] = []
     try:
         monkeypatch.setattr(
-            v5_pages,
+            fleet_page,
             "configure_autostart",
             lambda _enabled, *, apply=True: registration,
         )
         monkeypatch.setattr(
-            v5_pages,
+            fleet_page,
             "show_compact_information",
             lambda _parent, title, message: notices.append((title, message)),
         )
@@ -337,7 +407,7 @@ def test_web_recovery_can_start_enabled_but_stopped_service_without_toggling(
     registration = tmp_path / "autostart.registered"
     try:
         monkeypatch.setattr(
-            v5_pages,
+            fleet_page,
             "configure_autostart",
             lambda _enabled, *, apply=True: registration,
         )
@@ -345,6 +415,11 @@ def test_web_recovery_can_start_enabled_but_stopped_service_without_toggling(
         page = PageFleetSettings()
 
         assert page.web_service_enabled.isChecked()
+        page._set_active_editor('web')
+        page.layout().addWidget(page.web_program_card)
+        page.show()
+        from test_performance_issue19 import wait_until
+        wait_until(lambda: page.web_save_button.isEnabled())
         assert page.web_save_button.isEnabled()
         assert "ต้องแก้ไข" in page.web_task_summary.text()
         assert not page.has_unsaved_changes()
@@ -360,14 +435,6 @@ def test_web_recovery_can_start_enabled_but_stopped_service_without_toggling(
         app.processEvents()
     finally:
         database.set_db_path(original)
-
-
-def test_edit_mode_wizard_keeps_billing_owned_by_settings():
-    source = inspect.getsource(v5_pages.SetupWizardV5._save)
-
-    assert 'if not self.edit_mode:' in source
-    assert 'set_cfg("billing_day"' in source
-    assert 'set_cfg("waste_paper_pct"' in source
 
 
 def test_web_access_dialog_validates_match_and_minimum_length():
@@ -399,7 +466,7 @@ def test_desktop_changes_web_access_and_restarts_owned_service(tmp_path, monkeyp
     registration = tmp_path / "autostart.registered"
     registration.write_text("synthetic registration", encoding="utf-8")
     try:
-        monkeypatch.setattr(v5_pages, "configure_autostart", lambda _enabled, *, apply=True: registration)
+        monkeypatch.setattr(fleet_page, "configure_autostart", lambda _enabled, *, apply=True: registration)
         fake_web_service.started = 1
         page = PageFleetSettings()
 
@@ -410,8 +477,8 @@ def test_desktop_changes_web_access_and_restarts_owned_service(tmp_path, monkeyp
         assert fake_web_service.restarted == 1
         assert verify_web_access_code("Valid-LAN-Code-2026", stored[ACCESS_HASH_KEY])
         assert "Valid-LAN-Code-2026" not in (fake_web_service.runtime_root / ".env.local").read_text(encoding="utf-8")
-        assert "ตั้งรหัสแล้ว" in page.web_access_status.text()
-        assert page.change_web_access_button.text() == "เปลี่ยนรหัส Web"
+        assert "ไม่ใช้รหัส" in page.web_access_status.text()
+        assert page.change_web_access_button.text() == "เปลี่ยนรหัสเจ้าหน้าที่"
         page.close()
         app.processEvents()
     finally:
@@ -424,7 +491,7 @@ def test_fleet_settings_allows_adding_and_removing_custom_schedule_windows(tmp_p
     registration = tmp_path / "autostart.registered"
     registration.write_text("synthetic registration", encoding="utf-8")
     try:
-        monkeypatch.setattr(v5_pages, "configure_autostart", lambda _enabled, *, apply=True: registration)
+        monkeypatch.setattr(fleet_page, "configure_autostart", lambda _enabled, *, apply=True: registration)
         page = PageFleetSettings()
 
         page._add_schedule_window()
@@ -461,7 +528,7 @@ def test_fleet_autostart_reflects_missing_os_registration(tmp_path, monkeypatch)
     planned: list[tuple[bool, bool]] = []
     try:
         monkeypatch.setattr(
-            v5_pages,
+            fleet_page,
             "configure_autostart",
             lambda enabled, *, apply=True: (
                 planned.append((enabled, apply)) or registration
@@ -554,8 +621,7 @@ def test_settings_tools_do_not_request_password(tmp_path):
 
         page.setCurrentWidget(page.legacy)
         assert legacy.unlock_calls == 0
-        # Advanced settings now expands inline on the main Settings page;
-        # there is no password gate and no separate navigation page.
+        # Advanced settings uses the shared tab shell without a password gate.
         assert page.currentWidget() is page.fleet
         assert page.ensure_unlocked()
         assert legacy.unlock_calls == 0
@@ -670,17 +736,17 @@ def test_offline_license_settings_are_hidden_while_activation_is_disabled(
     host_keys = {"synthetic-kid": "synthetic-public-verification-value"}
     messages: list[str] = []
     monkeypatch.setattr(
-        v5_pages.QFileDialog,
+        fleet_page.QFileDialog,
         "getSaveFileName",
         lambda *args, **kwargs: (str(tmp_path / "desktop-request"), ""),
     )
     monkeypatch.setattr(
-        v5_pages.QFileDialog,
+        fleet_page.QFileDialog,
         "getOpenFileName",
         lambda *args, **kwargs: (str(tmp_path / "desktop.komilicense"), ""),
     )
     monkeypatch.setattr(
-        v5_pages.QMessageBox,
+        fleet_page.QMessageBox,
         "information",
         lambda *args: messages.append(" ".join(str(value) for value in args[1:])),
     )
@@ -727,12 +793,12 @@ def test_disabled_offline_license_ui_does_not_call_export_runtime(
     runtime = FailingRuntime(mode="offline", status="offline_request_required")
     warnings: list[str] = []
     monkeypatch.setattr(
-        v5_pages.QFileDialog,
+        fleet_page.QFileDialog,
         "getSaveFileName",
         lambda *args, **kwargs: (str(tmp_path / "desktop.komirequest"), ""),
     )
     monkeypatch.setattr(
-        v5_pages.QMessageBox,
+        fleet_page.QMessageBox,
         "warning",
         lambda *args: warnings.append(" ".join(str(value) for value in args[1:])),
     )
@@ -747,7 +813,7 @@ def test_disabled_offline_license_ui_does_not_call_export_runtime(
         database.set_db_path(original)
 
 
-def test_settings_v5_routes_support_details_without_exposing_top_level_tabs(tmp_path):
+def test_settings_v5_routes_support_details_through_section_tabs(tmp_path):
     app = QApplication.instance() or QApplication([])
     original = _database(tmp_path)
     try:
@@ -757,6 +823,7 @@ def test_settings_v5_routes_support_details_without_exposing_top_level_tabs(tmp_
         assert page.fleet_content.schedule_editor.isHidden()
         assert page.fleet_content.support_details.isHidden()
         assert page.count() == 4
+        assert page.section_tabs.count() == 6
 
         assert page.fleet_content.support_toggle.isHidden()
         assert page.fleet_content.support_details.isHidden()
@@ -773,12 +840,9 @@ def test_settings_v5_routes_support_details_without_exposing_top_level_tabs(tmp_
         assert page.currentWidget() is page.fleet
         assert legacy.unlock_calls == 0
         assert not page.fleet_content.support_task_editor.isHidden()
-        assert page.fleet_content.autostart_program_card.parent() is (
-            page.fleet_content.support_task_editor
-        )
-        assert page.fleet_content.web_program_card.parent() is (
-            page.fleet_content.support_task_editor
-        )
+        assert page.section_tabs.currentIndex() == 4
+        assert page.fleet_content.autostart_program_card.parent() is page.fleet_content
+        assert page.fleet_content.web_program_card.parent() is page.network_page.widget()
         assert page.legacy_content.parent() is page.fleet_content.support_task_editor
         page.close()
         app.processEvents()
@@ -786,7 +850,7 @@ def test_settings_v5_routes_support_details_without_exposing_top_level_tabs(tmp_
         database.set_db_path(original)
 
 
-def test_advanced_settings_and_nested_lan_stay_inline_without_horizontal_scroll(tmp_path):
+def test_advanced_and_network_tabs_stay_inline_without_horizontal_scroll(tmp_path):
     app = QApplication.instance() or QApplication([])
     original = _database(tmp_path)
     try:
@@ -802,25 +866,23 @@ def test_advanced_settings_and_nested_lan_stay_inline_without_horizontal_scroll(
         content = page.fleet_content
         assert page.currentWidget() is page.fleet
         assert content.support_task_editor.isVisibleTo(page)
-        assert page.fleet.horizontalScrollBar().maximum() == 0
+        assert page.advanced_page.horizontalScrollBar().maximum() == 0
 
-        # Exercise the real nested LAN toggle. The parent Advanced section
-        # must remain visible, otherwise the LAN form is hidden by its parent.
-        content.web_toggle.click()
+        page.section_tabs.setCurrentIndex(3)
         app.processEvents()
         assert content._active_editor == "web"
-        assert content.support_task_editor.isVisibleTo(page)
+        assert not content.support_task_editor.isVisibleTo(page)
         assert content.web_task_editor.isVisibleTo(page)
-        assert page.fleet.horizontalScrollBar().maximum() == 0
+        assert page.network_page.horizontalScrollBar().maximum() == 0
 
-        assert content.web_report_passwordless_warning.isHidden()
-        content.web_report_passwordless.setChecked(True)
+        assert not content.web_report_require_password.isChecked()
+        content.web_report_require_password.setChecked(True)
         app.processEvents()
-        assert content.web_report_passwordless_warning.isVisibleTo(page)
-        assert "เครือข่าย LAN เดียวกัน" in content.web_report_passwordless_warning.text()
+        assert content.web_report_access_note.isHidden()
+        assert content.web_access_status.isVisibleTo(page)
         content._dirty_sections.discard("web")
 
-        content.web_toggle.click()
+        page.show_advanced()
         app.processEvents()
         assert content._active_editor == "support"
         assert content.support_task_editor.isVisibleTo(page)
@@ -886,3 +948,116 @@ def test_settings_opens_setup_without_a_nested_dialog_event_loop():
 
     assert "dialog.open()" in source
     assert ".exec(" not in source
+
+
+def test_web_custom_port_is_saved_restarted_and_restored(tmp_path, monkeypatch, fake_web_service):
+    import socket
+
+    app = QApplication.instance() or QApplication([])
+    original = _database(tmp_path)
+    try:
+        with socket.socket() as probe:
+            probe.bind(("127.0.0.1", 0))
+            port = probe.getsockname()[1]
+        fake_web_service.started = 1
+        page = PageFleetSettings()
+        page.web_port.setValue(port)
+        assert page.web_save_button.isEnabled()
+        page._save_web()
+        assert fake_web_service.restarted == 1
+        assert fleet_page.read_web_port(fake_web_service.runtime_root / ".env.local") == port
+        assert f":{port}" in page.web_service_url.text()
+        page.refresh_from_config(force=True)
+        assert page.web_port.value() == port
+        page.close()
+        app.processEvents()
+    finally:
+        database.set_db_path(original)
+
+
+def test_web_password_lock_sets_a_code_before_closing_reports(tmp_path, monkeypatch, fake_web_service):
+    app = QApplication.instance() or QApplication([])
+    original = _database(tmp_path)
+    monkeypatch.setattr(fleet_page.WebAccessCodeDialog, "exec", lambda self: QDialog.DialogCode.Accepted)
+    monkeypatch.setattr(fleet_page.WebAccessCodeDialog, "value", lambda self: "Chosen-LAN-Password-2026")
+    try:
+        fake_web_service.started = 1
+        page = PageFleetSettings()
+        assert not page.web_report_require_password.isChecked()
+        page.web_report_require_password.setChecked(True)
+        page._save_web()
+        env = fake_web_service.runtime_root / ".env.local"
+        status = fleet_page.web_access_status(env)
+        assert status.configured and not status.report_passwordless
+        assert fake_web_service.restarted == 1
+        assert verify_web_access_code("Chosen-LAN-Password-2026", _read_values(env)[ACCESS_HASH_KEY])
+        assert page.web_report_require_password.isChecked()
+        page.close()
+        app.processEvents()
+    finally:
+        database.set_db_path(original)
+
+
+def test_cancel_password_setup_keeps_reports_open(tmp_path, monkeypatch, fake_web_service):
+    app = QApplication.instance() or QApplication([])
+    original = _database(tmp_path)
+    monkeypatch.setattr(fleet_page.WebAccessCodeDialog, "exec", lambda self: QDialog.DialogCode.Rejected)
+    try:
+        page = PageFleetSettings()
+        page.web_report_require_password.setChecked(True)
+        page._save_web()
+        status = fleet_page.web_access_status(fake_web_service.runtime_root / ".env.local")
+        assert status.report_passwordless and not status.configured
+        assert fake_web_service.restarted == 0
+        assert "web" in page._dirty_sections
+        page.close()
+        app.processEvents()
+    finally:
+        database.set_db_path(original)
+
+
+def test_web_occupied_port_is_rejected_before_any_settings_change(tmp_path, monkeypatch, fake_web_service):
+    import socket
+
+    app = QApplication.instance() or QApplication([])
+    original = _database(tmp_path)
+    warnings = []
+    monkeypatch.setattr(fleet_page.QMessageBox, "warning", lambda *args: warnings.append(args[-1]))
+    try:
+        page = PageFleetSettings()
+        with socket.socket() as occupied:
+            occupied.bind(("0.0.0.0", 0))
+            occupied.listen()
+            page.web_port.setValue(occupied.getsockname()[1])
+            page.web_report_require_password.setChecked(True)
+            page._save_web()
+        assert warnings
+        assert fleet_page.read_web_port(fake_web_service.runtime_root / ".env.local") == 3000
+        assert fleet_page.web_access_status(fake_web_service.runtime_root / ".env.local").report_passwordless
+        assert fake_web_service.restarted == 0
+        page.close()
+        app.processEvents()
+    finally:
+        database.set_db_path(original)
+
+
+def test_secondary_always_open_selector_restores_and_can_revoke(tmp_path, monkeypatch):
+    app = QApplication.instance() or QApplication([])
+    original = _database(tmp_path)
+    monkeypatch.setenv("KOMI_PEER_SYNC_STATE_FILE", str(tmp_path / "peer.json"))
+    try:
+        database.set_cfg("installation_id", "test-primary")
+        page = PageFleetSettings()
+        page.peer_sync_mode.setCurrentIndex(page.peer_sync_mode.findData("always"))
+        page.peer_sync_authorize_button.click()
+        assert fleet_page.pairing_window_status().always_open
+        assert "เปิดตลอด" in page.peer_sync_status.text()
+        page.refresh_from_config(force=True)
+        assert page.peer_sync_mode.currentData() == "always"
+        page.peer_sync_mode.setCurrentIndex(0)
+        page.peer_sync_authorize_button.click()
+        assert not fleet_page.pairing_window_status().open
+        page.close()
+        app.processEvents()
+    finally:
+        database.set_db_path(original)

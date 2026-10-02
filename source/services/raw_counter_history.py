@@ -9,8 +9,10 @@ model-specific counters such as A5 or Fax without inventing a mapping.
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+import math
+from dataclasses import dataclass, replace
 from datetime import date, datetime
+from functools import lru_cache
 
 from database import _open
 from komi_snmp_profiler.models import MeterReading
@@ -26,17 +28,24 @@ class RawCounterDailyRecord:
     subject_type: str
     subject_id: str
     subject_name: str
-    opening_value: float
-    closing_value: float
+    opening_value: float | None
+    closing_value: float | None
     delta_value: float
     reset_count: int
     sample_count: int
-    first_success: str
-    last_success: str
+    first_success: str | None
+    last_success: str | None
     source_name: str
     device_name_snapshot: str
     device_serial_snapshot: str
     incomplete: bool
+    pending_review: bool = False
+    baseline_reviewed: bool = False
+    remarks: tuple[str, ...] = ()
+
+    @property
+    def needs_review(self) -> bool:
+        return bool(self.pending_review or self.baseline_reviewed or self.reset_count)
 
     @property
     def is_subject(self) -> bool:
@@ -53,6 +62,17 @@ class UsageMeterBaseline:
     device_name_snapshot: str = ""
     device_serial_snapshot: str = ""
     source: str = "raw_counter_history"
+    opening_counters: tuple[tuple[str, float], ...] = ()
+
+    def usage_values(self) -> dict[str, float | None]:
+        from services.usage import default_usage_groups
+        groups = default_usage_groups(dict(self.opening_counters))
+        result = {"total": self.total_meter, "cost": None, "scan": groups.get("SCAN")}
+        for operation in ("print", "copy"):
+            for field, label in (("a3_color", "A3 Color"), ("a3_bw", "A3 B&W"),
+                                 ("a4_color", "A4 Color"), ("a4_bw", "A4 B&W"), ("other", "Other size")):
+                result[f"{operation}_{field}"] = groups.get(f"{label} ({operation.title()})")
+        return result
 
 
 def _non_negative_number(value: object) -> float | None:
@@ -62,7 +82,7 @@ def _non_negative_number(value: object) -> float | None:
         number = float(value)
     except (TypeError, ValueError):
         return None
-    return number if number >= 0 else None
+    return number if math.isfinite(number) and number >= 0 else None
 
 
 def _serial_matches(current_serial: str, candidate_serial: str) -> bool:
@@ -88,7 +108,7 @@ def load_usage_meter_baselines(
         ).fetchall()
         raw_rows = connection.execute(
             """SELECT device_slot,record_date,opening_value,
-                      device_name_snapshot,device_serial_snapshot
+                      device_name_snapshot,device_serial_snapshot,first_success
                FROM daily_raw_counter_records
                WHERE canonical_field='counter.total.total' AND subject_type=''
                ORDER BY record_date,first_success,id"""
@@ -109,7 +129,8 @@ def load_usage_meter_baselines(
             devices.setdefault(slot, ("", ""))
 
     baselines: dict[int, UsageMeterBaseline] = {}
-    for slot, record_date, opening, name, serial in raw_rows:
+    anchors = {}
+    for slot, record_date, opening, name, serial, first_success in raw_rows:
         slot = int(slot)
         if slot not in devices or slot in baselines:
             continue
@@ -124,6 +145,7 @@ def load_usage_meter_baselines(
             observed_on = date.fromisoformat(str(record_date)[:10])
         except ValueError:
             continue
+        anchors[slot] = (record_date, candidate_serial, first_success)
         baselines[slot] = UsageMeterBaseline(
             device_slot=slot,
             observed_on=observed_on,
@@ -163,8 +185,24 @@ def load_usage_meter_baselines(
             device_name_snapshot=str(identity.get("name") or current_name),
             device_serial_snapshot=candidate_serial or current_serial,
             source="daily_meter_opening",
+            opening_counters=tuple((key, number) for key, value in opening.items()
+                                   if (number := _non_negative_number(value)) is not None),
         )
 
+    # Match the Total opening's physical printer, date and first observation.
+    # A field first discovered later must not be presented as an opening value.
+    with _open(commit=False) as connection:
+        for slot, (record_date, serial, first_success) in anchors.items():
+            rows = connection.execute("""SELECT canonical_field,opening_value
+                FROM daily_raw_counter_records WHERE device_slot=? AND record_date=?
+                AND device_serial_snapshot=? AND subject_type='' AND first_success IS ?
+                ORDER BY id""", (slot, record_date, serial, first_success)).fetchall()
+            counters = {}
+            for key, value in rows:
+                number = _non_negative_number(value)
+                if number is not None:
+                    counters.setdefault(key, number)
+            baselines[slot] = replace(baselines[slot], opening_counters=tuple(counters.items()))
     return tuple(baselines[slot] for slot in sorted(baselines))
 
 
@@ -193,6 +231,7 @@ class RawCounterHistoryStore:
         stamp_text = stamp.isoformat(timespec="seconds")
         day = stamp.date().isoformat()
         with _open() as connection:
+            connection.execute("BEGIN IMMEDIATE")
             device = connection.execute(
                 "SELECT name,serial FROM devices WHERE slot=?", (slot,)
             ).fetchone()
@@ -203,14 +242,19 @@ class RawCounterHistoryStore:
                     "Raw Counter history requires printer Serial Number identity"
                 )
             changed = 0
+            from services.slot_cache_bridge import approved_baseline, bridge_raw_counter
+            epoch = approved_baseline(connection, slot, reading, stamp)
             for counter in reading.counters:
+                bridge_raw_counter(connection, epoch, slot, day, counter)
                 subject_type, subject_id, subject_name = _subject_identity(counter)
                 field = str(counter.canonical_field or "").strip()
                 label = str(counter.label or field or "Unknown")
                 value = float(counter.count)
+                if not math.isfinite(value) or value < 0:
+                    raise ValueError("Web counter must be finite and non-negative")
                 existing = connection.execute(
                     """SELECT closing_value,delta_value,reset_count,sample_count,
-                              last_success
+                              last_success,counter_review_json
                        FROM daily_raw_counter_records
                        WHERE device_slot=? AND record_date=? AND canonical_field=?
                          AND source_path=? AND subject_type=? AND subject_id=?
@@ -227,7 +271,7 @@ class RawCounterHistoryStore:
                 ).fetchone()
                 if existing is None:
                     previous_day = connection.execute(
-                        """SELECT closing_value
+                        """SELECT closing_value,counter_review_json,last_success
                            FROM daily_raw_counter_records
                            WHERE device_slot=? AND record_date<? AND canonical_field=?
                              AND source_path=? AND subject_type=? AND subject_id=?
@@ -245,12 +289,21 @@ class RawCounterHistoryStore:
                         ),
                     ).fetchone()
                     opening = float(previous_day[0]) if previous_day else value
-                    if value >= opening:
+                    review = json.loads(previous_day[1]) if previous_day else None
+                    from services.slot_cache_bridge import raw_baseline_after_gap
+                    resolved = raw_baseline_after_gap(epoch, counter, previous_day[2] if previous_day else None)
+                    if resolved:
+                        opening, review = float(resolved['baseline']), None
+                    if review:
+                        initial_delta = 0.0
+                        initial_resets = 0
+                    elif value >= opening:
                         initial_delta = value - opening
                         initial_resets = 0
                     else:
-                        initial_delta = max(0.0, value)
+                        initial_delta = 0.0
                         initial_resets = 1
+                        review = {"before": opening, "after": value, "at": stamp_text}
                     connection.execute(
                         """INSERT INTO daily_raw_counter_records(
                                device_slot,record_date,canonical_field,label,source_path,
@@ -258,8 +311,8 @@ class RawCounterHistoryStore:
                                closing_value,delta_value,reset_count,sample_count,
                                first_success,last_success,source_name,
                                device_name_snapshot,device_serial_snapshot,
-                               incomplete,created_at,updated_at
-                           ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                               incomplete,created_at,updated_at,counter_review_json,counter_resolutions_json
+                           ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                         (
                             slot,
                             day,
@@ -282,12 +335,15 @@ class RawCounterHistoryStore:
                             0,
                             stamp_text,
                             stamp_text,
+                            json.dumps(review, sort_keys=True),
+                            json.dumps([resolved] if resolved else [], sort_keys=True),
                         ),
                     )
                     changed += 1
                     continue
 
-                closing, delta, resets, samples, last_success = existing
+                closing, delta, resets, samples, last_success, review_json = existing
+                review = json.loads(review_json)
                 try:
                     previous_stamp = datetime.fromisoformat(str(last_success))
                     if previous_stamp.tzinfo is None:
@@ -297,20 +353,24 @@ class RawCounterHistoryStore:
                 if stamp < previous_stamp:
                     continue
                 previous = float(closing)
-                if stamp == previous_stamp and value == previous:
+                if stamp == previous_stamp:
                     continue
-                if value >= previous:
+                if review:
+                    next_delta = float(delta)
+                    next_resets = int(resets)
+                elif value >= previous:
                     next_delta = float(delta) + value - previous
                     next_resets = int(resets)
                 else:
-                    next_delta = float(delta) + max(0.0, value)
+                    next_delta = float(delta)
                     next_resets = int(resets) + 1
+                    review = {"before": previous, "after": value, "at": stamp_text}
                 connection.execute(
                     """UPDATE daily_raw_counter_records
                        SET label=?,source_path=?,subject_name=?,closing_value=?,
                            delta_value=?,reset_count=?,sample_count=?,last_success=?,
                            source_name=?,device_name_snapshot=?,device_serial_snapshot=?,
-                           updated_at=?
+                           updated_at=?,counter_review_json=?
                        WHERE device_slot=? AND record_date=? AND canonical_field=?
                          AND source_path=? AND subject_type=? AND subject_id=?
                          AND device_serial_snapshot=?""",
@@ -327,6 +387,7 @@ class RawCounterHistoryStore:
                         str(device_name or f"MFP {slot + 1}"),
                         device_serial,
                         stamp_text,
+                        json.dumps(review, sort_keys=True),
                         slot,
                         day,
                         field,
@@ -339,21 +400,26 @@ class RawCounterHistoryStore:
                 changed += 1
         return changed
 
-    def mark_day_incomplete(self, slot: int, day: date) -> None:
-        with _open() as connection:
-            connection.execute(
-                """UPDATE daily_raw_counter_records SET incomplete=1,updated_at=?
-                   WHERE device_slot=? AND record_date=?""",
-                (datetime.now().astimezone().isoformat(timespec="seconds"), slot, day.isoformat()),
-            )
 
 
-def load_raw_counter_history(
-    slots: tuple[int, ...] | list[int] | None = None,
-    *,
-    period_start: date | None = None,
-    period_end: date | None = None,
-) -> tuple[RawCounterDailyRecord, ...]:
+@lru_cache(maxsize=256)
+def _review_metadata(review_json, resolutions_json):
+    """Reuse immutable flags for repeated review metadata, never row values."""
+    pending = json.loads(review_json) is not None
+    resolutions = json.loads(resolutions_json)
+    reviewed = any(item.get('format') != 'komi.report.detail-amendment.v1' for item in resolutions)
+    remarks = tuple(dict.fromkeys(note for item in resolutions
+        if item.get('format') == 'komi.report.detail-amendment.v1'
+        for note in ('ฉบับแก้ไขจากหลักฐาน Web', *item.get('remarks', []))))
+    return pending, reviewed, remarks
+
+
+def iter_raw_counter_rows(connection, slots, columns, *, period_start=None, period_end=None):
+    """Select effective Raw evidence with one archive/revision precedence rule.
+
+    Callers choose columns, but both full Raw and compact Users reads include
+    the identity fields needed to replace superseded rows correctly.
+    """
     clauses: list[str] = []
     parameters: list[object] = []
     if slots:
@@ -367,39 +433,62 @@ def load_raw_counter_history(
         clauses.append("record_date<=?")
         parameters.append(period_end.isoformat())
     where = " WHERE " + " AND ".join(clauses) if clauses else ""
+    rows = connection.execute("SELECT " + ",".join(columns) + " FROM daily_raw_counter_records" + where
+                              + " ORDER BY device_slot,device_serial_snapshot,canonical_field,source_path,subject_type,subject_id,record_date,id",
+                              tuple(parameters))
+    from services.report_detail_archive import ReportDetailArchive
+    archived = ReportDetailArchive().details(connection, "raw", slots, start=period_start, end=period_end)
+    from services.report_detail_amendment import iter_effective_rows
+    for row, _period in iter_effective_rows(connection, 'raw', rows, columns, archived, slots,
+                                          start=period_start, end=period_end):
+        yield row
+
+
+def load_raw_counter_history(
+    slots: tuple[int, ...] | list[int] | None = None,
+    *,
+    period_start: date | None = None,
+    period_end: date | None = None,
+) -> tuple[RawCounterDailyRecord, ...]:
+    columns = ("device_slot", "record_date", "canonical_field", "label", "source_path",
+        "subject_type", "subject_id", "subject_name", "opening_value", "closing_value", "delta_value",
+        "reset_count", "sample_count", "first_success", "last_success", "source_name", "device_name_snapshot",
+        "device_serial_snapshot", "incomplete", "counter_review_json", "counter_resolutions_json")
     with _open(commit=False) as connection:
-        rows = connection.execute(
-            """SELECT device_slot,record_date,canonical_field,label,source_path,
-                      subject_type,subject_id,subject_name,opening_value,
-                      closing_value,delta_value,reset_count,sample_count,
-                      first_success,last_success,source_name,device_name_snapshot,
-                      device_serial_snapshot,incomplete
-               FROM daily_raw_counter_records"""
-            + where
-            + " ORDER BY record_date,device_slot,subject_type,subject_name,canonical_field",
-            tuple(parameters),
-        ).fetchall()
-    return tuple(
-        RawCounterDailyRecord(
-            device_slot=int(row[0]),
-            record_date=date.fromisoformat(str(row[1])),
-            canonical_field=str(row[2]),
-            label=str(row[3]),
-            source_path=str(row[4]),
-            subject_type=str(row[5]),
-            subject_id=str(row[6]),
-            subject_name=str(row[7]),
-            opening_value=float(row[8]),
-            closing_value=float(row[9]),
-            delta_value=float(row[10]),
-            reset_count=int(row[11]),
-            sample_count=int(row[12]),
-            first_success=str(row[13]),
-            last_success=str(row[14]),
-            source_name=str(row[15]),
-            device_name_snapshot=str(row[16]),
-            device_serial_snapshot=str(row[17]),
-            incomplete=bool(row[18]),
+        connection.execute("BEGIN")
+        rows = iter_raw_counter_rows(connection, slots, columns,
+                                     period_start=period_start, period_end=period_end)
+        original = tuple(
+            RawCounterDailyRecord(
+                device_slot=int(row[0]),
+                record_date=date.fromisoformat(str(row[1])),
+                canonical_field=str(row[2]),
+                label=str(row[3]),
+                source_path=str(row[4]),
+                subject_type=str(row[5]),
+                subject_id=str(row[6]),
+                subject_name=str(row[7]),
+                opening_value=float(row[8]) if row[8] is not None else None,
+                closing_value=float(row[9]) if row[9] is not None else None,
+                delta_value=float(row[10]),
+                reset_count=int(row[11]),
+                sample_count=int(row[12]),
+                first_success=str(row[13]) if row[13] is not None else None,
+                last_success=str(row[14]) if row[14] is not None else None,
+                source_name=str(row[15]),
+                device_name_snapshot=str(row[16]),
+                device_serial_snapshot=str(row[17]),
+                incomplete=bool(row[18]),
+                pending_review=metadata[0],
+                baseline_reviewed=metadata[1],
+                remarks=metadata[2],
+            )
+            for row in rows
+            for metadata in (_review_metadata(row[19], row[20]),)
         )
-        for row in rows
-    )
+    from services.shared_report_history import raw_records
+    with _open(commit=False) as connection:
+        selected_slots = list(slots) if slots is not None else [r[0] for r in connection.execute('SELECT slot FROM devices')]
+        shared = raw_records(connection, selected_slots, start=period_start, end=period_end, existing=original)
+    return tuple(sorted((*original, *shared), key=lambda r: (
+        r.record_date, r.device_slot, r.subject_type, r.subject_name, r.canonical_field)))

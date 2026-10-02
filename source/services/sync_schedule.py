@@ -8,7 +8,6 @@ from datetime import timedelta
 from services.polling import PollingPolicy, ScheduleWindow
 
 
-WEEKDAY_CODES = ("M", "T", "W", "TH", "F", "SA", "SU")
 WORKDAYS = frozenset(range(5))
 
 
@@ -48,11 +47,11 @@ def _weekdays(value: object) -> frozenset[int] | None:
 def default_schedule_windows() -> tuple[ScheduleWindow, ...]:
     """Weekday policy used when an administrator starts the new table."""
     return (
-        ScheduleWindow(time(0, 0), time(8, 0), timedelta(minutes=240), "Lazyload", timedelta(minutes=60), WORKDAYS),
-        ScheduleWindow(time(8, 0), time(8, 30), timedelta(minutes=10), "Active", timedelta(minutes=5), WORKDAYS),
-        ScheduleWindow(time(8, 30), time(16, 30), timedelta(minutes=60), "Standard", timedelta(minutes=15), WORKDAYS),
-        ScheduleWindow(time(16, 30), time(17, 0), timedelta(minutes=10), "Active", timedelta(minutes=5), WORKDAYS),
-        ScheduleWindow(time(17, 0), time(23, 59), timedelta(minutes=240), "Lazyload", timedelta(minutes=60), WORKDAYS),
+        ScheduleWindow(time(0, 0), time(8, 0), timedelta(minutes=240), "นอกเวลางาน", timedelta(minutes=60), WORKDAYS),
+        ScheduleWindow(time(8, 0), time(8, 30), timedelta(minutes=10), "ช่วงเร่งด่วน", timedelta(minutes=5), WORKDAYS),
+        ScheduleWindow(time(8, 30), time(16, 30), timedelta(minutes=60), "เวลาทำงาน", timedelta(minutes=15), WORKDAYS),
+        ScheduleWindow(time(16, 30), time(17, 0), timedelta(minutes=10), "ช่วงเร่งด่วน", timedelta(minutes=5), WORKDAYS),
+        ScheduleWindow(time(17, 0), time(23, 59), timedelta(minutes=240), "นอกเวลางาน", timedelta(minutes=60), WORKDAYS),
     )
 
 

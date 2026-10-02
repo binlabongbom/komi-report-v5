@@ -1,0 +1,312 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="10" skipped="0" tests="255" time="217.269" timestamp="2026-09-19T19:13:19.798941+07:00" hostname="DESKTOP-P9TSQEJ"><testcase classname="tests.test_performance_issue19" name="test_latest_read_keeps_ui_responsive_and_discards_replaced_result" time="0.323" /><testcase classname="tests.test_performance_issue19" name="test_worker_database_is_pinned_and_old_database_result_is_not_emitted" time="0.313" /><testcase classname="tests.test_performance_issue19" name="test_cancel_interrupts_a_long_sql_query_and_does_not_deliver_error" time="0.154" /><testcase classname="tests.test_performance_issue19" name="test_archive_metadata_is_lazy_and_error_never_looks_like_zero" time="0.276" /><testcase classname="tests.test_performance_issue19" name="test_canonical_subject_periods_match_full_history_hot_and_archive" time="1.165" /><testcase classname="tests.test_performance_issue19" name="test_hidden_settings_do_not_poll_network_and_cancel_pending_status" time="5.322"><failure message="assert False&#10; +  where False = is_set()">monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0x000001AFFF71CD50&gt;
+
+    def test_hidden_settings_do_not_poll_network_and_cancel_pending_status(monkeypatch):
+        from v5_pages import PageFleetSettings
+        from services.web_service import WebServiceStatus
+        page = PageFleetSettings()
+        gate, started = Event(), Event()
+        calls = []
+        def blocked():
+            calls.append(get_ident())
+            started.set()
+            assert gate.wait(3)
+            return WebServiceStatus('stopped', 'http://127.0.0.1:3000', 'http://192.0.2.10:3000', 'fixture', database.get_db_path().with_suffix('.log'))
+        monkeypatch.setattr(page.web_service, 'status', blocked)
+        assert not page._web_status_timer.isActive()
+        page._refresh_web_status()
+        assert calls == []
+        try:
+            page._set_active_editor('web')
+            page.show()
+&gt;           wait_until(started.is_set)
+
+source\tests\test_performance_issue19.py:163:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+predicate = &lt;bound method Event.is_set of &lt;threading.Event at 0x1af832e2990: unset&gt;&gt;
+seconds = 5
+
+    def wait_until(predicate, seconds=5):
+        deadline = monotonic() + seconds
+        while not predicate() and monotonic() &lt; deadline:
+            QTest.qWait(5)
+&gt;       assert predicate()
+E       assert False
+E        +  where False = is_set()
+
+source\tests\test_performance_issue19.py:18: AssertionError</failure></testcase><testcase classname="tests.test_performance_issue19" name="test_overview_failure_offers_retry_and_close_discards_pending" time="0.447" /><testcase classname="tests.test_performance_issue19" name="test_reparented_network_card_restarts_status_checks" time="1.909" /><testcase classname="tests.test_report_models" name="test_raw_index_preserves_zero_missing_review_sources_and_slot_replacement" time="0.082" /><testcase classname="tests.test_report_models" name="test_snapshot_tabs_share_immutable_raw_and_invalidate_by_database" time="0.091" /><testcase classname="tests.test_report_models" name="test_warm_tab_restores_completed_render_without_rebuilding" time="0.470" /><testcase classname="tests.test_report_snapshot" name="test_background_payload_matches_existing_report_semantics[selected0-0]" time="0.068" /><testcase classname="tests.test_report_snapshot" name="test_background_payload_matches_existing_report_semantics[selected0-1]" time="0.064" /><testcase classname="tests.test_report_snapshot" name="test_background_payload_matches_existing_report_semantics[selected0-2]" time="0.066" /><testcase classname="tests.test_report_snapshot" name="test_background_payload_matches_existing_report_semantics[selected0-3]" time="0.067" /><testcase classname="tests.test_report_snapshot" name="test_background_payload_matches_existing_report_semantics[selected0-4]" time="0.065" /><testcase classname="tests.test_report_snapshot" name="test_background_payload_matches_existing_report_semantics[selected1-0]" time="0.067" /><testcase classname="tests.test_report_snapshot" name="test_background_payload_matches_existing_report_semantics[selected1-1]" time="0.067" /><testcase classname="tests.test_report_snapshot" name="test_background_payload_matches_existing_report_semantics[selected1-2]" time="0.066" /><testcase classname="tests.test_report_snapshot" name="test_background_payload_matches_existing_report_semantics[selected1-3]" time="0.067" /><testcase classname="tests.test_report_snapshot" name="test_background_payload_matches_existing_report_semantics[selected1-4]" time="0.068" /><testcase classname="tests.test_report_snapshot" name="test_cancelled_snapshot_does_not_start_database_reads" time="0.072" /><testcase classname="tests.test_reports_background_loading" name="test_first_shell_defers_legacy_and_menu_stays_responsive" time="0.445" /><testcase classname="tests.test_reports_background_loading" name="test_refresh_keeps_old_snapshot_and_ignores_stale_result" time="0.550" /><testcase classname="tests.test_reports_background_loading" name="test_prewarm_does_not_select_tabs_and_cached_navigation_avoids_read" time="0.997" /><testcase classname="tests.test_reports_background_loading" name="test_failed_read_stops_loading_and_retry_succeeds" time="0.489" /><testcase classname="tests.test_reports_background_loading" name="test_database_switch_refreshes_cache_roots_before_background_reads" time="0.500" /><testcase classname="tests.test_reports_background_loading" name="test_new_period_keeps_explicit_old_period_notice_until_loaded" time="0.463" /><testcase classname="tests.test_cloud_reports_ui" name="test_calendar_month_menu_and_day_click_allow_dates_outside_report_history[start-target0]" time="0.911" /><testcase classname="tests.test_cloud_reports_ui" name="test_calendar_month_menu_and_day_click_allow_dates_outside_report_history[end-target1]" time="1.153" /><testcase classname="tests.test_cloud_reports_ui" name="test_custom_calendar_range_survives_history_refresh_and_empty_report_data" time="1.556" /><testcase classname="tests.test_cloud_reports_ui" name="test_cloud_reports_share_period_and_cross_filter_users_and_printers" time="2.018" /><testcase classname="tests.test_cloud_reports_ui" name="test_cloud_reports_header_and_date_range_fit_desktop_minimum" time="1.733" /><testcase classname="tests.test_cloud_reports_ui" name="test_usage_starts_with_reference_meter_without_counting_it_as_usage_or_cost" time="1.064" /><testcase classname="tests.test_cloud_reports_ui" name="test_users_matrix_uses_real_names_and_slot_operation_detail_headers" time="1.303" /><testcase classname="tests.test_cloud_reports_ui" name="test_usage_all_devices_checkboxes_filter_aggregate_but_keep_per_device_matrix" time="1.461" /><testcase classname="tests.test_cloud_reports_ui" name="test_printer_charts_compare_all_devices_and_selection_only_changes_detail" time="1.529" /><testcase classname="tests.test_cloud_reports_ui" name="test_keyboard_selection_updates_user_filter_and_printer_detail_immediately" time="1.508" /><testcase classname="tests.test_cloud_reports_ui" name="test_empty_users_offer_a_reading_status_recovery_action" time="0.879" /><testcase classname="tests.test_cloud_reports_ui" name="test_cloud_reports_use_transparent_label_surfaces_and_consistent_table_alignment" time="0.944" /><testcase classname="tests.test_cloud_reports_ui" name="test_users_cards_separate_color_without_inventing_missing_counters[classified]" time="0.886" /><testcase classname="tests.test_cloud_reports_ui" name="test_users_cards_separate_color_without_inventing_missing_counters[total_only]" time="1.475" /><testcase classname="tests.test_cloud_reports_ui" name="test_users_cards_separate_color_without_inventing_missing_counters[missing]" time="1.315" /><testcase classname="tests.test_cloud_reports_ui" name="test_users_cards_separate_color_without_inventing_missing_counters[partial_users]" time="1.412" /><testcase classname="tests.test_cloud_reports_ui" name="test_printer_cards_match_overview_and_preserve_scan_summary" time="2.003" /><testcase classname="tests.test_cloud_reports_staged" name="test_builds_only_overview_then_each_requested_tab_once" time="1.323" /><testcase classname="tests.test_cloud_reports_staged" name="test_lazy_controls_inherit_period_and_support_resize_before_data" time="0.394" /><testcase classname="tests.test_cloud_reports_staged" name="test_scoped_snapshots_never_render_other_tabs_data" time="0.826" /><testcase classname="tests.test_cloud_reports_staged" name="test_loading_slow_and_error_preserve_snapshot_and_offer_retry" time="0.324" /><testcase classname="tests.test_cloud_reports_staged" name="test_usage_can_load_without_constructing_user_or_printer_widgets" time="0.464" /><testcase classname="tests.test_cloud_reports_staged" name="test_per_tab_loading_tracks_visible_tab_and_guard_invalid_index" time="0.471" /><testcase classname="tests.test_cloud_reports_staged" name="test_cards_render_immediately_then_tables_then_charts[0-overview-total_usage]" time="0.965" /><testcase classname="tests.test_cloud_reports_staged" name="test_cards_render_immediately_then_tables_then_charts[1-users-usage]" time="0.735" /><testcase classname="tests.test_cloud_reports_staged" name="test_cards_render_immediately_then_tables_then_charts[2-printers-usage]" time="0.480" /><testcase classname="tests.test_cloud_reports_staged" name="test_queued_tail_is_discarded_after_invalidation[tab]" time="0.394" /><testcase classname="tests.test_cloud_reports_staged" name="test_queued_tail_is_discarded_after_invalidation[reload]" time="0.250" /><testcase classname="tests.test_cloud_reports_staged" name="test_queued_tail_is_discarded_after_invalidation[error]" time="0.247" /><testcase classname="tests.test_cloud_reports_staged" name="test_queued_tail_is_discarded_after_invalidation[close]" time="0.243" /><testcase classname="tests.test_cloud_reports_staged" name="test_new_snapshot_replaces_pending_tables_and_charts" time="0.263" /><testcase classname="tests.test_cloud_reports_staged" name="test_users_chart_labels_do_not_depend_on_printers_tab_rows" time="0.634" /><testcase classname="tests.test_report_custom_period" name="test_custom_period_keeps_users_inside_selected_dates[0]" time="1.992" /><testcase classname="tests.test_report_custom_period" name="test_custom_period_keeps_users_inside_selected_dates[1]" time="1.868" /><testcase classname="tests.test_report_custom_period" name="test_empty_custom_period_clears_data_and_stays_selected[0]" time="1.871"><failure message="assert () == []&#10;  &#10;  Use -v to get more diff">report = namespace(cloud=&lt;ui.cloud_reports.CloudReportsWidget object at 0x000001AF830D6850&gt;, refresh=&lt;function report.&lt;locals&gt;.... object at 0x000001AF8329D090&gt;, 'period_start': datetime.date(2026, 9, 12), 'period_end': datetime.date(2026, 9, 13)}])
+tab_index = 0
+
+    @pytest.mark.parametrize("tab_index", [0, 1, 2])
+    def test_empty_custom_period_clears_data_and_stays_selected(report, tab_index):
+        cloud = report.cloud
+        cloud.tabs.setCurrentIndex(tab_index)
+        _select_period(cloud, EMPTY)
+        report.refresh()
+
+        assert cloud.current_period() == EMPTY
+        assert cloud._subjects == ()
+        assert cloud._records == ()
+&gt;       assert cloud._user_rows == []
+E       assert () == []
+E
+E         Use -v to get more diff
+
+source\tests\test_report_custom_period.py:121: AssertionError</failure></testcase><testcase classname="tests.test_report_custom_period" name="test_empty_custom_period_clears_data_and_stays_selected[1]" time="2.106"><failure message="assert () == []&#10;  &#10;  Use -v to get more diff">report = namespace(cloud=&lt;ui.cloud_reports.CloudReportsWidget object at 0x000001AF83113110&gt;, refresh=&lt;function report.&lt;locals&gt;.... object at 0x000001AF83381CD0&gt;, 'period_start': datetime.date(2026, 9, 12), 'period_end': datetime.date(2026, 9, 13)}])
+tab_index = 1
+
+    @pytest.mark.parametrize("tab_index", [0, 1, 2])
+    def test_empty_custom_period_clears_data_and_stays_selected(report, tab_index):
+        cloud = report.cloud
+        cloud.tabs.setCurrentIndex(tab_index)
+        _select_period(cloud, EMPTY)
+        report.refresh()
+
+        assert cloud.current_period() == EMPTY
+        assert cloud._subjects == ()
+        assert cloud._records == ()
+&gt;       assert cloud._user_rows == []
+E       assert () == []
+E
+E         Use -v to get more diff
+
+source\tests\test_report_custom_period.py:121: AssertionError</failure></testcase><testcase classname="tests.test_report_custom_period" name="test_empty_custom_period_clears_data_and_stays_selected[2]" time="1.237"><failure message="assert () == []&#10;  &#10;  Use -v to get more diff">report = namespace(cloud=&lt;ui.cloud_reports.CloudReportsWidget object at 0x000001AF83138870&gt;, refresh=&lt;function report.&lt;locals&gt;....ailyCacheStore object at 0x000001AF83382690&gt;, 'only_period': (datetime.date(2026, 9, 1), datetime.date(2026, 9, 30))}])
+tab_index = 2
+
+    @pytest.mark.parametrize("tab_index", [0, 1, 2])
+    def test_empty_custom_period_clears_data_and_stays_selected(report, tab_index):
+        cloud = report.cloud
+        cloud.tabs.setCurrentIndex(tab_index)
+        _select_period(cloud, EMPTY)
+        report.refresh()
+
+        assert cloud.current_period() == EMPTY
+        assert cloud._subjects == ()
+        assert cloud._records == ()
+&gt;       assert cloud._user_rows == []
+E       assert () == []
+E
+E         Use -v to get more diff
+
+source\tests\test_report_custom_period.py:121: AssertionError</failure></testcase><testcase classname="tests.test_report_custom_period" name="test_printers_custom_period_loads_daily_but_preserves_canonical_ledger" time="1.880" /><testcase classname="tests.test_report_custom_period" name="test_canonical_subject_period_keeps_frozen_aggregation_path" time="1.027" /><testcase classname="tests.test_report_detail_archive" name="test_monthly_custom_and_exact_raw_results_survive_archive" time="1.020" /><testcase classname="tests.test_report_detail_archive" name="test_next_read_uses_retained_anchor_without_archive_io" time="0.985" /><testcase classname="tests.test_report_detail_archive" name="test_archive_failure_leaves_all_live_evidence_and_no_summary[verify]" time="0.789" /><testcase classname="tests.test_report_detail_archive" name="test_archive_failure_leaves_all_live_evidence_and_no_summary[prune]" time="0.936" /><testcase classname="tests.test_report_detail_archive" name="test_missing_or_changed_old_file_is_never_an_empty_success" time="1.041" /><testcase classname="tests.test_report_detail_archive" name="test_archived_days_cannot_be_reinserted_or_changed_silently" time="1.027" /><testcase classname="tests.test_report_detail_archive" name="test_source_change_between_file_verification_and_prune_aborts" time="0.715" /><testcase classname="tests.test_report_detail_archive" name="test_frozen_billing_period_does_not_follow_current_settings" time="1.376" /><testcase classname="tests.test_report_detail_archive" name="test_unresolved_raw_review_stays_hot_and_reported" time="1.201" /><testcase classname="tests.test_report_detail_archive" name="test_backup_restore_and_usage_reset_preserve_archive_contract" time="1.831" /><testcase classname="tests.test_report_detail_amendment" name="test_gap_and_backfill_revision_preserve_originals_and_monthly_totals[False]" time="1.251" /><testcase classname="tests.test_report_detail_amendment" name="test_gap_and_backfill_revision_preserve_originals_and_monthly_totals[True]" time="1.053" /><testcase classname="tests.test_report_detail_amendment" name="test_peer_recomputes_details_for_different_row_ids_and_forwards_once" time="1.867" /><testcase classname="tests.test_report_detail_amendment" name="test_changed_evidence_failed_summary_and_missing_archive_roll_back" time="1.080" /><testcase classname="tests.test_report_detail_amendment" name="test_revision_is_immutable_and_reset_clears_receipts" time="0.534" /><testcase classname="tests.test_report_detail_amendment" name="test_monthly_revision_summary_reads_no_detail_payload" time="0.796" /><testcase classname="tests.test_report_detail_amendment" name="test_revision_summaries_follow_explicit_period_change_and_backup" time="1.574" /><testcase classname="tests.test_report_detail_amendment" name="test_detail_dialog_requires_review_and_can_cancel_without_writes" time="0.990" /><testcase classname="tests.test_archive_recovery" name="test_portable_copy_preserves_archived_events_and_pending_queue[backup]" time="0.708" /><testcase classname="tests.test_archive_recovery" name="test_portable_copy_preserves_archived_events_and_pending_queue[first_run]" time="0.662" /><testcase classname="tests.test_archive_recovery" name="test_restore_to_different_folder_copies_archive_and_preserves_rollback" time="1.296" /><testcase classname="tests.test_archive_recovery" name="test_bad_archive_never_publishes_new_database[missing]" time="0.525" /><testcase classname="tests.test_archive_recovery" name="test_bad_archive_never_publishes_new_database[tampered]" time="0.509" /><testcase classname="tests.test_archive_recovery" name="test_bad_archive_never_publishes_new_database[collision]" time="0.487" /><testcase classname="tests.test_archive_recovery" name="test_bad_archive_never_publishes_new_database[escape]" time="0.513" /><testcase classname="tests.test_archive_recovery" name="test_usage_reset_clears_catalog_but_preserves_backup_files" time="0.632" /><testcase classname="tests.test_archive_settings_ui" name="test_metadata_panel_never_opens_archive_files" time="0.403" /><testcase classname="tests.test_archive_settings_ui" name="test_completed_background_job_updates_counts_without_second_worker" time="0.673" /><testcase classname="tests.test_archive_settings_ui" name="test_error_remains_visible_and_can_retry" time="0.392" /><testcase classname="tests.test_archive_maintenance" name="test_start_is_delayed_and_busy_collection_wins" time="0.405" /><testcase classname="tests.test_archive_maintenance" name="test_empty_archive_does_not_poll_files_or_network_every_tick" time="0.120" /><testcase classname="tests.test_archive_maintenance" name="test_stop_drains_atomic_chunk_and_never_starts_another" time="0.116" /><testcase classname="tests.test_archive_maintenance" name="test_failure_is_reported_once_then_waits_until_next_day" time="0.124" /><testcase classname="tests.test_overview_v5_ui" name="test_overview_does_not_render_billing_quality_banner" time="0.220" /><testcase classname="tests.test_overview_v5_ui" name="test_overview_reflows_bottom_cards_at_desktop_minimum_width" time="0.149" /><testcase classname="tests.test_overview_v5_ui" name="test_overview_metric_cards_are_compact_and_style_a3_a4_details" time="0.186" /><testcase classname="tests.test_overview_v5_ui" name="test_overview_marks_current_cache_as_provisional_and_exposes_actions" time="0.206" /><testcase classname="tests.test_overview_v5_ui" name="test_overview_printer_rows_keep_status_and_all_toner_colours_visible" time="0.225" /><testcase classname="tests.test_summary_service.SummaryServiceTests" name="test_build_overview_summary_all_combines_slots" time="0.280" /><testcase classname="tests.test_summary_service.SummaryServiceTests" name="test_build_overview_summary_current_uses_latest_data_when_current_empty" time="0.261" /><testcase classname="tests.test_summary_service.SummaryServiceTests" name="test_months_ago_crosses_year" time="0.172" /><testcase classname="tests.test_summary_service.SummaryServiceTests" name="test_v5_current_overview_does_not_include_expired_cycle_with_same_month_key" time="0.428" /><testcase classname="tests.test_summary_service.SummaryServiceTests" name="test_v5_current_overview_includes_all_overlapping_frozen_cycles" time="0.431" /><testcase classname="tests.test_summary_service.SummaryServiceTests" name="test_v5_overview_flags_mixed_identities_without_losing_frozen_totals" time="0.460" /><testcase classname="tests.test_summary_service.SummaryServiceTests" name="test_v5_overview_keeps_frozen_history_after_slot_is_disabled" time="0.357" /><testcase classname="tests.test_summary_service.SummaryServiceTests" name="test_v5_overview_separates_confirmed_and_current_cache" time="0.349" /><testcase classname="tests.test_summary_service.SummaryServiceTests" name="test_v5_overview_uses_frozen_ledger_and_excludes_held_usage" time="0.506" /><testcase classname="tests.test_subject_history" name="test_requested_range_does_not_parse_unrelated_old_or_future_rows[start]" time="0.285" /><testcase classname="tests.test_subject_history" name="test_requested_range_does_not_parse_unrelated_old_or_future_rows[end]" time="0.286" /><testcase classname="tests.test_subject_history" name="test_requested_range_does_not_parse_unrelated_old_or_future_rows[both]" time="0.275" /><testcase classname="tests.test_subject_history" name="test_extract_subject_totals_keeps_only_exact_total_counter" time="0.149" /><testcase classname="tests.test_subject_history" name="test_subject_daily_cache_accumulates_every_delta_in_the_day" time="0.242" /><testcase classname="tests.test_subject_history" name="test_finalized_subject_history_uses_frozen_device_billing_period" time="0.427" /><testcase classname="tests.test_subject_history" name="test_subject_counter_reset_preserves_usage_and_requires_review" time="0.267" /><testcase classname="tests.test_subject_history" name="test_daily_subject_record_is_append_only_and_becomes_next_day_baseline" time="0.332" /><testcase classname="tests.test_subject_history" name="test_subject_cache_rejects_late_sample_without_treating_it_as_reset" time="0.236" /><testcase classname="tests.test_subject_history" name="test_subject_late_same_day_evidence_is_retained_after_finalization" time="0.311" /><testcase classname="tests.test_subject_history" name="test_subject_next_day_baseline_is_not_carried_across_slot_reuse" time="0.298" /><testcase classname="tests.test_subject_history" name="test_subject_history_keeps_reused_slot_identities_as_separate_rows" time="0.392" /><testcase classname="tests.test_subject_history" name="test_subject_cache_rejects_same_day_sample_after_device_identity_changes" time="0.255" /><testcase classname="tests.test_subject_history" name="test_subject_history_remains_in_report_scope_after_slot_is_disabled" time="0.275" /><testcase classname="tests.test_usage" name="test_default_usage_groups_preserve_unknown_when_cross_dimension_missing" time="0.072" /><testcase classname="tests.test_usage" name="test_default_usage_groups_derive_a3_a4_from_total_and_large_pairs" time="0.069" /><testcase classname="tests.test_usage" name="test_default_usage_groups_show_zero_for_a_baseline_reading" time="0.067" /><testcase classname="tests.test_usage" name="test_current_period_usage_excludes_held_unposted_and_mutated_daily_rows" time="0.503" /><testcase classname="tests.test_usage" name="test_current_and_latest_counters_do_not_attach_old_identity_to_reused_slot" time="0.491" /><testcase classname="tests.test_usage" name="test_billing_period_uses_canonical_default_when_setting_is_absent" time="0.223" /><testcase classname="tests.test_billing_audit_ui" name="test_billing_audit_ui_shows_effective_correction_and_open_hold_lifecycle" time="0.683" /><testcase classname="tests.test_billing_audit_ui" name="test_billing_audit_load_more_search_and_export_include_over_100_rows" time="0.922" /><testcase classname="tests.test_settings_v5" name="test_shared_billing_cancel_keeps_draft_and_does_not_write_history" time="0.520" /><testcase classname="tests.test_settings_v5" name="test_shared_billing_rejects_edit_made_while_confirmation_is_open" time="0.617" /><testcase classname="tests.test_settings_v5" name="test_shared_confirmation_shows_before_after_and_defaults_to_cancel" time="0.277" /><testcase classname="tests.test_settings_v5" name="test_fleet_settings_groups_fields_and_live_schedule" time="0.460"><failure message="AssertionError: assert '192.0.2.1:3000' in ''&#10; +  where '' = &lt;built-in method text of QLabel object at 0x000001AF830BADF0&gt;()&#10; +    where &lt;built-in method text of QLabel object at 0x000001AF830BADF0&gt; = &lt;PyQt6.QtWidgets.QLabel object at 0x000001AF830BADF0&gt;.text&#10; +      where &lt;PyQt6.QtWidgets.QLabel object at 0x000001AF830BADF0&gt; = &lt;v5_pages.PageFleetSettings object at 0x000001AF830F4AF0&gt;.web_service_url">tmp_path = WindowsPath('C:/Users/User/AppData/Local/Temp/pytest-of-User/pytest-1558/test_fleet_settings_groups_fie0')
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0x000001AF95EEB3F0&gt;
+fake_web_service = &lt;test_settings_v5._WebServiceDouble object at 0x000001AF830EAD70&gt;
+
+    def test_fleet_settings_groups_fields_and_live_schedule(tmp_path, monkeypatch, fake_web_service):
+        app = QApplication.instance() or QApplication([])
+        original = _database(tmp_path)
+        planned: list[tuple[bool, bool]] = []
+        registration = tmp_path / "autostart.registered"
+        registration.write_text("synthetic registration", encoding="utf-8")
+
+        def fake_configure_autostart(enabled: bool, *, apply: bool = True):
+            planned.append((enabled, apply))
+            if apply:
+                if enabled:
+                    registration.write_text("synthetic registration", encoding="utf-8")
+                else:
+                    registration.unlink(missing_ok=True)
+            return registration
+
+        try:
+            monkeypatch.setattr(
+                v5_pages,
+                "configure_autostart",
+                fake_configure_autostart,
+            )
+            page = PageFleetSettings()
+            page.resize(1000, 1200)
+            page.show()
+            app.processEvents()
+
+            assert "DMS Printer" in page.device_summary.text()
+            assert "SERIAL-1" not in page.device_summary.text()
+            assert "192.0.2.10" not in page.device_summary.text()
+            assert "SERIAL-1" in page.device_summary.toolTip()
+&gt;           assert "192.0.2.1:3000" in page.web_service_url.text()
+E           AssertionError: assert '192.0.2.1:3000' in ''
+E            +  where '' = &lt;built-in method text of QLabel object at 0x000001AF830BADF0&gt;()
+E            +    where &lt;built-in method text of QLabel object at 0x000001AF830BADF0&gt; = &lt;PyQt6.QtWidgets.QLabel object at 0x000001AF830BADF0&gt;.text
+E            +      where &lt;PyQt6.QtWidgets.QLabel object at 0x000001AF830BADF0&gt; = &lt;v5_pages.PageFleetSettings object at 0x000001AF830F4AF0&gt;.web_service_url
+
+source\tests\test_settings_v5.py:254: AssertionError</failure></testcase><testcase classname="tests.test_settings_v5" name="test_fleet_settings_toggle_stops_web_service" time="1.618" /><testcase classname="tests.test_settings_v5" name="test_compact_settings_opens_one_editor_and_preserves_dirty_draft" time="0.689" /><testcase classname="tests.test_settings_v5" name="test_web_recovery_can_start_enabled_but_stopped_service_without_toggling" time="0.466"><failure message="assert False&#10; +  where False = &lt;built-in method isEnabled of QPushButton object at 0x000001AF95E8BBB0&gt;()&#10; +    where &lt;built-in method isEnabled of QPushButton object at 0x000001AF95E8BBB0&gt; = &lt;PyQt6.QtWidgets.QPushButton object at 0x000001AF95E8BBB0&gt;.isEnabled&#10; +      where &lt;PyQt6.QtWidgets.QPushButton object at 0x000001AF95E8BBB0&gt; = &lt;v5_pages.PageFleetSettings object at 0x000001AF95E4FD90&gt;.web_save_button">tmp_path = WindowsPath('C:/Users/User/AppData/Local/Temp/pytest-of-User/pytest-1558/test_web_recovery_can_start_en0')
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0x000001AF928ED390&gt;
+fake_web_service = &lt;test_settings_v5._WebServiceDouble object at 0x000001AF95E65D00&gt;
+
+    def test_web_recovery_can_start_enabled_but_stopped_service_without_toggling(
+        tmp_path,
+        monkeypatch,
+        fake_web_service,
+    ):
+        app = QApplication.instance() or QApplication([])
+        original = _database(tmp_path)
+        registration = tmp_path / "autostart.registered"
+        try:
+            monkeypatch.setattr(
+                v5_pages,
+                "configure_autostart",
+                lambda _enabled, *, apply=True: registration,
+            )
+            database.set_cfg("web_service_enabled", "1")
+            page = PageFleetSettings()
+
+            assert page.web_service_enabled.isChecked()
+            page._set_active_editor('web')
+            page.show()
+            from test_performance_issue19 import wait_until
+            wait_until(lambda: not page._web_status_reader.busy)
+&gt;           assert page.web_save_button.isEnabled()
+E           assert False
+E            +  where False = &lt;built-in method isEnabled of QPushButton object at 0x000001AF95E8BBB0&gt;()
+E            +    where &lt;built-in method isEnabled of QPushButton object at 0x000001AF95E8BBB0&gt; = &lt;PyQt6.QtWidgets.QPushButton object at 0x000001AF95E8BBB0&gt;.isEnabled
+E            +      where &lt;PyQt6.QtWidgets.QPushButton object at 0x000001AF95E8BBB0&gt; = &lt;v5_pages.PageFleetSettings object at 0x000001AF95E4FD90&gt;.web_save_button
+
+source\tests\test_settings_v5.py:419: AssertionError</failure></testcase><testcase classname="tests.test_settings_v5" name="test_web_access_dialog_validates_match_and_minimum_length" time="0.083" /><testcase classname="tests.test_settings_v5" name="test_desktop_changes_web_access_and_restarts_owned_service" time="3.636" /><testcase classname="tests.test_settings_v5" name="test_fleet_settings_allows_adding_and_removing_custom_schedule_windows" time="0.805" /><testcase classname="tests.test_settings_v5" name="test_fleet_autostart_reflects_missing_os_registration" time="0.564" /><testcase classname="tests.test_settings_v5" name="test_v5_database_path_tools_are_available_without_replacing_active_database" time="1.149" /><testcase classname="tests.test_settings_v5" name="test_v5_hides_duplicate_editors_and_opens_tools_without_password" time="1.708" /><testcase classname="tests.test_settings_v5" name="test_settings_tools_do_not_request_password" time="1.461" /><testcase classname="tests.test_settings_v5" name="test_settings_shows_simple_registration_status_and_manual_retry" time="0.509" /><testcase classname="tests.test_settings_v5" name="test_registration_settings_copy_switches_to_english" time="0.475" /><testcase classname="tests.test_settings_v5" name="test_settings_can_accept_current_privacy_notice_and_requeue" time="0.523" /><testcase classname="tests.test_settings_v5" name="test_settings_routes_local_enqueue_failure_back_to_setup" time="0.372" /><testcase classname="tests.test_settings_v5" name="test_offline_license_settings_are_hidden_while_activation_is_disabled" time="0.374" /><testcase classname="tests.test_settings_v5" name="test_disabled_offline_license_ui_does_not_call_export_runtime" time="0.407" /><testcase classname="tests.test_settings_v5" name="test_settings_v5_routes_support_details_through_section_tabs" time="1.054" /><testcase classname="tests.test_settings_v5" name="test_advanced_settings_and_nested_lan_stay_inline_without_horizontal_scroll" time="1.994" /><testcase classname="tests.test_settings_v5" name="test_schedule_delete_button_is_compact_and_removes_only_its_row" time="0.684" /><testcase classname="tests.test_settings_v5" name="test_v5_tools_hide_all_duplicate_device_and_billing_editors" time="1.362" /><testcase classname="tests.test_settings_v5" name="test_settings_opens_setup_without_a_nested_dialog_event_loop" time="0.078" /><testcase classname="tests.test_settings_v5" name="test_web_custom_port_is_saved_restarted_and_restored" time="1.320" /><testcase classname="tests.test_settings_v5" name="test_web_password_lock_sets_a_code_before_closing_reports" time="3.769" /><testcase classname="tests.test_settings_v5" name="test_cancel_password_setup_keeps_reports_open" time="0.624" /><testcase classname="tests.test_settings_v5" name="test_web_occupied_port_is_rejected_before_any_settings_change" time="0.486" /><testcase classname="tests.test_settings_v5" name="test_secondary_always_open_selector_restores_and_can_revoke" time="0.465" /><testcase classname="tests.test_manual_diagrams" name="test_manual_is_one_continuous_page_with_clickable_right_toc" time="2.232" /><testcase classname="tests.test_manual_diagrams" name="test_manual_reflows_at_desktop_minimum_and_uses_v52_report_copy" time="1.689" /><testcase classname="tests.test_manual_diagrams" name="test_manual_uses_customer_guide_document_style_and_shared_screenshots" time="2.658" /><testcase classname="tests.test_reports_startup_prefetch" name="test_splash_starts_overview_without_opening_other_pages" time="0.005" /><testcase classname="tests.test_reports_startup_prefetch" name="test_startup_refresh_completes_before_splash_report_prefetch" time="0.004" /><testcase classname="tests.test_reports_startup_prefetch" name="test_preparation_without_splash_preserves_deferred_initial_refresh" time="0.004" /><testcase classname="tests.test_reports_startup_prefetch" name="test_report_jobs_shutdown_only_on_actual_exit[False]" time="0.005" /><testcase classname="tests.test_reports_startup_prefetch" name="test_report_jobs_shutdown_only_on_actual_exit[True]" time="0.006"><failure message="AttributeError: 'types.SimpleNamespace' object has no attribute 'findChildren'">monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0x000001AF83105860&gt;
+quitting = True
+
+    @pytest.mark.parametrize("quitting", [False, True])
+    def test_report_jobs_shutdown_only_on_actual_exit(monkeypatch, quitting):
+        events = []
+        monkeypatch.setattr(app, "get_cfg", lambda *_args: "1")
+        monkeypatch.setattr(app.QSystemTrayIcon, "isSystemTrayAvailable", lambda: True)
+        window = SimpleNamespace(
+            _quitting=quitting,
+            _background_started=False,
+            pg_history=SimpleNamespace(shutdown_report_loading=lambda: events.append("report shutdown")),
+            tray=SimpleNamespace(showMessage=lambda *_args: None),
+            polling=SimpleNamespace(stop=lambda: events.append("polling stop")),
+            registration=SimpleNamespace(stop=lambda: None),
+            web_service=SimpleNamespace(stop=lambda: None),
+            hide=lambda: events.append("hidden"),
+        )
+        window._stop_ui_work = lambda: app.MainWindow._stop_ui_work(window)
+        event = SimpleNamespace(
+            accept=lambda: events.append("accepted"),
+            ignore=lambda: events.append("ignored"),
+        )
+
+&gt;       app.MainWindow.closeEvent(window, event)
+
+source\tests\test_reports_startup_prefetch.py:84:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+source\app.py:1162: in closeEvent
+    self._stop_ui_work()
+source\tests\test_reports_startup_prefetch.py:78: in &lt;lambda&gt;
+    window._stop_ui_work = lambda: app.MainWindow._stop_ui_work(window)
+                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = namespace(_quitting=True, _background_started=False, pg_history=namespace(shutdown_report_loading=&lt;function test_repor...function test_report_jobs_shutdown_only_on_actual_exit.&lt;locals&gt;.&lt;lambda&gt; at 0x000001AFA0DBF1C0&gt;, _ui_work_stopped=True)
+
+    def _stop_ui_work(self):
+        if getattr(self, "_ui_work_stopped", False):
+            return
+        self._ui_work_stopped = True
+        for name in ("_refresh_timer", "_startup_poll_timer"):
+            timer = getattr(self, name, None)
+            if timer is not None:
+                timer.stop()
+        shutdown_reports = getattr(getattr(self, "pg_history", None), "shutdown_report_loading", None)
+        if callable(shutdown_reports):
+            shutdown_reports()
+        from ui.background_read import LatestRead
+&gt;       for reader in self.findChildren(LatestRead):
+                      ^^^^^^^^^^^^^^^^^
+E       AttributeError: 'types.SimpleNamespace' object has no attribute 'findChildren'
+
+source\app.py:1088: AttributeError</failure></testcase><testcase classname="tests.test_reports_startup_prefetch" name="test_prewarm_yields_between_users_and_printers_and_only_schedules_once" time="0.004" /><testcase classname="tests.test_reports_startup_prefetch" name="test_prewarm_uses_loaded_report_and_stops_when_quitting" time="0.004" /><testcase classname="tests.test_reports_startup_prefetch" name="test_show_schedules_after_window_is_visible" time="0.004" /><testcase classname="tests.test_reports_startup_prefetch" name="test_reports_open_hook_runs_after_navigation_and_refresh" time="0.004" /><testcase classname="tests.test_reports_startup_prefetch" name="test_missing_optional_report_interfaces_are_harmless" time="0.004" /><testcase classname="tests.test_reports_startup_prefetch" name="test_visible_reports_reuses_prefetched_generation" time="0.004" /><testcase classname="tests.test_reports_startup_prefetch" name="test_data_updates_invalidate_reports_before_visible_refresh" time="0.004" /><testcase classname="tests.test_reports_startup_prefetch" name="test_splash_uses_indeterminate_activity_without_percentage" time="0.059" /><testcase classname="tests.test_startup_sync" name="test_startup_waits_for_configured_services_and_fresh_status_then_dispatches_once" time="1.262" /><testcase classname="tests.test_startup_sync" name="test_startup_stays_pending_while_ineligible_and_runs_once_on_reactivation[deactivated]" time="0.304" /><testcase classname="tests.test_startup_sync" name="test_startup_stays_pending_while_ineligible_and_runs_once_on_reactivation[offline_license_expired]" time="0.303" /><testcase classname="tests.test_startup_sync" name="test_startup_stays_pending_while_ineligible_and_runs_once_on_reactivation[registration_unavailable]" time="0.319" /><testcase classname="tests.test_startup_sync" name="test_startup_rechecks_eligibility_when_queued_status_is_revoked" time="0.280" /><testcase classname="tests.test_startup_sync" name="test_quitting_cancels_queued_startup_dispatch" time="0.273" /><testcase classname="tests.test_startup_sync" name="test_startup_reuses_active_slot_guard_and_preserves_later_sync[manual]" time="0.301" /><testcase classname="tests.test_startup_sync" name="test_startup_reuses_active_slot_guard_and_preserves_later_sync[scheduled]" time="0.328" /><testcase classname="tests.test_import_v5_layout" name="test_import_layout_matches_configured_device_count[1]" time="0.121" /><testcase classname="tests.test_import_v5_layout" name="test_import_layout_matches_configured_device_count[2]" time="0.161" /><testcase classname="tests.test_import_v5_layout" name="test_import_layout_matches_configured_device_count[3]" time="0.232" /><testcase classname="tests.test_import_v5_layout" name="test_import_three_device_cards_reflow_without_overlap[794-2]" time="0.193" /><testcase classname="tests.test_import_v5_layout" name="test_import_three_device_cards_reflow_without_overlap[1050-3]" time="0.218" /><testcase classname="tests.test_import_v5_layout" name="test_import_three_device_cards_reflow_without_overlap[1210-3]" time="0.210" /><testcase classname="tests.test_import_v5_layout" name="test_import_single_device_uses_available_content_width" time="0.123" /><testcase classname="tests.test_import_v5_layout" name="test_import_refresh_can_clear_an_empty_device_grid" time="0.070" /><testcase classname="tests.test_import_v5_layout" name="test_import_sync_button_emits_request_and_waits_for_completion" time="0.095" /><testcase classname="tests.test_import_v5_layout" name="test_import_sync_status_uses_per_device_dots_and_hides_error_when_all_online" time="0.144" /><testcase classname="tests.test_import_v5_layout" name="test_import_card_uses_clean_labels_and_dynamic_toner_bars" time="0.134" /><testcase classname="tests.test_import_v5_layout" name="test_import_card_paper_rows_follow_fixed_order_and_hide_missing_trays" time="0.084" /><testcase classname="tests.test_import_v5_layout" name="test_import_card_paper_rows_keep_physical_layout_with_four_or_two_trays_and_bypass" time="0.067" /><testcase classname="tests.test_import_v5_layout" name="test_import_card_hides_paper_section_when_no_identifiable_tray_is_reported" time="0.069" /><testcase classname="tests.test_import_v5_layout" name="test_toner_bar_rounded_corners_match_white_device_card" time="1.855" /><testcase classname="tests.test_import_v5_layout" name="test_import_sync_log_button_opens_observability_page" time="0.161" /><testcase classname="tests.test_import_v5_layout" name="test_import_can_hide_zero_web_counters_without_removing_data" time="0.170" /><testcase classname="tests.test_import_v5_layout" name="test_import_uses_real_subject_name_from_runtime_snapshot" time="0.184" /><testcase classname="tests.test_import_v5_layout" name="test_import_shows_needs_review_when_web_totals_do_not_reconcile" time="0.120" /><testcase classname="tests.test_reports_responsive_layout" name="test_visiting_tall_tabs_does_not_inflate_overview" time="3.307" /><testcase classname="tests.test_reports_responsive_layout" name="test_header_and_period_stay_visible_while_report_content_scrolls[0-overview_page]" time="2.090" /><testcase classname="tests.test_reports_responsive_layout" name="test_header_and_period_stay_visible_while_report_content_scrolls[1-users_page]" time="1.772" /><testcase classname="tests.test_reports_responsive_layout" name="test_header_and_period_stay_visible_while_report_content_scrolls[2-printers_page]" time="2.439" /><testcase classname="tests.test_reports_responsive_layout" name="test_narrow_overview_keeps_kpi_text_and_panels_inside_content[800]" time="2.557"><failure message="AssertionError: All six KPI cards must share one row at compact report widths&#10;assert 2 == 1&#10; +  where 2 = len({13, 104})">report_widget = &lt;ui.cloud_reports.CloudReportsWidget object at 0x000001AF832D0230&gt;
+width = 800
+
+    @pytest.mark.parametrize("width", [800, 660])
+    def test_narrow_overview_keeps_kpi_text_and_panels_inside_content(report_widget, width):
+        widget = report_widget
+        widget.resize(width, 620)
+        _settle()
+        scroll = _content_scroll(widget, widget.overview_page)
+        width_constraints = [
+            (child.objectName() or type(child).__name__, child.minimumSizeHint().width())
+            for child in widget.findChildren(QWidget)
+            if child.isVisible() and child.minimumSizeHint().width() &gt; width - 40
+        ]
+        tab_constraints = [
+            (
+                widget.tabs.tabText(index),
+                widget.tabs.widget(index).minimumSizeHint().width(),
+                [
+                    child.minimumSizeHint().width()
+                    for child in widget.tabs.widget(index).findChildren(QWidget)
+                    if child.objectName() == "cloud_report_toolbar"
+                ],
+            )
+            for index in range(widget.tabs.count())
+        ]
+        assert widget.width() &lt;= width, (
+            f"Requested width {width}, actual {widget.width()}; "
+            f"visible minimum-size hints: {width_constraints}; wrappers/toolbars: {tab_constraints}"
+        )
+        assert scroll.horizontalScrollBar().maximum() == 0
+        assert widget.overview_page.width() &lt;= scroll.viewport().width()
+        cards = list(widget.overview_kpis.values())
+        assert len(cards) == 6
+&gt;       assert len({_rect_in(card, widget.overview_page).y() for card in cards}) == 1, (
+            "All six KPI cards must share one row at compact report widths"
+        )
+E       AssertionError: All six KPI cards must share one row at compact report widths
+E       assert 2 == 1
+E        +  where 2 = len({13, 104})
+
+source\tests\test_reports_responsive_layout.py:209: AssertionError</failure></testcase><testcase classname="tests.test_reports_responsive_layout" name="test_narrow_overview_keeps_kpi_text_and_panels_inside_content[660]" time="2.100"><failure message="AssertionError: All six KPI cards must share one row at compact report widths&#10;assert 3 == 1&#10; +  where 3 = len({13, 104, 195})">report_widget = &lt;ui.cloud_reports.CloudReportsWidget object at 0x000001AF95EDF430&gt;
+width = 660
+
+    @pytest.mark.parametrize("width", [800, 660])
+    def test_narrow_overview_keeps_kpi_text_and_panels_inside_content(report_widget, width):
+        widget = report_widget
+        widget.resize(width, 620)
+        _settle()
+        scroll = _content_scroll(widget, widget.overview_page)
+        width_constraints = [
+            (child.objectName() or type(child).__name__, child.minimumSizeHint().width())
+            for child in widget.findChildren(QWidget)
+            if child.isVisible() and child.minimumSizeHint().width() &gt; width - 40
+        ]
+        tab_constraints = [
+            (
+                widget.tabs.tabText(index),
+                widget.tabs.widget(index).minimumSizeHint().width(),
+                [
+                    child.minimumSizeHint().width()
+                    for child in widget.tabs.widget(index).findChildren(QWidget)
+                    if child.objectName() == "cloud_report_toolbar"
+                ],
+            )
+            for index in range(widget.tabs.count())
+        ]
+        assert widget.width() &lt;= width, (
+            f"Requested width {width}, actual {widget.width()}; "
+            f"visible minimum-size hints: {width_constraints}; wrappers/toolbars: {tab_constraints}"
+        )
+        assert scroll.horizontalScrollBar().maximum() == 0
+        assert widget.overview_page.width() &lt;= scroll.viewport().width()
+        cards = list(widget.overview_kpis.values())
+        assert len(cards) == 6
+&gt;       assert len({_rect_in(card, widget.overview_page).y() for card in cards}) == 1, (
+            "All six KPI cards must share one row at compact report widths"
+        )
+E       AssertionError: All six KPI cards must share one row at compact report widths
+E       assert 3 == 1
+E        +  where 3 = len({13, 104, 195})
+
+source\tests\test_reports_responsive_layout.py:209: AssertionError</failure></testcase><testcase classname="tests.test_reports_responsive_layout" name="test_compact_typography_and_tabs_preserve_readable_kpi_values[800]" time="5.988" /><testcase classname="tests.test_reports_responsive_layout" name="test_compact_typography_and_tabs_preserve_readable_kpi_values[660]" time="6.183" /><testcase classname="tests.test_reports_responsive_layout" name="test_translated_kpi_glyphs_fit_vertically_and_full_values_survive_resize[th]" time="5.787" /><testcase classname="tests.test_reports_responsive_layout" name="test_translated_kpi_glyphs_fit_vertically_and_full_values_survive_resize[en]" time="4.919" /><testcase classname="tests.test_reports_responsive_layout" name="test_resize_and_tab_navigation_preserve_report_values_selection_and_period" time="2.740" /><testcase classname="tests.test_i18n" name="test_translates_and_restores_widget_tree" time="0.125" /><testcase classname="tests.test_i18n" name="test_tr_selects_active_language" time="0.108" /><testcase classname="tests.test_i18n" name="test_import_dynamic_messages_are_fully_english" time="0.107" /><testcase classname="tests.test_ux_issue18" name="test_full_amount_fits_without_hidden_digits[\u0e3f0.00-th]" time="0.096" /><testcase classname="tests.test_ux_issue18" name="test_full_amount_fits_without_hidden_digits[\u0e3f0.00-en]" time="0.108" /><testcase classname="tests.test_ux_issue18" name="test_full_amount_fits_without_hidden_digits[\u0e3f8,640.00-th]" time="0.091" /><testcase classname="tests.test_ux_issue18" name="test_full_amount_fits_without_hidden_digits[\u0e3f8,640.00-en]" time="0.092" /><testcase classname="tests.test_ux_issue18" name="test_full_amount_fits_without_hidden_digits[\u0e3f12,345,678.90-th]" time="0.090" /><testcase classname="tests.test_ux_issue18" name="test_full_amount_fits_without_hidden_digits[\u0e3f12,345,678.90-en]" time="0.093" /><testcase classname="tests.test_ux_issue18" name="test_names_in_data_controls_never_translate_even_if_exact_ui_label" time="0.098" /><testcase classname="tests.test_ux_issue18" name="test_removed_tab_does_not_reuse_another_pages_title" time="0.093" /><testcase classname="tests.test_ux_issue18" name="test_export_copy_is_complete_english" time="0.088" /><testcase classname="tests.test_ux_issue18" name="test_wizard_review_translates_templates_without_changing_customer_data" time="0.859" /><testcase classname="tests.test_ux_issue18" name="test_billing_audit_status_translates_while_printer_name_is_preserved" time="0.099"><failure message="AttributeError: 'NoneType' object has no attribute 'text'">def test_billing_audit_status_translates_while_printer_name_is_preserved():
+        from test_billing_audit_ui import _insert_direct_events
+        from v5_pages import PageBillingAudit
+        _insert_direct_events(1, printer_name="ภาพรวม")
+        page = PageBillingAudit()
+        for language in ("en", "th", "en"):
+            set_language(language)
+            page.refresh()
+            apply_language(page)
+&gt;           assert page.table.item(0, 2).text() == "ภาพรวม"
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^
+E           AttributeError: 'NoneType' object has no attribute 'text'
+
+source\tests\test_ux_issue18.py:117: AttributeError</failure></testcase><testcase classname="tests.test_ux_issue18" name="test_unavailable_pinned_counter_survives_save_and_clear_requires_explicit_confirmation" time="0.143" /><testcase classname="tests.test_ux_issue18" name="test_replacing_charts_destroys_every_released_native_chart" time="0.094" /><testcase classname="tests.test_ux_issue18" name="test_missing_readings_are_not_displayed_as_zero" time="1.078" /><testcase classname="tests.test_ux_issue18" name="test_long_counter_can_be_opened_and_copied_with_keyboard" time="0.189" /><testcase classname="tests.test_report_export_job" name="test_90_users_export_keeps_qt_responsive_and_verifies_workbook" time="15.208" /><testcase classname="tests.test_report_export_job" name="test_incomplete_export_preserves_destination_and_removes_temporary_files[cancel]" time="0.227" /><testcase classname="tests.test_report_export_job" name="test_incomplete_export_preserves_destination_and_removes_temporary_files[fail]" time="0.212" /><testcase classname="tests.test_report_export_job" name="test_incomplete_export_preserves_destination_and_removes_temporary_files[locked]" time="0.794" /><testcase classname="tests.test_report_export_job" name="test_controller_cancel_then_retry_and_failure_restore_buttons" time="1.313" /><testcase classname="tests.test_report_export_job" name="test_background_read_database_is_pinned_readonly_and_does_not_leak_settings" time="0.368" /><testcase classname="tests.test_report_export_job" name="test_export_job_reads_selected_user_and_raw_dates_from_database[False]" time="1.306" /><testcase classname="tests.test_report_export_job" name="test_export_job_reads_selected_user_and_raw_dates_from_database[True]" time="1.237" /><testcase classname="tests.test_report_export_job" name="test_page_date_cancel_does_not_read_database_and_export_busy_survives_refresh" time="0.581" /><testcase classname="tests.test_report_export_job" name="test_page_export_stays_responsive_during_slow_database_read" time="1.060" /><testcase classname="tests.test_report_excel_export" name="test_cloud_reports_export_writes_six_wide_safe_views" time="0.606" /><testcase classname="tests.test_report_excel_export" name="test_excel_can_export_cost_before_waste_adjustment" time="0.486" /><testcase classname="tests.test_report_excel_export" name="test_daily_view_has_one_row_per_date_even_with_multiple_printers" time="0.772" /><testcase classname="tests.test_report_excel_export" name="test_legacy_sheets_separate_replacement_printers_in_same_slot" time="0.588" /><testcase classname="tests.test_report_excel_export" name="test_excel_export_neutralizes_untrusted_formula_strings" time="0.679" /><testcase classname="tests.test_report_excel_export" name="test_user_cost_uses_each_days_evidence_and_keeps_missing_cost_unavailable" time="1.102" /><testcase classname="tests.test_report_excel_export" name="test_excel_cell_writer_preserves_program_authored_formula" time="0.120" /></testsuite></testsuites>

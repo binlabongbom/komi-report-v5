@@ -376,7 +376,7 @@ class SummaryServiceTests(unittest.TestCase):
 
         summary = build_overview_summary(
             "current",
-            now=datetime(2026, 7, 16, 12, 0).astimezone(),
+            now=datetime.fromisoformat("2026-07-16T12:00:00+07:00"),
         )
 
         self.assertEqual(summary["metrics"]["total"], 0)

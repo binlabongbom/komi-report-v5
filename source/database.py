@@ -7,11 +7,13 @@ import hashlib
 import hmac
 import json
 import logging
+import os
 import shutil
 import sqlite3
 import tempfile
 import threading
 from contextlib import closing, contextmanager
+from contextvars import ContextVar
 from datetime import datetime
 from pathlib import Path
 
@@ -39,6 +41,11 @@ log = logging.getLogger(__name__)
 # path ของ database (อาจเปลี่ยนได้จากหน้า ตั้งค่า)
 # ──────────────────────────────────────────────────────────
 _db_path = DB_PATH
+_report_read_path = ContextVar('report_read_path', default=None)
+_report_read_cancelled = ContextVar('report_read_cancelled', default=None)
+_report_read_components = ContextVar('report_read_components', default=None)
+_report_read_connection = ContextVar('report_read_connection', default=None)
+_report_read_yield_at = ContextVar('report_read_yield_at', default=0.0)
 _read_cache_lock = threading.RLock()
 _all_readings_cache: dict[int, list] = {}
 _monthly_summary_cache: dict[int, dict] = {}
@@ -56,6 +63,29 @@ def _clear_read_caches(slot: int | None = None):
 
 
 _USAGE_RESET_TABLES = (
+    "peer_billing_deliveries",
+    "report_detail_revisions",
+    "report_revision_subject_periods",
+    "peer_billing_amendments",
+    "web_catchup_progress",
+    "shared_report_days",
+    "shared_report_months",
+    "shared_report_events",
+    "slot_meter_epoch_outbox",
+    "slot_meter_maxima",
+    "slot_meter_epoch_state",
+    "slot_meter_assignments",
+    "slot_meter_heads",
+    "slot_meter_epochs",
+    "reader_job_requests",
+    "reader_jobs",
+    "archived_subject_periods",
+    "report_archive_days",
+    "report_detail_archives",
+    "web_observation_receipts",
+    "web_observation_outbox",
+    "web_observations",
+    "web_observation_archives",
     "legacy_history_items",
     "billing_ledger",
     "daily_subject_records",
@@ -68,6 +98,7 @@ _USAGE_RESET_TABLES = (
 )
 
 _USAGE_RESET_SEQUENCES = (
+    "report_detail_revisions",
     "legacy_history_items",
     "billing_ledger",
     "daily_subject_records",
@@ -80,6 +111,38 @@ _USAGE_RESET_SEQUENCES = (
 )
 
 _FACTORY_RESET_TABLES = (
+    'lan_evidence_origins',
+    'lan_peer_members',
+    'lan_peer_group',
+    "peer_billing_deliveries",
+    "report_detail_revisions",
+    "report_revision_subject_periods",
+    "peer_billing_amendments",
+    "web_catchup_progress",
+    "shared_report_days",
+    "shared_report_months",
+    "shared_report_events",
+    "slot_meter_epoch_outbox",
+    "slot_meter_maxima",
+    "slot_meter_epoch_state",
+    "slot_meter_assignments",
+    "slot_meter_heads",
+    "slot_meter_epochs",
+    "reader_authority_state",
+    "reader_job_requests",
+    "reader_jobs",
+    "archived_subject_periods",
+    "report_archive_days",
+    "report_detail_archives",
+    "web_observation_receipts",
+    "web_observation_outbox",
+    "web_observations",
+    "web_observation_archives",
+    "web_observation_state",
+    "peer_settings_deliveries",
+    "peer_settings_events",
+    "peer_settings_state",
+    "peer_settings_revisions",
     "registration_attempt_history",
     "registration_outbox",
     "registration_profile",
@@ -104,6 +167,7 @@ _FACTORY_RESET_TABLES = (
 )
 
 _FACTORY_RESET_SEQUENCES = (
+    "report_detail_revisions",
     "registration_attempt_history",
     "legacy_history_items",
     "billing_ledger",
@@ -121,6 +185,9 @@ _FACTORY_RESET_SEQUENCES = (
 
 
 def _create_billing_ledger_immutability_triggers(connection: sqlite3.Connection) -> None:
+    if connection.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='report_detail_revisions'").fetchone():
+        from migrations import create_detail_revision_guards
+        create_detail_revision_guards(connection)
     connection.execute(
         """CREATE TRIGGER IF NOT EXISTS billing_ledger_no_update
            BEFORE UPDATE ON billing_ledger
@@ -155,7 +222,53 @@ def set_db_path(path: Path):
     _clear_read_caches()
 
 def get_db_path():
-    return _db_path
+    return _report_read_path.get() or _db_path
+
+
+@contextmanager
+def report_read_database(path, *, cancelled=None):
+    """Pin background report reads to one database without switching the app.
+
+    One read-only connection is reused within this worker request. Settings
+    bypass the application's shared cache; no connection is shared by threads.
+    The context is private to the worker and is reset even after cancellation.
+    """
+    token = _report_read_path.set(Path(path).resolve())
+    cancel_token = _report_read_cancelled.set(cancelled)
+    cache_token = _report_read_components.set({})
+    connection = [None, False]
+    connection_token = _report_read_connection.set(connection)
+    yield_token = _report_read_yield_at.set(0.0)
+    try:
+        yield
+    finally:
+        if connection[0] is not None:
+            connection[0].close()
+        _report_read_connection.reset(connection_token)
+        _report_read_cancelled.reset(cancel_token)
+        _report_read_components.reset(cache_token)
+        _report_read_yield_at.reset(yield_token)
+        _report_read_path.reset(token)
+
+
+def report_read_checkpoint():
+    """Make Python projection loops as cancellable/responsive as SQLite reads."""
+    event = _report_read_cancelled.get()
+    if event is None:
+        return
+    from concurrent.futures import CancelledError
+    from time import monotonic, sleep
+    if event.is_set():
+        raise CancelledError()
+    now = monotonic()
+    if now - _report_read_yield_at.get() >= .02:
+        sleep(.001)
+        _report_read_yield_at.set(monotonic())
+
+
+def report_read_components():
+    """Optional request-local cache, discarded when the report worker exits."""
+    return _report_read_components.get()
 
 
 def copy_database_for_first_run(destination: Path) -> Path:
@@ -189,15 +302,31 @@ def copy_database_for_first_run(destination: Path) -> Path:
             result = target_conn.execute("PRAGMA integrity_check").fetchone()
             if not result or str(result[0]).casefold() != "ok":
                 raise sqlite3.DatabaseError("Database copy failed integrity check")
-        temporary_path.replace(target)
+        from tools.db_recovery import copy_referenced_archives
+        copy_referenced_archives(temporary_path, source.parent, target.parent)
+        os.link(temporary_path, target)
+        temporary_path.unlink()
     except Exception:
         if temporary_path is not None:
             temporary_path.unlink(missing_ok=True)
         raise
     return target
 
+def read_only_connection(path):
+    """A worker-safe read connection with cooperative SQL cancellation."""
+    scoped = Path(path).resolve()
+    conn = sqlite3.connect(scoped.as_uri() + '?mode=ro', uri=True, timeout=2)
+    cancelled = _report_read_cancelled.get()
+    if cancelled is not None:
+        conn.set_progress_handler(lambda: int(cancelled.is_set()), 1000)
+    return conn
+
+
 def _conn():
     """[V4.5] เปิด connection + เปิด foreign_keys + WAL mode"""
+    scoped = _report_read_path.get()
+    if scoped is not None:
+        return read_only_connection(scoped)
     Path(_db_path).parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(_db_path, timeout=30)
     conn.execute("PRAGMA foreign_keys = ON")
@@ -210,6 +339,28 @@ def _conn():
 @contextmanager
 def _open(commit: bool = True):
     """[V4.5] context manager — ensure connection close + transaction rollback on error"""
+    connection = _report_read_connection.get()
+    if connection is not None and not connection[1]:
+        # Every SELECT used to reopen SQLite (including its schema and page
+        # cache). A report can make thousands of these calls. Keep the handle
+        # only until the read request exits; mode=ro still rejects all writes.
+        if connection[0] is None:
+            connection[0] = read_only_connection(_report_read_path.get())
+        conn = connection[0]
+        row_factory, text_factory = conn.row_factory, conn.text_factory
+        connection[1] = True
+        try:
+            yield conn
+        finally:
+            # Readers may begin an explicit transaction. Preserve the old
+            # per-_open boundary so the next reader can begin its own one.
+            if conn.in_transaction:
+                conn.rollback()
+            conn.row_factory, conn.text_factory = row_factory, text_factory
+            cancelled = _report_read_cancelled.get()
+            conn.set_progress_handler((lambda: int(cancelled.is_set())) if cancelled is not None else None, 1000)
+            connection[1] = False
+        return
     conn = _conn()
     try:
         yield conn
@@ -490,9 +641,29 @@ def init_db():
 _cfg_cache = None
 _cfg_lock = threading.RLock()  # [V4.5] thread-safe cache
 
+@contextmanager
+def config_write_transaction():
+    """Keep cached readers out until an external settings transaction commits.
+
+    Callers use this connection for all writes, including their audit records.
+    Invalidate on either outcome so a rolled-back value cannot survive in cache.
+    """
+    global _cfg_cache
+    with _cfg_lock:
+        try:
+            with _open() as connection:
+                connection.execute("BEGIN IMMEDIATE")
+                yield connection
+        finally:
+            _cfg_cache = None
+
 def get_cfg(key: str, default: str = "") -> str:
     """อ่านค่า setting จาก database (ใช้ cache ลด I/O) — thread-safe"""
     global _cfg_cache
+    if _report_read_path.get() is not None:
+        with _open(commit=False) as conn:
+            row = conn.execute('SELECT value FROM settings WHERE key=?', (key,)).fetchone()
+        return row[0] if row else default
     with _cfg_lock:
         if _cfg_cache is None:
             with _open(commit=False) as c:
@@ -536,13 +707,8 @@ def get_price(key: str, slot: int = -1) -> float:
 
 def get_billing_day() -> int:
     """[V4.5] วันตัดรอบบิล (1-31) — clamp ป้องกันค่า invalid"""
-    raw = get_cfg("billing_day", "25") or "25"
-    try:
-        v = int(raw)
-    except (ValueError, TypeError):
-        log.warning("invalid billing_day %r, fallback to 25", raw)
-        v = 25
-    return max(1, min(31, v))
+    from services.billing_periods import effective_billing_day
+    return effective_billing_day(get_cfg("billing_day", "25"))
 
 def get_waste_paper_pct() -> float:
     """% กระดาษเสีย (0-100) — ค่าเริ่มต้น 5.0"""
@@ -876,6 +1042,19 @@ def _registration_secret_references(
     if runtime and runtime[0] and str(runtime[0]).strip():
         installation_ids.add(str(runtime[0]).strip())
 
+    group = connection.execute('SELECT document FROM lan_peer_group WHERE singleton=1').fetchone()
+    if group:
+        try:
+            document = json.loads(group[0])
+            identity, group_id = document['local_installation_id'], document['group_id']
+            if (isinstance(identity, str) and identity.strip() and len(identity) <= 256
+                    and isinstance(group_id, str) and len(group_id) == 64
+                    and all(c in '0123456789abcdef' for c in group_id)):
+                installation_ids.add(identity)
+                references.add(f'komi-report-v5:lan:{identity}:{group_id}')
+        except (TypeError, ValueError, KeyError):
+            pass  # A corrupt document cannot name arbitrary OS vault entries.
+
     for installation_id in installation_ids:
         references.add(installation_token_reference(installation_id))
         references.add(installation_private_key_reference(installation_id))
@@ -909,11 +1088,14 @@ def reset_usage_data():
             staged_cache = _stage_runtime_cache()
             c.execute("DROP TRIGGER IF EXISTS billing_ledger_no_update")
             c.execute("DROP TRIGGER IF EXISTS billing_ledger_no_delete")
+            c.execute("DROP TRIGGER IF EXISTS report_detail_revisions_no_update")
+            c.execute("DROP TRIGGER IF EXISTS report_detail_revisions_no_delete")
             _delete_rows_and_sequences(
                 c,
                 tables=_USAGE_RESET_TABLES,
                 sequences=_USAGE_RESET_SEQUENCES,
             )
+            c.execute("DELETE FROM web_observation_state WHERE key='catchup_stream'")
             _create_billing_ledger_immutability_triggers(c)
             validate_current_schema(c)
     except Exception:
@@ -974,6 +1156,8 @@ def _factory_reset_v5_locked(*, registration_secret_store=None) -> None:
             staged_cache = _stage_runtime_cache()
             c.execute("DROP TRIGGER IF EXISTS billing_ledger_no_update")
             c.execute("DROP TRIGGER IF EXISTS billing_ledger_no_delete")
+            c.execute("DROP TRIGGER IF EXISTS report_detail_revisions_no_update")
+            c.execute("DROP TRIGGER IF EXISTS report_detail_revisions_no_delete")
             _delete_rows_and_sequences(
                 c,
                 tables=_FACTORY_RESET_TABLES,
@@ -1132,19 +1316,6 @@ def get_config_log(limit: int = 100) -> list:
              "new_value": r[3], "changed_at": r[4]} for r in rows]
 
 
-def get_latest_read_date() -> str:
-    """[V4.5] คืนค่า read_date ล่าสุด — เรียงด้วย read_date_iso เพื่อให้ถูก format
-    fallback ไปเรียงด้วย imported_at ถ้า ISO ว่าง"""
-    with _open(commit=False) as c:
-        # ใช้ read_date_iso เป็นหลัก (เรียง string ISO ได้ถูก)
-        row = c.execute("""SELECT read_date FROM readings
-                           WHERE read_date_iso IS NOT NULL AND read_date_iso != ''
-                           ORDER BY read_date_iso DESC, id DESC LIMIT 1""").fetchone()
-        if row:
-            return row[0]
-        # fallback: เรียงตาม imported_at (เครื่อง record ล่าสุดที่ import)
-        row = c.execute("SELECT read_date FROM readings ORDER BY imported_at DESC, id DESC LIMIT 1").fetchone()
-    return row[0] if row else None
 
 
 def get_activity_log(limit: int = 200) -> list:

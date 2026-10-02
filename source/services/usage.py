@@ -161,17 +161,19 @@ def latest_counters(slot: int, *, today: date | None = None) -> dict[str, float]
                )
                WHERE d.device_slot=? ORDER BY d.record_date DESC""",
             (slot,),
-        ).fetchall()
-    for closing_json, source_json, ledger_identity in rows:
-        frozen_identity = _source_identity(source_json) or str(ledger_identity or "")
-        if frozen_identity != configured_identity:
-            continue
-        try:
-            counters = json.loads(closing_json)
-        except (TypeError, json.JSONDecodeError):
-            continue
-        if isinstance(counters, dict):
-            return {key: float(value) for key, value in counters.items()}
+        )
+        # Stop at the first valid snapshot for this physical device. Loading
+        # every large closing/source JSON in five years blocked device cards.
+        for closing_json, source_json, ledger_identity in rows:
+            frozen_identity = _source_identity(source_json) or str(ledger_identity or "")
+            if frozen_identity != configured_identity:
+                continue
+            try:
+                counters = json.loads(closing_json)
+            except (TypeError, json.JSONDecodeError):
+                continue
+            if isinstance(counters, dict):
+                return {key: float(value) for key, value in counters.items()}
     return {}
 
 

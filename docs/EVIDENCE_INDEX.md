@@ -1,0 +1,48 @@
+# หลักฐานการพัฒนาและเอกสาร KOMI
+
+## งานรุ่น 5.2.12
+
+- [แผนพัฒนาและสถานะจริง](V5_2_12_WORK_PLAN.md)
+- [ขั้นตอนทดสอบจาก source](V5_2_12_SOURCE_QA.md)
+- [HTTPS/คิวส่ง/รับค่าร่วมและข้อจำกัด](V5_2_12_PEER_TRANSPORT.md)
+- [คู่มือ source และภาพหน้าจอข้อมูลจำลอง](CUSTOMER_GUIDE_V5_2_12_DRAFT.md)
+- [คู่มือ source PDF — ตรวจภาพครบ 10 หน้า](customer-guide/KOMI_Report_5.2.12_Source_Guide.pdf)
+- [การทดลองข้อมูลห้าปี](qa/v5.2.12/FIVE_YEAR_BENCHMARK.md)
+- [ผลหลัง Archive](qa/v5.2.12/five-year-archive.json)
+- [ผลวัด Agent ขณะอ่านข้อมูลจำลอง](V5_2_12_ACTIVE_FOOTPRINT.json)
+- [ตรวจ source หลัก 88 ไฟล์ — 818 passed](qa/v5.2.12/source-regression.json)
+- [ตรวจ source อีก 79 ไฟล์ — 561 passed](qa/v5.2.12/additional-source-regression.json)
+- [ผลทดสอบส่งออก Excel สำหรับ 90 ผู้ใช้](qa/v5.2.12/EXCEL_EXPORT_BENCHMARK.md)
+- [ตรวจงาน Excel และส่วนเกี่ยวข้อง 17 ไฟล์ — 150 passed](qa/v5.2.12/excel-export-regression.json)
+- [ตรวจท้ายรอบ Excel/คู่มือ 4 ไฟล์ — 28 passed](qa/v5.2.12/source-followup-regression.json)
+- [ตรวจ popup ความคืบหน้า/ส่งออก/คู่มือ 5 ไฟล์ — 47 passed](qa/v5.2.12/excel-popup-regression.json)
+
+รอบ Excel ใช้ผลล่าสุดต่อไฟล์ **151 passed / 17 ไฟล์** ไม่บวกผลซ้อน
+ฐานก่อนรอบนี้ที่ commit `8b3e31b` รวม 167 ไฟล์ ผ่าน 1,380 tests ไม่มี failed/skipped
+ไม่ได้รันชุดเต็มซ้ำหลังแก้ Excel รายละเอียด version gate/ขอบเขตอยู่ใน SOURCE_QA
+ผลชุดเก่าและความล้มเหลว Web API รอบก่อนดูผ่าน Git commit `26f1fc6`
+ผลรอบ schema 29 ก่อนเพิ่มฉบับแก้รายละเอียดดู commit `2046da0`
+
+พร้อมก่อน build ตามขอบเขตที่เลื่อน Host/production membership และการเปิด Sync สมาชิกจริง
+ไปเวอร์ชันหน้า ยังไม่ได้ build หรือทดสอบแพ็กเกจจริงบนเครื่องนี้/Proxmox VM105
+
+จำนวนทดสอบในบันทึกแต่ละชุดอาจซ้อนกัน ต้องดูขอบเขตและ commit ที่เกี่ยวข้อง
+การผ่าน source tests ไม่ใช่ผลทดสอบตัวติดตั้ง เครื่องพิมพ์จริง หรือการอนุมัติ release
+
+## หลักฐานรุ่นก่อน
+
+ย้ายเอกสารต่อไปนี้ออกจากรายการงานปัจจุบันโดยคงเนื้อหาเดิมไว้ครบ:
+
+- [การตรวจความพร้อม 5 สิงหาคม 2569](archive/pre-v5.2.12/PRODUCTION_READINESS_REVIEW_2026-08-05.md)
+- [การเชื่อมต่อเครื่องพิมพ์ 4 กันยายน 2569](archive/pre-v5.2.12/UAT_PRINTER_CONNECTIVITY_2026-09-04.md)
+
+ตรวจ remote แบบอ่านอย่างเดียวเมื่อ 18 กันยายน 2569: tag `v5.2.10` บน GitHub
+ตรงกับ local ที่ `9b88b7e437471ae13517f0dc90d2def5c0b646f6` และ blob ของสองไฟล์
+ตรงกับไฟล์ก่อนย้าย จึงย้อนดูต้นฉบับได้ทั้ง Git และโฟลเดอร์ archive ไม่ใช้ผลเก่า
+เป็นหลักฐานว่าพฤติกรรม Sync ใหม่ของ 5.2.12 ผ่านแล้ว
+
+ยังคง `V5_2_11_CANDIDATE.md` เพราะไม่ได้เป็น blob เดียวกับ tag ที่ตรวจยืนยันนี้
+และยังคง `CUSTOMER_GUIDE_V5_2.md` กับไฟล์คู่มือรุ่นก่อน เพราะเครื่องมือจัดชุดส่งมอบ
+ยังอ้างถึงอยู่ ต้องแทนด้วยคู่มือใหม่ที่ตรวจครบก่อน build การลบทันทีจะทำให้ขั้นตอน
+ส่งมอบขาดไฟล์ ส่วนข้อมูลจำลองขนาดใหญ่และภาพชั่วคราวใน `outputs/` ถูก ignore
+อยู่แล้ว ไม่เพิ่มเข้า Git และไม่ลบหลักฐานที่ยังใช้ตรวจงานรุ่นนี้

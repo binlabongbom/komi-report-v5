@@ -6,6 +6,7 @@ import sys
 from pathlib import Path
 
 from tools.launch_doctor import DESKTOP_FILES, _source_fingerprint
+from komi_version import APP_VERSION
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 SOURCE_ROOT = PROJECT_ROOT / "source"
@@ -54,7 +55,7 @@ def test_launch_doctor_reports_the_real_canonical_source():
     )
     payload = json.loads(result.stdout)
     assert Path(payload["source_root"]).samefile(SOURCE_ROOT)
-    assert payload["version"] == "5.2.5"
+    assert payload["version"] == APP_VERSION
     assert len(payload["source_id"]) == 64
 
 
@@ -88,16 +89,17 @@ def test_web_launchers_execute_the_canonical_onedrive_source():
     assert '"$SOURCE_ROOT/tools/prepare_web_runtime.py"' in mac
     assert "Library/Application Support/KOMI Report V5/web-runtime" in mac
 
-    assert 'set "WEB_SOURCE=%PROJECT_ROOT%\\web"' in windows
-    assert '"%SOURCE_ROOT%\\tools\\prepare_web_runtime.py"' in windows
-    assert "%LOCALAPPDATA%\\KOMI Report V5\\web-runtime" in windows
-    assert 'pushd "%~dp0"' in windows
+    # Windows delegates to the desktop, which owns the one Web service.
+    assert 'call "%~dp0START_KOMI_REPORT.cmd" web' in windows
+    desktop = _text("START_KOMI_REPORT.cmd")
+    assert 'set "APP_ARGS=--open-web"' in desktop
+    assert '"%SOURCE_ROOT%\\app.py" %APP_ARGS%' in desktop
 
     assert 'WEB_SOURCE="$PROJECT_ROOT/web"' in linux
     assert '"$SOURCE_ROOT/tools/prepare_web_runtime.py"' in linux
     assert "${XDG_DATA_HOME:-$HOME/.local/share}" in linux
 
-    for launcher in (mac, windows, linux):
+    for launcher in (mac, linux):
         assert "source/.venv" not in launcher
         assert "release/" not in launcher
         assert "launch_doctor.py" in launcher

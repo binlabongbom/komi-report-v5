@@ -1,0 +1,46 @@
+{
+  "synthetic": true,
+  "mode": "evidence",
+  "started_at": "2026-09-19T07:28:46.712763",
+  "python": "3.14.7 (tags/v3.14.7:823f032, Aug  5 2026, 10:51:32) [MSC v.1944 64 bit (AMD64)]",
+  "platform": "win32",
+  "measurements": [
+    {
+      "name": "evidence_pdf_128days",
+      "seconds_until_ready": 18.899372400002903,
+      "action_seconds": 18.899333600005775,
+      "heartbeat_count": 3,
+      "max_event_loop_gap_ms": 18899.560400001064,
+      "gaps_above_100ms": 1,
+      "before": {
+        "working_set_bytes": 52142080,
+        "private_bytes": 28188672,
+        "peak_working_set_bytes": 52142080,
+        "cpu_seconds": 1.140625
+      },
+      "after": {
+        "working_set_bytes": 59572224,
+        "private_bytes": 34250752,
+        "peak_working_set_bytes": 144920576,
+        "cpu_seconds": 20.015625
+      }
+    }
+  ],
+  "blocked_operations": [],
+  "complete": true,
+  "scope": "Source/offscreen; no Host, real network, Web service, installer or release build",
+  "copy_migration_init_seconds": 0.06584440000005998,
+  "copy_schema": 30,
+  "fixture": {
+    "days": 128,
+    "reads_per_day": 32,
+    "points": 4096,
+    "intervals": 4095,
+    "counters": 1,
+    "format": "pdf"
+  },
+  "in_progress": null,
+  "validation": "PDF header and non-empty output; visual pagination not audited here",
+  "output_bytes": 1977227,
+  "temporary_copy_cleaned": true
+}

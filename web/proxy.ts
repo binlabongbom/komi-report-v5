@@ -4,14 +4,28 @@ import { verifySessionToken } from "./lib/session";
 
 export default async function proxy(request: NextRequest) {
   const path = request.nextUrl.pathname;
+  if (path === "/login" && passwordlessReportsEnabled() &&
+      (request.method === "GET" || request.method === "HEAD") &&
+      request.nextUrl.searchParams.get("admin") !== "1") {
+    const reports = request.nextUrl.clone();
+    reports.pathname = "/";
+    reports.search = "";
+    return NextResponse.redirect(reports);
+  }
   if (
     path === "/login" ||
     path.startsWith("/auth/session") ||
     path.startsWith("/_next/") ||
     path === "/favicon.ico" ||
+    path === "/icon.png" ||
+    path === "/icon.svg" ||
     path === "/api/v1/peer/discovery" ||
+    (path === "/api/v1/peer/contact" && request.method === "GET") ||
+    (path === "/api/v3/peer/enrollment" && request.method === "POST") ||
     path === "/api/v1/peer/claim" ||
-    path === "/api/v1/peer/setup-snapshot"
+    path === "/api/v1/peer/setup-snapshot" ||
+    path === "/api/v2/peer/settings-history" ||
+    path === "/api/v2/peer/settings-history/page"
   ) {
     return NextResponse.next();
   }

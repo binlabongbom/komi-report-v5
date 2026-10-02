@@ -20,5 +20,5 @@ def test_qt_runtime_floor_is_aligned_across_dependency_authorities() -> None:
     assert "PyQt6-Charts~=6.11.0" in requirements
     assert locked_versions["pyqt6"] == "6.11.0"
     assert locked_versions["pyqt6-charts"] == "6.11.0"
-    assert locked_versions["pyqt6-qt6"] == "6.11.1"
-    assert locked_versions["pyqt6-charts-qt6"] == "6.11.1"
+    assert locked_versions["pyqt6-qt6"] == "6.11.2"
+    assert locked_versions["pyqt6-charts-qt6"] == "6.11.2"

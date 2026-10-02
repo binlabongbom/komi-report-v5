@@ -8,16 +8,19 @@ billing formula.
 from __future__ import annotations
 
 import logging
+import os
 import re
-from collections import defaultdict
+from collections import OrderedDict, defaultdict
 from contextlib import asynccontextmanager
 from dataclasses import asdict
 from datetime import date, datetime, time, timedelta
 from typing import Literal
 from uuid import uuid4
+from threading import Lock
+from time import monotonic
 
 from fastapi import FastAPI, HTTPException, Query, Request
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field, RootModel
 
 from config import PACKAGE_VERSION
 from database import get_cfg, init_db
@@ -28,6 +31,8 @@ from services.monthly_history import HistoryGranularity, load_usage_history
 from services.polling import PollingPolicy
 from services.pricing import PricingRepository
 from services.report_scope import report_slots
+from services.report_subject_names import build_subject_name_index
+from services.report_user_counters import load_user_counter_history
 from services.reporting_facade import ReportReadService
 from services.peer_sync_authorization import (
     PeerSyncAuthorizationError,
@@ -45,6 +50,31 @@ from services.usage import current_device_identity
 
 log = logging.getLogger(__name__)
 MAX_PAGE_LIMIT = 500
+_user_pages_lock = Lock()
+_user_pages: OrderedDict[str, tuple[float, tuple[date, date] | None, list[dict]]] = OrderedDict()
+_USER_PAGE_TTL = 120.0
+
+
+def _user_page_snapshot(token: str | None, selected, payload):
+    """Keep paged report rows from one immutable read for a bounded interval."""
+    now = monotonic()
+    with _user_pages_lock:
+        for key, (created, _, _) in tuple(_user_pages.items()):
+            if now - created > _USER_PAGE_TTL:
+                _user_pages.pop(key, None)
+        if token:
+            saved = _user_pages.get(token)
+            if saved is None:
+                raise HTTPException(status_code=410, detail="Report page expired; refresh the report")
+            if selected is not None and selected != saved[1]:
+                raise HTTPException(status_code=400, detail="Report period does not match page")
+            _user_pages.move_to_end(token)
+            return token, saved[1], saved[2]
+        token = uuid4().hex
+        _user_pages[token] = (now, selected, payload)
+        while len(_user_pages) > 4:
+            _user_pages.popitem(last=False)
+        return token, selected, payload
 
 
 class ApiModel(BaseModel):
@@ -81,6 +111,23 @@ class PeerDiscoveryResponse(ApiModel):
     company_name: str
     printer_count: int
     version: str
+
+
+class PeerContactDocument(ApiModel):
+    format: Literal['komi.lan.member.v1']
+    group_id: str = Field(pattern='^[0-9a-f]{64}$')
+    member_id: str = Field(min_length=1, max_length=256)
+    origin: str = Field(min_length=1, max_length=256)
+    public_key: str = Field(min_length=43, max_length=44)
+    certificate: str = Field(min_length=1, max_length=16384)
+    url: str = Field(min_length=1, max_length=300)
+    generation: int = Field(ge=1, lt=2**63)
+
+
+class PeerContactResponse(ApiModel):
+    document: PeerContactDocument
+    signature: str = Field(min_length=86, max_length=88)
+    proof: str = Field(pattern='^[0-9a-f]{64}$')
 
 
 class PeerPriceOut(ApiModel):
@@ -138,12 +185,84 @@ class PeriodOut(ApiModel):
     end: str
 
 
+class PeerSharedOrganizationOut(ApiModel):
+    company_name: str
+    first_started_at: str
+
+
+class PeerSharedSettingsOut(ApiModel):
+    organization: PeerSharedOrganizationOut
+    settings: PeerSettingsOut
+    devices: list[PeerDeviceOut]
+
+
+class PeerSharedDeviceOut(ApiModel):
+    slot: int
+    name: str
+    host: str
+    model: str
+    serial: str
+    tls_mode: str
+    tls_fingerprint: str
+
+
+class PeerDatedPriceOut(PeerPriceOut):
+    # Preserve JSON number representation: it participates in the revision hash.
+    a3_color: float | int
+    a3_bw: float | int
+    a4_color: float | int
+    a4_bw: float | int
+    slot: int
+    effective_date: str
+
+
+class PeerSharedSettingsV2Out(ApiModel):
+    format_version: Literal[2]
+    organization: PeerSharedOrganizationOut
+    settings: PeerSettingsOut
+    devices: list[PeerSharedDeviceOut]
+    price_history: list[PeerDatedPriceOut]
+
+
+class PeerSlotEpochReference(ApiModel):
+    slot: int = Field(ge=0, le=2)
+    epoch_id: str
+
+
+class PeerSharedSettingsV3Out(PeerSharedSettingsV2Out):
+    format_version: Literal[3]
+    slot_epochs: list[PeerSlotEpochReference]
+
+
+class PeerSettingsRevisionOut(ApiModel):
+    parents: list[str]
+    payload: PeerSharedSettingsV3Out | PeerSharedSettingsV2Out | PeerSharedSettingsOut
+    actor: str
+    created_at: str
+    reason: str
+
+
+class PeerSettingsHistoryResponse(ApiModel):
+    contract: Literal["komi-peer-settings-history/v1"]
+    head: str
+    revisions: dict[str, PeerSettingsRevisionOut]
+
+
+class PeerSettingsPageResponse(ApiModel):
+    contract: Literal["komi-peer-settings-page/v1"]
+    head: str
+    offset: int
+    next_offset: int | None
+    revisions: dict[str, PeerSettingsRevisionOut]
+
+
 class PeriodListResponse(ApiModel):
     billing_day: int
     items: list[PeriodOut]
 
 
 class UsageOut(ApiModel):
+    remarks: list[str] = Field(default_factory=list)
     device_slot: int
     period_start: str
     period_end: str
@@ -264,6 +383,7 @@ class OverviewResponse(ApiModel):
 
 
 class HistoryItemOut(ApiModel):
+    remarks: list[str] = Field(default_factory=list)
     period_start: str
     period_end: str
     usage: float
@@ -298,6 +418,8 @@ class UserOut(ApiModel):
     subject_type: str
     subject_id: str
     subject_name: str
+    report_user_key: str = ""
+    report_device_identity: str = ""
     usage: float
     latest_total: float
     needs_review: bool
@@ -311,6 +433,7 @@ class UserReportResponse(ApiModel):
     limit: int
     offset: int
     next_offset: int | None
+    snapshot_token: str
     items: list[UserOut]
 
 
@@ -374,7 +497,22 @@ class SettingsResponse(ApiModel):
 async def lifespan(_app: FastAPI):
     configure_logging()
     init_db()
-    yield
+    responder = None
+    if os.environ.get("KOMI_DISCOVERY_DISABLED") != "1" and os.environ.get("KOMI_WEB_PORT"):
+        from database import _open
+        from services.lan_discovery import DiscoveryResponder
+        from services.secondary_setup import _active_ipv4_subnets
+        with _open(commit=False) as conn:
+            ready = bool(get_cfg("company_name", "") and conn.execute(
+                "SELECT 1 FROM devices WHERE enabled=1 LIMIT 1").fetchone())
+        responder = DiscoveryResponder(lambda: [network for _, network in _active_ipv4_subnets()],
+            https_port=lambda: os.environ["KOMI_WEB_PORT"], ready=lambda: ready)
+        responder.start()
+    try:
+        yield
+    finally:
+        if responder is not None:
+            responder.stop()
 
 
 app = FastAPI(
@@ -570,6 +708,20 @@ def peer_discovery() -> dict:
     return primary_discovery_payload()
 
 
+@app.get('/api/v1/peer/contact', response_model=PeerContactResponse)
+def peer_public_contact() -> dict:
+    """Public installation proof for already-enrolled LAN address recovery."""
+    from database import get_db_path
+    from services.peer_contact_discovery import public_contact
+    try:
+        packet = public_contact(get_db_path())
+    except (ValueError, TypeError, KeyError):
+        packet = None
+    if packet is None:
+        raise HTTPException(status_code=404, detail='Peer contact unavailable')
+    return packet
+
+
 def _peer_requester_ip(request: Request) -> str:
     """Return the address injected by the local HTTPS edge, not a client hint."""
 
@@ -598,16 +750,121 @@ def peer_claim(request: Request, body: PeerClaimRequest) -> dict:
 def peer_setup_snapshot(request: Request) -> dict:
     """Consume one approved capability before returning the allow-list."""
 
+    _authorize_peer_snapshot(request)
+    return primary_setup_snapshot()
+
+
+class PeerEnrollmentRequest(ApiModel):
+    operation: Literal['begin', 'settings', 'origins', 'epoch', 'finish']
+    data: dict
+
+
+class PeerEnrollmentInvitation(ApiModel):
+    format: Literal['komi.lan.enrollment.v1']
+    group_id: str
+    company: str
+    primary_id: str
+    capability: str
+
+
+class PeerEnrollmentStart(ApiModel):
+    invitation: PeerEnrollmentInvitation
+    source: PeerContactResponse
+    head: str
+
+
+class PeerEnrollmentOrigins(ApiModel):
+    contacts: list[PeerContactResponse]
+    after: str
+    more: bool
+
+
+class PeerEnrollmentEpoch(ApiModel):
+    # Signed/hash-addressed documents retain their JSON number representation.
+    # SlotEpochExchange validates their exact schema and proof before export.
+    epoch: dict[str, object]
+    parent_evidence: list[dict[str, object]]
+
+
+class PeerEnrollmentReceipt(ApiModel):
+    member_id: str
+    committed: Literal[True]
+
+
+class PeerEnrollmentResponse(RootModel[PeerEnrollmentStart | PeerSettingsPageResponse |
+        PeerEnrollmentOrigins | PeerEnrollmentEpoch | PeerEnrollmentReceipt]):
+    pass
+
+
+@app.post('/api/v3/peer/enrollment', response_model=PeerEnrollmentResponse)
+def peer_enrollment(request: Request, body: PeerEnrollmentRequest) -> dict:
+    from services.peer_enrollment import EnrollmentSource
+    from services.initial_slot_baselines import InitialBaselineRequired
+    from services.peer_transport_factory import local_membership
+    try:
+        return EnrollmentSource(local_membership()).call(
+            request.headers.get(PEER_SYNC_TOKEN_HEADER, ''), _peer_requester_ip(request),
+            body.operation, body.data)
+    except (PermissionError, PeerSyncAuthorizationError) as exc:
+        raise HTTPException(status_code=401, detail=str(exc)) from exc
+    except InitialBaselineRequired as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except (ValueError, KeyError, TypeError) as exc:
+        raise HTTPException(status_code=409, detail='เข้ากลุ่มยังไม่สำเร็จ ข้อมูลต้นทางเปลี่ยนหรือไม่สมบูรณ์ กรุณาดึงการตั้งค่าใหม่') from exc
+
+
+def _authorize_peer_snapshot(request: Request, *, history_transfer=False) -> None:
+
     token = request.headers.get(PEER_SYNC_TOKEN_HEADER, "")
     try:
         consume_pairing_token(
             token,
             _peer_requester_ip(request),
             get_cfg("installation_id", ""),
+            history_transfer=history_transfer,
         )
     except PeerSyncAuthorizationError as exc:
         raise HTTPException(status_code=401, detail=str(exc)) from exc
-    return primary_setup_snapshot()
+
+
+@app.get("/api/v2/peer/settings-history", response_model=PeerSettingsHistoryResponse)
+def peer_settings_history(request: Request) -> dict:
+    """Versioned history through the existing single-use approved capability."""
+    from services.peer_settings_history import SettingsHistory
+
+    _authorize_peer_snapshot(request)
+    history = SettingsHistory()
+    try:
+        history.observe_current()
+        return history.export()
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@app.get("/api/v2/peer/settings-history/page", response_model=PeerSettingsPageResponse)
+def peer_settings_history_page(request: Request, head: str | None = None, offset: int = 0, limit: int = 64) -> dict:
+    from services.peer_settings_history import SettingsHistory
+    from services.peer_sync_authorization import history_transfer_head
+    token = request.headers.get(PEER_SYNC_TOKEN_HEADER, "")
+    requester, installation = _peer_requester_ip(request), get_cfg("installation_id", "")
+    try:
+        bound_head = history_transfer_head(token, requester, installation)
+    except PeerSyncAuthorizationError as exc:
+        if head is not None or offset != 0:
+            raise HTTPException(status_code=401, detail=str(exc)) from exc
+        _authorize_peer_snapshot(request, history_transfer=True)
+        bound_head = ""
+    if head is not None and head != bound_head:
+        raise HTTPException(status_code=401, detail="History transfer does not authorize this revision")
+    history = SettingsHistory()
+    try:
+        selected = bound_head or history.observe_current()
+        history_transfer_head(token, requester, installation, bind_head=selected)
+        return history.export_page(head=selected, offset=offset, limit=limit)
+    except PeerSyncAuthorizationError as exc:
+        raise HTTPException(status_code=401, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 @app.get("/api/v1/reports/periods", response_model=PeriodListResponse)
@@ -843,6 +1100,7 @@ def report_history(
             "provisional_cost_available": True,
             "device_identities": set(),
             "identities_by_slot": defaultdict(set),
+            "remarks": set(),
         }
     )
     for record in records:
@@ -872,6 +1130,7 @@ def report_history(
             and record.provisional_cost_available
         )
         item["device_identities"].add(record.device_identity)
+        item["remarks"].update(record.remarks)
         item["identities_by_slot"][record.device_slot].add(record.device_identity)
     items = [
             {
@@ -893,6 +1152,7 @@ def report_history(
                     values["provisional_cost_available"]
                 ),
                 "device_identities": sorted(values["device_identities"]),
+                "remarks": sorted(values["remarks"]),
                 "mixed_identity_slots": sorted(
                     slot
                     for slot, identities in values["identities_by_slot"].items()
@@ -911,27 +1171,45 @@ def report_users(
     period_end: date | None = None,
     limit: int = Query(default=100, ge=1, le=MAX_PAGE_LIMIT),
     offset: int = Query(default=0, ge=0),
+    snapshot_token: str | None = None,
 ) -> dict:
+    if snapshot_token:
+        requested = (period_start, period_end) if period_start and period_end else None
+        token, selected, payload = _user_page_snapshot(snapshot_token, requested, None)
+        return {
+            "period_start": selected[0].isoformat() if selected else None,
+            "period_end": selected[1].isoformat() if selected else None,
+            "snapshot_token": token,
+            **_page(payload, limit=limit, offset=offset),
+        }
     reports = _report_service()
-    records = reports.subjects()
-    available = sorted(
-        {(record.period_start, record.period_end) for record in records},
-        reverse=True,
-    )
     if period_start is not None and period_end is not None:
         selected = (period_start, period_end)
-    elif period_start is not None:
-        selected = next(
-            (period for period in available if period[0] == period_start),
-            None,
-        )
     else:
-        selected = available[0] if available else None
+        records = reports.subjects()
+        available = sorted(
+            {(record.period_start, record.period_end) for record in records},
+            reverse=True,
+        )
+        if period_start is not None:
+            selected = next(
+                (period for period in available if period[0] == period_start),
+                None,
+            )
+        else:
+            selected = available[0] if available else None
     items = (
         reports.subjects(period_start=selected[0], period_end=selected[1])
         if selected
         else ()
     )
+    # Resolve the full selection once, before any page is sliced. Subsequent
+    # pages reuse this payload so their names and grouping keys cannot drift.
+    counters = load_user_counter_history(
+        sorted({int(item.device_slot) for item in items}),
+        period_start=selected[0], period_end=selected[1], incremental=True,
+    ) if items else ()
+    names = build_subject_name_index(items, counters)
     payload = [
             {
                 "device_slot": item.device_slot,
@@ -940,7 +1218,9 @@ def report_users(
                 "device_serial_snapshot": item.device_serial_snapshot,
                 "subject_type": item.subject_type,
                 "subject_id": item.subject_id,
-                "subject_name": item.subject_name,
+                "subject_name": names.name(item),
+                "report_user_key": names.group_key(item),
+                "report_device_identity": names.key(item)[1],
                 "usage": item.period_usage,
                 "latest_total": item.latest_total,
                 "needs_review": item.needs_review,
@@ -948,9 +1228,11 @@ def report_users(
             }
             for item in items
         ]
+    token, selected, payload = _user_page_snapshot(None, selected, payload)
     return {
         "period_start": selected[0].isoformat() if selected else None,
         "period_end": selected[1].isoformat() if selected else None,
+        "snapshot_token": token,
         **_page(payload, limit=limit, offset=offset),
     }
 

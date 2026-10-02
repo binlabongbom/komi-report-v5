@@ -5,9 +5,11 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from dataclasses import replace
 from datetime import date
 
-from PyQt6.QtCore import QDate, QPoint, Qt
-from PyQt6.QtTest import QTest
-from PyQt6.QtWidgets import QApplication, QDateEdit, QPushButton
+import pytest
+from PyQt6.QtCharts import QStackedBarSeries
+from PyQt6.QtCore import QDate, QLocale, QPoint, Qt, QTimer
+from PyQt6.QtTest import QSignalSpy, QTest
+from PyQt6.QtWidgets import QApplication, QDateEdit, QPushButton, QTableView, QToolButton
 
 from services.device_config import DeviceConfig
 from services.monthly_history import MonthlyUsage
@@ -15,6 +17,116 @@ from services.raw_counter_history import RawCounterDailyRecord, UsageMeterBaseli
 from services.subject_history import SubjectPeriodUsage
 from ui.cloud_reports import USAGE_METRICS, CloudReportsWidget
 from widgets import FrozenLeftTable
+
+
+@pytest.mark.parametrize("field,target", [("start", QDate(2026, 8, 15)), ("end", QDate(2026, 10, 15))])
+def test_calendar_month_menu_and_day_click_allow_dates_outside_report_history(field, target):
+    qt_app = QApplication.instance() or QApplication([])
+    widget = CloudReportsWidget()
+    history = (("2026-09-01", "2026-09-30"),)
+    widget.set_periods(history, history[0])
+    widget.resize(1000, 720)
+    widget.show()
+    qt_app.processEvents()
+    QTest.qWait(20)
+    start, end = widget.period_edit_pairs[0]
+    editor = start if field == "start" else end
+    calendar = editor.calendarWidget()
+    calendar.setLocale(QLocale(QLocale.Language.English))
+    changed = QSignalSpy(widget.period_changed)
+    QTest.mouseClick(editor, Qt.MouseButton.LeftButton, pos=editor.rect().center())
+    qt_app.processEvents()
+    assert calendar.isVisible()
+    month_button = calendar.findChild(QToolButton, "qt_calendar_monthbutton")
+    assert month_button is not None
+    menu = month_button.menu()
+    assert menu is not None
+    interaction = {}
+
+    def choose_month():
+        # A native menu can enter a nested event loop. Record failures here;
+        # assertions belong outside Qt callbacks to avoid aborting the process.
+        try:
+            actions = [action for action in menu.actions() if not action.isSeparator()]
+            interaction["visible"] = menu.isVisible()
+            interaction["action_count"] = len(actions)
+            action = actions[target.month() - 1]
+            interaction["enabled"] = action.isEnabled()
+            if action.isEnabled():
+                QTest.mouseClick(menu, Qt.MouseButton.LeftButton, pos=menu.actionGeometry(action).center())
+        except Exception as error:
+            interaction["error"] = repr(error)
+        finally:
+            menu.close()
+
+    watchdog = QTimer()
+    watchdog.setSingleShot(True)
+    watchdog.timeout.connect(menu.close)
+    watchdog.start(1000)
+    QTimer.singleShot(0, choose_month)
+    QTest.mouseClick(month_button, Qt.MouseButton.LeftButton, pos=month_button.rect().center())
+    qt_app.processEvents()
+    watchdog.stop()
+    assert "error" not in interaction, interaction
+    assert interaction.get("visible"), interaction
+    assert interaction.get("action_count") == 12, interaction
+    assert interaction.get("enabled"), "Month selection must not be disabled by the available history range"
+    assert (calendar.yearShown(), calendar.monthShown()) == (target.year(), target.month())
+    assert len(changed) == 0, "Changing the displayed month must not change the report period yet"
+    view = calendar.findChild(QTableView, "qt_calendar_calendarview")
+    assert view is not None
+    model = view.model()
+    day_cells = [
+        model.index(row, column)
+        for row in range(model.rowCount())
+        for column in range(model.columnCount())
+        if str(model.index(row, column).data()) == str(target.day())
+    ]
+    assert len(day_cells) == 1
+    QTest.mouseClick(view.viewport(), Qt.MouseButton.LeftButton, pos=view.visualRect(day_cells[0]).center())
+    qt_app.processEvents()
+    assert editor.date() == target
+    assert not calendar.isVisible()
+    expected = ("2026-08-15", "2026-09-30") if field == "start" else ("2026-09-01", "2026-10-15")
+    assert len(changed) == 1
+    assert changed[0][0] == expected
+    assert widget.current_period() == expected
+    assert len(widget.period_edit_pairs) == 5
+    for pair in widget.period_edit_pairs:
+        for control in pair:
+            assert control.minimumDate() <= QDate(2026, 8, 15)
+            assert control.maximumDate() >= QDate(2026, 10, 15)
+        assert pair[0].date().toString("yyyy-MM-dd") == expected[0]
+        assert pair[1].date().toString("yyyy-MM-dd") == expected[1]
+    widget.close()
+
+
+def test_custom_calendar_range_survives_history_refresh_and_empty_report_data():
+    qt_app = QApplication.instance() or QApplication([])
+    widget = CloudReportsWidget()
+    history = (("2026-09-01", "2026-09-30"),)
+    widget.set_periods(history, history[0])
+    start, end = widget.period_edit_pairs[0]
+    start.setDate(QDate(2026, 8, 15))
+    end.setDate(QDate(2026, 10, 15))
+    expected = ("2026-08-15", "2026-10-15")
+    assert widget.current_period() == expected
+    changes = QSignalSpy(widget.period_changed)
+    for refreshed_history in (history, (), (("2026-09-07", "2026-09-07"),)):
+        widget.set_periods(refreshed_history, widget.current_period())
+        widget.set_data(
+            records=(), daily_records=(), monthly_records=(), subjects=(), devices=(),
+            period=widget.current_period(), last_sync_at=None,
+        )
+        for index in (1, 2, 4, 0):
+            widget.tabs.setCurrentIndex(index)
+        qt_app.processEvents()
+        assert widget.current_period() == expected
+        for first, last in widget.period_edit_pairs:
+            assert first.date() == QDate(2026, 8, 15)
+            assert last.date() == QDate(2026, 10, 15)
+    assert len(changes) == 0, "History refresh must not emit a replacement selection"
+    widget.close()
 
 
 def _usage(day: date, total: float = 120) -> MonthlyUsage:
@@ -110,6 +222,9 @@ def test_cloud_reports_share_period_and_cross_filter_users_and_printers():
     app = QApplication.instance() or QApplication([])
     day = date(2026, 8, 6)
     widget = CloudReportsWidget()
+    widget.resize(1280, 900)
+    widget.show()
+    app.processEvents()
     periods = (("2026-08-06", "2026-08-06"), ("2026-08-05", "2026-08-05"))
     other_printer = replace(
         _usage(day, 80),
@@ -144,6 +259,7 @@ def test_cloud_reports_share_period_and_cross_filter_users_and_printers():
         ),
     )
 
+    app.processEvents()
     assert [widget.tabs.tabText(index) for index in range(widget.tabs.count())] == [
         "Overview",
         "Users",
@@ -171,18 +287,18 @@ def test_cloud_reports_share_period_and_cross_filter_users_and_printers():
         "ทุกเครื่อง",
         "ตามเครื่อง",
     ]
-    assert len(widget.period_edit_pairs) == 4
+    assert len(widget.period_edit_pairs) == 5
     assert widget.usage_page.findChildren(QDateEdit) == []
-    assert widget.usage_monthly_table.rowCount() == 2
+    assert widget.usage_monthly_table.rowCount() == 1
     assert widget.usage_monthly_table.item(0, 0).text() == "08/2026"
     assert isinstance(widget.usage_monthly_table, FrozenLeftTable)
     assert widget.usage_monthly_table.groupedHeaderItem(0, 1).text() == "Print"
     assert widget.usage_monthly_table.groupedHeaderSpan(0, 1) == (1, 5)
     assert widget.usage_monthly_table.groupedHeaderItem(0, 6).text() == "Copy"
     assert widget.usage_monthly_table.groupedHeaderSpan(0, 6) == (1, 5)
-    assert widget.usage_monthly_table.groupedHeaderItem(1, 1).text() == "A3 Color"
+    assert widget.usage_monthly_table.groupedHeaderItem(1, 1).text() == "A3 สี"
     assert widget.usage_waste_checkbox.isChecked()
-    assert widget.usage_waste_checkbox.text() == "คิดรวม % กระดาษเสีย"
+    assert widget.usage_waste_checkbox.text() == "หักส่วนลดกระดาษเสียจากค่าใช้จ่าย"
     total_metric_index = next(
         index for index, (field, _label, _availability) in enumerate(USAGE_METRICS)
         if field == "total"
@@ -202,31 +318,19 @@ def test_cloud_reports_share_period_and_cross_filter_users_and_printers():
     assert not widget.include_waste_adjustment()
     widget.usage_waste_checkbox.setChecked(True)
     assert widget.overview_kpis["total_cost"].lbl_val.text() == "฿29.40"
-    # The device view is a matrix: one row per period, device names are
-    # three-level device/operation/detail headers instead of truncated labels.
-    assert widget.usage_by_printer_table.rowCount() == 2
-    metric_count = len(USAGE_METRICS)
-    assert widget.usage_by_printer_table.columnCount() == 1 + 2 * metric_count
-    assert widget.usage_by_printer_table.item(0, 0).text() == "08/2026"
-    assert widget.usage_by_printer_table.item(
-        0, 1 + total_metric_index
-    ).text() == "120"
-    assert widget.usage_by_printer_table.item(
-        0, 1 + metric_count + total_metric_index
-    ).text() == "80"
-    matrix = widget.usage_by_printer_table
-    assert isinstance(matrix, FrozenLeftTable)
-    assert matrix.groupedHeaderItem(0, 0).text() == "เดือน"
-    assert matrix.groupedHeaderItem(0, 1).text() == "Slot 1 · Sales Printer"
-    assert matrix.groupedHeaderItem(0, 1 + metric_count).text() == (
-        "Slot 2 · Archive Printer"
-    )
-    assert matrix.groupedHeaderSpan(0, 0) == (3, 1)
-    assert matrix.groupedHeaderItem(1, 1).text() == "Print"
-    assert matrix.groupedHeaderItem(2, 1).text() == "A3 Color"
-    matrix._right.horizontalScrollBar().setValue(matrix._right.horizontalScrollBar().maximum())
-    assert matrix.item(0, 0).text() == "08/2026"
-    assert matrix._left.x() == 0
+    # One shared period axis, four collapsed columns per printer.
+    first = widget.usage_printer_table
+    assert first.rowCount() == 1
+    assert first.columnCount() == 9
+    assert first.item(0, 0).text() == "08/2026"
+    assert first.item(0, 1).text() == "78"
+    assert first.item(0, 4).text() == "29.40"
+    assert first.item(0, 8).text() == "29.40"
+    assert isinstance(first, FrozenLeftTable)
+    assert first.groupedHeaderItem(0, 0).text() == "เดือน"
+    assert first.groupedHeaderItem(0, 1).text().startswith("Slot 1")
+    assert first.groupedHeaderItem(1, 1).text() == "Print"
+    assert not hasattr(widget, 'usage_timeline_chart')
     widget.tabs.setCurrentIndex(4)
     assert widget.legacy_machine_table.horizontalHeaderItem(0).text() == "กลุ่มงาน"
     assert widget.legacy_machine_table.horizontalHeaderItem(1).text() == (
@@ -244,11 +348,12 @@ def test_cloud_reports_share_period_and_cross_filter_users_and_printers():
 
     widget.tabs.setCurrentIndex(1)
     widget._select_user_row(0, 0)
-    assert widget.user_filter_badge.text() == "กำลังกรอง: alice"
+    assert widget._selected_user == widget.users_table.item(0, 0).data(Qt.ItemDataRole.UserRole)
     widget.tabs.setCurrentIndex(2)
-    widget._select_printer_row(0, 0)
-    assert "ทุกเครื่องพร้อมกัน" in widget.printer_compare_note.text()
-    assert widget.printer_detail.item(3, 1).text() == "10,000"
+    widget.printers_table.setCurrentCell(0, 0)
+    assert not hasattr(widget, "printer_compare_note")
+    assert widget.printers_table.columnCount() == 9
+    assert not hasattr(widget, 'printer_detail')
 
     emitted = []
     widget.period_changed.connect(emitted.append)
@@ -263,10 +368,13 @@ def test_cloud_reports_share_period_and_cross_filter_users_and_printers():
 
     widget.tabs.setCurrentIndex(3)
     widget.usage_granularity_buttons["D"].click()
+    assert widget.usage_printer_table.item(0, 0).text() == "ไม่มีข้อมูล"  # August 5 has no data.
+    start_edit.setDate(QDate(2026, 8, 6))
+    widget._render_selected_tab(3)
     assert widget.usage_monthly_table.horizontalHeaderItem(0).text() == "วัน"
     assert widget.usage_monthly_table.item(0, 0).text() == "06/08/2026"
-    assert widget.usage_by_printer_table.rowCount() == 1
-    assert widget.usage_by_printer_table.groupedHeaderItem(0, 0).text() == "วัน"
+    assert widget.usage_printer_table.rowCount() == 1
+    assert widget.usage_printer_table.groupedHeaderItem(0, 0).text() == "วัน"
     widget.usage_granularity_buttons["Y"].click()
     assert widget.usage_monthly_table.horizontalHeaderItem(0).text() == "ปี"
     assert widget.usage_monthly_table.item(0, 0).text() == "2026"
@@ -302,17 +410,30 @@ def test_cloud_reports_header_and_date_range_fit_desktop_minimum():
         for button in widget.findChildren(QPushButton, "cloud_calendar_button")
         if button.text() == "📅"
     ]
-    assert len(calendar_buttons) == 8
+    assert len(calendar_buttons) == 10
+    for button in calendar_buttons[:2]:
+        assert button.width() == button.height() == 24
+        assert button.height() <= start_edit.height()
     calendar_buttons[0].click()
     app.processEvents()
     assert start_edit.calendarWidget().isVisible()
     QTest.keyClick(start_edit, Qt.Key.Key_Escape)
 
+    export_requests = QSignalSpy(widget.export_requested)
+    date_exports = widget.findChildren(QPushButton, "cloud_period_export")
+    assert date_exports == []
+    selected_period = (start_edit.date(), _end_edit.date())
+    for index in range(widget.tabs.count()):
+        widget.tabs.setCurrentIndex(index)
+        widget.export_button.click()
+        assert len(export_requests) == index + 1
+        assert (start_edit.date(), _end_edit.date()) == selected_period
+
     widget.close()
     app.processEvents()
 
 
-def test_usage_starts_with_reference_meter_without_counting_it_as_usage_or_cost():
+def test_usage_ends_with_dated_reference_meter_without_counting_it_as_usage_or_cost():
     app = QApplication.instance() or QApplication([])
     day = date(2026, 8, 6)
     first = _usage(day)
@@ -337,8 +458,8 @@ def test_usage_starts_with_reference_meter_without_counting_it_as_usage_or_cost(
         period=(day.isoformat(), day.isoformat()),
         last_sync_at=None,
         usage_meter_baselines=(
-            UsageMeterBaseline(0, date(2026, 7, 1), 10_000, "Sales Printer", "SER-A"),
-            UsageMeterBaseline(1, date(2026, 7, 1), 20_000, "Archive Printer", "SER-B"),
+            UsageMeterBaseline(0, date(2026, 7, 1), 10_000, "Sales Printer", "SER-A", opening_counters=(("counter.print.a3_color", 100),)),
+            UsageMeterBaseline(1, date(2026, 7, 1), 20_000, "Archive Printer", "SER-B", opening_counters=(("counter.print.a3_color", 200),)),
         ),
     )
     widget.tabs.setCurrentIndex(3)
@@ -351,32 +472,36 @@ def test_usage_starts_with_reference_meter_without_counting_it_as_usage_or_cost(
         index for index, (field, _label, _availability) in enumerate(USAGE_METRICS)
         if field == "cost"
     )
-    assert widget.usage_monthly_table.item(0, 0).text() == "Meter เริ่มต้น"
-    assert widget.usage_monthly_table.item(0, 1 + total_index).text() == "30,000"
-    assert widget.usage_monthly_table.item(0, 1 + cost_index).text() == "—"
-    assert widget.usage_monthly_table.item(0, 1).text() == "—"
-    assert widget.usage_monthly_table.item(1, 1 + total_index).text() == "200"
-    assert widget.usage_monthly_table.item(1, 1 + cost_index).text() == "58.80"
+    assert widget.usage_monthly_table.item(1, 0).text() == "Meter เริ่มต้น\n01/07/2026"
+    assert widget.usage_monthly_table.item(1, 1 + total_index).text() == "30,000"
+    assert widget.usage_monthly_table.item(1, 1 + cost_index).text() == "—"
+    assert widget.usage_monthly_table.item(1, 1).text() == "300"
+    assert widget.usage_monthly_table.item(0, 1 + total_index).text() == "200"
+    assert widget.usage_monthly_table.item(0, 1 + cost_index).text() == "58.80"
 
-    metric_count = len(USAGE_METRICS)
-    matrix = widget.usage_by_printer_table
-    assert matrix.item(0, 0).text() == "Meter เริ่มต้น"
-    assert matrix.item(0, 1 + total_index).text() == "10,000"
-    assert matrix.item(0, 1 + metric_count + total_index).text() == "20,000"
-    assert matrix.item(0, 1 + cost_index).text() == "—"
+    matrix = widget.usage_printer_table
+    matrix.toggle_buttons["slot:0"].click()
+    assert matrix.columnCount() == 17  # one expanded and one collapsed
+    assert matrix.item(1, 1).text() == "100"
+    assert matrix.item(1, 2).text() == "—"
+    assert matrix.item(1, 0).text() == "Meter เริ่มต้น\n01/07/2026"
+    assert matrix.item(1, 12).text() == "—"  # baseline has no cost
+    matrix.toggle_buttons["slot:1"].click()
+    assert matrix.item(1, 13).text() == "200"
+    assert matrix.item(1, 24).text() == "—"
 
     # The baseline is display-only. Existing summaries and chart series still
     # contain only actual usage periods.
     assert widget.overview_kpis["total_usage"].lbl_val.text() == "200"
     assert widget.overview_kpis["total_cost"].lbl_val.text() == "฿58.80"
-    assert all(series.count() == 1 for series in widget.usage_timeline_chart.chart().series())
+    assert not hasattr(widget, 'usage_timeline_chart')
 
     widget.usage_granularity_buttons["D"].click()
-    assert widget.usage_monthly_table.item(0, 0).text() == "Meter เริ่มต้น"
-    assert widget.usage_monthly_table.item(1, 0).text() == "06/08/2026"
+    assert widget.usage_monthly_table.item(1, 0).text() == "Meter เริ่มต้น\n01/07/2026"
+    assert widget.usage_monthly_table.item(0, 0).text() == "06/08/2026"
     widget.usage_granularity_buttons["Y"].click()
-    assert widget.usage_monthly_table.item(0, 0).text() == "Meter เริ่มต้น"
-    assert widget.usage_monthly_table.item(1, 0).text() == "2026"
+    assert widget.usage_monthly_table.item(1, 0).text() == "Meter เริ่มต้น\n01/07/2026"
+    assert widget.usage_monthly_table.item(0, 0).text() == "2026"
     widget.close()
     app.processEvents()
 
@@ -396,6 +521,7 @@ def test_users_matrix_uses_real_names_and_slot_operation_detail_headers():
         ),
         subject_id="1",
         subject_name="TEST1",
+        device_serial_snapshot="SER-A",
     )
     widget = CloudReportsWidget()
     widget.set_data(
@@ -409,14 +535,21 @@ def test_users_matrix_uses_real_names_and_slot_operation_detail_headers():
     )
     widget.tabs.setCurrentIndex(1)
 
+    widget.user_printers_button.click()
     table = widget.users_table
     assert table.item(0, 0).text() == "TEST1"
-    assert table.groupedHeaderSpan(0, 0) == (3, 1)
+    assert table.groupedHeaderSpan(0, 0) == (2, 1)
     assert table.groupedHeaderItem(0, 1).text() == "Slot 1 · KM bizhub C450i"
-    assert table.groupedHeaderItem(1, 1).text() == "Print"
-    assert table.groupedHeaderItem(2, 1).text() == "A3 Color"
     assert table.item(0, 1).text() == "9"
-    assert table.item(0, 13).text() == "—"  # per-user cost is not inferred
+    assert table.item(0, 2).text() == "—"  # missing Copy detail is not fabricated
+    table.toggle_buttons['slot:0'].click()
+    app.processEvents()
+    assert table.groupedHeaderSpan(0, 0) == (3, 1)
+    assert table.groupedHeaderItem(1, 1).text() == "Print"
+    assert table.groupedHeaderItem(2, 1).text() == "A3\nสี"
+    assert table.item(0, 1).text() == "9"
+    assert table.columnCount() == 14  # usage detail, total and allocated cost
+    assert table.item(0, 13).text() == "—"  # no daily cost evidence
     assert table._right.textElideMode() == Qt.TextElideMode.ElideNone
     widget.close()
     app.processEvents()
@@ -456,7 +589,6 @@ def test_usage_all_devices_checkboxes_filter_aggregate_but_keep_per_device_matri
         index for index, (field, _label, _availability) in enumerate(USAGE_METRICS)
         if field == "cost"
     )
-    metric_count = len(USAGE_METRICS)
     assert all(box.isChecked() for box in widget.usage_device_filters.values())
     assert widget.usage_monthly_table.item(0, 1 + total_index).text() == "200"
 
@@ -464,15 +596,18 @@ def test_usage_all_devices_checkboxes_filter_aggregate_but_keep_per_device_matri
 
     assert widget.usage_monthly_table.item(0, 1 + total_index).text() == "120"
     assert widget.usage_monthly_table.item(0, 1 + cost_index).text() == "29.40"
-    assert widget.usage_by_printer_table.item(
-        0, 1 + metric_count + total_index
-    ).text() == "80"
-    assert all(series.count() == 1 for series in widget.usage_timeline_chart.chart().series())
+    assert widget.usage_printer_table.columnCount() == 5
+    assert "slot:1" not in widget.usage_printer_table.toggle_buttons
+    widget.usage_device_filters[1].setChecked(True)
+    assert widget.usage_monthly_table.item(0, 1 + total_index).text() == "200"
+    assert widget.usage_printer_table.columnCount() == 9
+    assert "slot:1" in widget.usage_printer_table.toggle_buttons
+    assert not hasattr(widget, 'usage_timeline_chart')
     widget.close()
     app.processEvents()
 
 
-def test_printer_charts_compare_all_devices_and_selection_only_changes_detail():
+def test_printer_charts_compare_all_devices_when_a_table_row_is_selected():
     app = QApplication.instance() or QApplication([])
     day = date(2026, 8, 6)
     first = _usage(day)
@@ -501,24 +636,35 @@ def test_printer_charts_compare_all_devices_and_selection_only_changes_detail():
     def chart_labels(chart):
         return [bar_set.label() for bar_set in chart.series()[0].barSets()]
 
-    expected_mix = ["Sales Printer", "Archive Printer"]
+    expected_mix = ['Print A4', 'Print A3', 'Copy A4', 'Copy A3', 'Scan']
     expected_trend = [
-        "Sales Printer · Print",
-        "Sales Printer · Copy",
-        "Archive Printer · Print",
-        "Archive Printer · Copy",
+        "Slot 1 · Sales Printer · Color",
+        "Slot 1 · Sales Printer · B&W",
+        "Slot 2 · Archive Printer · Color",
+        "Slot 2 · Archive Printer · B&W",
     ]
     assert chart_labels(widget.printer_mix.chart()) == expected_mix
     assert chart_labels(widget.printer_trend.chart()) == expected_trend
-    widget._select_printer_row(1, 0)
-    assert widget.printer_detail.item(0, 1).text() == "Archive Printer"
+    stack = widget.printer_trend.chart().series()[0]
+    assert isinstance(stack, QStackedBarSeries)
+    assert [bar.count() for bar in stack.barSets()] == [1, 1, 1, 1]
+    assert [bar.at(0) for bar in stack.barSets()] == [60, 60, 60, 60]
+    assert widget.printer_trend.chart().axes(Qt.Orientation.Horizontal)[0].categories() == ['06/08']
+    grouped = widget.printer_mix.chart().series()[0]
+    assert [sum(bar.at(index) for bar in grouped.barSets()) for index in range(5)] == [96, 60, 24, 60, 24]
+    overview = widget.overview_trend.chart().series()[0]
+    assert isinstance(overview, QStackedBarSeries)
+    assert [bar.at(0) for bar in overview.barSets()] == [130, 26, 0, 0]
+    assert [bar.at(1) for bar in overview.barSets()] == [0, 0, 80, 4]
+    widget.printers_table.setCurrentCell(1, 0)
+    assert widget.printers_table.currentItem().data(Qt.ItemDataRole.UserRole) == 'serial:SER-B'
     assert chart_labels(widget.printer_mix.chart()) == expected_mix
     assert chart_labels(widget.printer_trend.chart()) == expected_trend
     widget.close()
     app.processEvents()
 
 
-def test_keyboard_selection_updates_user_filter_and_printer_detail_immediately():
+def test_keyboard_selection_preserves_users_table_and_printer_charts(monkeypatch):
     app = QApplication.instance() or QApplication([])
     day = date(2026, 8, 6)
     second = replace(
@@ -543,14 +689,24 @@ def test_keyboard_selection_updates_user_filter_and_printer_detail_immediately()
     )
 
     widget.tabs.setCurrentIndex(1)
+    original_user = widget.users_table.item(0, 0)
+    original_value = widget.users_table.item(0, 1)
+    render_calls = []
+    monkeypatch.setattr(widget, "_render_users_table", lambda: render_calls.append(True))
     widget.users_table.setCurrentCell(0, 0)
     app.processEvents()
-    assert widget.user_filter_badge.text() == "กำลังกรอง: alice"
+    assert widget._selected_user == original_user.data(Qt.ItemDataRole.UserRole)
+    assert widget.users_table._left.currentRow() == 0
+    assert widget.users_table.item(0, 0) is original_user
+    assert widget.users_table.item(0, 1) is original_value
+    assert render_calls == [], "Selecting a user must not rebuild the report table"
 
     widget.tabs.setCurrentIndex(2)
+    original_charts = (widget.printer_mix.chart(), widget.printer_trend.chart())
     widget.printers_table.setCurrentCell(1, 0)
     app.processEvents()
-    assert widget.printer_detail.item(0, 1).text() == "Archive Printer"
+    assert widget.printers_table.currentItem().data(Qt.ItemDataRole.UserRole) == 'serial:SER-B'
+    assert (widget.printer_mix.chart(), widget.printer_trend.chart()) == original_charts
     widget.close()
     app.processEvents()
 
@@ -612,3 +768,62 @@ def test_cloud_reports_use_transparent_label_surfaces_and_consistent_table_align
 
     widget.close()
     app.processEvents()
+
+
+@pytest.mark.parametrize("mode", ["classified", "total_only", "missing", "partial_users"])
+def test_users_table_separates_color_without_inventing_missing_counters(mode):
+    app = QApplication.instance() or QApplication([])
+    day = date(2026, 9, 8)
+    widget = CloudReportsWidget()
+    subjects = (replace(_subject(day), period_usage=3),)
+    if mode == "partial_users":
+        subjects += (replace(_subject(day), subject_id="u-2", subject_name="bob", period_usage=1),)
+    counters = []
+    if mode in ("classified", "partial_users"):
+        for operation in ("print", "copy"):
+            for family in ("full_color", "bw"):
+                field = f"counter.{operation}.{family}_total"
+                counters.append(_raw(day, slot=0, field=field, label=field,
+                                     delta=3 if operation == "print" and family == "full_color" else 0,
+                                     subject=True))
+    elif mode == "total_only":
+        counters.append(_raw(day, slot=0, field="counter.print.total", label="Print total",
+                             delta=3, subject=True))
+    # These counters belong to the same physical printer as _subject(day).
+    counters = [replace(counter, device_serial_snapshot="SER-A") for counter in counters]
+    widget.set_data(records=(), daily_records=(), subjects=subjects, devices=(),
+                    raw_counter_records=counters, period=("2026-09-01", "2026-09-30"),
+                    last_sync_at=None)
+    widget.tabs.setCurrentIndex(1)
+    app.processEvents()
+    expected = ("3", "0", "0", "0") if mode in ("classified", "partial_users") else ("—",) * 4
+    assert tuple(widget.users_table.item(0, col).text() for col in (3, 4, 8, 9)) == expected
+    assert widget.users_table.item(0, 12).text() == '3'
+    assert widget.users_table.rowCount() == (2 if mode == 'partial_users' else 1)
+    if mode == 'partial_users':
+        assert tuple(widget.users_table.item(1, col).text() for col in (3, 4, 8, 9)) == ('—',) * 4
+        assert widget.users_table.item(1, 12).text() == '1'
+    widget.show_error("test error")
+    assert widget.error_label.text() == 'test error'
+    widget.close()
+
+
+def test_printers_remove_cards_and_explanations_but_keep_reports():
+    app = QApplication.instance() or QApplication([])
+    widget = CloudReportsWidget()
+    day = date(2026, 8, 6)
+    period = (day.isoformat(), day.isoformat())
+    widget.set_periods((period,), period)
+    widget.set_data(records=(_usage(day),), daily_records=(), subjects=(), devices=(),
+                    period=period, last_sync_at=None)
+    widget.tabs.setCurrentIndex(2)
+    widget.resize(1440, 800)
+    widget.show()
+    app.processEvents()
+    assert not hasattr(widget, "printer_metric_cards")
+    assert not hasattr(widget, "printer_activity_summary")
+    assert not hasattr(widget, "printer_compare_note")
+    assert not hasattr(widget, "report_note_label")
+    assert widget.printers_table.rowCount() == 1
+    assert widget.printer_mix.chart().series()
+    widget.close()

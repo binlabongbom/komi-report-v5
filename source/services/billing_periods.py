@@ -4,6 +4,20 @@ import calendar
 from datetime import date, timedelta
 
 
+def effective_billing_day(raw) -> int:
+    """Match the established report fallback for legacy/missing configuration.
+
+    New setup persists its explicit default (31). An older database without a
+    value has historically used 25; exporting/summarizing it must not turn 25
+    into 31 and move usage into another billing period.
+    """
+    try:
+        value = int(raw or "25")
+    except (ValueError, TypeError):
+        value = 25
+    return max(1, min(31, value))
+
+
 def billing_month_range(day: date, billing_end_day: int) -> tuple[date, date]:
     """Return the billing cycle containing ``day`` for an end-of-cycle day.
 

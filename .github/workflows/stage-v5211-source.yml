@@ -1,0 +1,45 @@
+name: Stage validated V5.2.11 source for Build Center
+on:
+  push:
+    branches: [fix/v5.2.11-registration-errors]
+    paths: [.github/workflows/stage-v5211-source.yml]
+permissions:
+  contents: write
+  actions: read
+jobs:
+  stage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/download-artifact@v8.0.1
+        with:
+          name: KOMI-v5.2.11-source-validation
+          run-id: 35086369220
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/verified-source
+      - name: Store only the verified archive on a private transfer branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python - <<'PY'
+          import base64, hashlib, json, os, urllib.request
+          from pathlib import Path
+          root = Path(os.environ['RUNNER_TEMP']) / 'verified-source'
+          commit = 'd99a0de57e3f10010d8bc4dd3c836dc31d12b510'
+          expected = 'b907014afaf5a9f9e8f23ba59759180bc1197087b9f2053320c07057fb789a9e'
+          metadata = json.loads((root/'SOURCE_VALIDATION.json').read_text())
+          archive = (root/'KOMI_Report_V5_2_11_Source.zip').read_bytes()
+          assert metadata['tests_passed'] is True and metadata['source_commit'] == commit
+          assert hashlib.sha256(archive).hexdigest() == expected
+          api = 'https://api.github.com/repos/binlabongbom/komi-report-v5'
+          def post(path, data):
+              request = urllib.request.Request(api+path, data=json.dumps(data).encode(), method='POST', headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Content-Type':'application/json','Accept':'application/vnd.github+json','User-Agent':'KOMI-verified-source-handoff'})
+              with urllib.request.urlopen(request, timeout=120) as response:
+                  return json.load(response)
+          blob = post('/git/blobs', {'encoding':'base64','content':base64.b64encode(archive).decode('ascii')})
+          tree = post('/git/trees', {'tree':[{'path':'KOMI_Report_V5_2_11_Source.zip','mode':'100644','type':'blob','sha':blob['sha']},{'path':'SOURCE_VALIDATION.json','mode':'100644','type':'blob','content':json.dumps(metadata,indent=2)+'\n'}]})
+          staged = post('/git/commits', {'message':'build: isolated validated source transfer '+commit,'tree':tree['sha'],'parents':[]})
+          branch = 'transfer/v5.2.11-source-d99a0de57e3f'
+          post('/git/refs', {'ref':'refs/heads/'+branch,'sha':staged['sha']})
+          print('PRIVATE_SOURCE_STAGED', branch, staged['sha'], expected)
+          PY

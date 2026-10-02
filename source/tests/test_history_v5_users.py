@@ -7,11 +7,11 @@ from datetime import date
 from PyQt6.QtWidgets import QApplication
 
 import database
-import v5_pages
+from ui.reports import page as report_page
 from services.device_config import DeviceConfig
 from services.monthly_history import MonthlyUsage
 from services.subject_history import SubjectPeriodUsage
-from v5_pages import PageHistoryV5
+from ui.reports.page import PageHistoryV5
 
 
 class _Repository:
@@ -110,8 +110,8 @@ def test_history_users_shows_exact_totals_without_cost_or_estimated_size(tmp_pat
     try:
         database.set_db_path(tmp_path / "history-users.sqlite3")
         database.init_db()
-        monkeypatch.setattr(v5_pages, "load_subject_history", lambda slots, cache: (_subject(usage=25),))
-        monkeypatch.setattr(v5_pages, "load_monthly_usage", lambda slots, cache: (_monthly(100),))
+        monkeypatch.setattr(report_page, "load_subject_history", lambda slots, cache: (_subject(usage=25),))
+        monkeypatch.setattr(report_page, "load_monthly_usage", lambda slots, cache: (_monthly(100),))
         app = QApplication.instance() or QApplication([])
         page = PageHistoryV5(
             repository=_Repository(),
@@ -141,8 +141,8 @@ def test_history_users_warns_when_subject_sum_exceeds_device_meter(tmp_path, mon
     try:
         database.set_db_path(tmp_path / "history-users-warning.sqlite3")
         database.init_db()
-        monkeypatch.setattr(v5_pages, "load_subject_history", lambda slots, cache: (_subject(usage=120),))
-        monkeypatch.setattr(v5_pages, "load_monthly_usage", lambda slots, cache: (_monthly(100),))
+        monkeypatch.setattr(report_page, "load_subject_history", lambda slots, cache: (_subject(usage=120),))
+        monkeypatch.setattr(report_page, "load_monthly_usage", lambda slots, cache: (_monthly(100),))
         app = QApplication.instance() or QApplication([])
         page = PageHistoryV5(
             repository=_Repository(),
@@ -167,11 +167,11 @@ def test_history_users_exposes_counter_reset_in_row_and_banner(tmp_path, monkeyp
         database.set_db_path(tmp_path / "history-users-reset.sqlite3")
         database.init_db()
         monkeypatch.setattr(
-            v5_pages,
+            report_page,
             "load_subject_history",
             lambda slots, cache: (_subject(usage=30, resets=1),),
         )
-        monkeypatch.setattr(v5_pages, "load_monthly_usage", lambda slots, cache: (_monthly(100),))
+        monkeypatch.setattr(report_page, "load_monthly_usage", lambda slots, cache: (_monthly(100),))
         app = QApplication.instance() or QApplication([])
         page = PageHistoryV5(
             repository=_Repository(),
@@ -201,8 +201,8 @@ def test_history_users_pivots_one_user_across_three_machine_columns(tmp_path, mo
             _subject(usage=5, slot=1, subject_id="u-2", name="bob"),
         )
         monthly = tuple(_monthly(100, slot=slot) for slot in range(3))
-        monkeypatch.setattr(v5_pages, "load_subject_history", lambda slots, cache: records)
-        monkeypatch.setattr(v5_pages, "load_monthly_usage", lambda slots, cache: monthly)
+        monkeypatch.setattr(report_page, "load_subject_history", lambda slots, cache: records)
+        monkeypatch.setattr(report_page, "load_monthly_usage", lambda slots, cache: monthly)
         app = QApplication.instance() or QApplication([])
         page = PageHistoryV5(
             repository=_ThreeDeviceRepository(),
@@ -273,10 +273,10 @@ def test_history_users_keeps_subject_usage_separate_by_frozen_device_identity(tm
                 serial="SER-B",
             ),
         )
-        monkeypatch.setattr(v5_pages, "load_subject_history", lambda slots, cache: records)
-        monkeypatch.setattr(v5_pages, "load_monthly_usage", lambda slots, cache: monthly)
+        monkeypatch.setattr(report_page, "load_subject_history", lambda slots, cache: records)
+        monkeypatch.setattr(report_page, "load_monthly_usage", lambda slots, cache: monthly)
         monkeypatch.setattr(
-            v5_pages,
+            report_page,
             "load_usage_history",
             lambda slots, granularity, cache: monthly,
         )

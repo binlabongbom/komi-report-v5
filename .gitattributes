@@ -1,0 +1,2 @@
+# Keep contract checksum identical on macOS and Windows checkouts.
+docs/V5_2_HOST_API_IMPLEMENTATION_REQUEST.md text eol=lf

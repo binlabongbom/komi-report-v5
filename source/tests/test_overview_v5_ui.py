@@ -4,9 +4,20 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PyQt6.QtCore import QPoint, Qt
 from PyQt6.QtWidgets import QApplication, QBoxLayout, QLabel, QWidget
+from PyQt6.QtTest import QTest
 
-import pages
+from ui.pages import overview as overview_page
 from pages import PageOverview
+from ui.styles.tokens import C_CARD, F_2XL
+
+
+def _refresh(page):
+    page.refresh()
+    for _ in range(400):
+        if not page.summary_reader.busy:
+            break
+        QTest.qWait(5)
+    assert not page.summary_reader.busy
 
 
 def _summary(
@@ -17,6 +28,10 @@ def _summary(
     provisional: int = 0,
 ) -> dict:
     return {
+        "trend": {
+            "granularity": "day", "slots": [0], "machine_names": ["QA Printer"], "available": True,
+            "buckets": {"2026-07-27": {"machines": [30], "provisional_machines": [provisional]}},
+        },
         "all_monthly": {
             "2026-07": {
                 "total": 30,
@@ -76,14 +91,14 @@ def _summary(
 def test_overview_does_not_render_billing_quality_banner(monkeypatch):
     app = QApplication.instance() or QApplication([])
     monkeypatch.setattr(
-        pages,
+        overview_page,
         "build_overview_summary",
         lambda _filter: _summary(held=2, incomplete=1),
     )
     page = PageOverview(lambda: [None, None, None])
     page.show()
     app.processEvents()
-    page.refresh()
+    _refresh(page)
 
     assert not hasattr(page, "overview_quality")
     assert "Online 1/1 เครื่อง" in page.overview_status.text()
@@ -93,7 +108,7 @@ def test_overview_does_not_render_billing_quality_banner(monkeypatch):
 
 def test_overview_reflows_bottom_cards_at_desktop_minimum_width(monkeypatch):
     app = QApplication.instance() or QApplication([])
-    monkeypatch.setattr(pages, "build_overview_summary", lambda _filter: _summary())
+    monkeypatch.setattr(overview_page, "build_overview_summary", lambda _filter: _summary())
     page = PageOverview(lambda: [None, None, None])
     page.resize(794, 1400)
     page.show()
@@ -136,12 +151,12 @@ def test_overview_metric_cards_are_compact_and_style_a3_a4_details(monkeypatch):
             "display_print_a4_color": 47,
         }
     )
-    monkeypatch.setattr(pages, "build_overview_summary", lambda _filter: summary)
+    monkeypatch.setattr(overview_page, "build_overview_summary", lambda _filter: summary)
     page = PageOverview(lambda: [None, None, None])
     page.resize(1210, 1400)
     page.show()
     app.processEvents()
-    page.refresh()
+    _refresh(page)
 
     card = page.card_color_print
     margins = card.layout().contentsMargins()
@@ -155,10 +170,10 @@ def test_overview_metric_cards_are_compact_and_style_a3_a4_details(monkeypatch):
     assert card.findChild(QLabel, "overview_metric_title") is card.lbl_title
     assert card.findChild(QLabel, "overview_metric_detail") is card.lbl_diff
     assert card.lbl_title.parentWidget().objectName() == "overview_metric_content"
-    assert card.lbl_val.font().pointSize() == pages.F_2XL
+    assert card.lbl_val.font().pointSize() == F_2XL
     assert card.lbl_val.alignment() & Qt.AlignmentFlag.AlignVCenter
     card_image = card.grab().toImage()
-    assert card_image.pixelColor(card.width() // 2, card.height() // 2).name().lower() == pages.C_CARD.lower()
+    assert card_image.pixelColor(card.width() // 2, card.height() // 2).name().lower() == C_CARD.lower()
     assert card.lbl_diff.textFormat() == Qt.TextFormat.RichText
     assert "color:#64748B'>A3" in card.lbl_diff.text()
     assert "color:#111827'>1" in card.lbl_diff.text()
@@ -171,14 +186,14 @@ def test_overview_metric_cards_are_compact_and_style_a3_a4_details(monkeypatch):
 def test_overview_marks_current_cache_as_provisional_and_exposes_actions(monkeypatch):
     app = QApplication.instance() or QApplication([])
     monkeypatch.setattr(
-        pages,
+        overview_page,
         "build_overview_summary",
         lambda _filter: _summary(provisional=12),
     )
     page = PageOverview(lambda: [None, None, None])
     page.show()
     app.processEvents()
-    page.refresh()
+    _refresh(page)
 
     assert not hasattr(page, "overview_quality")
     assert page.stat_cards[0].lbl_val.text() == "42"
@@ -219,16 +234,16 @@ def test_overview_printer_rows_keep_status_and_all_toner_colours_visible(monkeyp
             "toner": {"C": 31, "Y": 67, "M": 41, "K": 59},
         }
     )
-    monkeypatch.setattr(pages, "build_overview_summary", lambda _filter: summary)
+    monkeypatch.setattr(overview_page, "build_overview_summary", lambda _filter: summary)
     page = PageOverview(lambda: [None, None, None])
     page.resize(794, 1400)
     page.show()
     app.processEvents()
-    page.refresh()
+    _refresh(page)
     app.processEvents()
 
     row = page.printer_list_layout.itemAt(0).widget()
-    bars = row.findChildren(pages._OverviewTonerBar)
+    bars = row.findChildren(overview_page._OverviewTonerBar)
     labels = [label.text() for label in row.findChildren(QLabel)]
     toner_group = row.findChild(QWidget, "overview_toner_group")
 
@@ -237,7 +252,7 @@ def test_overview_printer_rows_keep_status_and_all_toner_colours_visible(monkeyp
     assert toner_group is not None
     toner_point = toner_group.mapTo(row, QPoint(toner_group.width() - 5, 3))
     row_image = row.grab().toImage()
-    assert row_image.pixelColor(toner_point).name().lower() == pages.C_CARD.lower()
+    assert row_image.pixelColor(toner_point).name().lower() == C_CARD.lower()
     assert "● รอตรวจสอบ" in labels
     assert "ยังไม่มีการอ่านข้อมูลที่สำเร็จ" in labels
     assert "รอตรวจสอบ" in row.accessibleDescription()

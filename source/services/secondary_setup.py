@@ -17,6 +17,8 @@ from collections.abc import Iterable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import date, datetime
+from types import SimpleNamespace
+from urllib.parse import urlencode, urlsplit
 
 from PyQt6.QtNetwork import QAbstractSocket, QNetworkInterface
 
@@ -24,8 +26,10 @@ from config import PACKAGE_VERSION
 from database import get_cfg
 from services.device_config import DeviceConfigRepository
 from services.peer_sync_authorization import new_claim_token
-from services.pricing import PricingRepository
+from services.pricing import PriceList, PricingRepository
+from services.web_port import validate_web_port
 from services.sync_schedule import dump_schedule_windows, load_schedule_windows
+from services.billing_periods import effective_billing_day
 
 SECONDARY_SETUP_CONTRACT = "komi-secondary-setup/v1"
 DEFAULT_WEB_PORT = 3000
@@ -150,8 +154,37 @@ def primary_setup_snapshot() -> dict[str, object]:
 
     devices = DeviceConfigRepository().list(enabled_only=True)
     pricing = PricingRepository()
+    return _setup_snapshot(devices, pricing, get_cfg)
+
+
+def setup_snapshot_from_connection(connection) -> dict[str, object]:
+    """Read shared values within the caller's SQLite transaction, without secrets.
+
+    Do not consult the process config cache or open repository connections here:
+    both would let a preview/journal describe a different commit from its writes.
+    """
+    settings = dict(connection.execute("SELECT key,value FROM settings"))
+    columns = ("slot", "name", "host", "model", "serial", "tls_mode", "tls_fingerprint")
+    devices = [SimpleNamespace(**dict(zip(columns, row))) for row in connection.execute(
+        "SELECT slot,name,host,model,serial,tls_mode,tls_fingerprint "
+        "FROM devices WHERE enabled=1 ORDER BY slot"
+    )]
+
+    class TransactionPricing:
+        def get_prices(self, slot, on_date):
+            row = connection.execute(
+                "SELECT a3_color,a3_bw,a4_color,a4_bw FROM price_history "
+                "WHERE device_slot=? AND effective_date<=? ORDER BY effective_date DESC LIMIT 1",
+                (slot, on_date.isoformat()),
+            ).fetchone()
+            return PriceList(*row) if row else PriceList()
+
+    return _setup_snapshot(devices, TransactionPricing(), settings.get)
+
+
+def _setup_snapshot(devices, pricing, config) -> dict[str, object]:
     today = date.today()
-    company = " ".join((get_cfg("company_name", "") or "").split())
+    company = " ".join((config("company_name", "") or "").split())
     if not company or not devices:
         raise SecondarySetupError("เครื่องหลักยังตั้งค่าไม่เสร็จ")
     return {
@@ -159,16 +192,16 @@ def primary_setup_snapshot() -> dict[str, object]:
         "generated_at": datetime.now().astimezone().isoformat(timespec="seconds"),
         "organization": {
             "company_name": company,
-            "first_started_at": get_cfg("client_first_started_at", "") or today.isoformat(),
-            "primary_installation_id": get_cfg("installation_id", ""),
+            "first_started_at": config("client_first_started_at", "") or today.isoformat(),
+            "primary_installation_id": config("installation_id", ""),
         },
         "settings": {
-            "pricing_mode": get_cfg("pricing_mode", "shared") or "shared",
-            "billing_day": int(get_cfg("billing_day", "31") or 31),
-            "waste_paper_pct": float(get_cfg("waste_paper_pct", "2") or 2),
-            "work_start": get_cfg("work_start", "08:00") or "08:00",
-            "work_end": get_cfg("work_end", "17:00") or "17:00",
-            "sync_schedule_windows": get_cfg("sync_schedule_windows", "") or "",
+            "pricing_mode": config("pricing_mode", "shared") or "shared",
+            "billing_day": effective_billing_day(config("billing_day", "25")),
+            "waste_paper_pct": float(config("waste_paper_pct", "2") or 2),
+            "work_start": config("work_start", "08:00") or "08:00",
+            "work_end": config("work_end", "17:00") or "17:00",
+            "sync_schedule_windows": config("sync_schedule_windows", "") or "",
         },
         "devices": [
             {
@@ -323,7 +356,7 @@ class SecondaryPeerClient:
     """Small HTTPS client using certificate TOFU for the one-time LAN handoff."""
 
     def __init__(self, *, port: int = DEFAULT_WEB_PORT, timeout: float = 0.8) -> None:
-        self.port = int(port)
+        self.port = validate_web_port(port)
         self.timeout = float(timeout)
 
     @staticmethod
@@ -344,10 +377,12 @@ class SecondaryPeerClient:
         headers: dict[str, str] | None = None,
         expected_fingerprint: str = "",
         timeout: float | None = None,
+        port: int | None = None,
+        max_response_bytes: int = MAX_RESPONSE_BYTES,
     ) -> tuple[int, dict[str, object], str, list[str]]:
         connection = http.client.HTTPSConnection(
             host,
-            self.port,
+            self.port if port is None else port,
             context=self._context(),
             timeout=timeout or self.timeout,
         )
@@ -359,8 +394,8 @@ class SecondaryPeerClient:
                 raise SecondarySetupError("Certificate ของเครื่องหลักเปลี่ยนระหว่างการ Sync")
             connection.request(method, path, body=body, headers=headers or {})
             response = connection.getresponse()
-            raw = response.read(MAX_RESPONSE_BYTES + 1)
-            if len(raw) > MAX_RESPONSE_BYTES:
+            raw = response.read(max_response_bytes + 1)
+            if len(raw) > max_response_bytes:
                 raise SecondarySetupError("ข้อมูลจากเครื่องหลักมีขนาดใหญ่เกินกำหนด")
             try:
                 payload = json.loads(raw.decode("utf-8")) if raw else {}
@@ -404,8 +439,125 @@ class SecondaryPeerClient:
                     candidates.append(candidate)
         return sorted(candidates, key=lambda item: item.base_url)
 
+    def discover_lan(self) -> list[SecondaryPeerCandidate]:
+        """Use broadcast hints first, then the existing bounded IP fallback."""
+        from services.lan_discovery import discover
+        try:
+            targets = discover(_active_ipv4_subnets())
+        except OSError:
+            targets = []
+        candidates = []
+        if targets:
+            with ThreadPoolExecutor(max_workers=24) as executor:
+                futures = [executor.submit(SecondaryPeerClient(port=port, timeout=self.timeout).discover_one, host)
+                           for host, port in targets]
+                for future in as_completed(futures):
+                    candidate = future.result()
+                    if candidate is not None:
+                        candidates.append(candidate)
+        return sorted(candidates, key=lambda item: item.base_url) if candidates else self.discover(local_ipv4_hosts())
+
     def fetch_snapshot(self, candidate: SecondaryPeerCandidate) -> dict[str, object]:
-        host = candidate.base_url.removeprefix("https://").split(":", 1)[0]
+        return validate_setup_snapshot(self._fetch_authorized(candidate, "/api/v1/peer/setup-snapshot"))
+
+    def prepare_enrollment(self, candidate, *, cancelled=lambda: False):
+        from services.peer_enrollment import prepare_enrollment, ROUTE, MAX_BYTES
+        token = self._claim_authorization(candidate)
+        host, port = self._peer_endpoint(candidate)
+        binding = None
+        begin_response = None
+        def request(operation, data):
+            nonlocal token, binding, begin_response
+            if operation == 'begin':
+                binding = dict(data)
+            for attempt in range(2):
+                try:
+                    status, payload, _, _ = self._request(host, 'POST', ROUTE,
+                        body=json.dumps({'operation': operation, 'data': data}).encode(),
+                        headers={'Content-Type': 'application/json', PEER_SYNC_TOKEN_HEADER: token},
+                        expected_fingerprint=candidate.certificate_sha256, port=port, timeout=15.0,
+                        max_response_bytes=MAX_BYTES)
+                    break
+                except (OSError, ssl.SSLError):
+                    if attempt:
+                        raise
+            if status == 401 and binding is not None:
+                # Renew request credentials under persistent source access;
+                # no source-side click is needed. Explicit off still rejects.
+                token = self._claim_authorization(candidate)
+                status, renewed, _, _ = self._request(host, 'POST', ROUTE,
+                    body=json.dumps({'operation': 'begin', 'data': binding}).encode(),
+                    headers={'Content-Type': 'application/json', PEER_SYNC_TOKEN_HEADER: token},
+                    expected_fingerprint=candidate.certificate_sha256, port=port, timeout=15.0,
+                    max_response_bytes=MAX_BYTES)
+                if status == 200:
+                    if begin_response is not None and renewed['invitation'] != begin_response['invitation']:
+                        raise SecondarySetupError('กลุ่มต้นทางเปลี่ยน กรุณาตรวจและเข้าร่วมใหม่')
+                    if operation == 'begin':
+                        payload = renewed
+                    else:
+                        status, payload, _, _ = self._request(host, 'POST', ROUTE,
+                            body=json.dumps({'operation': operation, 'data': data}).encode(),
+                            headers={'Content-Type': 'application/json', PEER_SYNC_TOKEN_HEADER: token},
+                            expected_fingerprint=candidate.certificate_sha256, port=port, timeout=15.0,
+                            max_response_bytes=MAX_BYTES)
+            if status != 200:
+                raise SecondarySetupError(str(payload.get('detail') or 'เข้ากลุ่มไม่สำเร็จ กรุณาตรวจว่าเครื่องต้นทางออนไลน์และเปิดรับสมาชิกอยู่ แล้วลองใหม่'))
+            if operation == 'begin':
+                begin_response = payload
+            return payload
+        result = prepare_enrollment(request, cancelled=cancelled)
+        if result.payload['organization']['company_name'] != candidate.company_name:
+            result.close()
+            raise SecondarySetupError('บริษัทต้นทางเปลี่ยน กรุณาค้นหาและเลือกกลุ่มใหม่')
+        from dataclasses import asdict
+        result.candidate = asdict(candidate)
+        return result
+
+    def finish_pending_enrollment(self, candidate, access, *, contact):
+        """Resume a locally committed join using the persistent source policy."""
+        from services.peer_enrollment import ROUTE, MAX_BYTES
+        token = self._claim_authorization(candidate)
+        host, port = self._peer_endpoint(candidate)
+        def send(operation, data):
+            status, result, _, _ = self._request(host, 'POST', ROUTE,
+                body=json.dumps({'operation':operation, 'data':data}).encode(),
+                headers={'Content-Type':'application/json', PEER_SYNC_TOKEN_HEADER:token},
+                expected_fingerprint=candidate.certificate_sha256, port=port, timeout=15,
+                max_response_bytes=MAX_BYTES)
+            if status != 200:
+                raise SecondarySetupError('ตรวจว่าเครื่องต้นทางออนไลน์และเปิดรับสมาชิกอยู่ แล้วลองเชื่อมต่อใหม่')
+            return result
+        result = send('begin', {'member_id':access.member_id, 'public_key':access.identity.public_key_base64url})
+        if result['invitation'] != access.invitation():
+            raise SecondarySetupError('กลุ่มต้นทางไม่ตรงกับกลุ่มที่ยืนยันไว้')
+        access._checked_contact(result['source'])
+        receipt = send('finish', {'contact':contact})
+        if receipt != {'member_id':access.member_id, 'committed':True}:
+            raise SecondarySetupError('ต้นทางยังไม่ยืนยันสมาชิก')
+        from pathlib import Path
+        from database import get_db_path, config_write_transaction
+        if Path(get_db_path()).resolve() != access.path:
+            raise SecondarySetupError('ฐานข้อมูลเปลี่ยนระหว่างยืนยันสมาชิก กรุณาลองใหม่')
+        with config_write_transaction() as conn:
+            conn.execute("DELETE FROM settings WHERE key='peer_enrollment_pending'")
+
+    def fetch_settings_history(self, candidate: SecondaryPeerCandidate) -> dict[str, object]:
+        """Fetch only; SettingsHistory.receive validates before persisting."""
+        return self._fetch_authorized(candidate, "/api/v2/peer/settings-history")
+
+    def _fetch_authorized(self, candidate: SecondaryPeerCandidate, path: str) -> dict[str, object]:
+        return self._fetch_with_token(candidate, path, self._claim_authorization(candidate))
+
+    @staticmethod
+    def _peer_endpoint(candidate):
+        parsed = urlsplit(candidate.base_url)
+        if parsed.scheme != "https" or not parsed.hostname:
+            raise SecondarySetupError("ที่อยู่ Primary ต้องเป็น HTTPS")
+        return normalize_primary_ipv4(parsed.hostname), validate_web_port(parsed.port or DEFAULT_WEB_PORT)
+
+    def _claim_authorization(self, candidate):
+        host, port = self._peer_endpoint(candidate)
         token = new_claim_token()
         claim_body = json.dumps(
             {"token": token},
@@ -419,23 +571,62 @@ class SecondaryPeerClient:
             body=claim_body,
             headers={"Content-Type": "application/json"},
             expected_fingerprint=candidate.certificate_sha256,
+            port=port,
             timeout=4.0,
         )
         if claim_status == 423:
             raise SecondarySetupError(
-                "บนเครื่อง Primary ให้เปิด การตั้งค่าขั้นสูง > รายงานผ่าน LAN "
-                "แล้วกด ‘อนุญาต Secondary Sync 5 นาที’"
+                "ต้นทางปิดสิทธิ์เข้ากลุ่มอยู่ ตรวจการตั้งค่าเครือข่ายว่าไม่ได้เลือกปิดรับสมาชิก"
             )
         if claim_status != 202 or not claim_payload.get("accepted"):
             raise SecondarySetupError("เครื่อง Primary ไม่อนุญาต Secondary Sync")
+        return token
+
+    def _fetch_with_token(self, candidate, path, token):
+        host, port = self._peer_endpoint(candidate)
         status, snapshot, _fingerprint, _cookies = self._request(
             host,
             "GET",
-            "/api/v1/peer/setup-snapshot",
+            path,
             headers={PEER_SYNC_TOKEN_HEADER: token},
             expected_fingerprint=candidate.certificate_sha256,
+            port=port,
             timeout=4.0,
         )
         if status != 200:
             raise SecondarySetupError("ไม่สามารถดึงการตั้งค่าจากเครื่องหลักได้")
-        return validate_setup_snapshot(snapshot)
+        return snapshot
+
+    def iter_settings_history_pages(self, candidate):
+        """One approval grants a bounded read of one pinned immutable ancestry.
+
+        The caller imports each validated page before advancing. Lost responses
+        may be retried with the same token; no new approval is consumed.
+        """
+        token = self._claim_authorization(candidate)
+        head, offset = None, 0
+        while True:
+            query = {"offset": offset}
+            if head is not None:
+                query["head"] = head
+            path = "/api/v2/peer/settings-history/page?" + urlencode(query)
+            for attempt in range(2):
+                try:
+                    page = self._fetch_with_token(candidate, path, token)
+                    break
+                except (OSError, ssl.SSLError):
+                    if attempt:
+                        raise
+            if (page.get("contract") != "komi-peer-settings-page/v1"
+                    or page.get("offset") != offset
+                    or not isinstance(page.get("head"), str)
+                    or (head is not None and page["head"] != head)):
+                raise SecondarySetupError("ประวัติที่รับไม่ตรงกับชุดที่กำลังรับ")
+            head = page["head"]
+            next_offset = page.get("next_offset")
+            if next_offset is not None and (type(next_offset) is not int or next_offset <= offset):
+                raise SecondarySetupError("ลำดับประวัติไม่ถูกต้อง")
+            yield page
+            if next_offset is None:
+                return
+            offset = next_offset

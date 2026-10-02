@@ -431,6 +431,33 @@ def test_user_api_exposes_frozen_identity_for_same_subject_in_reused_slot(monkey
     assert {item["device_name_snapshot"] for item in items} == {"Printer A", "Printer B"}
 
 
+def test_user_pages_share_one_bounded_report_snapshot(monkeypatch):
+    subject = SubjectPeriodUsage(
+        device_slot=0, period_start=date(2026, 7, 1), period_end=date(2026, 7, 31),
+        subject_type="user", subject_id="u-0", subject_name="User 0",
+        latest_total=1, period_usage=1, reset_count=0, missing_baseline_days=0,
+        incomplete_days=0, sample_count=1, latest_at=None, warnings=(),
+        device_identity="serial:SER-A", device_name_snapshot="Printer A",
+        device_serial_snapshot="SER-A",
+    )
+    subjects = tuple(replace(subject, subject_id=f"u-{i}") for i in range(1050))
+    calls = []
+    def load(_slots, **kwargs):
+        calls.append(kwargs)
+        return subjects
+    monkeypatch.setattr(web_api, "report_slots", lambda: [0])
+    monkeypatch.setattr(web_api, "load_subject_history", load)
+    client = TestClient(web_api.app)
+    base = "/api/reports/users?period_start=2026-07-01&period_end=2026-07-31&limit=500"
+    first = client.get(base).json()
+    token = first["snapshot_token"]
+    second = client.get(f"{base}&offset=500&snapshot_token={token}").json()
+    third = client.get(f"{base}&offset=1000&snapshot_token={token}").json()
+    assert [len(page["items"]) for page in (first, second, third)] == [500, 500, 50]
+    assert len({item["subject_id"] for page in (first, second, third) for item in page["items"]}) == 1050
+    assert calls == [{"period_start": date(2026, 7, 1), "period_end": date(2026, 7, 31)}]
+
+
 def test_versioned_api_returns_request_id_and_paged_history(monkeypatch):
     first = _monthly_identity("serial:SER-A", "Printer A", "SER-A", 10)
     second = replace(first, period_start=date(2026, 6, 1), period_end=date(2026, 6, 30))

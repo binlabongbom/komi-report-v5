@@ -204,6 +204,10 @@ def test_poll_device_updates_identity_and_persistent_cache(tmp_path):
     assert get_cfg("snmp_total_oid_0") == SnmpTotalProbe.PRIMARY_TOTAL_OID
     assert len(runtime_snapshots.get(0).web_rows) == 1
     assert len(runtime_snapshots.get(0).subject_rows) == 2
+    events = coordinator.observations.page()["events"]
+    assert len(events) == 1
+    assert events[0]["payload"]["serial"] == "SERIAL-1"
+    assert len(coordinator.observations.pending("fixture-peer")) == 1
     subject_state = subject_cache.load(0, datetime.now().date())
     assert subject_state["subjects"]["user:1"]["latest_total"] == 42
     stages = {event.stage for event in pipeline_log.snapshot()}
@@ -304,8 +308,31 @@ def test_session_busy_keeps_snmp_online_and_does_not_increment_web_failure(tmp_p
     updated = repository.get(0)
     assert updated is not None and updated.connection_status == "online"
     assert coordinator.states[0].web_failures == 0
+    assert coordinator.observations.page()["events"] == []
     assert any(event.action == "Web Connection session busy" for event in pipeline_log.snapshot())
     coordinator.stop()
+
+
+def test_web_journal_failure_does_not_publish_a_fresh_web_snapshot(tmp_path):
+    from services.web_observations import WebObservationStore
+    class FailingObservations(WebObservationStore):
+        def record(self, *args, **kwargs):
+            raise OSError("injected durable storage failure")
+    QCoreApplication.instance() or QCoreApplication([])
+    repository = DeviceConfigRepository()
+    device = DeviceConfig(0, "Office", "192.0.2.10", last_total=100)
+    repository.replace_all([device])
+    runtime_snapshots.clear()
+    cache = DailyCacheStore(tmp_path / "cache")
+    coordinator = BackgroundPollingCoordinator(repository, probe=FakeProbe(), reader=FakeReader(),
+        cache=cache, observations=FailingObservations())
+    try:
+        assert coordinator._poll_device(device, force_web=True) is False
+        assert runtime_snapshots.get(0) is None
+        assert not cache.load(0, datetime.now().date())["last_success"]
+        assert not coordinator.observations.page()["events"]
+    finally:
+        coordinator.stop()
 
 
 def test_start_repairs_pending_daily_ledger_before_scheduler_runs(tmp_path):

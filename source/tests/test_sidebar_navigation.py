@@ -9,7 +9,6 @@ def test_sidebar_contains_only_active_v5_workflows() -> None:
         "อุปกรณ์",
         "รายงาน",
         "ตั้งค่า",
-        "คู่มือ",
     ]
     assert "บันทึกการซิงก์" not in labels
     assert "Read Meter" not in labels

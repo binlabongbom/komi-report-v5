@@ -22,6 +22,10 @@ STAMP = "2026-08-31T09:00:00+07:00"
 
 def _seed_reset_state() -> dict[str, object]:
     with _open() as connection:
+        connection.execute('INSERT INTO peer_billing_amendments(amendment_id,document_json,results_json,created_at) VALUES(?,?,?,?)',
+                           ('fixture-amendment', '{}', '[]', STAMP))
+        connection.execute('INSERT INTO peer_billing_deliveries(member_id,amendment_id) VALUES(?,?)',
+                           ('fixture-member', 'fixture-amendment'))
         connection.execute(
             """INSERT INTO devices(
                    slot,name,host,username,password,enabled,model,serial,updated_at
@@ -182,12 +186,65 @@ def _table_count(table: str) -> int:
         return int(connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0])
 
 
+def _seed_lan_membership(vault):
+    from services.installation_identity import load_or_create_installation_identity
+    from services.peer_membership import PeerMembership
+    access = PeerMembership(path=get_db_path(), vault=vault,
+        identity=load_or_create_installation_identity(vault, 'lan-installation'))
+    access.initialize_primary('Synthetic LAN')
+    with _open() as conn:
+        conn.execute("INSERT INTO web_observation_state VALUES('origin','lan-origin') ON CONFLICT(key) DO UPDATE SET value=excluded.value")
+        conn.execute("INSERT INTO lan_evidence_origins VALUES('retired-fixture','retired-origin','{}')")
+    return access
+
+
+def test_usage_reset_preserves_lan_membership_and_observation_identity():
+    vault = SessionRegistrationSecretStore()
+    access = _seed_lan_membership(vault)
+    invitation = access.invitation()
+    reset_usage_data()
+    assert access.invitation() == invitation
+    assert _table_count('lan_evidence_origins') == 1
+    with _open(commit=False) as conn:
+        assert conn.execute("SELECT value FROM web_observation_state WHERE key='origin'").fetchone() == ('lan-origin',)
+
+
+@pytest.mark.parametrize('fail', [False, True])
+def test_factory_reset_removes_lan_keys_atomically_with_group(fail):
+    class Store(SessionRegistrationSecretStore):
+        def delete(self, reference):
+            super().delete(reference)
+            if fail and ':lan:' in reference:
+                raise RuntimeError('synthetic LAN vault failure')
+    vault = Store()
+    access = _seed_lan_membership(vault)
+    original = access.invitation()
+    capability_ref = access._reference(original['group_id'])
+    key_ref = installation_private_key_reference(access.member_id)
+    secrets = {ref: vault.load(ref) for ref in (capability_ref, key_ref)}
+    if fail:
+        with pytest.raises(RuntimeError, match='LAN vault failure'):
+            factory_reset_v5(registration_secret_store=vault)
+        assert access.invitation() == original
+        assert {ref: vault.load(ref) for ref in secrets} == secrets
+        assert _table_count('lan_peer_group') == 1
+        assert _table_count('lan_evidence_origins') == 1
+    else:
+        factory_reset_v5(registration_secret_store=vault)
+        assert _table_count('lan_peer_group') == _table_count('lan_peer_members') == 0
+        assert _table_count('lan_evidence_origins') == 0
+        assert all(vault.load(ref) is None for ref in secrets)
+        assert _table_count('web_observation_state') == 0
+
+
 def test_usage_reset_clears_report_history_and_preserves_configuration():
     state = _seed_reset_state()
 
     reset_usage_data()
 
     for table in (
+        "peer_billing_deliveries",
+        "peer_billing_amendments",
         "legacy_history_items",
         "billing_ledger",
         "daily_subject_records",
@@ -234,6 +291,8 @@ def test_factory_reset_clears_v52_raw_parser_and_all_registration_secrets():
     factory_reset_v5(registration_secret_store=vault)
 
     for table in (
+        "peer_billing_deliveries",
+        "peer_billing_amendments",
         "registration_attempt_history",
         "registration_outbox",
         "registration_profile",

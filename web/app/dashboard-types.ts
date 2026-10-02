@@ -14,6 +14,7 @@ export type Device = {
 };
 
 export type Usage = {
+  remarks?: string[];
   total: number;
   color: number;
   bw: number;
@@ -99,6 +100,7 @@ export type Overview = {
 export type HistoryGranularity = "daily" | "weekly" | "monthly" | "quarterly" | "yearly";
 
 export type HistoryItem = {
+  remarks?: string[];
   period_start: string;
   period_end: string;
   usage: number;
@@ -124,6 +126,8 @@ export type UserItem = {
   subject_type: string;
   subject_id: string;
   subject_name: string;
+  report_user_key?: string;
+  report_device_identity?: string;
   usage: number;
   latest_total: number;
   needs_review: boolean;

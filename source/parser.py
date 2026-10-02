@@ -20,7 +20,7 @@ from parser_profiles import (
     COLS_PRODUCTION,
     COLS_SUMMARY,
     COLS_SUMMARY_COMPACT,
-    PARSER_REGISTRY,
+    PARSER_REGISTRY as PARSER_REGISTRY,
     find_matching_profile,
 )
 
@@ -631,7 +631,7 @@ def _parse_production(lines: list, machine: str, serial: str, date_s: str) -> di
     total_counter   = g(c["total_counter"])
     duplex_counter  = g(c["duplex"])
     originals       = g(c["originals"])
-    no_prints       = g(c["prints"])
+    g(c["prints"])
 
     copy_total      = g(c["copy_total"])
     copy_color_a4   = g(c["copy_color_a4"])

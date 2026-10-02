@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import re
+from bisect import bisect_right
+from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date, datetime
 from enum import StrEnum
@@ -31,9 +33,6 @@ A3_EQUIVALENT_PAPER_SIZES = frozenset(
         "folio",
     }
 )
-A4_EQUIVALENT_PAPER_SIZES = frozenset(
-    {"a4", "a5", "a6", "a7", "a8", "b5", "b6", "b7", "b8"}
-)
 _PAPER_SIZE_PATTERN = re.compile(
     r"(?<![a-z0-9])(?:a[0-8]|b[0-8]|legal|folio)(?![a-z0-9])",
     re.IGNORECASE,
@@ -62,6 +61,26 @@ class PriceList:
         return 0.0 if category is CostCategory.NO_CHARGE else float(getattr(self, category.value))
 
 
+def price_change_dates(conn, slot: int) -> tuple[date, ...]:
+    """Return the first priced date and actual rate transitions, without writes.
+
+    Saving setup may repeat the same rates on a later effective date. Those
+    audit rows do not create an ambiguous price boundary for meter intervals.
+    Keep the first row, including zero rates, because earlier usage has no
+    price evidence. Compare all four rates so genuine changes remain held.
+    """
+    result, previous = [], None
+    for effective, *rates in conn.execute(
+        """SELECT effective_date,a3_color,a3_bw,a4_color,a4_bw FROM price_history
+           WHERE device_slot=? ORDER BY effective_date""", (slot,)
+    ):
+        current = tuple(rates)
+        if previous is None or current != previous:
+            result.append(date.fromisoformat(effective))
+        previous = current
+    return tuple(result)
+
+
 def default_cost_category(raw_key: str, label: str = "", category: str = "") -> CostCategory:
     text = " ".join((raw_key, label, category)).lower()
     if any(token in text for token in ("scan", "fax", "toner", "supply")):
@@ -78,17 +97,24 @@ def default_cost_category(raw_key: str, label: str = "", category: str = "") -> 
 
 class PricingRepository:
     def set_prices(self, slot: int, effective_date: date, prices: PriceList) -> None:
-        now = datetime.now().astimezone().isoformat(timespec="seconds")
         with _open() as conn:
-            conn.execute(
-                """INSERT INTO price_history(
-                       device_slot,effective_date,a3_color,a3_bw,a4_color,a4_bw,created_at
-                   ) VALUES(?,?,?,?,?,?,?)
-                   ON CONFLICT(device_slot,effective_date) DO UPDATE SET
-                     a3_color=excluded.a3_color,a3_bw=excluded.a3_bw,
-                     a4_color=excluded.a4_color,a4_bw=excluded.a4_bw,created_at=excluded.created_at""",
-                (slot, effective_date.isoformat(), prices.a3_color, prices.a3_bw, prices.a4_color, prices.a4_bw, now),
-            )
+            self.write_prices(conn, slot, effective_date, prices)
+
+    @staticmethod
+    def write_prices(conn, slot: int, effective_date: date, prices: PriceList) -> None:
+        from services.shared_settings_document import PRICE_KEYS, validate_price_history
+        validate_price_history([{"slot": slot, "effective_date": effective_date.isoformat(),
+                                 **{key: getattr(prices, key) for key in PRICE_KEYS}}])
+        now = datetime.now().astimezone().isoformat(timespec="seconds")
+        conn.execute(
+            """INSERT INTO price_history(
+                   device_slot,effective_date,a3_color,a3_bw,a4_color,a4_bw,created_at
+               ) VALUES(?,?,?,?,?,?,?)
+               ON CONFLICT(device_slot,effective_date) DO UPDATE SET
+                 a3_color=excluded.a3_color,a3_bw=excluded.a3_bw,
+                 a4_color=excluded.a4_color,a4_bw=excluded.a4_bw,created_at=excluded.created_at""",
+            (slot, effective_date.isoformat(), prices.a3_color, prices.a3_bw, prices.a4_color, prices.a4_bw, now),
+        )
 
     def get_prices(self, slot: int, on_date: date) -> PriceList:
         with _open(commit=False) as conn:
@@ -99,6 +125,28 @@ class PricingRepository:
                 (slot, on_date.isoformat()),
             ).fetchone()
         return PriceList(*row) if row else PriceList()
+
+    def get_prices_for_days(self, requests) -> dict[tuple[int, date], PriceList]:
+        """Resolve historical prices for a report with one read, not one per day."""
+        requests = set(requests)
+        if not requests:
+            return {}
+        slots = sorted({slot for slot, _day in requests})
+        latest = max(day for _slot, day in requests).isoformat()
+        placeholders = ','.join('?' for _slot in slots)
+        with _open(commit=False) as conn:
+            rows = conn.execute(f'''SELECT device_slot,effective_date,a3_color,a3_bw,a4_color,a4_bw
+                FROM price_history WHERE device_slot IN ({placeholders}) AND effective_date<=?
+                ORDER BY device_slot,effective_date''', (*slots, latest)).fetchall()
+        dates, prices = defaultdict(list), defaultdict(list)
+        for slot, effective, *amounts in rows:
+            dates[slot].append(effective)
+            prices[slot].append(PriceList(*amounts))
+        resolved = {}
+        for slot, day in requests:
+            index = bisect_right(dates[slot], day.isoformat()) - 1
+            resolved[(slot, day)] = prices[slot][index] if index >= 0 else PriceList()
+        return resolved
 
     def set_category(self, slot: int, raw_key: str, effective_date: date, category: CostCategory) -> None:
         now = datetime.now().astimezone().isoformat(timespec="seconds")

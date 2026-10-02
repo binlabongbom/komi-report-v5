@@ -1,0 +1,71 @@
+{
+  "synthetic": true,
+  "mode": "evidence",
+  "started_at": "2026-09-19T07:28:36.167448",
+  "python": "3.14.7 (tags/v3.14.7:823f032, Aug  5 2026, 10:51:32) [MSC v.1944 64 bit (AMD64)]",
+  "platform": "win32",
+  "measurements": [
+    {
+      "name": "evidence_render_30days",
+      "seconds_until_ready": 0.4563969999944675,
+      "action_seconds": 0.45639229999505915,
+      "heartbeat_count": 2,
+      "max_event_loop_gap_ms": 456.4388999933726,
+      "gaps_above_100ms": 1,
+      "before": {
+        "working_set_bytes": 61464576,
+        "private_bytes": 32755712,
+        "peak_working_set_bytes": 61464576,
+        "cpu_seconds": 1.453125
+      },
+      "after": {
+        "working_set_bytes": 70520832,
+        "private_bytes": 40919040,
+        "peak_working_set_bytes": 70520832,
+        "cpu_seconds": 1.9375
+      }
+    },
+    {
+      "name": "evidence_xlsx_30days",
+      "seconds_until_ready": 1.6662272999965353,
+      "action_seconds": 1.6662257999996655,
+      "heartbeat_count": 3,
+      "max_event_loop_gap_ms": 1666.2768999958644,
+      "gaps_above_100ms": 1,
+      "before": {
+        "working_set_bytes": 70590464,
+        "private_bytes": 41852928,
+        "peak_working_set_bytes": 70590464,
+        "cpu_seconds": 1.9375
+      },
+      "after": {
+        "working_set_bytes": 94851072,
+        "private_bytes": 297840640,
+        "peak_working_set_bytes": 94851072,
+        "cpu_seconds": 3.25
+      }
+    }
+  ],
+  "blocked_operations": [],
+  "complete": true,
+  "scope": "Source/offscreen; no Host, real network, Web service, installer or release build",
+  "copy_migration_init_seconds": 0.08509139999659965,
+  "copy_schema": 30,
+  "fixture": {
+    "days": 30,
+    "reads_per_day": 32,
+    "points": 960,
+    "intervals": 959,
+    "counters": 1,
+    "format": "xlsx"
+  },
+  "in_progress": null,
+  "validation": {
+    "ขอบเขตข้อมูล": 8,
+    "อ่านจริง": 961,
+    "ยอดตามช่วง": 960,
+    "กราฟรายวัน": 31
+  },
+  "output_bytes": 52637,
+  "temporary_copy_cleaned": true
+}

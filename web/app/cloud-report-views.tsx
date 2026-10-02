@@ -4,16 +4,7 @@ import { useMemo, useState, type KeyboardEvent } from "react";
 import type { Device, DeviceUsage, HistoryItem, Overview, UserItem } from "./dashboard-types";
 import { type Language, tr } from "./i18n";
 import { money, num, Sparkline, StatusBadge } from "./report-views";
-
-type UserRow = {
-  key: string;
-  name: string;
-  type: string;
-  usage: number;
-  latest: number;
-  review: boolean;
-  printers: Map<string, number>;
-};
+import { buildUserRows } from "../lib/report-user-rows";
 
 function activateRow(event: KeyboardEvent, action: () => void) {
   if (event.key !== "Enter" && event.key !== " ") return;
@@ -24,29 +15,6 @@ function activateRow(event: KeyboardEvent, action: () => void) {
 function identityName(identity: string, overview: Overview | null) {
   const device = overview?.devices.find(item => item.device_identity === identity);
   return device?.name || identity.replace(/^(serial|host):/, "") || "—";
-}
-
-function userRows(users: UserItem[]) {
-  const rows = new Map<string, UserRow>();
-  for (const item of users) {
-    const key = `${item.subject_type}:${item.subject_id}`;
-    const row = rows.get(key) ?? {
-      key,
-      name: item.subject_name,
-      type: item.subject_type,
-      usage: 0,
-      latest: 0,
-      review: false,
-      printers: new Map<string, number>(),
-    };
-    const identity = item.device_identity || `slot:${item.device_slot}`;
-    row.usage += item.usage;
-    row.latest = Math.max(row.latest, item.latest_total);
-    row.review ||= item.needs_review;
-    row.printers.set(identity, (row.printers.get(identity) ?? 0) + item.usage);
-    rows.set(key, row);
-  }
-  return [...rows.values()].sort((a, b) => b.usage - a.usage);
 }
 
 function usageTotal(device: DeviceUsage) {
@@ -96,7 +64,7 @@ function ReportStatus({ row, language }: { row: DeviceUsage; language: Language 
 }
 
 export function CloudOverview({ overview, history, users, loading, language }: { overview: Overview | null; history: HistoryItem[]; users: UserItem[]; loading: boolean; language: Language }) {
-  const rows = useMemo(() => userRows(users), [users]);
+  const rows = useMemo(() => buildUserRows(users), [users]);
   const totals = overview?.totals;
   const unavailable = "—";
   return <div className="cloud-view">
@@ -122,7 +90,7 @@ export function CloudOverview({ overview, history, users, loading, language }: {
 }
 
 export function CloudUsers({ users, overview, language }: { users: UserItem[]; overview: Overview | null; language: Language }) {
-  const rows = useMemo(() => userRows(users), [users]);
+  const rows = useMemo(() => buildUserRows(users), [users]);
   const [selected, setSelected] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const normalizedQuery = query.trim().toLocaleLowerCase(language === "th" ? "th-TH" : "en-US");

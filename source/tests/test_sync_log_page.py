@@ -5,7 +5,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QAbstractButton, QApplication, QHeaderView, QLabel, QMessageBox
 
-import v5_pages
+from ui.pages import activity as activity_page
 from i18n import ENGLISH, THAI, apply_language, set_language
 from services.device_config import DeviceConfig
 from services.pipeline_log import pipeline_log
@@ -20,6 +20,36 @@ class _Repository:
 class _Cache:
     def load(self, _slot, _day):
         return None
+
+
+def test_status_time_displays_local_timezone_for_remote_utc_observation():
+    from datetime import datetime
+    stamp = '2026-09-22T09:52:38+00:00'
+    expected = datetime.fromisoformat(stamp).astimezone().strftime('%d/%m %H:%M') + ' น.'
+    assert PagePipelineLog._display_time(stamp) == expected
+
+
+def test_remote_reader_is_searchable_and_copied_without_changing_printer_name():
+    app = QApplication.instance() or QApplication([])
+    pipeline_log.clear()
+    pipeline_log.append(stage='SYNC', action='Shared Web result', device_slot=0,
+        device_name='DMS Printer', reader_name='REMOTE-PC', status='ok')
+    page = PagePipelineLog(repository=_Repository(), cache=_Cache())
+    try:
+        page.tabs.setCurrentIndex(1)
+        page.search.setText('remote-pc')
+        page.refresh_live()
+        assert page.live_table.rowCount() == 1
+        assert page.live_table.item(0, 1).text() == 'DMS Printer'
+        assert page.live_table.item(0, 2).text() == 'REMOTE-PC'
+        page._show_live_detail(0, 0)
+        assert 'อ่านโดย: REMOTE-PC' in page.live_detail.toPlainText()
+        page._copy_live()
+        assert 'REMOTE-PC' in app.clipboard().text()
+        assert 'DMS Printer' in app.clipboard().text()
+    finally:
+        page.close()
+        pipeline_log.clear()
 
 
 def test_sync_log_opens_with_a_plain_language_status_and_compact_event_history():
@@ -40,7 +70,8 @@ def test_sync_log_opens_with_a_plain_language_status_and_compact_event_history()
     assert page.tabs.tabText(0) == "สถานะการอ่าน"
     assert page.tabs.tabText(1) == "ประวัติการอ่าน"
     assert page.tabs.tabText(3) == "การทำงานอัตโนมัติ"
-    assert page.tabs.count() == 4
+    assert page.tabs.count() == 5
+    assert page.tabs.widget(4).widget() is page.counter_reviews
     assert page.status_rows.count() == 1
     assert "กำลังเริ่มต้นการอ่าน" in page.status_banner.text()
     status_card = page.status_rows.itemAt(0).widget()
@@ -63,8 +94,10 @@ def test_sync_log_opens_with_a_plain_language_status_and_compact_event_history()
     assert page.live_table.rowCount() == 1
     assert page.live_table.item(0, 0).text().count(":") == 2
     assert page.live_table.item(0, 1).text() == "DMS Printer"
-    assert page.live_table.item(0, 2).text() == "สำเร็จ"
-    assert "C=81%" in page.live_table.item(0, 3).text()
+    from services.computer_names import local_computer_name
+    assert page.live_table.item(0, 2).text() == local_computer_name()
+    assert page.live_table.item(0, 3).text() == "สำเร็จ"
+    assert "C=81%" in page.live_table.item(0, 4).text()
     assert not page.live_table.alternatingRowColors()
     assert page.live_table.verticalHeader().sectionResizeMode(0) == QHeaderView.ResizeMode.Fixed
     assert page.live_table.verticalHeader().defaultSectionSize() == 34
@@ -89,7 +122,7 @@ def test_sync_log_status_explains_an_offline_printer_without_showing_raw_stage_f
                     "Sales Printer",
                     "192.0.2.11",
                     connection_status="offline",
-                    last_error="TLS handshake timeout",
+                    last_error="KOMI Diagnostic v1\nCode: connection_timeout\n",
                 )
             ]
 
@@ -99,7 +132,8 @@ def test_sync_log_status_explains_an_offline_printer_without_showing_raw_stage_f
     card = page.status_rows.itemAt(0).widget()
     texts = [label.text() for label in card.findChildren(type(page.status_banner))]
     assert "เชื่อมต่อไม่ได้" in texts
-    assert any("เชื่อมต่อเครื่องไม่สำเร็จภายในเวลาที่กำหนด" in text for text in texts)
+    assert any("connection_timeout" in text for text in texts)
+    assert any("ไม่ได้รับคำตอบภายในเวลาที่กำหนด" in text for text in texts)
     page.close()
     app.processEvents()
 
@@ -111,7 +145,7 @@ def test_clearing_live_log_requires_confirmation(monkeypatch):
     page = PagePipelineLog(repository=_Repository(), cache=_Cache())
 
     monkeypatch.setattr(
-        v5_pages.QMessageBox,
+        activity_page.QMessageBox,
         "question",
         lambda *_args, **_kwargs: QMessageBox.StandardButton.No,
     )

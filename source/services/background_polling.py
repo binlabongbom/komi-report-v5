@@ -19,6 +19,7 @@ from services.device_config import DatabaseCredentialStore, DeviceConfig, Device
 from services.live_meter_service import meter_reading_to_report
 from services.parser_mapping import apply_parser_mapping_overrides
 from services.pipeline_log import pipeline_log
+from services.computer_names import local_computer_name
 from services.polling import DevicePollState, PollingPolicy, PollingStateMachine
 from services.raw_counter_history import RawCounterHistoryStore
 from services.reconciliation import reconcile_web_counters
@@ -26,6 +27,7 @@ from services.runtime_snapshots import runtime_snapshots
 from services.snmp_probe import SnmpTotalProbe
 from services.subject_history import SubjectDailyCacheStore
 from services.sync_schedule import load_schedule_windows
+from services.web_observations import WebObservationStore
 
 log = logging.getLogger(__name__)
 
@@ -33,6 +35,8 @@ log = logging.getLogger(__name__)
 class BackgroundPollingCoordinator(QObject):
     device_updated = pyqtSignal(int)
     reading_saved = pyqtSignal(int)
+    activity_changed = pyqtSignal()
+    shared_settings_applied = pyqtSignal()
 
     def __init__(
         self,
@@ -43,6 +47,10 @@ class BackgroundPollingCoordinator(QObject):
         cache: DailyCacheStore | None = None,
         subject_cache: SubjectDailyCacheStore | None = None,
         raw_counter_history: RawCounterHistoryStore | None = None,
+        observations: WebObservationStore | None = None,
+        peer_history=None,
+        shared_reads=None,
+        clock=None,
         parent=None,
     ) -> None:
         super().__init__(parent)
@@ -55,14 +63,26 @@ class BackgroundPollingCoordinator(QObject):
         self.cache = cache or DailyCacheStore()
         self.subject_cache = subject_cache or SubjectDailyCacheStore()
         self.raw_counter_history = raw_counter_history or RawCounterHistoryStore()
+        self.observations = observations or WebObservationStore()
+        # Attached only by a verified member/session provider. Discovery alone
+        # never suppresses local collection or authorizes shared observations.
+        self.shared_reads = shared_reads
+        self.peer_settings = None
+        self.peer_network = None
+        self.peer_web_view = None
+        self.clock = clock or (lambda: datetime.now().astimezone())
         self.machine = PollingStateMachine()
         self.snmp_interval = timedelta(minutes=5)
         self.executor = ThreadPoolExecutor(max_workers=3, thread_name_prefix="komi-meter")
         self.states: dict[int, DevicePollState] = {}
+        self._poll_scopes = {}
         self.last_poll: dict[int, datetime] = {}
         self.active: set[int] = set()
         self._futures: dict[int, Future] = {}
         self._started_at: dict[int, float] = {}
+        self._manual_requested: set[int] = set()
+        self._web_attempted: set[int] = set()
+        self._scheduled_joined: dict[int, datetime] = {}
         self._lock = threading.RLock()
         self._rollover_lock = threading.RLock()
         self._paused_reason = ""
@@ -72,6 +92,74 @@ class BackgroundPollingCoordinator(QObject):
         self.timer = QTimer(self)
         self.timer.setInterval(30_000)
         self.timer.timeout.connect(self.tick)
+        from services.peer_history_runtime import PeerHistoryRuntime
+        self.peer_history = peer_history if peer_history is not None else PeerHistoryRuntime(self)
+        from services.peer_network_runtime import PeerNetworkRuntime
+        self.peer_network_runtime = PeerNetworkRuntime(self)
+        from services.archive_maintenance import ArchiveMaintenance
+        self.archive_maintenance = ArchiveMaintenance(self, busy=self._archive_busy)
+        self.archive_maintenance.reports_indexed.connect(self._shared_reports_indexed)
+
+    def _shared_reports_indexed(self):
+        from services.report_scope import report_slots
+        for slot in report_slots():
+            self.device_updated.emit(slot)
+
+    def _archive_busy(self):
+        with self._lock:
+            return bool(self.active) or self.peer_history.busy or self._stopped
+
+    def active_slots(self):
+        with self._lock:
+            return tuple(sorted(self.active))
+
+    def bind_verified_settings(self, *, authorize, authorize_epoch):
+        """Called on the Qt owner thread by the verified membership adapter."""
+        from services.peer_settings_runtime import PeerSettingsRuntime
+        if self.peer_settings is not None:
+            self.peer_settings.stop()
+        self.peer_settings = PeerSettingsRuntime(self, authorize=authorize, authorize_epoch=authorize_epoch)
+        self.peer_settings.applied.connect(self.shared_settings_applied.emit)
+        self.peer_settings.notify()
+        return self.peer_settings
+
+    def bind_peer_network(self, node, *, address, context, members):
+        """Install the enrolled network as one unit on the Qt owner thread.
+
+        Enrollment must wait for existing local meter jobs to finish. A failed
+        bind leaves the local collector intact and does not attach half a set
+        of sessions. Desktop and Agent both use this same owner boundary.
+        """
+        from pathlib import Path
+        from services.peer_network import PeerNetworkNode
+        if not isinstance(node, PeerNetworkNode):
+            raise TypeError('An authenticated peer network is required')
+        if Path(node.path).resolve() != Path(self.observations.path).resolve():
+            raise ValueError('Peer network belongs to another database')
+        if self._stopped or self.active_slots() or self.peer_network is not None:
+            raise RuntimeError('Wait for idle collection before binding peer membership')
+        sessions = [node.session(member) for member in sorted(set(members)) if member != node.member_id]
+        try:
+            bound = node.start(address, context=context)
+            self.bind_verified_settings(authorize=node.authorize_settings, authorize_epoch=node.authorize_epoch)
+            for session in sessions:
+                self.peer_history.attach(session)
+        except BaseException:
+            for session in sessions:
+                self.peer_history.detach(session.member)
+            if self.peer_settings is not None:
+                self.peer_settings.stop()
+                self.peer_settings = None
+            node.stop(wait=True)
+            raise
+        self.peer_network = node
+        self.shared_reads = node.shared_reads
+        from services.peer_web_view import PeerWebViewRuntime
+        self.peer_web_view = PeerWebViewRuntime(self)
+        node.on_data = self.peer_web_view.notify
+        self.peer_web_view.notify()
+        self.activity_changed.emit()
+        return bound
 
     def start(self) -> None:
         if self._stopped:
@@ -79,6 +167,9 @@ class BackgroundPollingCoordinator(QObject):
         if self._started:
             return
         self._started = True
+        self.peer_history.start()
+        self.peer_network_runtime.start()
+        self.archive_maintenance.start()
         if self.is_paused:
             log.info("background polling start deferred while paused: %s", self._paused_reason)
             return
@@ -133,7 +224,7 @@ class BackgroundPollingCoordinator(QObject):
         self.timer.stop()
         with self._lock:
             self._paused_reason = reason.strip() or "registration_ineligible"
-            cancelled = sum(future.cancel() for future in self._futures.values())
+            cancelled = sum(future.cancel() for future in list(self._futures.values()))
         log.info(
             "background polling paused: %s",
             self._paused_reason,
@@ -157,7 +248,7 @@ class BackgroundPollingCoordinator(QObject):
         self._activate_scheduler()
         log.info("background polling resumed")
 
-    def stop(self) -> int:
+    def stop(self, *, wait: bool = False) -> int:
         """Stop scheduling new work and cancel queued polls where possible.
 
         A running device read is allowed to finish its transaction/cache write;
@@ -165,22 +256,41 @@ class BackgroundPollingCoordinator(QObject):
         blocking Qt's UI event loop.
         """
         self.timer.stop()
-        self._stopped = True
-        with self._lock:
-            remaining = sum(not future.done() for future in self._futures.values())
-            for future in self._futures.values():
-                future.cancel()
-        self.executor.shutdown(wait=False, cancel_futures=True)
+        # Serialize shutdown against submission, but release both locks before
+        # draining workers (their completion callbacks also acquire _lock).
+        with self._rollover_lock:
+            with self._lock:
+                self._stopped = True
+                remaining = sum(not future.done() for future in self._futures.values())
+                for future in list(self._futures.values()):
+                    future.cancel()
+        # Close incoming requests and fence in-flight grants before releasing
+        # process ownership. Repeated stop(wait=True) drains the same listener.
+        remaining += self.peer_network_runtime.stop(wait=wait)
+        if self.peer_web_view is not None:
+            remaining += self.peer_web_view.stop(wait=wait)
+        if self.peer_network is not None:
+            remaining += self.peer_network.stop(wait=wait)
+        self.executor.shutdown(wait=wait, cancel_futures=True)
+        if self.peer_settings is not None:
+            self.peer_settings.stop()
+            self.peer_settings = None
+        remaining += self.peer_history.stop(wait=wait)
+        remaining += self.archive_maintenance.stop(wait=wait)
         log.info(
             "background polling stopped",
             extra={"event": "polling_stopped", "operation": "shutdown", "remaining_polls": remaining},
         )
         return remaining
 
+    def network_recovered(self):
+        self.peer_network_runtime.network_recovered()
+        self.peer_history.network_recovered()
+
     def tick(self) -> None:
-        if self.is_paused:
+        if self._stopped or self.is_paused:
             return
-        now = datetime.now().astimezone()
+        now = self.clock()
         self._finalize_before(now.date())
         interval = self.machine.policy.snmp_interval_at(now, self.snmp_interval)
         if interval is None:
@@ -210,7 +320,7 @@ class BackgroundPollingCoordinator(QObject):
         )
 
     def poll_now(self, slot: int | None = None) -> None:
-        if self.is_paused:
+        if self._stopped or self.is_paused:
             return
         for device in self.repository.list(enabled_only=True):
             if slot is None or device.slot == slot:
@@ -354,12 +464,24 @@ class BackgroundPollingCoordinator(QObject):
     def _submit(self, device: DeviceConfig, *, force_web: bool) -> None:
         with self._rollover_lock:
             with self._lock:
-                if self._paused_reason:
+                if self._stopped or self._paused_reason:
                     return
                 if device.slot in self.active:
+                    if force_web:
+                        self._manual_requested.add(device.slot)
+                    else:
+                        now = self.clock()
+                        self.last_poll[device.slot] = now
+                        state = self.states.get(device.slot)
+                        if state is not None and self.machine.scheduled_web_due(state, now):
+                            self._scheduled_joined.setdefault(device.slot, now)
                     return
                 self.active.add(device.slot)
-                self.last_poll[device.slot] = datetime.now().astimezone()
+                self._manual_requested.discard(device.slot)
+                self._web_attempted.discard(device.slot)
+                self._scheduled_joined.pop(device.slot, None)
+                if not force_web:
+                    self.last_poll[device.slot] = self.clock()
                 self._started_at[device.slot] = monotonic()
             pipeline_log.append(
                 stage="POLICY",
@@ -374,18 +496,43 @@ class BackgroundPollingCoordinator(QObject):
             future = self.executor.submit(self._poll_device, device, force_web)
             with self._lock:
                 self._futures[device.slot] = future
-            future.add_done_callback(lambda item, slot=device.slot: self._finished(slot, item))
+            future.add_done_callback(lambda item, slot=device.slot: self._finished(slot, item, device))
+            self.activity_changed.emit()
 
-    def _finished(self, slot: int, future: Future) -> None:
+    def _finished(self, slot: int, future: Future, polled_device=None) -> None:
+        try:
+            saved = bool(future.result())
+        except Exception as error:
+            log.exception("background device poll failed: slot=%s", slot)
+            saved = False
+            # Preparation failures happen before the SNMP/Web handlers. Keep
+            # their cause for the reader status and manual-read feedback too.
+            try:
+                device = self.repository.get(slot)
+                if device and (polled_device is None or
+                        (device.host, device.serial, device.enabled) ==
+                        (polled_device.host, polled_device.serial, polled_device.enabled)):
+                    from services.support_diagnostics import diagnostic_report
+                    report = diagnostic_report(error, stage='POLICY / Meter preparation',
+                                               target=device.host, device=device.name)
+                    self.repository.update_runtime(slot, status='checking',
+                        checked_at=self.clock().isoformat(timespec='seconds'), error=report)
+            except Exception:
+                log.exception('Could not record failed meter preparation: slot=%s', slot)
         with self._lock:
+            joined = self._scheduled_joined.pop(slot, None)
+            if saved and joined is not None and slot in self.states:
+                state = self.states[slot]
+                state.last_scheduled_web_at = joined
+                state.scheduled_clock_initialized = True
+            # A manual request that raced the SNMP-only early return needs
+            # one real Web read, not an old snapshot and not a retry loop.
+            retry_manual = slot in self._manual_requested and slot not in self._web_attempted and not saved
+            self._manual_requested.discard(slot)
+            self._web_attempted.discard(slot)
             self.active.discard(slot)
             self._futures.pop(slot, None)
             started = self._started_at.pop(slot, None)
-        try:
-            saved = bool(future.result())
-        except Exception:
-            log.exception("background device poll failed: slot=%s", slot)
-            saved = False
         duration_ms = round((monotonic() - started) * 1000) if started is not None else None
         log.info(
             "background device poll finished",
@@ -397,20 +544,17 @@ class BackgroundPollingCoordinator(QObject):
             },
         )
         self.device_updated.emit(slot)
+        self.activity_changed.emit()
         if saved:
             self.reading_saved.emit(slot)
+        elif retry_manual:
+            device = self.repository.get(slot)
+            if device is not None and device.enabled:
+                self._submit(device, force_web=True)
 
-    def _poll_device(self, device: DeviceConfig, force_web: bool) -> bool:
-        # A future queued before deactivation may start after pause() raced
-        # with ThreadPoolExecutor. Do not let it issue its first SNMP/Web read.
-        if self.is_paused:
-            return False
-        now = datetime.now().astimezone()
-        state = self.states.setdefault(device.slot, DevicePollState(last_snmp_total=device.last_total))
+    def _snmp_round(self, device, state, now, preferred_oid):
         snmp_error = ""
         probe_result = None
-        preferred_oid = self._preferred_total_oid(device)
-        calibration_needed = not preferred_oid
         marker_root = getattr(self.probe, "MARKER_LIFE_ROOT", "1.3.6.1.2.1.43.10.2.1.4")
         model_root = getattr(self.probe, "MODEL_ROOT", "1.3.6.1.2.1.25.3.2.1.3")
         serial_root = getattr(self.probe, "SERIAL_ROOT", "1.3.6.1.2.1.43.5.1.1.17")
@@ -530,7 +674,8 @@ class BackgroundPollingCoordinator(QObject):
                         at=now,
                     )
         except Exception as exc:
-            snmp_error = str(exc)
+            from services.support_diagnostics import diagnostic_report
+            snmp_error = diagnostic_report(exc, stage='SNMP / Probe', target=device.host, device=device.name)
             decision = self.machine.snmp_failure(state, now)
             pipeline_log.append(
                 stage="SNMP",
@@ -544,6 +689,60 @@ class BackgroundPollingCoordinator(QObject):
                 at=now,
             )
 
+        return decision, snmp_error, probe_result
+
+    def _align_poll_scope(self, device):
+        from services.slot_runtime import polling_scope
+        scope = polling_scope(device)
+        with self._lock:
+            previous = self._poll_scopes.get(device.slot, scope)
+            self._poll_scopes[device.slot] = scope
+            if previous != scope:
+                self.states[device.slot] = DevicePollState()
+                self.last_poll.pop(device.slot, None)
+                runtime_snapshots.clear(device.slot)
+
+    def _poll_device(self, device: DeviceConfig, force_web: bool) -> bool:
+        # A future queued before deactivation may start after pause() raced
+        # with ThreadPoolExecutor. Do not let it issue its first SNMP/Web read.
+        if self.is_paused:
+            return False
+        self._align_poll_scope(device)
+        prepared = None
+        if self.shared_reads is not None:
+            import uuid
+            prepared = self.shared_reads.prepare(device.slot, manual=force_web, probe_only=not force_web, request_id=uuid.uuid4().hex,
+                cancelled=lambda: self._stopped or self.is_paused)
+            if prepared is None:
+                return False
+        now = self.clock()
+        manual_round = force_web
+        round_started_at = now
+        state = self.states.setdefault(device.slot, DevicePollState(last_snmp_total=device.last_total))
+        snmp_error = ""
+        probe_result = None
+        preferred_oid = self._preferred_total_oid(device)
+        calibration_needed = not preferred_oid
+        if prepared is not None and not prepared.job["can_read"]:
+            from services.polling import PollDecision
+            decision = PollDecision(True, "waiting", "รับผลจากงานอ่านที่เริ่มก่อน")
+        else:
+            decision, snmp_error, probe_result = self._snmp_round(device, state, now, preferred_oid)
+
+        scheduled_read = not manual_round and (decision.request_web or calibration_needed)
+        if prepared is not None and not prepared.job["can_read"]:
+            scheduled_read = scheduled_read and self.machine.scheduled_web_due(state, now)
+        with self._lock:
+            force_web = force_web or device.slot in self._manual_requested
+        if prepared is not None and prepared.job["can_read"] and not manual_round:
+            prepared = self.shared_reads.finish_probe(prepared,
+                request_web=bool(force_web or decision.request_web or calibration_needed),
+                cancelled=lambda: self._stopped or self.is_paused)
+            if prepared is not None:
+                # A peer may have joined the SNMP grant while the probe ran.
+                # Its manual request requires Web without moving this PC's
+                # original scheduled Web anchor when Web was not due.
+                force_web = True
         pipeline_log.append(
             stage="POLICY",
             action="เรียก Web Connection" if force_web or decision.request_web or calibration_needed else "ข้าม Web Connection",
@@ -574,6 +773,8 @@ class BackgroundPollingCoordinator(QObject):
             return False
 
         try:
+            with self._lock:
+                self._web_attempted.add(device.slot)
             pipeline_log.append(
                 stage="WEB",
                 action="เริ่ม Web Connection read",
@@ -585,14 +786,38 @@ class BackgroundPollingCoordinator(QObject):
                 status="request",
                 at=now,
             )
-            reading = (
-                self.reader.read(
+            # Pin the reviewed epoch before reading Web. A confirmation that
+            # races this read cannot silently bind the result to a new baseline.
+            from services.slot_epoch_store import SlotEpochStore
+            observed_serial = (probe_result.serial if probe_result is not None else "") or device.serial
+            epoch = SlotEpochStore().head(device.slot)
+            read_epoch_id = (epoch["id"] if epoch and
+                epoch["document"]["baseline_event"]["payload"]["serial"] == observed_serial else None)
+            def read_printer():
+                return self.reader.read(
                     device.host,
                     model=(probe_result.model if probe_result is not None else "") or device.model,
-                )
-                if isinstance(self.reader, MeterReader)
-                else self.reader.read(device.host)
-            )
+                ) if isinstance(self.reader, MeterReader) else self.reader.read(device.host)
+            shared_result = None
+            if self.shared_reads is not None:
+                import uuid
+                scope = self.shared_reads.current_scope(device.slot)
+                if (scope.serial, scope.epoch_id) != (observed_serial, read_epoch_id):
+                    raise ValueError("Printer identity or baseline differs from shared read scope")
+                shared_result = self.shared_reads.collect(device.slot, manual=force_web,
+                    request_id=uuid.uuid4().hex, read=read_printer, printer_name=device.name, prepared=prepared,
+                    cancelled=lambda: self._stopped or self.is_paused)
+                if shared_result is None:
+                    return False
+                reading = shared_result.reading
+            else:
+                reading = read_printer()
+            # Report the actual Web observation time, including a read that
+            # crosses midnight. Scheduling retains its separate round anchor.
+            observed_at = datetime.fromisoformat(reading.collected_at.replace("Z", "+00:00"))
+            if observed_at.tzinfo is None:
+                raise ValueError("Web observation requires an explicit timezone")
+            now = observed_at.astimezone(round_started_at.tzinfo)
             raw_reconciliation = reconcile_web_counters(
                 {
                     counter.canonical_field: counter.count
@@ -630,7 +855,20 @@ class BackgroundPollingCoordinator(QObject):
                     status="ok",
                     at=now,
                 )
-            ram_snapshot = runtime_snapshots.update(device.slot, reading)
+            observed_serial = (probe_result.serial if probe_result is not None else "") or device.serial
+            saved_event = shared_result.event if shared_result is not None else None
+            if observed_serial and shared_result is None:
+                saved_event = self.observations.record(device.slot, reading, serial=observed_serial,
+                    printer_name=device.name,
+                    epoch_id=read_epoch_id,
+                    at=datetime.fromisoformat(reading.collected_at.replace("Z", "+00:00")))
+            elif not observed_serial:
+                pipeline_log.append(stage="DB", action="Web observation identity unavailable",
+                    device_slot=device.slot, device_name=device.name, host=device.host,
+                    target="web_observations", value="Missing printer Serial",
+                    detail="Local report only; no shareable Web observation queued", status="warning", at=now)
+            ram_snapshot = runtime_snapshots.update(device.slot, reading, serial=observed_serial,
+                epoch_id=read_epoch_id, event_id=saved_event['id'] if saved_event else '')
             subject_state = self.subject_cache.update_reading(device.slot, reading, at=now)
             try:
                 raw_counter_count = self.raw_counter_history.update_reading(
@@ -766,6 +1004,7 @@ class BackgroundPollingCoordinator(QObject):
                 pipeline_log.append(
                     stage="RAM",
                     action="Normalized counter cached",
+                    reader_name=local_computer_name(),
                     device_slot=device.slot,
                     device_name=device.name,
                     host=device.host,
@@ -778,6 +1017,7 @@ class BackgroundPollingCoordinator(QObject):
             pipeline_log.append(
                 stage="RAM",
                 action="Daily cache updated",
+                reader_name=local_computer_name(),
                 device_slot=device.slot,
                 device_name=device.name,
                 host=device.host,
@@ -794,7 +1034,7 @@ class BackgroundPollingCoordinator(QObject):
             report = meter_reading_to_report(reading, machine_name=device.name)
             total = int(report.get("total_counter", state.last_snmp_total or 0))
             state.last_snmp_total = max(state.last_snmp_total or 0, total)
-            self.machine.web_success(state, now)
+            self.machine.web_success(state, now, scheduled=scheduled_read, scheduled_at=round_started_at)
             self.repository.update_runtime(
                 device.slot,
                 status="online",
@@ -804,6 +1044,8 @@ class BackgroundPollingCoordinator(QObject):
             )
             return True
         except (WebConnectionSessionBusyError, WebConnectionUnsupportedError) as exc:
+            from services.support_diagnostics import diagnostic_report
+            failure_report = diagnostic_report(exc, stage='WEB / Meter', target=device.host, device=device.name)
             state.next_web_retry_at = now + self.machine.policy.retry_interval
             status = "checking" if snmp_error else "online"
             action = (
@@ -818,7 +1060,7 @@ class BackgroundPollingCoordinator(QObject):
                 device_name=device.name,
                 host=device.host,
                 target="read-only Meter profile",
-                value=str(exc),
+                value=failure_report,
                 detail="ไม่เพิ่ม Web failure counter และไม่ใช้เป็นหลักฐานว่าเครื่อง offline",
                 status="warning",
                 at=now,
@@ -827,12 +1069,15 @@ class BackgroundPollingCoordinator(QObject):
                 device.slot,
                 status=status,
                 checked_at=now.isoformat(timespec="seconds"),
-                error=str(exc),
+                error=failure_report,
             )
             return False
         except Exception as exc:
             web_decision = self.machine.web_failure(state, now)
-            message = f"SNMP: {snmp_error}; Web: {exc}" if snmp_error else str(exc)
+            from services.support_diagnostics import diagnostic_report
+            message = diagnostic_report(exc, stage='WEB / Meter', target=device.host, device=device.name)
+            if snmp_error:
+                message += '\n\n' + snmp_error
             error_state = self.cache.record_error(device.slot, now.date(), message, at=now)
             pipeline_log.append(
                 stage="WEB",

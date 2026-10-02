@@ -1,6 +1,6 @@
 # แผนที่โฟลเดอร์และไฟล์ — KOMI REPORT V5
 
-อัปเดต: 2026-08-11
+อัปเดต: 2026-09-24
 
 ## ภาพรวมการทำงาน
 
@@ -8,7 +8,8 @@
 ตัวเปิดของแต่ละ OS
   -> runtime Python ของเครื่องนั้น (อยู่นอก OneDrive)
   -> source/app.py ใน OneDrive
-  -> หน้าจอ PyQt6 (pages.py / v5_pages.py / widgets.py)
+  -> หน้าจอ PyQt6 (ui/pages, ui/setup, ui/reports, ui/settings)
+  -> component ที่ใช้ร่วมกัน (ui/components, widgets.py)
   -> services และ database.py
   -> SQLite ในโฟลเดอร์ข้อมูลผู้ใช้
 
@@ -53,15 +54,22 @@ Web browser
 | ไฟล์ | ประเภท | หน้าที่ | ทำงานเมื่อไหร่ |
 |---|---|---|---|
 | `app.py` | ทั้งหน้าบ้าน/ตัวประกอบระบบ | entrypoint Desktop, สร้าง `QApplication`, main window, tray และ lifecycle | ทุกครั้งที่เปิด Desktop |
-| `v5_pages.py` | หน้าบ้าน Desktop | หน้าหลัก V5 เช่น Overview, Import, Reports, Sync Log, Settings | เมื่อสร้างหน้าและผู้ใช้เปิดเมนู |
-| `pages.py` | หน้าบ้าน Desktop | page/widget รุ่นฐานและหน้าที่ V5 ยัง reuse | ตอนสร้าง UI และเปลี่ยนหน้า |
+| `v5_pages.py`, `pages.py` | Compatibility | ส่งต่อ class/function เดิมไปยังไฟล์เจ้าของ ไม่มี implementation หน้าจอซ้ำ | สำหรับผู้เรียกเดิมและ test ความเข้ากันได้ |
+| `ui/pages/` | หน้าบ้าน Desktop | Overview, อุปกรณ์, Import, สถานะและประวัติ และหน้าเอกสารเดิม | เมื่อสร้างหน้า/เปลี่ยนเมนู |
+| `ui/setup/` | หน้าบ้าน Desktop | Wizard ประสานงาน; `steps/` แยกบริษัท/เครื่อง/ราคา/ตรวจสอบ; worker และ Import ประวัติเดิม | ตั้งค่าครั้งแรก/แก้เครื่อง |
+| `ui/reports/` | หน้าบ้าน Desktop | โหลดรายงาน, อายุงาน background, ตัววาดกราฟกลาง, Export dialog และรายงานฐานที่ยังใช้งาน | เปิดรายงาน/ส่งออก |
+| `ui/settings/` | หน้าบ้าน Desktop | แท็บและตัวประสานงาน; `sections/` แยกรอบบิล/ตารางเวลา/เปิดอัตโนมัติ/ลงทะเบียน/เครือข่าย/ช่วยเหลือ | เปิด/แก้การตั้งค่า |
+| `ui/components/` | Component กลาง | แถบหมึก, label การ์ดสรุป, หัวการ์ด Settings และข้อความแจ้งขนาดกะทัดรัด | เรียกใช้ร่วมกันจากหลายหน้า |
+| `ui/parser_editor.py`, `ui/policy.py` | UI helper | อายุหน้าต่าง Parser editor และนโยบายแสดง entry point | หน้า Import/Settings/Setup |
 | `widgets.py` | หน้าบ้าน Desktop | component ใช้ร่วม เช่น card, table, status และ navigation widget | ตอน render หน้าจอ |
 | `ui/cloud_reports.py` | หน้าบ้าน Desktop | หน้ารายงานแบบ cloud-inspired และตาราง Usage/Trend/Users/Devices | เมื่อเปิด Reports |
 | `ui/common_dialogs.py` | หน้าบ้าน Desktop | dialog มาตรฐานที่หลายหน้าใช้ร่วมกัน | เมื่อเปิด dialog/ข้อความยืนยัน |
 | `live_meter_page.py` | หน้าบ้าน Desktop | หน้าสถานะ meter แบบ live รุ่นเฉพาะ | เมื่อเปิดส่วน live meter |
 | `i18n.py` | หน้าบ้านร่วม | คำแปลและ label ที่แสดงใน UI | ตอนสร้าง/เปลี่ยนข้อความ UI |
-| `ui_consistency.py` | หน้าบ้าน/QA | กฎตรวจความสม่ำเสมอของ widget/style | ตอน test หรือ QA UI |
-| `config.py` | หลังบ้าน | configuration หลัก, path, default และ setting compatibility | import ตั้งแต่เริ่มแอป/API |
+| `ui/styles/` | หน้าบ้าน Desktop | สี ฟอนต์ และ stylesheet ส่วนกลาง แยกตาม component/หน้า | ตอนสร้างและปรับสถานะ UI |
+| `ui/button_system.py` | หน้าบ้าน Desktop | กฎขนาดปุ่มและ animation ส่วนกลาง | ติดตั้งครั้งเดียวกับ QApplication |
+| `ui_consistency.py` | Compatibility | re-export จาก `ui/button_system.py` ไม่มี implementation ซ้ำ | สำหรับผู้เรียกเดิม |
+| `config.py` | หลังบ้าน/Compatibility | ค่า default ของระบบและ path; re-export visual API เดิม โดยไม่มีนิยาม style ซ้ำ | import ตั้งแต่เริ่มแอป/API |
 | `runtime_config.py` | หลังบ้าน | แยก source/runtime/data root และค่าที่เปลี่ยนตามเครื่อง | ตอน bootstrap config |
 | `database.py` | หลังบ้าน | SQLite access, config, device, readings, summary และ schema entrypoint | ทุก flow ที่อ่าน/เขียนข้อมูล |
 | `migrations.py` | หลังบ้าน | migration schema แบบเพิ่มทีละ version | ตอน init/upgrade database |
@@ -107,6 +115,11 @@ Web browser
 | `import_worker.py` | ทำ import ใน worker ไม่ให้ UI ค้าง | ระหว่าง import |
 | `summary_service.py` | สรุป KPI/overview | Overview และ report summary |
 | `reporting_facade.py` | facade รวม query สำหรับรายงาน | Desktop Reports และ API |
+| `report_snapshot.py`, `report_models.py` | เตรียม snapshot และข้อมูลตารางใน background พร้อม cache/cancellation | โหลดหรือเปลี่ยนช่วงรายงาน |
+| `report_user_counters.py` | อ่าน Counter แบบย่อเพื่อคำนวณยอดผู้ใช้ แล้วปล่อยข้อมูลรายวันหลังสร้างโมเดลตาราง | Reports > Users; Legacy/Excel ยังอ่าน Raw เต็ม |
+| `report_subject_names.py` | เลือกชื่อจริงจากข้อมูลที่เลือก โดยจับคู่เครื่องจริง ประเภท และรหัสผู้ใช้ ป้องกันเลขรหัสทับชื่อ | ตาราง/กราฟ Users, Excel และ Web Users API |
+| `report_day_projection.py` | เก็บผลอ่านรายวันแบบบีบอัดในหน่วยความจำ และอ่านใหม่เฉพาะวัน/เครื่องที่ token เปลี่ยน | การรีเฟรช Users; schema 34 ติดตามการเพิ่ม/แก้ไข/ลบข้อมูล |
+| `report_chart_models.py` | รวมข้อมูลกราฟเป็นค่าที่แก้ไขไม่ได้ โดยไม่สร้าง Qt widget | เตรียมกราฟ Overview/Printers ก่อนวาดบน UI |
 | `report_scope.py` | filter ขอบเขตวัน/เครื่อง/subject | ก่อน query report |
 | `report_excel_export.py` | สร้าง Excel export | เมื่อกด Export |
 | `pipeline_log.py` | log เหตุการณ์ใน data pipeline | collect/import/cache/reconcile |
@@ -172,6 +185,7 @@ Profiler เป็น backend/support tool ไม่ใช่หน้าจอ�
 | `app/dashboard-types.ts` | TypeScript types ของ dashboard/API |
 | `app/auth/session/route.ts` | route จัดการ session |
 | `lib/session.ts` | helper session/auth |
+| `lib/report-user-rows.ts` | รวมแถวผู้ใช้และยอดแยกเครื่องจากรหัสกลุ่มที่ API เลือกด้วยกฎเดียวกับ Desktop/Excel |
 | `proxy.ts` | request proxy/middleware layer |
 | `package.json`, `package-lock.json` | Node dependency และ lock |
 | `next.config.ts`, `tsconfig.json`, `next-env.d.ts` | Next.js/TypeScript config |
@@ -180,6 +194,8 @@ Profiler เป็น backend/support tool ไม่ใช่หน้าจอ�
 | `README.md` | วิธีใช้ Web Edition |
 
 ## `source/tests/` — หลักฐานอัตโนมัติ
+
+GitHub ตรวจ PR/main ด้วย `.github/workflows/desktop-regression.yml` และ `tools/ci/run_desktop_tests.py` ซึ่งใช้ฐานข้อมูลชั่วคราวและแยก process เป็นชุดเล็ก ดูขอบเขตและวิธีรันใน [DESKTOP_CI.md](DESKTOP_CI.md)
 
 ไฟล์ `test_*.py` ไม่ทำงานตอนผู้ใช้เปิดโปรแกรม แต่ใช้พิสูจน์แต่ละส่วน:
 
@@ -237,3 +253,7 @@ Windows VM ที่ไม่มี OneDrive ใช้ Shared Folder ชี้ r
 หลักฐานวันที่ 2026-08-09 ได้ Desktop/Web Source ID ตรงกับ Mac, เปิด Desktop, Login Web และโหลด Overview สำเร็จ
 
 ข้อจำกัดการพิสูจน์: การผ่านบน macOS ไม่ได้แปลว่า Windows/Linux ผ่าน ต้องทำ native UAT แยกแต่ละระบบ
+
+## โครงสร้าง style ของ Desktop
+
+ดู [UI_STYLE_ARCHITECTURE.md](UI_STYLE_ARCHITECTURE.md) สำหรับตำแหน่งแก้สี ฟอนต์ ปุ่ม ตาราง และกฎป้องกัน style ซ้ำ

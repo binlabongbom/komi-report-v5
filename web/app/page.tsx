@@ -17,7 +17,7 @@ import { SystemView, UsageView } from "./report-views";
 
 type ViewId = "overview" | "users" | "printers" | "usage" | "system";
 type DateRange = { start: string; end: string };
-type PageResponse<T> = { items: T[]; next_offset: number | null };
+type PageResponse<T> = { items: T[]; next_offset: number | null; snapshot_token?: string };
 type Health = { status: string; device_count: number; online_count: number };
 type AccessMode = { authenticated: boolean; reportPasswordless: boolean };
 
@@ -43,7 +43,7 @@ function NavIcon({ icon }: { icon: ViewId }) {
 }
 
 async function json<T>(url: string): Promise<T> {
-  const response = await fetch(url, { cache: "no-store" });
+  const response = await fetch(url, { cache: "no-store", signal: AbortSignal.timeout(20_000) });
   if (response.status === 401) {
     window.location.href = "/login";
     throw new Error("Authentication required");
@@ -63,10 +63,14 @@ function reportUrl(path: string, range: DateRange | null, extra: Record<string, 
 async function allPages<T>(path: string, range: DateRange | null, extra: Record<string, string> = {}) {
   const items: T[] = [];
   let offset = 0;
+  let snapshotToken: string | undefined;
   for (;;) {
-    const page = await json<PageResponse<T>>(reportUrl(path, range, { ...extra, limit: "100", offset: String(offset) }));
+    const page = await json<PageResponse<T>>(reportUrl(path, range, {
+      ...extra, limit: "500", offset: String(offset), ...(snapshotToken ? { snapshot_token: snapshotToken } : {}),
+    }));
     items.push(...page.items);
     if (page.next_offset == null) return items;
+    snapshotToken = page.snapshot_token;
     offset = page.next_offset;
   }
 }
@@ -96,6 +100,9 @@ export default function Home() {
   const [accessMode, setAccessMode] = useState<AccessMode | null>(null);
   const reportRequest = useRef(0);
   const usageRequest = useRef(0);
+  const reportRangeKey = useRef<string | null>(null);
+  const [reportLoadedAt, setReportLoadedAt] = useState<string | null>(null);
+  const [usageLoadedAt, setUsageLoadedAt] = useState<string | null>(null);
 
   useEffect(() => {
     const saved = window.localStorage.getItem("komi-web-language");
@@ -117,8 +124,17 @@ export default function Home() {
 
   const loadReports = useCallback(async (selected: DateRange | null) => {
     const request = ++reportRequest.current;
+    const key = JSON.stringify(selected);
+    if (reportRangeKey.current !== key) {
+      reportRangeKey.current = key;
+      setOverview(null);
+      setHistory([]);
+      setDevices([]);
+      setUsers([]);
+      setReportLoadedAt(null);
+      setReportFailures([]);
+    }
     setLoading(true);
-    setReportFailures([]);
     const results = await Promise.allSettled([
       json<Overview>(reportUrl("/api/reports/overview", selected)),
       allPages<HistoryItem>("/api/reports/history", selected, { granularity: "daily" }),
@@ -128,10 +144,20 @@ export default function Home() {
     if (request !== reportRequest.current) return;
     const failures: string[] = [];
     const [overviewResult, historyResult, deviceResult, userResult] = results;
-    if (overviewResult.status === "fulfilled") setOverview(overviewResult.value); else { setOverview(null); failures.push("overview"); }
-    if (historyResult.status === "fulfilled") setHistory(historyResult.value); else { setHistory([]); failures.push("history"); }
-    if (deviceResult.status === "fulfilled") setDevices(deviceResult.value.items); else { setDevices([]); failures.push("devices"); }
-    if (userResult.status === "fulfilled") setUsers(userResult.value); else { setUsers([]); failures.push("users"); }
+    if (overviewResult.status === "rejected") failures.push("overview");
+    if (historyResult.status === "rejected") failures.push("history");
+    if (deviceResult.status === "rejected") failures.push("devices");
+    if (userResult.status === "rejected") failures.push("users");
+    // Commit a complete report together, preserving the last successful view
+    // on a partial failure instead of mixing data from different refreshes.
+    if (overviewResult.status === "fulfilled" && historyResult.status === "fulfilled"
+        && deviceResult.status === "fulfilled" && userResult.status === "fulfilled") {
+      setOverview(overviewResult.value);
+      setHistory(historyResult.value);
+      setDevices(deviceResult.value.items);
+      setUsers(userResult.value);
+      setReportLoadedAt(new Date().toISOString());
+    }
     setReportFailures(failures);
     setLoading(false);
   }, []);
@@ -139,13 +165,15 @@ export default function Home() {
   const loadUsage = useCallback(async (granularity: HistoryGranularity) => {
     const request = ++usageRequest.current;
     setUsageLoading(true);
-    setUsageError(false);
     try {
       const items = await allPages<HistoryItem>("/api/reports/history", null, { granularity });
-      if (request === usageRequest.current) setUsageHistory(items);
+      if (request === usageRequest.current) {
+        setUsageHistory(items);
+        setUsageLoadedAt(new Date().toISOString());
+        setUsageError(false);
+      }
     } catch (error) {
       if (request === usageRequest.current && error instanceof Error && error.message !== "Authentication required") {
-        setUsageHistory([]);
         setUsageError(true);
       }
     } finally {
@@ -207,6 +235,35 @@ export default function Home() {
     : menu.filter(item => item.group === "reports");
   const activeItem = visibleMenu.find(item => item.id === active) ?? visibleMenu[0];
   const isPeriodReport = reportViews.has(active);
+  const refreshReports = useCallback(async () => {
+    let selected = range.start ? range : null;
+    // Recover the date selector too if the first load happened while offline.
+    if (!periods.length) {
+      try {
+        const result = await json<{ items: Period[] }>("/api/reports/periods");
+        setPeriods(result.items);
+        setPeriodError(error => error === "periods" ? "" : error);
+        if (!selected && result.items.length) {
+          selected = { start: result.items[0].start, end: result.items[0].end };
+          setRange(selected);
+          setDraftRange(selected);
+        }
+      } catch { /* Keep the current selection and retry next time. */ }
+    }
+    await loadReports(selected);
+  }, [range, periods.length, loadReports]);
+  useEffect(() => {
+    if (accessMode === null) return;
+    const timer = window.setInterval(() => {
+      if (loading || usageLoading || systemLoading) return;
+      void loadHealth();
+      if (reportViews.has(active)) void refreshReports();
+      else if (active === "usage") void loadUsage(usageGranularity);
+      else if (accessMode.authenticated) void loadSystem();
+    }, 60_000);
+    return () => window.clearInterval(timer);
+  }, [accessMode, active, range, usageGranularity, loading, usageLoading, systemLoading,
+      loadHealth, refreshReports, loadUsage, loadSystem]);
   const failureNames = useMemo(() => reportFailures.map(item => ({
     overview: tr(language, "ภาพรวม", "overview"),
     history: tr(language, "กราฟ", "charts"),
@@ -232,13 +289,18 @@ export default function Home() {
   }
 
   function changeGranularity(next: HistoryGranularity) {
+    if (next !== usageGranularity) {
+      setUsageHistory([]);
+      setUsageLoadedAt(null);
+      setUsageError(false);
+    }
     setUsageGranularity(next);
     void loadUsage(next);
   }
 
   function refreshCurrent() {
     void loadHealth();
-    if (isPeriodReport) void loadReports(range.start ? range : null);
+    if (isPeriodReport) void refreshReports();
     else if (active === "usage") void loadUsage(usageGranularity);
     else void loadSystem();
   }
@@ -248,23 +310,28 @@ export default function Home() {
     window.location.href = "/login";
   }
 
-  let view = <CloudOverview overview={overview} history={history} users={users} loading={loading} language={language}/>;
+  let view = <CloudOverview overview={overview} history={history} users={users} loading={loading && !reportLoadedAt} language={language}/>;
   if (active === "users") view = <CloudUsers users={users} overview={overview} language={language}/>;
   if (active === "printers") view = <CloudPrinters key={`${range.start}|${range.end}`} overview={overview} history={history} devices={devices} language={language}/>;
-  if (active === "usage") view = usageError
+  if (isPeriodReport && !reportLoadedAt && reportFailures.length > 0) {
+    view = <div className="empty-state" role="status"><strong>{tr(language, "ยังโหลดข้อมูลไม่ได้", "Report data could not be loaded")}</strong><p>{tr(language, "ลองใหม่เมื่อเชื่อมต่อได้ ข้อมูลที่โหลดไม่ได้ไม่ใช่ยอดใช้งานศูนย์", "Retry when connected. Unavailable data does not mean zero usage.")}</p></div>;
+  }
+  if (active === "usage") view = usageError && !usageLoadedAt
     ? <div className="empty-state"><strong>{tr(language, "โหลดประวัติการใช้งานไม่สำเร็จ", "Usage history could not be loaded")}</strong><button className="primary" onClick={() => void loadUsage(usageGranularity)}>{tr(language, "ลองใหม่", "Retry")}</button></div>
-    : <UsageView history={usageHistory} granularity={usageGranularity} onGranularity={changeGranularity} language={language} loading={usageLoading}/>;
+    : <UsageView history={usageHistory} granularity={usageGranularity} onGranularity={changeGranularity} language={language} loading={usageLoading && !usageLoadedAt}/>;
   if (active === "system") view = <SystemView settings={settings} sync={sync} failures={systemFailures} loading={systemLoading} onRetry={() => void loadSystem()} language={language}/>;
 
   return <main className="app-shell" lang={language}>
     <aside className="sidebar">
       <div className="brand"><span className="brand-mark"><i/><i/><i/><i/></span><div><strong>KOMI REPORT</strong><small>Meter Control V5</small></div></div>
       <nav aria-label={tr(language, "เมนูหลัก", "Main navigation")}>{visibleMenu.map((item, index) => <div key={item.id}>{(index === 0 || visibleMenu[index - 1].group !== item.group) && <small className="nav-group">{item.group === "reports" ? tr(language, "รายงาน", "Reports") : tr(language, "ระบบ", "System")}</small>}<button className={active === item.id ? "active" : ""} onClick={() => selectView(item.id)} title={tr(language, item.th, item.en)} aria-current={active === item.id ? "page" : undefined}><NavIcon icon={item.icon}/><span>{tr(language, item.th, item.en)}</span></button></div>)}</nav>
-      <div className="sidebar-foot">{accessMode?.authenticated && <button onClick={() => void logout()}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 4H4v16h6M14 8l4 4-4 4M8 12h10"/></svg><span>{tr(language, "ออกจากระบบ", "Sign out")}</span></button>}<small>{accessMode?.reportPasswordless && !accessMode.authenticated ? tr(language, "รายงาน LAN · อ่านอย่างเดียว", "LAN reports · Read only") : "Web Edition · Read only"}</small></div>
+      <div className="sidebar-foot">{accessMode?.reportPasswordless && !accessMode.authenticated && <button onClick={() => { window.location.href = "/login?admin=1"; }}><span>{tr(language, "เข้าสู่ระบบผู้ดูแล", "Admin sign in")}</span></button>}{accessMode?.authenticated && <button onClick={() => void logout()}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 4H4v16h6M14 8l4 4-4 4M8 12h10"/></svg><span>{tr(language, "ออกจากระบบ", "Sign out")}</span></button>}<small>{accessMode?.reportPasswordless && !accessMode.authenticated ? tr(language, "รายงาน LAN · อ่านอย่างเดียว", "LAN reports · Read only") : "Web Edition · Read only"}</small></div>
     </aside>
     <section className="workspace">
       <header className="topbar"><div><p>{activeItem.group === "reports" ? tr(language, "รายงาน", "Reports") : tr(language, "ระบบ", "System")}</p><h1>{tr(language, activeItem.th, activeItem.en)}</h1></div><div className="topbar-actions"><div className="language-switch" role="group" aria-label={tr(language, "เลือกภาษา", "Choose language")}><button className={language === "th" ? "active" : ""} onClick={() => changeLanguage("th")} aria-pressed={language === "th"}>ไทย</button><button className={language === "en" ? "active" : ""} onClick={() => changeLanguage("en")} aria-pressed={language === "en"}>EN</button></div><div className={`server-pill ${health ? "" : "offline"}`}><span/>{health ? tr(language, `พร้อมใช้งาน · ${health.online_count}/${health.device_count} เครื่อง`, `Online · ${health.online_count}/${health.device_count} printers`) : tr(language, "ไม่สามารถติดต่อ Server", "Server unavailable")}</div></div></header>
       <div className="content">
+        {(isPeriodReport || active === "usage") && <p className="refresh-note" role="status">{tr(language, "อัปเดตอัตโนมัติทุก 1 นาที", "Refreshes automatically every minute")}{(isPeriodReport ? reportLoadedAt : usageLoadedAt) && <> · {tr(language, "โหลดสำเร็จล่าสุด", "Last successful refresh")}: {new Date((isPeriodReport ? reportLoadedAt : usageLoadedAt)!).toLocaleString(language === "th" ? "th-TH" : "en-GB")}</>}</p>}
+        {((isPeriodReport && reportFailures.length > 0 && reportLoadedAt) || (active === "usage" && usageError && usageLoadedAt)) && <div className="alert info" role="alert">{tr(language, "แสดงข้อมูลที่โหลดสำเร็จล่าสุด ข้อมูลอาจเก่า — ระบบจะลองเชื่อมต่อใหม่อัตโนมัติ", "Showing the last successful data, which may be outdated. Reconnection will be retried automatically.")}</div>}
         {failureNames.length > 0 && <div className="alert error recovery" role="alert"><span>{tr(language, `โหลด ${failureNames.join(", ")} ไม่สำเร็จ ส่วนอื่นยังใช้งานได้`, `Could not load ${failureNames.join(", ")}. Other sections remain available.`)}</span><button onClick={() => void loadReports(range.start ? range : null)}>{tr(language, "ลองใหม่", "Retry")}</button></div>}
         {isPeriodReport && <section className="toolbar cloud-toolbar" aria-label={tr(language, "กำหนดช่วงรายงาน", "Report date range")}>
           <label>{tr(language, "วันที่เริ่มต้น", "From")}<input type="date" value={draftRange.start} min={minimumDate} max={maximumDate} onChange={event => setDraftRange(current => ({ ...current, start: event.target.value }))}/></label>

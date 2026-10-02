@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 from threading import RLock
 
 from komi_snmp_profiler.models import MeterReading, WebCounterValue
@@ -36,6 +37,9 @@ class RuntimeDeviceSnapshot:
     source: str
     web_rows: tuple[RuntimeCounterRow, ...]
     subject_rows: tuple[RuntimeCounterRow, ...]
+    serial: str = ''
+    epoch_id: str = ''
+    event_id: str = ''
 
 
 class RuntimeSnapshotStore:
@@ -45,7 +49,8 @@ class RuntimeSnapshotStore:
         self._lock = RLock()
         self._snapshots: dict[int, RuntimeDeviceSnapshot] = {}
 
-    def update(self, slot: int, reading: MeterReading) -> RuntimeDeviceSnapshot:
+    def update(self, slot: int, reading: MeterReading, *, serial='', epoch_id='', event_id='',
+               preserve_newer=False) -> RuntimeDeviceSnapshot:
         rows = tuple(RuntimeCounterRow.from_counter(counter) for counter in reading.counters)
         snapshot = RuntimeDeviceSnapshot(
             device_slot=slot,
@@ -53,8 +58,18 @@ class RuntimeSnapshotStore:
             source=reading.source,
             web_rows=tuple(row for row in rows if row.subject_type is None),
             subject_rows=tuple(row for row in rows if row.subject_type is not None),
+            serial=serial, epoch_id=epoch_id or '', event_id=event_id,
         )
         with self._lock:
+            previous = self._snapshots.get(slot)
+            if preserve_newer and previous and (previous.serial, previous.epoch_id) == (serial, epoch_id or ''):
+                old = {(row.canonical_field, row.subject_type, row.subject_id): row.count
+                       for row in previous.web_rows or previous.subject_rows}
+                new = {(row.canonical_field, row.subject_type, row.subject_id): row.count
+                       for row in snapshot.web_rows or snapshot.subject_rows}
+                if (any(new[k] < old[k] for k in old.keys() & new.keys()) or
+                        (old == new and datetime.fromisoformat(snapshot.collected_at) < datetime.fromisoformat(previous.collected_at))):
+                    return previous
             self._snapshots[slot] = snapshot
         return snapshot
 

@@ -1,0 +1,12 @@
+{
+  "query": "canonical_subjects_August_2026",
+  "runs_ms": [
+    467.39,
+    520.22,
+    343.47
+  ],
+  "median_ms": 467.39,
+  "returned_rows": 300,
+  "total_pages": 111600.0,
+  "synthetic_database": "C:\\Users\\User\\AppData\\Local\\Temp\\komi-five-year-299c6c6c88b44a69bb0503e207bacd20\\synthetic-history.sqlite3"
+}

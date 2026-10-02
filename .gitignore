@@ -88,3 +88,7 @@ docs/executive-summary-deck/
 docs/setup-*.png
 docs/web-edition*.png
 source/*preview*.png
+
+# Project-managed development runtimes
+.tools/
+/tmp/

@@ -12,7 +12,9 @@ from email.utils import parsedate_to_datetime
 from time import monotonic
 from typing import Protocol
 from urllib.error import HTTPError, URLError
-from urllib.request import HTTPRedirectHandler, Request, build_opener
+from urllib.request import HTTPRedirectHandler, HTTPSHandler, Request, build_opener
+
+from services.host_tls import create_host_tls_context
 
 from services.registration_envelope import (
     validate_heartbeat_envelope,
@@ -53,7 +55,7 @@ class UrllibRegistrationTransport:
             return None
 
     def __init__(self) -> None:
-        self._opener = build_opener(self._NoRedirect())
+        self._opener = build_opener(self._NoRedirect(), HTTPSHandler(context=create_host_tls_context()))
 
     def request(
         self,

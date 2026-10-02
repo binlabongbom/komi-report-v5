@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import json
 import secrets
+import threading
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import datetime
 from ipaddress import ip_address
 
 from config import DEFAULT_ADMIN_USERNAME
-from database import _open
+from database import _open, config_write_transaction
 from komi_snmp_profiler.connectors import TlsPolicy
 from komi_snmp_profiler.credential_store import (
     AdminCredential,
@@ -56,8 +57,17 @@ class DeviceConfig:
 
 class DeviceConfigRepository:
     def __init__(self, credential_store: CredentialStore | None = None) -> None:
-        self.credential_store = credential_store or platform_credential_store()
+        self._credential_store = credential_store
+        self._credential_store_lock = threading.Lock()
         self._migration_checked = False
+
+    @property
+    def credential_store(self) -> CredentialStore:
+        if self._credential_store is None:
+            with self._credential_store_lock:
+                if self._credential_store is None:
+                    self._credential_store = platform_credential_store()
+        return self._credential_store
 
     @staticmethod
     def _credential_reference(connection, slot: int) -> str:
@@ -143,23 +153,21 @@ class DeviceConfigRepository:
             ).fetchone()
         return self._from_row(row) if row else None
 
-    def get_by_host(self, host: str) -> DeviceConfig | None:
-        self._ensure_migrated()
-        with _open(commit=False) as conn:
-            row = conn.execute(
-                """SELECT slot,name,host,username,credential_ref,tls_mode,tls_fingerprint,enabled,model,serial,
-                          connection_status,last_checked_at,last_success_at,last_error,last_total
-                   FROM devices WHERE host=?""",
-                (host.strip(),),
-            ).fetchone()
-        return self._from_row(row) if row else None
 
     def replace_all(
         self,
         devices: list[DeviceConfig],
         *,
         registration_devices: Iterable[Mapping[str, object]] | None = None,
+        before_write=None,
+        after_write=None,
     ) -> None:
+        """Replace configuration and optional related writes in one transaction.
+
+        Callbacks receive the owned SQL connection and must not open another
+        write transaction. Any callback/commit failure also compensates vault
+        changes, so a failed price/history save cannot leave new credentials.
+        """
         if not 1 <= len(devices) <= 3:
             raise ValueError("ต้องตั้งค่าเครื่องอย่างน้อย 1 และไม่เกิน 3 เครื่อง")
         slots = [item.slot for item in devices]
@@ -176,7 +184,9 @@ class DeviceConfigRepository:
             )
         staged: list[tuple[str, AdminCredential | None]] = []
         try:
-            with _open() as conn:
+            with config_write_transaction() as conn:
+                if before_write is not None:
+                    before_write(conn)
                 placeholders = ",".join("?" for _ in slots)
                 conn.execute(f"UPDATE devices SET enabled=0 WHERE slot NOT IN ({placeholders})", slots)
                 for item in devices:
@@ -235,6 +245,8 @@ class DeviceConfigRepository:
                     )
                     if changed.rowcount != 1:
                         raise ValueError("V5.2 runtime is not configured")
+                if after_write is not None:
+                    after_write(conn)
         except Exception:
             for reference, previous in reversed(staged):
                 try:

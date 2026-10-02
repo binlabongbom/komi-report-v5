@@ -1,0 +1,58 @@
+[
+  {
+    "before": {
+      "working_set_bytes": 107859968,
+      "private_bytes": 66371584,
+      "peak_working_set_bytes": 107859968,
+      "cpu_seconds": 3.78125
+    },
+    "after": {
+      "working_set_bytes": 115290112,
+      "private_bytes": 72417280,
+      "peak_working_set_bytes": 115318784,
+      "cpu_seconds": 11.8125
+    },
+    "elapsed_seconds": 7.589160999996238,
+    "one_core_cpu_percent": 105.82526843222828,
+    "mode": "desktop",
+    "pid": 22556,
+    "fixture": "3 synthetic printers x 100 users x 2 user counters; real collector/workers/cache/journal; one round per second; Host/scheduler/Web service disabled; offscreen; child launches forbidden",
+    "web_events": 9,
+    "outgoing_events": 9,
+    "expected_events": 9,
+    "complete": true,
+    "sampled_peak_working_set_bytes": 115290112,
+    "sampled_peak_private_bytes": 72417280,
+    "child_processes": 0,
+    "exit_code": 0,
+    "clean_shutdown": true
+  },
+  {
+    "before": {
+      "working_set_bytes": 73932800,
+      "private_bytes": 41807872,
+      "peak_working_set_bytes": 73932800,
+      "cpu_seconds": 2.21875
+    },
+    "after": {
+      "working_set_bytes": 77656064,
+      "private_bytes": 45531136,
+      "peak_working_set_bytes": 77688832,
+      "cpu_seconds": 8.796875
+    },
+    "elapsed_seconds": 6.899848699998984,
+    "one_core_cpu_percent": 95.3372354382346,
+    "mode": "agent",
+    "pid": 4940,
+    "fixture": "3 synthetic printers x 100 users x 2 user counters; real collector/workers/cache/journal; one round per second; Host/scheduler/Web service disabled; offscreen; child launches forbidden",
+    "web_events": 9,
+    "outgoing_events": 9,
+    "expected_events": 9,
+    "complete": true,
+    "sampled_peak_working_set_bytes": 77656064,
+    "sampled_peak_private_bytes": 45531136,
+    "child_processes": 0,
+    "exit_code": 0,
+    "clean_shutdown": true
+  }
+]

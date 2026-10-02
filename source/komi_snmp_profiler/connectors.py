@@ -17,7 +17,7 @@ from urllib.request import HTTPCookieProcessor, HTTPSHandler, Request, build_ope
 
 from .credential_store import AdminCredential
 from .device_profiles import TlsCompatibility
-from .models import WebAuthState, WebCounterValue
+from .models import PUBLIC_USER_DISABLED_MARKER, WebAuthState, WebCounterValue
 
 
 class WebConnectionError(RuntimeError):
@@ -26,22 +26,37 @@ class WebConnectionError(RuntimeError):
 
 class WebConnectionAuthenticationError(WebConnectionError):
     """Raised when Web Connection requires or rejects Administrator authentication."""
+    diagnostic_code = 'auth_rejected'
+
+    def __init__(self, message, *, diagnostic_code=None):
+        super().__init__(message)
+        if diagnostic_code:
+            self.diagnostic_code = diagnostic_code
 
 
 class WebConnectionCertificateError(WebConnectionError):
     """Raised when the printer presents a certificate the operating system does not trust."""
+    diagnostic_code = 'tls_certificate'
 
 
 class WebConnectionTlsError(WebConnectionError):
     """Raised when a profile-scoped TLS handshake cannot be completed."""
+    diagnostic_code = 'tls_handshake'
 
 
 class WebConnectionSessionBusyError(WebConnectionError):
     """Raised when an older single-session Web Connection is already in use."""
+    diagnostic_code = 'session_busy'
 
 
 class WebConnectionUnsupportedError(WebConnectionError):
     """Raised when the selected read-only Meter endpoint is not supported by the firmware."""
+    diagnostic_code = 'endpoint_missing'
+
+
+class WebConnectionAttributionRejectedError(WebConnectionError):
+    """The authenticated subject-counter endpoint explicitly returned non-Ack."""
+    diagnostic_code = 'attribution_rejected'
 
 
 @dataclass(frozen=True)
@@ -233,11 +248,13 @@ class ReadOnlyWebConnectionSession:
 
     def prepare_admin_login(self) -> None:
         """Create the same read-only login context as the Web Connection UI."""
+        self._diagnostic_mode = 'Admin'
         for path in ("spa_main.html", "spa_login.html", "login_ex.json", "top.xml"):
             self.get(path, expect_json=False)
 
     def prepare_legacy_admin_login(self) -> None:
         """Create the fixed browser context used by legacy Meter Admin login."""
+        self._diagnostic_mode = 'Admin'
         for name, value in {
             "pf": "PC",
             "uatype": "NN",
@@ -386,6 +403,18 @@ class ReadOnlyWebConnectionSession:
         )
 
     def _request(
+        self, path: str, *, method: str, data: bytes | None = None,
+        content_type: str | None = None,
+    ) -> bytes:
+        try:
+            return self._request_impl(path, method=method, data=data, content_type=content_type)
+        except Exception as error:
+            # Retain route/method, never POST fields, cookies or response bodies.
+            error.diagnostic_endpoint = f'{method} {self.base_url}/{path.split("?", 1)[0]}'
+            error.diagnostic_mode = getattr(self, '_diagnostic_mode', 'User/Public')
+            raise
+
+    def _request_impl(
         self,
         path: str,
         *,
@@ -406,12 +435,14 @@ class ReadOnlyWebConnectionSession:
                     if not certificate_der or not hmac.compare_digest(
                         actual, self.tls_policy.fingerprint_sha256
                     ):
-                        raise WebConnectionError("Web Connection certificate fingerprint ไม่ตรงค่าที่ pin ไว้")
+                        error = WebConnectionCertificateError("Web Connection certificate fingerprint ไม่ตรงค่าที่ pin ไว้")
+                        error.diagnostic_code = 'certificate_pin'
+                        raise error
                 return response.read()
         except HTTPError as err:
             if err.code == 404:
                 raise WebConnectionUnsupportedError(
-                    "Web Connection firmware ไม่รองรับ Meter endpoint ที่เลือก"
+                    "Web Connection ตอบ HTTP 404: ไม่พบ Meter endpoint ที่เลือก"
                 ) from err
             raise WebConnectionError(f"อ่าน Web Connection ไม่สำเร็จ: HTTP {err.code}") from err
         except URLError as err:
@@ -476,7 +507,7 @@ class WebConnectionCounterConnector:
             common = session.get("api/AppReqGetCustomData/_A-00-00001")
             if _nested(common, "MFP.LoginMode") != "PublicUser":
                 raise WebConnectionAuthenticationError(
-                    "Web Connection ปิด PublicUser และต้องใช้ Administrator"
+                    "Web Connection ปิด PublicUser และต้องใช้ Administrator", diagnostic_code='admin_required'
                 )
             payload = session.post_json("api/AppReqGetCounterInfo/_Total", {"NetworkType": "NW1"})
             counters = self._parse_total_payload(payload)
@@ -777,7 +808,8 @@ class LegacyAuthenticatedWebConnectionCounterConnector(LegacyWebConnectionCounte
         )
         if explicit_rejection or returned_login_form:
             raise WebConnectionAuthenticationError(
-                "Legacy Administrator ปฏิเสธรหัสที่ส่งไป"
+                "Legacy Administrator ปฏิเสธการเข้าสู่ระบบ",
+                diagnostic_code=('password_rejected' if any(marker in lowered for marker in ('incorrect password', 'invalid password', 'password error')) else 'auth_rejected'),
             )
 
     @classmethod
@@ -898,13 +930,18 @@ class AuthenticatedWebConnectionCounterConnector(WebConnectionCounterConnector):
         counters: list[WebCounterValue] = []
         warnings: list[str] = []
         token = str(_nested(common, "MFP.Token", ""))
-        auth_type = str(_nested(common, "MFP.AuthSetting.AuthMode.AuthType", "None"))
-        track_type = str(_nested(common, "MFP.AuthSetting.TrackMode.TrackType", "None"))
+        raw_auth_type = _nested(common, "MFP.AuthSetting.AuthMode.AuthType", None)
+        raw_track_type = _nested(common, "MFP.AuthSetting.TrackMode.TrackType", None)
+        auth_type = str(raw_auth_type or "None")
+        track_type = str(raw_track_type or "None")
         if auth_type not in {"", "None"}:
+            endpoint = "api/AppReqGetAuthCounter"
+            stage = "User counter metadata"
             try:
                 max_user = self._bounded_max(_nested(common, "MFP.MaxUserNW2", 100))
+                stage = "User counter request"
                 payload = session.post_json(
-                    "api/AppReqGetAuthCounter",
+                    endpoint,
                     {
                         "UserCounterListCondition": {
                             "UserType": "User",
@@ -913,19 +950,23 @@ class AuthenticatedWebConnectionCounterConnector(WebConnectionCounterConnector):
                         "Token": token,
                     },
                 )
+                stage = "User counter response"
                 user_counters = self._parse_attributed_payload(payload, "user")
                 counters.extend(user_counters)
                 if not user_counters:
                     warnings.append(
                         "เปิด User Authentication อยู่ แต่ snapshot นี้ยังไม่มีรายการผู้ใช้งาน"
                     )
-            except (TypeError, ValueError, WebConnectionError):
-                warnings.append("เปิด User Authentication อยู่ แต่ยังอ่าน User counter schema ของ firmware นี้ไม่ได้")
+            except (TypeError, ValueError, WebConnectionError) as error:
+                warnings.append(self._attribution_warning(error, "User", endpoint, stage, auth_type))
         if track_type not in {"", "None"}:
+            endpoint = "api/AppReqGetTrackCounterInfo"
+            stage = "Account Track counter metadata"
             try:
                 max_track = self._bounded_max(_nested(common, "MFP.MaxTrack", 100))
+                stage = "Account Track counter request"
                 payload = session.post_json(
-                    "api/AppReqGetTrackCounterInfo",
+                    endpoint,
                     {
                         "TrackCounterListCondition": {
                             "TrackType": "Private",
@@ -935,17 +976,44 @@ class AuthenticatedWebConnectionCounterConnector(WebConnectionCounterConnector):
                         "Token": token,
                     },
                 )
+                stage = "Account Track counter response"
                 account_counters = self._parse_attributed_payload(payload, "account")
                 counters.extend(account_counters)
                 if not account_counters:
                     warnings.append(
                         "เปิด Account Track อยู่ แต่ snapshot นี้ยังไม่มีรายการบัญชี"
                     )
-            except (TypeError, ValueError, WebConnectionError):
-                warnings.append("เปิด Account Track อยู่ แต่ยังอ่าน Track counter schema ของ firmware นี้ไม่ได้")
+            except (TypeError, ValueError, WebConnectionError) as error:
+                warnings.append(self._attribution_warning(error, "Account Track", endpoint, stage, track_type))
         if auth_type in {"", "None"} and track_type in {"", "None"}:
-            warnings.append("User Authentication และ Account Track ยังไม่ได้เปิดใช้งานบนเครื่อง")
+            if (isinstance(raw_auth_type, str) and raw_auth_type in {"", "None"}
+                    and isinstance(raw_track_type, str) and raw_track_type in {"", "None"}):
+                warnings.append(PUBLIC_USER_DISABLED_MARKER)
+            else:
+                warnings.append("อ่าน Total Meter สำเร็จ แต่ยังยืนยันสถานะ User Authentication และ Account Track ไม่ได้")
         return counters, warnings
+
+    @staticmethod
+    def _attribution_warning(
+        error: Exception, subject: str, endpoint: str, stage: str, auth_type: str,
+    ) -> str:
+        """Keep partial-read failures copyable without guessing firmware support."""
+        from services.support_diagnostics import Diagnostic, diagnose
+
+        if not getattr(error, "diagnostic_endpoint", ""):
+            error.diagnostic_endpoint = f"POST {endpoint}"
+        error.diagnostic_mode = "Admin"
+        diagnostic = diagnose(error)
+        if isinstance(error, (TypeError, ValueError)):
+            # These values came from printer metadata/JSON, not user input.
+            diagnostic = Diagnostic("response_invalid", diagnostic.evidence)
+        mode_key = "AuthType" if subject == "User" else "TrackType"
+        mode_value = auth_type if re.fullmatch(r"[A-Za-z0-9_.:-]{1,96}", auth_type) else "[non-code value]"
+        diagnostic = Diagnostic(diagnostic.code, (*diagnostic.evidence, f"{mode_key}={mode_value}"))
+        return (
+            f"อ่าน Total Meter สำเร็จ แต่ข้อมูล {subject} counter ยังไม่พร้อม\n"
+            + diagnostic.report(stage=stage, target=getattr(error, "diagnostic_endpoint", ""))
+        )
 
     @staticmethod
     def _bounded_max(value: object) -> int:
@@ -953,9 +1021,20 @@ class AuthenticatedWebConnectionCounterConnector(WebConnectionCounterConnector):
 
     @classmethod
     def _parse_attributed_payload(cls, payload: dict[str, object], subject_type: str) -> list[WebCounterValue]:
+        if not isinstance(payload, dict) or not isinstance(payload.get("MFP"), dict):
+            raise ValueError("Attribution response ไม่คืน MFP object")
         result_info = _nested(payload, "MFP.Result.ResultInfo")
-        if result_info not in {None, "Ack"}:
-            raise WebConnectionError("Web Connection attribution counter ถูกปฏิเสธ")
+        if result_info is not None and result_info != "Ack":
+            # Record only a protocol code, never the response body or fields
+            # that might contain credentials, tokens, or subject identities.
+            result_code = (
+                result_info if isinstance(result_info, str)
+                and re.fullmatch(r"[A-Za-z0-9_.:-]{1,96}", result_info)
+                else "[non-code result]"
+            )
+            raise WebConnectionAttributionRejectedError(
+                f"Web Connection attribution counter ถูกปฏิเสธ: ResultInfo={result_code}"
+            )
         list_key = "AuthCounterList" if subject_type == "user" else "TrackCounterList"
         item_key = "AuthCounter" if subject_type == "user" else "TrackCounter"
         items = _as_list(_nested(payload, f"MFP.{list_key}.{item_key}", []))

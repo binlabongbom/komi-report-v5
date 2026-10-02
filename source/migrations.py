@@ -12,7 +12,7 @@ from contextlib import closing
 from datetime import datetime
 from pathlib import Path
 
-CURRENT_SCHEMA_VERSION = 19
+CURRENT_SCHEMA_VERSION = 34
 
 
 class UnsupportedSchemaVersionError(RuntimeError):
@@ -24,6 +24,40 @@ class SchemaDriftError(RuntimeError):
 
 
 _REQUIRED_SCHEMA: dict[str, frozenset[str]] = {
+    'report_projection_generation': frozenset({'singleton', 'token'}),
+    'report_day_revisions': frozenset({'kind', 'device_slot', 'record_date', 'token'}),
+    'lan_evidence_origins': frozenset({'member_id', 'origin', 'document'}),
+    'shared_report_days': frozenset({'epoch_id', 'record_date', 'document_json', 'device_json'}),
+    'shared_report_months': frozenset({'epoch_id', 'record_date', 'document_json', 'device_json'}),
+    'shared_report_events': frozenset({'epoch_id', 'event_id'}),
+    'lan_peer_group': frozenset({'singleton', 'document'}),
+    'lan_peer_members': frozenset({'member_id', 'origin', 'fingerprint', 'document', 'revoked'}),
+    "peer_billing_amendments": frozenset({"sequence", "amendment_id", "document_json", "results_json"}),
+    "peer_billing_deliveries": frozenset({"member_id", "amendment_id", "acknowledged_at", "retry_at", "attempts", "error_code"}),
+    "report_detail_revisions": frozenset({"id", "amendment_id", "kind", "device_slot", "serial", "counter_key", "record_date", "row_json", "period_start", "period_end"}),
+    "report_revision_subject_periods": frozenset({"device_slot", "period_start", "period_end", "device_identity", "subject_type", "subject_id", "summary_json"}),
+    "web_catchup_progress": frozenset({"peer_id", "state_json"}),
+    "web_observations": frozenset({"sequence", "event_id", "document_json", "recorded_at", "archive_id"}),
+    "web_observation_state": frozenset({"key", "value"}),
+    "web_observation_outbox": frozenset({"event_id"}),
+    "web_observation_receipts": frozenset({"peer_id", "event_id", "acknowledged_at"}),
+    "report_detail_archives": frozenset({"id", "kind", "relative_path", "sha256", "row_count"}),
+    "report_archive_days": frozenset({"kind", "device_slot", "record_date"}),
+    "reader_jobs": frozenset({"id", "authority_boot", "scope_json", "reader_id", "phase", "event_id"}),
+    "reader_job_requests": frozenset({"member_id", "request_id", "scope_json", "job_id"}),
+    "reader_authority_state": frozenset({"singleton_id", "boot_id"}),
+    "slot_meter_epochs": frozenset({"id", "device_slot", "parent_id", "document_json"}),
+    "slot_meter_heads": frozenset({"device_slot", "epoch_id"}),
+    "slot_meter_assignments": frozenset({"event_id", "epoch_id"}),
+    "slot_meter_epoch_state": frozenset({"epoch_id", "version", "issues_json"}),
+    "slot_meter_maxima": frozenset({"epoch_id", "counter_key", "value_json", "event_id"}),
+    "slot_meter_epoch_outbox": frozenset({"epoch_id"}),
+    "archived_subject_periods": frozenset({"archive_id", "device_slot", "summary_json"}),
+    "web_observation_archives": frozenset({"id", "relative_path", "sha256", "event_count", "year"}),
+    "peer_settings_revisions": frozenset({"revision", "document_json"}),
+    "peer_settings_state": frozenset({"key", "value"}),
+    "peer_settings_events": frozenset({"revision", "created_at"}),
+    "peer_settings_deliveries": frozenset({"peer_id", "revision", "acknowledged_at", "attempts", "retry_at", "error_code", "page_offset"}),
     "readings": frozenset({"id", "slot", "data_json", "read_date_iso", "billing_month"}),
     "settings": frozenset({"key", "value"}),
     "devices": frozenset(
@@ -44,6 +78,8 @@ _REQUIRED_SCHEMA: dict[str, frozenset[str]] = {
             "opening_value",
             "closing_value",
             "delta_value",
+            "counter_review_json",
+            "counter_resolutions_json",
         }
     ),
     "parser_mapping_overrides": frozenset(
@@ -159,6 +195,12 @@ _REQUIRED_SCHEMA: dict[str, frozenset[str]] = {
 }
 
 
+_REQUIRED_REPORT_DAY_TRIGGERS = frozenset(
+    f"report_day_revision_{kind}_{operation}"
+    for kind in ("subject", "raw") for operation in ("insert", "update", "delete")
+)
+
+
 def require_supported_schema_version(version: int) -> None:
     """Fail closed instead of silently downgrading a newer database."""
 
@@ -184,6 +226,9 @@ def validate_current_schema(connection: sqlite3.Connection) -> None:
         absent = sorted(required_columns - columns)
         if absent:
             missing.append(f"{table_name} columns: {', '.join(absent)}")
+    triggers = {str(row[0]) for row in connection.execute(
+        "SELECT name FROM sqlite_master WHERE type='trigger'")}
+    missing.extend(f"trigger {name}" for name in sorted(_REQUIRED_REPORT_DAY_TRIGGERS - triggers))
     if missing:
         raise SchemaDriftError("Database schema ไม่ครบ: " + "; ".join(missing))
 
@@ -608,6 +653,214 @@ def _migration_018_raw_counter_device_identity(connection: sqlite3.Connection) -
     )
 
 
+def _migration_020_peer_settings_history(connection: sqlite3.Connection) -> None:
+    connection.execute("""CREATE TABLE peer_settings_revisions(
+        revision TEXT PRIMARY KEY, document_json TEXT NOT NULL)""")
+    connection.execute("""CREATE TABLE peer_settings_state(
+        key TEXT PRIMARY KEY, value TEXT NOT NULL)""")
+
+
+def _migration_021_peer_settings_outbox(connection: sqlite3.Connection) -> None:
+    connection.execute("""CREATE TABLE peer_settings_events(
+        revision TEXT PRIMARY KEY REFERENCES peer_settings_revisions(revision),
+        created_at TEXT NOT NULL)""")
+    connection.execute("""CREATE TABLE peer_settings_deliveries(
+        peer_id TEXT NOT NULL, revision TEXT NOT NULL REFERENCES peer_settings_events(revision),
+        acknowledged_at TEXT, attempts INTEGER NOT NULL DEFAULT 0,
+        retry_at REAL NOT NULL DEFAULT 0, error_code TEXT NOT NULL DEFAULT '',
+        PRIMARY KEY(peer_id,revision))""")
+    # Upgraded installations must announce their current state even if no user
+    # edits it after upgrading. Ancestors travel with this head's paged history.
+    connection.execute("""INSERT INTO peer_settings_events(revision,created_at)
+        SELECT value,? FROM peer_settings_state WHERE key='head'""",
+        (datetime.now().astimezone().isoformat(timespec="seconds"),))
+
+
+def _migration_022_raw_counter_reviews(connection: sqlite3.Connection) -> None:
+    connection.execute("ALTER TABLE daily_raw_counter_records ADD COLUMN counter_review_json TEXT NOT NULL DEFAULT 'null'")
+    connection.execute("ALTER TABLE daily_raw_counter_records ADD COLUMN counter_resolutions_json TEXT NOT NULL DEFAULT '[]'")
+    # Earlier releases added the post-drop absolute value to usage. Preserve
+    # historical rows; the next reading must not silently accept that baseline.
+    connection.execute("""UPDATE daily_raw_counter_records
+        SET counter_review_json=json_object('before',opening_value,'after',closing_value,
+            'at',last_success,'reason','legacy_reset_requires_review')
+        WHERE reset_count>0""")
+
+
+def _migration_023_web_observations(connection: sqlite3.Connection) -> None:
+    connection.execute("""CREATE TABLE web_observations(
+        sequence INTEGER PRIMARY KEY AUTOINCREMENT, event_id TEXT NOT NULL UNIQUE,
+        origin_id TEXT NOT NULL,read_id TEXT NOT NULL,
+        device_slot INTEGER NOT NULL, device_serial TEXT NOT NULL, observed_at TEXT NOT NULL,
+        document_json TEXT NOT NULL, recorded_at TEXT NOT NULL,UNIQUE(origin_id,read_id))""")
+    connection.execute("CREATE INDEX idx_web_observation_printer_time ON web_observations(device_serial,observed_at,sequence)")
+    connection.execute("CREATE TABLE web_observation_state(key TEXT PRIMARY KEY,value TEXT NOT NULL)")
+    connection.execute("CREATE TABLE web_observation_outbox(event_id TEXT PRIMARY KEY REFERENCES web_observations(event_id))")
+    connection.execute("""CREATE TABLE web_observation_receipts(
+        peer_id TEXT NOT NULL,event_id TEXT NOT NULL REFERENCES web_observations(event_id),
+        acknowledged_at TEXT NOT NULL,PRIMARY KEY(peer_id,event_id))""")
+
+
+def _migration_024_web_observation_archives(connection: sqlite3.Connection) -> None:
+    connection.execute("""CREATE TABLE web_observation_archives(
+        id TEXT PRIMARY KEY,relative_path TEXT NOT NULL UNIQUE,sha256 TEXT NOT NULL,
+        event_count INTEGER NOT NULL,year INTEGER NOT NULL,created_at TEXT NOT NULL)""")
+    connection.execute("ALTER TABLE web_observations ADD COLUMN archive_id TEXT REFERENCES web_observation_archives(id)")
+    connection.execute("CREATE INDEX idx_web_observation_archive_time ON web_observations(archive_id,observed_at,sequence)")
+
+
+def _migration_025_report_detail_archives(connection: sqlite3.Connection) -> None:
+    connection.execute("""CREATE TABLE report_detail_archives(
+        id TEXT PRIMARY KEY,kind TEXT NOT NULL,relative_path TEXT NOT NULL UNIQUE,
+        sha256 TEXT NOT NULL,row_count INTEGER NOT NULL,year INTEGER NOT NULL,
+        first_day TEXT NOT NULL,last_day TEXT NOT NULL,created_at TEXT NOT NULL)""")
+    connection.execute("""CREATE TABLE archived_subject_periods(
+        archive_id TEXT NOT NULL REFERENCES report_detail_archives(id),
+        device_slot INTEGER NOT NULL,period_start TEXT NOT NULL,period_end TEXT NOT NULL,
+        device_identity TEXT NOT NULL,subject_type TEXT NOT NULL,subject_id TEXT NOT NULL,
+        summary_json TEXT NOT NULL,
+        PRIMARY KEY(archive_id,device_slot,period_start,period_end,device_identity,subject_type,subject_id))""")
+    connection.execute("CREATE INDEX idx_archived_subject_period ON archived_subject_periods(device_slot,period_start,period_end)")
+    connection.execute("""CREATE TABLE report_archive_days(
+        kind TEXT NOT NULL,device_slot INTEGER NOT NULL,record_date TEXT NOT NULL,
+        PRIMARY KEY(kind,device_slot,record_date))""")
+    connection.execute("""CREATE INDEX idx_raw_counter_anchor ON daily_raw_counter_records(
+        device_slot,device_serial_snapshot,canonical_field,source_path,subject_type,subject_id,record_date)""")
+    # Never silently re-create an archived day and double-count its summary.
+    # Changes to archived history require an explicit amendment workflow.
+    for kind, table in (("subject", "daily_subject_records"), ("raw", "daily_raw_counter_records")):
+        for action in ("INSERT", "UPDATE"):
+            connection.execute(f"""CREATE TRIGGER guard_archived_{kind}_{action.lower()}
+                BEFORE {action} ON {table}
+                WHEN EXISTS(SELECT 1 FROM report_archive_days
+                    WHERE kind='{kind}' AND device_slot=NEW.device_slot AND record_date=NEW.record_date)
+                BEGIN SELECT RAISE(ABORT,'Archived day requires an explicit history amendment'); END""")
+
+
+def _migration_026_reader_jobs(connection: sqlite3.Connection) -> None:
+    connection.execute("CREATE TABLE reader_authority_state(singleton_id INTEGER PRIMARY KEY CHECK(singleton_id=1),boot_id TEXT NOT NULL)")
+    connection.execute("""CREATE TABLE reader_jobs(
+        id TEXT PRIMARY KEY,authority_boot TEXT NOT NULL,scope_json TEXT NOT NULL,
+        device_slot INTEGER NOT NULL,reader_id TEXT NOT NULL,reader_origin TEXT NOT NULL,
+        created_at TEXT NOT NULL,deadline REAL NOT NULL,phase TEXT NOT NULL,
+        event_id TEXT REFERENCES web_observations(event_id),reason TEXT NOT NULL DEFAULT '')""")
+    connection.execute("CREATE INDEX idx_reader_jobs_active ON reader_jobs(device_slot,phase)")
+    connection.execute("""CREATE TABLE reader_job_requests(
+        member_id TEXT NOT NULL,request_id TEXT NOT NULL,scope_json TEXT NOT NULL,
+        job_id TEXT NOT NULL REFERENCES reader_jobs(id),
+        PRIMARY KEY(member_id,request_id))""")
+
+
+def _migration_027_slot_meter_epochs(connection: sqlite3.Connection) -> None:
+    connection.execute("""CREATE TABLE slot_meter_epochs(
+        id TEXT PRIMARY KEY,device_slot INTEGER NOT NULL,parent_id TEXT REFERENCES slot_meter_epochs(id),
+        document_json TEXT NOT NULL)""")
+    connection.execute("""CREATE TABLE slot_meter_heads(
+        device_slot INTEGER PRIMARY KEY,epoch_id TEXT NOT NULL REFERENCES slot_meter_epochs(id))""")
+    connection.execute("""CREATE TABLE slot_meter_assignments(
+        event_id TEXT NOT NULL REFERENCES web_observations(event_id),
+        epoch_id TEXT NOT NULL REFERENCES slot_meter_epochs(id),PRIMARY KEY(event_id,epoch_id))""")
+    connection.execute("CREATE INDEX idx_slot_meter_assignments_epoch ON slot_meter_assignments(epoch_id,event_id)")
+    connection.execute("""CREATE TABLE slot_meter_epoch_state(
+        epoch_id TEXT PRIMARY KEY REFERENCES slot_meter_epochs(id),
+        version INTEGER NOT NULL DEFAULT 0,issues_json TEXT NOT NULL DEFAULT '[]')""")
+    connection.execute("""CREATE TABLE slot_meter_maxima(
+        epoch_id TEXT NOT NULL REFERENCES slot_meter_epochs(id),counter_key TEXT NOT NULL,
+        value_json TEXT NOT NULL,event_id TEXT NOT NULL REFERENCES web_observations(event_id),
+        observed_at TEXT NOT NULL,PRIMARY KEY(epoch_id,counter_key))""")
+    connection.execute("CREATE TABLE slot_meter_epoch_outbox(epoch_id TEXT PRIMARY KEY REFERENCES slot_meter_epochs(id))")
+
+
+def _migration_028_web_catchup(connection: sqlite3.Connection) -> None:
+    connection.execute("CREATE TABLE web_catchup_progress(peer_id TEXT PRIMARY KEY,state_json TEXT NOT NULL)")
+
+
+def _migration_029_billing_amendments(connection: sqlite3.Connection) -> None:
+    connection.execute('ALTER TABLE peer_settings_deliveries ADD COLUMN page_offset INTEGER NOT NULL DEFAULT 0')
+    connection.execute("""CREATE TABLE peer_billing_amendments(
+        sequence INTEGER PRIMARY KEY AUTOINCREMENT,amendment_id TEXT NOT NULL UNIQUE,
+        document_json TEXT NOT NULL,results_json TEXT NOT NULL,created_at TEXT NOT NULL)""")
+    connection.execute("""CREATE TABLE peer_billing_deliveries(
+        member_id TEXT NOT NULL,amendment_id TEXT NOT NULL REFERENCES peer_billing_amendments(amendment_id),
+        acknowledged_at TEXT, retry_at REAL NOT NULL DEFAULT 0,attempts INTEGER NOT NULL DEFAULT 0,
+        error_code TEXT NOT NULL DEFAULT '',PRIMARY KEY(member_id,amendment_id))""")
+
+
+def _migration_030_report_detail_revisions(connection):
+    connection.execute('''CREATE TABLE report_detail_revisions(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,amendment_id TEXT NOT NULL,
+        kind TEXT NOT NULL CHECK(kind IN ('subject','raw')),device_slot INTEGER NOT NULL,
+        serial TEXT NOT NULL,counter_key TEXT NOT NULL,record_date TEXT NOT NULL,row_json TEXT NOT NULL,
+        period_start TEXT NOT NULL,period_end TEXT NOT NULL,
+        UNIQUE(amendment_id,kind,record_date))''')
+    connection.execute('CREATE INDEX idx_detail_revision_scope ON report_detail_revisions(kind,device_slot,record_date,serial,counter_key,id)')
+    create_detail_revision_guards(connection)
+    connection.execute('''CREATE TABLE report_revision_subject_periods(
+        device_slot INTEGER NOT NULL,period_start TEXT NOT NULL,period_end TEXT NOT NULL,device_identity TEXT NOT NULL,
+        subject_type TEXT NOT NULL,subject_id TEXT NOT NULL,summary_json TEXT NOT NULL,
+        PRIMARY KEY(device_slot,period_start,period_end,device_identity,subject_type,subject_id))''')
+
+
+def create_detail_revision_guards(connection):
+    for operation in ('UPDATE', 'DELETE'):
+        connection.execute(f'''CREATE TRIGGER IF NOT EXISTS report_detail_revisions_no_{operation.lower()}
+            BEFORE {operation} ON report_detail_revisions
+            BEGIN SELECT RAISE(ABORT, 'report detail revisions are append-only'); END''')
+
+
+def _migration_031_lan_peer_membership(connection):
+    connection.execute('CREATE TABLE lan_peer_group (singleton INTEGER PRIMARY KEY CHECK(singleton=1), document TEXT NOT NULL)')
+    connection.execute('''CREATE TABLE lan_peer_members (
+        member_id TEXT PRIMARY KEY, origin TEXT NOT NULL UNIQUE,
+        fingerprint TEXT NOT NULL UNIQUE, document TEXT NOT NULL,
+        revoked INTEGER NOT NULL DEFAULT 0 CHECK(revoked IN (0,1)))''')
+
+
+def _migration_032_shared_report_days(connection):
+    # Compact first/high/last counter points, independent of arrival order.
+    # Existing evidence is indexed in bounded background batches after upgrade.
+    connection.execute('''CREATE TABLE shared_report_days (
+        epoch_id TEXT NOT NULL REFERENCES slot_meter_epochs(id), record_date TEXT NOT NULL,
+        document_json TEXT NOT NULL, device_json TEXT NOT NULL, PRIMARY KEY(epoch_id,record_date))''')
+    connection.execute('''CREATE TABLE shared_report_months (
+        epoch_id TEXT NOT NULL REFERENCES slot_meter_epochs(id), record_date TEXT NOT NULL,
+        document_json TEXT NOT NULL, device_json TEXT NOT NULL, PRIMARY KEY(epoch_id,record_date))''')
+    connection.execute('''CREATE TABLE shared_report_events (
+        epoch_id TEXT NOT NULL REFERENCES slot_meter_epochs(id),
+        event_id TEXT NOT NULL REFERENCES web_observations(event_id),
+        PRIMARY KEY(epoch_id,event_id))''')
+    connection.execute('CREATE INDEX idx_web_observation_instant ON web_observations(julianday(observed_at),event_id)')
+
+
+def _migration_033_lan_evidence_origins(connection):
+    # Provenance does not confer session/reader/certificate authorization.
+    connection.execute('''CREATE TABLE lan_evidence_origins (
+        member_id TEXT PRIMARY KEY, origin TEXT NOT NULL UNIQUE, document TEXT NOT NULL)''')
+
+
+def _migration_034_report_day_revisions(connection):
+    connection.execute('CREATE INDEX idx_report_raw_day ON daily_raw_counter_records(device_slot,record_date)')
+    connection.execute('''CREATE TABLE report_projection_generation (
+        singleton INTEGER PRIMARY KEY CHECK(singleton=1), token TEXT NOT NULL)''')
+    connection.execute('''INSERT INTO report_projection_generation(singleton,token)
+        VALUES(1,lower(hex(randomblob(16))))''')
+    connection.execute('''CREATE TABLE report_day_revisions (
+        kind TEXT NOT NULL, device_slot INTEGER NOT NULL, record_date TEXT NOT NULL,
+        token TEXT NOT NULL, PRIMARY KEY(kind,device_slot,record_date))''')
+    for kind, table in (("subject", "daily_subject_records"), ("raw", "daily_raw_counter_records")):
+        connection.execute(f'''INSERT INTO report_day_revisions(kind,device_slot,record_date,token)
+            SELECT ?,device_slot,record_date,lower(hex(randomblob(16)))
+            FROM (SELECT DISTINCT device_slot,record_date FROM {table})''', (kind,))
+        for operation in ("INSERT", "UPDATE", "DELETE"):
+            sources = ("OLD", "NEW") if operation == "UPDATE" else (("OLD",) if operation == "DELETE" else ("NEW",))
+            changes = "\n".join(f'''INSERT INTO report_day_revisions(kind,device_slot,record_date,token)
+                VALUES('{kind}',{source}.device_slot,{source}.record_date,lower(hex(randomblob(16))))
+                ON CONFLICT(kind,device_slot,record_date) DO UPDATE SET token=excluded.token;'''
+                for source in sources)
+            connection.execute(f'''CREATE TRIGGER report_day_revision_{kind}_{operation.lower()}
+                AFTER {operation} ON {table} BEGIN {changes} END''')
+
+
 MIGRATIONS: tuple[tuple[int, str, object], ...] = (
     (8, "record_schema_history_and_reporting_indexes", _migration_008_record_schema_history),
     (9, "add_legacy_usage_history_import_provenance", _migration_009_legacy_history_import),
@@ -621,6 +874,21 @@ MIGRATIONS: tuple[tuple[int, str, object], ...] = (
     (17, "add_per_serial_parser_mapping_overrides", _migration_017_parser_mapping_overrides),
     (18, "separate_raw_counter_history_by_printer_serial", _migration_018_raw_counter_device_identity),
     (19, "add_v52_registration_inventory_baselines", _migration_019_v52_registration_inventory_baseline),
+    (20, "add_peer_settings_revision_history", _migration_020_peer_settings_history),
+    (21, "add_atomic_peer_settings_outbox", _migration_021_peer_settings_outbox),
+    (22, "add_raw_counter_baseline_review", _migration_022_raw_counter_reviews),
+    (23, "add_durable_web_observation_journal", _migration_023_web_observations),
+    (24, "add_on_demand_web_observation_archives", _migration_024_web_observation_archives),
+    (25, "add_verified_report_details_and_monthly_summaries", _migration_025_report_detail_archives),
+    (26, "add_durable_reader_grants_and_joined_requests", _migration_026_reader_jobs),
+    (27, "add_reviewed_slot_epoch_storage_and_maximum_index", _migration_027_slot_meter_epochs),
+    (28, "add_atomic_web_history_catchup_progress", _migration_028_web_catchup),
+    (29, "add_atomic_billing_amendment_delivery", _migration_029_billing_amendments),
+    (30, "add_immutable_report_detail_revisions", _migration_030_report_detail_revisions),
+    (31, 'add_local_lan_member_enrollment', _migration_031_lan_peer_membership),
+    (32, 'add_compact_shared_report_evidence', _migration_032_shared_report_days),
+    (33, 'retain_peer_evidence_origins_without_session_access', _migration_033_lan_evidence_origins),
+    (34, 'track_report_day_projection_revisions', _migration_034_report_day_revisions),
 )
 
 

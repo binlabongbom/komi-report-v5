@@ -1,11 +1,14 @@
 # [V4.5] pinned to a compatible-release range to keep PyInstaller builds reproducible.
 # bump version when you've smoke-tested a newer release.
-cryptography>=50,<51
+cryptography>=50.0.1,<51
 PyQt6~=6.11.0
 PyQt6-Charts~=6.11.0
-openpyxl~=3.1.0
-pyqtgraph~=0.13.3
-pysnmp>=7.1,<8
-fastapi>=0.115,<1
-keyring>=25,<26
-uvicorn>=0.34,<1
+PyQt6-Qt6==6.11.2
+PyQt6-Charts-Qt6==6.11.2
+openpyxl~=3.1.5
+pyqtgraph~=0.14.0
+pysnmp>=7.1.29,<8
+fastapi>=0.141.1,<1
+keyring>=25.7,<26
+truststore==0.10.4
+uvicorn>=0.53,<1

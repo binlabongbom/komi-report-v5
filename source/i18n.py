@@ -28,9 +28,9 @@ from PyQt6.QtWidgets import (
 
 THAI = "th"
 ENGLISH = "en"
-SUPPORTED_LANGUAGES = (THAI, ENGLISH)
 _language = THAI
 _ITEM_SOURCE_ROLE = int(Qt.ItemDataRole.UserRole) + 37
+ITEM_TRANSLATABLE_ROLE = int(Qt.ItemDataRole.UserRole) + 38
 _TRANSLATABLE_QT_WIDGET_TYPES = frozenset(
     {
         "QCheckBox",
@@ -77,6 +77,18 @@ def tr(thai: str, english: str) -> str:
 # Exact labels used throughout the six main workspaces and the setup wizard.
 # Longer/dynamic messages are handled by the phrase replacements below.
 _EN: dict[str, str] = {
+    "มิเตอร์เริ่มต้น": "Initial meter",
+    "ลองโหลดอีกครั้ง": "Retry loading",
+    "กำลังโหลดภาพรวม…": "Loading overview…",
+    "โหลดภาพรวมไม่สำเร็จ · กดรีเฟรชเพื่อลองใหม่": "Overview could not be loaded. Refresh to retry.",
+    "ตรวจจำนวนใหม่": "Refresh counts",
+    "เปิดส่วนนี้เพื่อตรวจจำนวนข้อมูลเก่า": "Open this section to count older records.",
+    "กำลังตรวจจำนวนข้อมูลเก่า…": "Counting older records…",
+    "อ่านรายการ Archive ไม่สำเร็จ · กดตรวจจำนวนใหม่เพื่อลองอีกครั้ง": "Archive metadata is unavailable. Refresh counts to retry.",
+    "เปิดหน้านี้เพื่อตรวจสอบรอบบิล": "Open this page to check billing history",
+    "กำลังตรวจสอบรอบบิล…": "Checking billing history…",
+    "โหลดไม่สำเร็จ · กด Refresh เพื่อลองใหม่": "Load failed · Select Refresh to retry",
+    "ตรวจสถานะ Web ไม่สำเร็จ · กำลังรอลองใหม่": "Could not check Web status · Waiting to retry",
     "ภาษา": "Language",
     "ภาษา / Language": "Language / ภาษา",
     "ไทย": "Thai",
@@ -153,6 +165,7 @@ _EN: dict[str, str] = {
     "รายงานผ่านเว็บและ Database": "Web reports & database",
     "เปิดรายงานจากเครื่องอื่นในเครือข่ายเดียวกัน และตรวจตำแหน่งที่เก็บข้อมูลของโปรแกรม": "Open reports from another computer on the same LAN and check where application data is stored.",
     "รายงานจากเครื่องอื่นใน LAN": "Reports on other LAN computers",
+    "การตั้งค่าเครือข่าย": "Network settings",
     "อนุญาตให้เครื่องอื่นในเครือข่ายเดียวกันเปิดดูรายงานผ่าน Web ส่วนเครื่องนี้ใช้แอป Desktop ตามปกติ": "Allow other computers on the same LAN to view Web reports. Continue using the Desktop app on this computer.",
     "อนุญาตให้เครื่องอื่นใน LAN เปิดดูรายงาน": "Allow other LAN computers to view reports",
     "เปิดรายงานผ่าน Web สำหรับเครื่องอื่นใน LAN": "Enable Web reports for other LAN computers",
@@ -253,6 +266,13 @@ _EN: dict[str, str] = {
     "สถานะการซิงก์": "Reading status",
     "ประวัติการอ่าน": "Reading history",
     "การทำงานอัตโนมัติ": "Automation",
+    "ทั่วไป": "General",
+    "ขั้นสูง": "Advanced",
+    "สถานะและประวัติ": "Status and history",
+    "ถ้าข้อมูลไม่อัปเดต ให้เปิด Settings → สถานะและประวัติ": "If data is not updating, open Settings → Status and history",
+    "หมวดการตั้งค่า": "Settings sections",
+    "จัดการเครื่องพิมพ์ รอบบิล การอ่านข้อมูล และการทำงานของโปรแกรม": "Manage printers, billing, reading schedules and program settings",
+    "กรุณาบันทึกหรือยกเลิกการแก้ไขก่อนเปลี่ยนแท็บ": "Save or cancel your changes before switching tabs.",
     "ดูหลักฐานและรายการที่ระบบพักไว้เพื่อตรวจสอบ โดยไม่เปลี่ยนยอดย้อนหลังอัตโนมัติ": "Review evidence and held records without automatically changing historical totals.",
     "Ledger เป็น append-only: Hold จะไม่ถูกคิดเงิน และการแก้ยอดจะเพิ่ม Reversal + Replacement โดยไม่แก้หรือลบรายการเดิม · ดับเบิลคลิกแถวเพื่อดูหลักฐานครบ": "The Ledger is append-only. Held records are not billed, and corrections add a Reversal and Replacement without editing or deleting the original. Double-click a row to review its evidence.",
     "มีผลต่อยอด": "Effective",
@@ -276,6 +296,10 @@ _EN: dict[str, str] = {
     "ตรวจสถานะ (SNMP)": "Status check (SNMP)",
     "อ่าน Meter (Web)": "Meter reading (Web)",
     "เก็บข้อมูล (RAM / DB)": "Store data (RAM / DB)",
+    "ผลอ่านร่วม (Sync)": "Shared readings (Sync)",
+    "อ่านโดย": "Read by",
+    "คอมที่ทำรายการ": "Event computer",
+    "แสดงผล Web ที่บันทึกไว้ในกลุ่ม": "Display saved group Web reading",
     "กฎระบบ": "System rules",
     "เวลา": "Time",
     "ผลลัพธ์": "Result",
@@ -380,6 +404,7 @@ _EN: dict[str, str] = {
     "รายละเอียด": "Details",
     "ทั้งหมด": "All",
     "ปัจจุบัน": "Current",
+    "วันนี้": "Today",
     "รายวัน": "Daily",
     "รายสัปดาห์": "Weekly",
     "รายเดือน": "Monthly",
@@ -423,6 +448,18 @@ _EN: dict[str, str] = {
     "องค์กร": "Organization",
     "ข้อมูลสำหรับเริ่มใช้งาน": "Information to get started",
     "มี KOMI Report เครื่องหลักอยู่แล้ว?": "Already have a KOMI Report Primary?",
+    "มีเครื่องหลักอยู่แล้ว": "Already have a Primary",
+    "เชื่อมต่อ KOMI Report เครื่องหลัก": "Connect to a KOMI Report Primary",
+    "ระบุ Primary IP หรือค้นหาเครื่องหลักในเครือข่าย LAN": "Enter the Primary IP or search for it on the LAN.",
+    "ค้นหาอัตโนมัติ": "Search automatically",
+    "พบ KOMI Report เครื่องหลักในระบบ": "KOMI Report Primary found",
+    "ดึงการตั้งค่า": "Import settings",
+    "กำลังตรวจสอบการเชื่อมต่อ…": "Checking connectivity…",
+    "ตรวจสอบการเชื่อมต่อไม่ผ่าน": "Connectivity check failed",
+    "ยังเชื่อมต่อบริการที่จำเป็นได้ไม่ครบ": "Some required services could not be reached",
+    "คัดลอกรายละเอียด": "Copy details",
+    "คัดลอกแล้ว": "Copied",
+    "ทดสอบอีกครั้ง": "Test again",
     "ค้นหาใน LAN แล้วดึงเฉพาะบริษัท เครื่องพิมพ์ ราคา และรอบบิล · ไม่คัดลอกรหัสผ่านหรือประวัติ": "Search the LAN and copy only company, printer, price and billing settings · passwords and history are never copied",
     "ค้นหาเครื่องหลัก": "Find Primary",
     "นำเครื่องพิมพ์เข้าระบบ": "Add printers securely",
@@ -834,6 +871,96 @@ _PHRASES: dict[str, str] = {
     "ค่าที่ปิด Ledger แล้วจะไม่ถูกคำนวณย้อนหลัง": "Closed Ledger entries are never recalculated",
 }
 
+
+
+
+_EN.update({
+    "ช่วงที่แสดงอยู่": "Displayed period",
+    "ช่วงที่เลือก": "Selected period",
+    "เปอร์เซ็นต์แสดงความคืบหน้าตามขั้นตอน": "Percentage indicates progress through the export stages",
+    "เปอร์เซ็นต์แสดงความคืบหน้าตามขั้นตอน\nสามารถใช้งานหน้ารายงานต่อได้ระหว่างรอ": "Percentage indicates progress through the export stages.\nYou can continue using the report while waiting.",
+    "ไม่พบ User Authentication / Account Track ที่เปิดใช้งาน": "No enabled User Authentication / Account Track data",
+    "User Authentication / Account Track (RAM · ดูอย่างเดียว)": "User Authentication / Account Track (RAM · read-only)",
+    "กำลังยกเลิกการส่งออก…": "Cancelling export…",
+    "โปรดรอจนยกเลิกเสร็จ ไฟล์เดิมจะยังคงอยู่": "Please wait for cancellation to finish. Your original file is preserved.",
+    "กำลังยกเลิก…": "Cancelling…",
+    "กำลังเตรียมส่งออก…": "Preparing export…",
+    "ส่งออก Excel": "Export Excel",
+    "กำลังส่งออก Excel": "Exporting Excel",
+    "มีผลต่อยอด": "Included in billing",
+    "Hold รอตรวจ": "Held for review",
+    "Reversal ยังไม่ครบคู่": "Reversal awaiting replacement",
+    "รายการแก้ไขทั้งหมด": "All corrections",
+    "ประวัติการตั้งค่าร่วม": "Settings history",
+    "สถานะการทำงานร่วมกัน": "Collaboration status",
+    "ปิด": "Off",
+    "เปิด 5 นาที": "Open for 5 minutes",
+    "เปิดตลอด": "Always open",
+    "กำลังเตรียมรายงาน…": "Preparing report…",
+    "กำลังบันทึกไฟล์…": "Saving file…",
+    "กำลังสร้างรายงานรายเครื่อง…": "Creating printer report…",
+    "กำลังสร้างรายงานผู้ใช้…": "Creating user report…",
+    "กำลังสร้างรายงานรายวัน…": "Creating daily report…",
+    "กำลังสร้างรายละเอียดรายเครื่อง…": "Creating printer details…",
+    "กำลังสร้างรายละเอียดผู้ใช้…": "Creating user details…",
+    "กำลังสร้างรายละเอียดรายวัน…": "Creating daily details…",
+    "กำลังเขียนไฟล์ Excel…": "Writing Excel file…",
+    "ตรวจสอบมิเตอร์": "Meter review",
+    "สถานะการอ่าน": "Reading status",
+    "ใช้สิทธิ์รับค่าติดตั้ง": "Apply setup access",
+    "ส่งค่าตอนติดตั้งครั้งแรก": "Share initial setup settings",
+    "กำลังอ่านยอดรายเครื่อง…": "Loading printer usage…",
+    "กำลังอ่านข้อมูลผู้ใช้…": "Loading user data…",
+    "กำลังอ่านรายละเอียดมิเตอร์…": "Loading meter details…",
+    "กำลังเตรียมไฟล์ Excel…": "Preparing Excel file…",
+    "เปิด Web Report ให้เครื่องอื่นใน LAN": "Enable Web Report for other LAN computers",
+    "คำนวณใหม่จากประวัติราคา": "Recalculate price",
+    "คำนวณใหม่ตามวันที่": "Recalculate period",
+    "ตรวจและแก้ยอด": "Review amount",
+    "คำนวณรายการที่เลือกใหม่จากราคาตามวันบังคับใช้": "Recalculate the selected entry using its dated prices.",
+    "ตรวจรายการและคำนวณราคาใหม่ตามช่วงวันที่ที่เลือก": "Review entries and recalculate prices for a selected date range.",
+    "ตรวจหลักฐานและกรอกยอดแก้ไขของรายการที่เลือก": "Review evidence and enter corrected amounts for the selected entry.",
+    "คืนค่า Parser": "Restore parser defaults",
+    "ช่วงรายงาน": "Report period",
+    "วันที่สิ้นสุด": "End date",
+    "วันที่เริ่มต้น": "Start date",
+    "ตรวจสถานะอีกครั้ง": "Check status again",
+    "การอ่านบนคอมนี้: ไม่มีงานอ่านอยู่": "Reading on this computer: idle",
+    "ผู้อ่านร่วม: ยังไม่ได้เชื่อมต่อบริการสมาชิก": "Shared reader: membership service is not connected",
+    "รอยืนยันรับ = ยังไม่มีหลักฐานว่าคอมปลายทางบันทึกแล้ว · สถานะรับประวัติไม่ใช่สถานะการตั้งค่าหรือผู้อ่านร่วม": "Awaiting acknowledgement means there is no proof that the destination saved the data. History, settings and shared-reader states are separate.",
+    "ยังไม่มีสมาชิกที่ยืนยันการเชื่อมต่อ · ไม่ได้หมายความว่าไม่มีคอมอื่นในเครือข่าย": "No verified member connections yet. This does not mean there are no other computers on the network.",
+    "จัดการ Database, Backup, Log, Parser Mapping และรายงานผ่าน LAN · รายการที่ลบหรือรีเซ็ตข้อมูลจะสำรองข้อมูลและขอยืนยันก่อนเสมอ": "Manage databases, backups, logs, parser mappings and LAN reports. Delete and reset actions create a backup and ask for confirmation.",
+    "ลบเครื่องพิมพ์ ราคา ประวัติ Parser override และสถานะ Registration แล้วกลับไป Setup Wizard": "Remove printers, pricing, history, parser overrides and registration, then return to the setup wizard.",
+    "สำรองและลบ Parser Profile ที่ปรับแต่งไว้ · ไม่ลบ Database": "Back up and remove customized parser profiles. The database is preserved.",
+    "เริ่มตั้งค่าใหม่": "Restart setup",
+    "เริ่มติดตั้งและตั้งค่าใหม่ทั้งหมด": "Restart installation and setup",
+    "แสดงชื่อ Counter และค่าตามที่เครื่องส่งมาโดยตรง · ไม่ Map กระดาษ ไม่เปลี่ยนชื่อ และไม่เดาค่าที่เครื่องไม่ได้ส่ง": "Shows counter names and values exactly as reported by the printer. Paper categories and unavailable values are not inferred."
+})
+
+_EN.update({
+    "Excel มีรายงานรายเครื่อง Users รายวัน และรายละเอียด Legacy พร้อมหมายเหตุเมื่อมีฉบับแก้ไข": "Excel includes printer, user and daily reports, Legacy details and correction remarks.",
+    "การยืนยันเป็นการเปลี่ยนฐานของ Slot ร่วมกันทั้งระบบ และจะบันทึกประวัติกับรายการรอส่งให้สมาชิกพร้อมกัน การบันทึกบนคอมนี้ยังไม่ยืนยันว่าคอมอื่นได้รับแล้ว": "Confirmation records the shared slot baseline, its history and pending delivery to verified members. A local save is not proof that another computer received it.",
+    "ฐานนี้ใช้รักษายอดสะสมของ Slot เมื่อเปลี่ยนเครื่องหรือรีเซ็ตมิเตอร์ ตรวจ Serial และค่าที่อ่านได้ก่อนยืนยัน": "This baseline preserves the slot total when a printer is replaced or reset. Check the serial and readings before confirming.",
+    "ดูเฉพาะผล Web ที่บันทึกแล้ว เริ่มนับจากจุดแรกในช่วงที่เลือก · นี่คือการตรวจหลักฐาน ยังไม่เปลี่ยนยอดเรียกเก็บหรือยืนยันฐานหลัง reset": "View saved Web readings from the first point in the selected period. Inspecting evidence does not change billing or confirm a reset baseline.",
+    "ตรวจตัวนับเครื่องทั้งหมดและยอดรวมเดิม ใช้ราคาและส่วนลดที่บันทึกไว้ ไม่คิดเงินจากกราฟเฉลี่ย ยืนยันแล้วจะเก็บต้นฉบับและคิวส่งฉบับแก้ไข สมาชิกที่เชื่อมต่อและยืนยันสิทธิ์แล้วจึงรับได้ ดูรายการรอยืนยันรับได้ที่การตั้งค่าเครือข่าย": "Review printer counters and original totals using the recorded prices and discount. The averaged graph is not billed. Confirmation preserves the original and queues the correction for connected, verified members. Check pending acknowledgements in Network settings.",
+    "การรับค่าเริ่มต้นไม่คัดลอกตัวตนของอีกคอม ตรวจสถานะการเชื่อมสมาชิกและคิว Sync ในการตั้งค่าเครือข่าย": "Initial setup does not copy another computer's identity. Check member connections and synchronization queues in Network settings.",
+    "ตรวจสอบ Parser Mapping": "Review parser mapping",
+    "คำนวณรายละเอียดจากผล Web ในฐาน Slot นี้ พร้อมฉบับแก้ไขและหมายเหตุ เก็บต้นฉบับในฐานข้อมูลและ Archive ไว้ ยอดเงินตรวจแก้แยกผ่านหน้าการแบ่งยอดหรือรอบบิล ฉบับแก้ไขจะเข้าคิวส่งให้สมาชิกที่ยืนยันสิทธิ์แล้ว": "Recalculate details from Web evidence in this slot epoch, including corrections and remarks. Originals remain in the database and archive. Review monetary corrections separately in billing.",
+    "ระบุเหตุผลแล้วตรวจค่าที่บันทึกจากเครื่องพิมพ์": "Enter a reason, then review saved printer readings.",
+    "รายงานเรียกเก็บเดิมและรายการมิเตอร์ที่ยังรอตรวจสอบจะไม่ถูกอนุมัติจากการยืนยันฐานนี้": "Confirming this baseline does not approve existing invoices or pending meter reviews.",
+    "เปรียบเทียบชื่อ Counter ที่เครื่องส่งจริงกับช่องที่จะบันทึกใน Database · การแก้ไขมีผลกับการอ่านครั้งถัดไปเท่านั้น และไม่แก้ Raw Data, ประวัติ หรือ Billing เดิม": "Compare printer counter names with database fields. Changes apply to future reads only; existing raw data, history and billing are preserved.",
+    "เลือกช่วงวันที่ใช้งาน แล้วตรวจยอดก่อนยืนยัน": "Choose usage dates and review amounts before confirming.",
+    "เลือกช่วงเวลาที่ต้องการ Export": "Choose the period to export",
+    "เลือกตรวจรายการก่อนยืนยัน · ใช้เฉพาะวันที่ปิดแล้วและฐาน Slot ที่ยืนยันแล้ว": "Review entries before confirming. Only closed days and confirmed slot baselines are eligible.",
+    "เลือกเครื่อง": "Choose printer",
+    "ใช้ราคาตามวันบังคับใช้ เลือกใช้ส่วนลดและวันตัดรอบปัจจุบันได้ ตรวจรายการก่อนยืนยัน ระบบสร้างรายการแก้ไขพร้อมประวัติบนคอมนี้ โดยเก็บรายการเดิมไว้": "Use dated prices, optionally with the current discount and billing day. Review before confirming. Corrections and history are saved locally while originals are preserved.",
+    "อ่านหมายเหตุเต็ม": "Read full remarks",
+    "เลือกช่วงแล้วกดเรียกดูข้อมูล": "Choose dates and load evidence",
+    "กำลังเรียกหลักฐาน Web…": "Loading Web evidence…",
+    "กรุณาตรวจค่าล่าสุดก่อนยืนยัน": "Review the latest readings before confirming.",
+    "ยังไม่มีช่วงอ่านให้คำนวณ · ต้องมีผล Web อย่างน้อยสองครั้ง": "No usage interval yet. At least two Web readings are required."
+})
+
 _MONTHS = {
     "ม.ค.": "Jan", "ก.พ.": "Feb", "มี.ค.": "Mar", "เม.ย.": "Apr",
     "พ.ค.": "May", "มิ.ย.": "Jun", "ก.ค.": "Jul", "ส.ค.": "Aug",
@@ -841,15 +968,38 @@ _MONTHS = {
 }
 
 
+_LEGACY_REPLACEMENTS = {**_PHRASES, **_MONTHS}
+_LEGACY_PHRASE_PATTERN = re.compile(
+    r"(?<![\u0e00-\u0e7f])(?:"
+    + "|".join(re.escape(source) for source in sorted(_LEGACY_REPLACEMENTS, key=len, reverse=True))
+    + r")(?![\u0e00-\u0e7f])"
+)
+
+
 def translate_text(text: str) -> str:
     if _language != ENGLISH or not text:
         return text
     if text in _EN:
         return _EN[text]
-    translated = text
-    replacements = {**_PHRASES, **_MONTHS}
-    for source in sorted(replacements, key=len, reverse=True):
-        translated = translated.replace(source, replacements[source])
+    if text in _PHRASES:
+        return _PHRASES[text]
+    templates = (
+        (r"พบ Raw Counter (\d+) รายการ · ยังไม่มีข้อมูล กรุณากดอ่าน / ทดสอบอีกครั้ง", "Raw counters: {0}. No readings yet. Read or test the printer again."),
+        (r"ตัวนับที่เลือก: (.+) · เครื่องพิมพ์", "Selected counter: {0} · Printer"),
+        (r"ช่วงที่เลือก (\d+) วัน", "Selected period {0} days"),
+        (r"เครื่องที่มีการใช้งาน (.+) เครื่อง · Scan (.+) หน้า", "Active printers {0} · Scan {1} pages"),
+        (r"การตั้งค่ารอตรวจ (\d+) รายการ", "Settings awaiting review: {0}"),
+        (r"กำลังสร้างรายงานผู้ใช้ (\d+)/(\d+) คน…", "Creating user report {0}/{1} users…"),
+    )
+    for pattern, template in templates:
+        match = re.fullmatch(pattern, text)
+        if match:
+            return template.format(*match.groups())
+    if "\n" in text:
+        return "\n".join(translate_text(line) for line in text.split("\n"))
+    # One compiled pass avoids hundreds of regex calls for each label/timer
+    # update. Boundaries still protect syllables inside Thai words.
+    translated = _LEGACY_PHRASE_PATTERN.sub(lambda match: _LEGACY_REPLACEMENTS[match.group()], text)
     # Dynamic overview messages contain changing numbers, so translate their
     # stable grammatical parts without touching printer names or other data.
     translated = re.sub(r"ยืนยันแล้ว(?=\s)", "Confirmed", translated)
@@ -935,6 +1085,8 @@ def apply_language(root: QWidget) -> None:
     for widget, properties in widgets_with_properties:
         if sip.isdeleted(widget):
             continue
+        if widget.property("i18n_data"):
+            continue
         if isinstance(widget, (QLabel, QAbstractButton, QGroupBox)):
             original = _source(widget, widget.text())
             rendered = original if _language == THAI else translate_text(original)
@@ -977,16 +1129,18 @@ def apply_language(root: QWidget) -> None:
 
         if isinstance(widget, QTabWidget):
             for index in range(widget.count()):
-                key = f"i18n_tab_{index}"
-                original = widget.property(key)
+                page = widget.widget(index)
                 current = widget.tabText(index)
-                if original is None or any("\u0e00" <= char <= "\u0e7f" for char in current):
-                    original = current
-                    widget.setProperty(key, original)
-                widget.setTabText(index, str(original) if _language == THAI else translate_text(str(original)))
+                original = _property_source(page, current, source_property="i18n_tab_title",
+                                            rendered_property="i18n_tab_rendered")
+                rendered = original if _language == THAI else translate_text(original)
+                widget.setTabText(index, rendered)
+                page.setProperty("i18n_tab_rendered", rendered)
 
         if isinstance(widget, QComboBox):
             for index in range(widget.count()):
+                if not widget.property("i18n_items") and not widget.itemData(index, ITEM_TRANSLATABLE_ROLE):
+                    continue
                 original = widget.itemData(index, _ITEM_SOURCE_ROLE)
                 current = widget.itemText(index)
                 if original is None or any("\u0e00" <= char <= "\u0e7f" for char in current):
@@ -1025,6 +1179,8 @@ def apply_language(root: QWidget) -> None:
                 for column in range(widget.columnCount()):
                     item = widget.item(row, column)
                     if item is None:
+                        continue
+                    if not item.data(ITEM_TRANSLATABLE_ROLE):
                         continue
                     original = item.data(_ITEM_SOURCE_ROLE)
                     if original is None or any("\u0e00" <= char <= "\u0e7f" for char in item.text()):

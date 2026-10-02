@@ -2,6 +2,7 @@ import os
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+from services.report_export_options import ReportExportSelection
 from datetime import date
 from pathlib import Path
 
@@ -9,11 +10,12 @@ from PyQt6.QtCore import QDate
 from PyQt6.QtWidgets import QAbstractItemView, QApplication, QScrollArea
 
 import database
-import v5_pages
+from ui.reports import page as report_page
 from services.device_config import DeviceConfig
 from services.monthly_history import MonthlyUsage
 from ui.cloud_reports import USAGE_METRICS
-from v5_pages import PageHistoryV5, ReportExportPeriodDialog
+from ui.reports.page import PageHistoryV5
+from ui.reports.export_dialog import ReportExportPeriodDialog
 from widgets import FrozenLeftTable, VisibleCheckBox
 
 
@@ -290,7 +292,7 @@ def test_history_monthly_defaults_to_usage_and_cost_columns(tmp_path, monkeypatc
             for slot in range(2)
         )
         monkeypatch.setattr(
-            v5_pages,
+            report_page,
             "load_usage_history",
             lambda slots, granularity, cache: records,
         )
@@ -424,11 +426,11 @@ def test_reports_keep_periods_separate_when_start_matches_but_end_differs(
             )
         )
         monkeypatch.setattr(
-            v5_pages,
+            report_page,
             "load_usage_history",
             lambda slots, granularity, cache: records,
         )
-        monkeypatch.setattr(v5_pages, "load_subject_history", lambda *args, **kwargs: ())
+        monkeypatch.setattr(report_page, "load_subject_history", lambda *args, **kwargs: ())
         app = QApplication.instance() or QApplication([])
         page = PageHistoryV5(repository=_Repository(), cache=_Cache())
 
@@ -455,8 +457,8 @@ def test_reports_empty_state_does_not_present_zero_as_confirmed_data(
     try:
         database.set_db_path(tmp_path / "history-empty.sqlite3")
         database.init_db()
-        monkeypatch.setattr(v5_pages, "load_usage_history", lambda *args, **kwargs: ())
-        monkeypatch.setattr(v5_pages, "load_subject_history", lambda *args, **kwargs: ())
+        monkeypatch.setattr(report_page, "load_usage_history", lambda *args, **kwargs: ())
+        monkeypatch.setattr(report_page, "load_subject_history", lambda *args, **kwargs: ())
         app = QApplication.instance() or QApplication([])
         page = PageHistoryV5(repository=_Repository(), cache=_Cache())
 
@@ -487,7 +489,7 @@ def test_reports_loader_error_is_visible_and_disables_exports(tmp_path, monkeypa
         def fail(*args, **kwargs):
             raise RuntimeError("ledger unavailable")
 
-        monkeypatch.setattr(v5_pages, "load_usage_history", fail)
+        monkeypatch.setattr(report_page, "load_usage_history", fail)
         page.refresh()
 
         assert not page.reports_error.isHidden()
@@ -531,11 +533,11 @@ def test_trend_uses_posted_ledger_projection_and_hides_value_labels_by_default(
             copy_bw=8,
         )
         monkeypatch.setattr(
-            v5_pages,
+            report_page,
             "load_usage_history",
             lambda *args, **kwargs: (record,),
         )
-        monkeypatch.setattr(v5_pages, "load_subject_history", lambda *args, **kwargs: ())
+        monkeypatch.setattr(report_page, "load_subject_history", lambda *args, **kwargs: ())
         app = QApplication.instance() or QApplication([])
         page = PageHistoryV5(repository=_Repository(), cache=_Cache())
 
@@ -588,12 +590,12 @@ def test_trend_type_view_uses_time_chart_and_marks_provisional_cache(
             provisional_days=1,
         )
         monkeypatch.setattr(
-            v5_pages,
+            report_page,
             "load_usage_history",
             lambda *args, **kwargs: (record,),
         )
         monkeypatch.setattr(
-            v5_pages,
+            report_page,
             "load_subject_history",
             lambda *args, **kwargs: (),
         )
@@ -631,8 +633,8 @@ def test_trend_current_year_filter_uses_period_end_dates(tmp_path, monkeypatch):
     try:
         database.set_db_path(tmp_path / "history-trend-year.sqlite3")
         database.init_db()
-        monkeypatch.setattr(v5_pages, "load_usage_history", lambda *args, **kwargs: ())
-        monkeypatch.setattr(v5_pages, "load_subject_history", lambda *args, **kwargs: ())
+        monkeypatch.setattr(report_page, "load_usage_history", lambda *args, **kwargs: ())
+        monkeypatch.setattr(report_page, "load_subject_history", lambda *args, **kwargs: ())
         app = QApplication.instance() or QApplication([])
         page = PageHistoryV5(repository=_Repository(), cache=_Cache())
         page._available_months_for_filter = [
@@ -679,11 +681,11 @@ def test_reports_overview_uses_billable_pages_and_reveals_frozen_cost_details(
             ),
         )
         monkeypatch.setattr(
-            v5_pages,
+            report_page,
             "load_usage_history",
             lambda slots, granularity, cache: records,
         )
-        monkeypatch.setattr(v5_pages, "load_subject_history", lambda *args, **kwargs: ())
+        monkeypatch.setattr(report_page, "load_subject_history", lambda *args, **kwargs: ())
         app = QApplication.instance() or QApplication([])
         page = PageHistoryV5(repository=_Repository(), cache=_Cache())
 
@@ -747,11 +749,11 @@ def test_reports_overview_separates_confirmed_and_current_cache_estimate(
             ),
         )
         monkeypatch.setattr(
-            v5_pages,
+            report_page,
             "load_usage_history",
             lambda slots, granularity, cache: records,
         )
-        monkeypatch.setattr(v5_pages, "load_subject_history", lambda *args, **kwargs: ())
+        monkeypatch.setattr(report_page, "load_subject_history", lambda *args, **kwargs: ())
         app = QApplication.instance() or QApplication([])
         page = PageHistoryV5(repository=_Repository(), cache=_Cache())
 
@@ -822,11 +824,11 @@ def test_reports_show_held_days_without_claiming_current_waste_for_frozen_ledger
             ),
         )
         monkeypatch.setattr(
-            v5_pages,
+            report_page,
             "load_usage_history",
             lambda slots, granularity, cache: records,
         )
-        monkeypatch.setattr(v5_pages, "load_subject_history", lambda *args, **kwargs: ())
+        monkeypatch.setattr(report_page, "load_subject_history", lambda *args, **kwargs: ())
         app = QApplication.instance() or QApplication([])
         page = PageHistoryV5(repository=_Repository(), cache=_Cache())
 
@@ -873,7 +875,7 @@ def test_reports_show_held_days_without_claiming_current_waste_for_frozen_ledger
         assert "ไม่รวมในยอด" in page.report_printers.item(0, 1).toolTip()
         dialogs: list[tuple[str, str]] = []
         monkeypatch.setattr(
-            v5_pages.QMessageBox,
+            report_page.QMessageBox,
             "information",
             lambda _parent, title, text: dialogs.append((title, text)),
         )
@@ -943,11 +945,11 @@ def test_reports_keep_frozen_device_identities_separate_after_slot_rollover(tmp_
             ),
         )
         monkeypatch.setattr(
-            v5_pages,
+            report_page,
             "load_usage_history",
             lambda slots, granularity, cache: records,
         )
-        monkeypatch.setattr(v5_pages, "load_subject_history", lambda *args, **kwargs: ())
+        monkeypatch.setattr(report_page, "load_subject_history", lambda *args, **kwargs: ())
         app = QApplication.instance() or QApplication([])
         page = PageHistoryV5(repository=_RolloverRepository(), cache=_Cache())
 
@@ -1016,9 +1018,9 @@ def test_reports_keep_disabled_slot_history_but_current_tab_stays_enabled_only(t
             requested_slots.append(tuple(slots))
             return records
 
-        monkeypatch.setattr(v5_pages, "report_slots", lambda: [0, 1])
-        monkeypatch.setattr(v5_pages, "load_usage_history", load_history)
-        monkeypatch.setattr(v5_pages, "load_subject_history", lambda *args, **kwargs: ())
+        monkeypatch.setattr(report_page, "report_slots", lambda: [0, 1])
+        monkeypatch.setattr(report_page, "load_usage_history", load_history)
+        monkeypatch.setattr(report_page, "load_subject_history", lambda *args, **kwargs: ())
         app = QApplication.instance() or QApplication([])
         page = PageHistoryV5(repository=_DisabledHistoryRepository(), cache=_Cache())
 
@@ -1102,13 +1104,14 @@ def test_report_center_replaces_legacy_reports_with_cloud_overview_users_and_pri
             ),
         )
         usage_loads = []
+        graph_loads = []
 
-        def load_report_usage(slots, granularity, cache):
-            usage_loads.append(granularity)
+        def load_report_usage(slots, granularity, cache, *, graph=False):
+            (graph_loads if graph else usage_loads).append(granularity)
             return records
 
-        monkeypatch.setattr(v5_pages, "load_usage_history", load_report_usage)
-        monkeypatch.setattr(v5_pages, "load_subject_history", lambda *args, **kwargs: ())
+        monkeypatch.setattr(report_page, "load_usage_history", load_report_usage)
+        monkeypatch.setattr(report_page, "load_subject_history", lambda *args, **kwargs: ())
         app = QApplication.instance() or QApplication([])
         page = PageHistoryV5(repository=_Repository(), cache=_Cache())
         assert usage_loads == []
@@ -1118,12 +1121,26 @@ def test_report_center_replaces_legacy_reports_with_cloud_overview_users_and_pri
             page.report_center_tabs.tabText(index)
             for index in range(page.report_center_tabs.count())
         ] == ["Overview", "Users", "Printers", "Usage", "Legacy"]
-        assert isinstance(page.report_center_scroll, QScrollArea)
-        assert page.report_center_scroll.widget() is page.report_center
-        assert page.report_center_scroll.widgetResizable()
+        report = page.report_center
+        content_pages = (
+            report.overview_page, report.users_page, report.printers_page,
+            report.usage_page, report.legacy_raw_page,
+        )
+        for index, content in enumerate(content_pages):
+            scrolls = report.tabs.widget(index).findChildren(QScrollArea)
+            owners = [scroll for scroll in scrolls if scroll.widget() is content]
+            assert len(owners) == 1
+            scroll = owners[0]
+            assert scroll.widgetResizable()
+            assert not scroll.viewport().isAncestorOf(report.header)
+            assert not scroll.viewport().isAncestorOf(report.tabs.tabBar())
+            for start, end in report.period_edit_pairs:
+                assert not scroll.viewport().isAncestorOf(start)
+                assert not scroll.viewport().isAncestorOf(end)
 
         page._refresh_report_center()
         assert usage_loads == ["monthly", "daily"]
+        assert graph_loads == ["daily"]
         cloud = page.report_center
         assert cloud.overview_kpis["total_usage"].lbl_val.text() == "1,200"
         assert cloud.overview_printers.item(0, 0).text() == "Printer 1"
@@ -1131,10 +1148,10 @@ def test_report_center_replaces_legacy_reports_with_cloud_overview_users_and_pri
         # This fixture has only aggregate paper totals.  Print/Copy must stay
         # explicitly unavailable instead of being guessed from Color/B&W.
         cloud.tabs.setCurrentIndex(2)
-        assert cloud.printer_kpis["print"].text() == "—"
-        assert cloud.printer_kpis["copy"].text() == "—"
-        assert cloud.printers_table.item(0, 0).text() == "Printer 1"
-        assert cloud.printer_detail.item(0, 1).text() == "Printer 1"
+        assert not hasattr(cloud, "printer_metric_cards")
+        assert [cloud.printers_table.item(0, column).text() for column in range(2, 6)] == ["—"] * 4
+        assert cloud.printers_table.item(0, 0).text() == "Slot 1 · Printer 1"
+        assert cloud.printers_table.columnCount() == 9
         cloud.tabs.setCurrentIndex(3)
         assert cloud.usage_monthly_table.item(0, 0).text() == current_day.strftime("%m/%Y")
         total_metric_index = next(
@@ -1146,31 +1163,41 @@ def test_report_center_replaces_legacy_reports_with_cloud_overview_users_and_pri
             0, 1 + total_metric_index
         ).text() == "1,200"
         cloud.tabs.setCurrentIndex(2)
-        cloud._select_printer_row(0, 0)
-        assert "ทุกเครื่องพร้อมกัน" in cloud.printer_compare_note.text()
+        cloud.printers_table.setCurrentCell(0, 0)
+        assert not hasattr(cloud, "printer_compare_note")
         exported = []
+        import services.report_export_job as export_job
+        import services.report_excel_export as excel
+        monkeypatch.setattr(export_job, 'load_usage_history', load_report_usage)
+        monkeypatch.setattr(export_job, 'load_subject_history', lambda *args, **kwargs: ())
         monkeypatch.setattr(
-            v5_pages.QFileDialog,
+            report_page.QFileDialog,
             "getSaveFileName",
             lambda *_args, **_kwargs: (str(tmp_path / "cloud-report.xlsx"), "Excel Workbook (*.xlsx)"),
         )
         monkeypatch.setattr(
-            v5_pages.ReportExportPeriodDialog,
-            "get_range",
-            lambda *_args, **_kwargs: (current_day, current_day),
+            report_page.ReportExportPeriodDialog,
+            "get_selection",
+            lambda *_args, **_kwargs: ReportExportSelection(current_day, current_day),
         )
         monkeypatch.setattr(
-            v5_pages,
+            excel,
             "export_cloud_reports_xlsx",
-            lambda path, report: exported.append(report) or Path(path),
+            lambda path, report, **kwargs: exported.append(report) or Path(path),
         )
-        monkeypatch.setattr(v5_pages.QMessageBox, "information", lambda *_args, **_kwargs: None)
+        monkeypatch.setattr(report_page.QMessageBox, "information", lambda *_args, **_kwargs: None)
         cloud.export_button.click()
+        # This legacy suite leaves QtCharts deferred deletes from earlier pages.
+        # Drain just this stubbed job; live event-loop responsiveness is covered
+        # with fresh report pages in test_report_export_job.
+        page._export_controller.future.result(timeout=5)
+        page._export_controller._collect()
         assert len(exported) == 1
         assert exported[0].monthly_records == records
         assert exported[0].period == (current_day.isoformat(), current_day.isoformat())
         assert exported[0].selected_daily_records == records
         assert exported[0].devices[0].name == "Printer 1"
+        page.shutdown_report_loading()
         page.close()
         app.processEvents()
     finally:

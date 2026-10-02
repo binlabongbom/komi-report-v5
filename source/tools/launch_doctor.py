@@ -17,7 +17,6 @@ DESKTOP_FILES = (
     "config.py",
     "database.py",
     "i18n.py",
-    "live_meter_page.py",
     "migrations.py",
     "observability.py",
     "pages.py",

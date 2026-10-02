@@ -6,6 +6,8 @@ from services.application_identity import (
     WINDOWS_APP_USER_MODEL_ID,
     configure_qt_application_identity,
     configure_windows_process_identity,
+    configure_windows_window_identity,
+    load_application_icon,
 )
 
 
@@ -53,6 +55,35 @@ def test_windows_process_identity_failure_does_not_block_startup() -> None:
     )
 
 
+def test_windows_window_identity_sets_taskbar_app_id_and_icon() -> None:
+    calls: list[tuple[int, dict[int, str]]] = []
+
+    class Window:
+        @staticmethod
+        def winId() -> int:
+            return 12345
+
+    assert configure_windows_window_identity(
+        Window(),
+        platform_name="win32",
+        property_setter=lambda hwnd, values: calls.append((hwnd, values)) or 0,
+    )
+    assert calls[0][0] == 12345
+    assert calls[0][1][5] == WINDOWS_APP_USER_MODEL_ID
+    assert calls[0][1][3].endswith("Logo.ico,0")
+
+
+def test_windows_window_identity_is_a_noop_on_other_platforms() -> None:
+    calls: list[object] = []
+
+    assert configure_windows_window_identity(
+        object(),
+        platform_name="darwin",
+        property_setter=lambda hwnd, values: calls.append((hwnd, values)) or 0,
+    )
+    assert calls == []
+
+
 def test_qt_application_identity_does_not_fall_back_to_python() -> None:
     application = _FakeQtApplication()
 
@@ -64,3 +95,32 @@ def test_qt_application_identity_does_not_fall_back_to_python() -> None:
         "version": "5.2.5",
         "organization": APPLICATION_ORGANIZATION,
     }
+
+
+def test_window_icon_has_native_sizes_and_is_inherited_by_dialogs(tmp_path, monkeypatch):
+    from PyQt6.QtWidgets import QApplication, QDialog
+
+    app = QApplication.instance() or QApplication([])
+    previous = app.windowIcon()
+    monkeypatch.chdir(tmp_path)
+    icon = load_application_icon()
+    assert not icon.isNull()
+    assert {16, 24, 32, 48, 256}.issubset({size.width() for size in icon.availableSizes()})
+    try:
+        app.setWindowIcon(icon)
+        dialog = QDialog()
+        assert dialog.windowIcon().cacheKey() == icon.cacheKey()
+        for size in (16, 32, 48, 256):
+            assert not dialog.windowIcon().pixmap(size, size).isNull()
+        dialog.close()
+    finally:
+        app.setWindowIcon(previous)
+
+
+def test_installer_shortcuts_use_the_running_app_identity():
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[2]
+    installer = (root / "packaging/windows/KOMI_Report_V5.iss").read_text(encoding="utf-8")
+    assert f'#define AppUserModelId "{WINDOWS_APP_USER_MODEL_ID}"' in installer
+    assert 'IconFilename: "{app}\\source\\Logo.ico"' in installer

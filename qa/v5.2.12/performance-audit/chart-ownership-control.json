@@ -1,0 +1,334 @@
+{
+  "synthetic": true,
+  "mode": "charts",
+  "started_at": "2026-09-19T07:33:16.726855",
+  "python": "3.14.7 (tags/v3.14.7:823f032, Aug  5 2026, 10:51:32) [MSC v.1944 64 bit (AMD64)]",
+  "platform": "win32",
+  "measurements": [
+    {
+      "name": "replace_overview_charts_0",
+      "seconds_until_ready": 0.27746299999853363,
+      "action_seconds": 0.025001399997563567,
+      "heartbeat_count": 3,
+      "max_event_loop_gap_ms": 218.61319999879925,
+      "gaps_above_100ms": 1,
+      "before": {
+        "working_set_bytes": 88784896,
+        "private_bytes": 292556800,
+        "peak_working_set_bytes": 88784896,
+        "cpu_seconds": 2.546875
+      },
+      "after": {
+        "working_set_bytes": 91963392,
+        "private_bytes": 294514688,
+        "peak_working_set_bytes": 91963392,
+        "cpu_seconds": 2.859375
+      }
+    },
+    {
+      "name": "replace_overview_charts_1",
+      "seconds_until_ready": 0.11861779999890132,
+      "action_seconds": 0.01503450000018347,
+      "heartbeat_count": 4,
+      "max_event_loop_gap_ms": 62.322599995241035,
+      "gaps_above_100ms": 0,
+      "before": {
+        "working_set_bytes": 92102656,
+        "private_bytes": 294649856,
+        "peak_working_set_bytes": 92102656,
+        "cpu_seconds": 2.90625
+      },
+      "after": {
+        "working_set_bytes": 92688384,
+        "private_bytes": 295174144,
+        "peak_working_set_bytes": 92688384,
+        "cpu_seconds": 3.109375
+      }
+    },
+    {
+      "name": "replace_overview_charts_2",
+      "seconds_until_ready": 0.13936660000035772,
+      "action_seconds": 0.02918879999924684,
+      "heartbeat_count": 4,
+      "max_event_loop_gap_ms": 61.092900003131945,
+      "gaps_above_100ms": 0,
+      "before": {
+        "working_set_bytes": 92708864,
+        "private_bytes": 295309312,
+        "peak_working_set_bytes": 92708864,
+        "cpu_seconds": 3.140625
+      },
+      "after": {
+        "working_set_bytes": 92778496,
+        "private_bytes": 295309312,
+        "peak_working_set_bytes": 92778496,
+        "cpu_seconds": 3.34375
+      }
+    },
+    {
+      "name": "replace_overview_charts_3",
+      "seconds_until_ready": 0.1629726999963168,
+      "action_seconds": 0.029217900002549868,
+      "heartbeat_count": 4,
+      "max_event_loop_gap_ms": 80.13950000167824,
+      "gaps_above_100ms": 0,
+      "before": {
+        "working_set_bytes": 92790784,
+        "private_bytes": 295444480,
+        "peak_working_set_bytes": 92790784,
+        "cpu_seconds": 3.375
+      },
+      "after": {
+        "working_set_bytes": 92827648,
+        "private_bytes": 295444480,
+        "peak_working_set_bytes": 92827648,
+        "cpu_seconds": 3.65625
+      }
+    },
+    {
+      "name": "replace_overview_charts_4",
+      "seconds_until_ready": 0.11773579999862704,
+      "action_seconds": 0.021128599997609854,
+      "heartbeat_count": 4,
+      "max_event_loop_gap_ms": 59.89640000188956,
+      "gaps_above_100ms": 0,
+      "before": {
+        "working_set_bytes": 92831744,
+        "private_bytes": 295444480,
+        "peak_working_set_bytes": 92831744,
+        "cpu_seconds": 3.671875
+      },
+      "after": {
+        "working_set_bytes": 92835840,
+        "private_bytes": 295444480,
+        "peak_working_set_bytes": 92835840,
+        "cpu_seconds": 3.859375
+      }
+    },
+    {
+      "name": "replace_overview_charts_5",
+      "seconds_until_ready": 0.11594170000171289,
+      "action_seconds": 0.021029299998190254,
+      "heartbeat_count": 4,
+      "max_event_loop_gap_ms": 53.14429999998538,
+      "gaps_above_100ms": 0,
+      "before": {
+        "working_set_bytes": 92839936,
+        "private_bytes": 295444480,
+        "peak_working_set_bytes": 92839936,
+        "cpu_seconds": 3.875
+      },
+      "after": {
+        "working_set_bytes": 92852224,
+        "private_bytes": 295444480,
+        "peak_working_set_bytes": 92852224,
+        "cpu_seconds": 4.078125
+      }
+    },
+    {
+      "name": "replace_overview_charts_6",
+      "seconds_until_ready": 0.16501429999334505,
+      "action_seconds": 0.03057299999636598,
+      "heartbeat_count": 4,
+      "max_event_loop_gap_ms": 68.68409999879077,
+      "gaps_above_100ms": 0,
+      "before": {
+        "working_set_bytes": 92860416,
+        "private_bytes": 295444480,
+        "peak_working_set_bytes": 92860416,
+        "cpu_seconds": 4.109375
+      },
+      "after": {
+        "working_set_bytes": 92884992,
+        "private_bytes": 295444480,
+        "peak_working_set_bytes": 92884992,
+        "cpu_seconds": 4.328125
+      }
+    },
+    {
+      "name": "replace_overview_charts_7",
+      "seconds_until_ready": 0.1613156999956118,
+      "action_seconds": 0.029306799995538313,
+      "heartbeat_count": 4,
+      "max_event_loop_gap_ms": 107.71170000225538,
+      "gaps_above_100ms": 1,
+      "before": {
+        "working_set_bytes": 92884992,
+        "private_bytes": 295444480,
+        "peak_working_set_bytes": 92884992,
+        "cpu_seconds": 4.359375
+      },
+      "after": {
+        "working_set_bytes": 92905472,
+        "private_bytes": 295444480,
+        "peak_working_set_bytes": 92905472,
+        "cpu_seconds": 4.609375
+      }
+    },
+    {
+      "name": "replace_overview_charts_8",
+      "seconds_until_ready": 0.17356300000392366,
+      "action_seconds": 0.030322600003273692,
+      "heartbeat_count": 4,
+      "max_event_loop_gap_ms": 86.37220000673551,
+      "gaps_above_100ms": 0,
+      "before": {
+        "working_set_bytes": 92909568,
+        "private_bytes": 295444480,
+        "peak_working_set_bytes": 92909568,
+        "cpu_seconds": 4.65625
+      },
+      "after": {
+        "working_set_bytes": 92921856,
+        "private_bytes": 295444480,
+        "peak_working_set_bytes": 92921856,
+        "cpu_seconds": 4.90625
+      }
+    },
+    {
+      "name": "replace_overview_charts_9",
+      "seconds_until_ready": 0.1666114000036032,
+      "action_seconds": 0.029724899999564514,
+      "heartbeat_count": 4,
+      "max_event_loop_gap_ms": 71.95059999503428,
+      "gaps_above_100ms": 0,
+      "before": {
+        "working_set_bytes": 92921856,
+        "private_bytes": 295444480,
+        "peak_working_set_bytes": 92921856,
+        "cpu_seconds": 4.9375
+      },
+      "after": {
+        "working_set_bytes": 92962816,
+        "private_bytes": 295444480,
+        "peak_working_set_bytes": 92962816,
+        "cpu_seconds": 5.234375
+      }
+    }
+  ],
+  "blocked_operations": [],
+  "complete": true,
+  "scope": "Source/offscreen; no Host, real network, Web service, installer or release build",
+  "qt_version": "6.11.0",
+  "pyqt_version": "6.11.0",
+  "copy_migration_init_seconds": 0.08302089999779128,
+  "copy_schema": 30,
+  "chart_replacement_control": true,
+  "in_progress": null,
+  "charts_before_close": {
+    "watched": 22,
+    "destroyed": 20,
+    "alive": 2,
+    "views": 2
+  },
+  "charts_after_close": {
+    "watched": 22,
+    "destroyed": 22,
+    "alive": 0,
+    "live_wrappers_not_deleted": 0
+  },
+  "replacement_ownership": [
+    {
+      "previous_deleted": false,
+      "previous_python_owned": true,
+      "previous_has_parent": false
+    },
+    {
+      "previous_deleted": false,
+      "previous_python_owned": true,
+      "previous_has_parent": false
+    },
+    {
+      "previous_deleted": false,
+      "previous_python_owned": true,
+      "previous_has_parent": false
+    },
+    {
+      "previous_deleted": false,
+      "previous_python_owned": true,
+      "previous_has_parent": false
+    },
+    {
+      "previous_deleted": false,
+      "previous_python_owned": true,
+      "previous_has_parent": false
+    },
+    {
+      "previous_deleted": false,
+      "previous_python_owned": true,
+      "previous_has_parent": false
+    },
+    {
+      "previous_deleted": false,
+      "previous_python_owned": true,
+      "previous_has_parent": false
+    },
+    {
+      "previous_deleted": false,
+      "previous_python_owned": true,
+      "previous_has_parent": false
+    },
+    {
+      "previous_deleted": false,
+      "previous_python_owned": true,
+      "previous_has_parent": false
+    },
+    {
+      "previous_deleted": false,
+      "previous_python_owned": true,
+      "previous_has_parent": false
+    },
+    {
+      "previous_deleted": false,
+      "previous_python_owned": true,
+      "previous_has_parent": false
+    },
+    {
+      "previous_deleted": false,
+      "previous_python_owned": true,
+      "previous_has_parent": false
+    },
+    {
+      "previous_deleted": false,
+      "previous_python_owned": true,
+      "previous_has_parent": false
+    },
+    {
+      "previous_deleted": false,
+      "previous_python_owned": true,
+      "previous_has_parent": false
+    },
+    {
+      "previous_deleted": false,
+      "previous_python_owned": true,
+      "previous_has_parent": false
+    },
+    {
+      "previous_deleted": false,
+      "previous_python_owned": true,
+      "previous_has_parent": false
+    },
+    {
+      "previous_deleted": false,
+      "previous_python_owned": true,
+      "previous_has_parent": false
+    },
+    {
+      "previous_deleted": false,
+      "previous_python_owned": true,
+      "previous_has_parent": false
+    },
+    {
+      "previous_deleted": false,
+      "previous_python_owned": true,
+      "previous_has_parent": false
+    },
+    {
+      "previous_deleted": false,
+      "previous_python_owned": true,
+      "previous_has_parent": false
+    }
+  ],
+  "fixture": "90 synthetic users, three printers, two days, ten Overview data replacements; QObject destroyed signals; callbacks hold only integer pointers",
+  "temporary_copy_cleaned": true
+}

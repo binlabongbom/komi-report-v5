@@ -1,0 +1,50 @@
+{
+  "synthetic": true,
+  "mode": "evidence",
+  "started_at": "2026-09-19T19:11:13.222247",
+  "python": "3.14.7 (tags/v3.14.7:823f032, Aug  5 2026, 10:51:32) [MSC v.1944 64 bit (AMD64)]",
+  "platform": "win32",
+  "measurements": [
+    {
+      "name": "evidence_pdf_128days",
+      "seconds_until_ready": 5.794056500000806,
+      "action_seconds": 0.032204500001171255,
+      "heartbeat_count": 127,
+      "max_event_loop_gap_ms": 117.05889999939245,
+      "gaps_above_100ms": 1,
+      "before": {
+        "working_set_bytes": 54251520,
+        "private_bytes": 30212096,
+        "peak_working_set_bytes": 54251520,
+        "cpu_seconds": 1.234375
+      },
+      "after": {
+        "working_set_bytes": 59727872,
+        "private_bytes": 32399360,
+        "peak_working_set_bytes": 60780544,
+        "cpu_seconds": 7.046875
+      }
+    }
+  ],
+  "blocked_operations": [],
+  "complete": true,
+  "scope": "Source/offscreen; no Host, real network, Web service, installer or release build",
+  "qt_version": "6.11.0",
+  "pyqt_version": "6.11.0",
+  "copy_migration_init_seconds": 0.09212809999917226,
+  "copy_schema": 30,
+  "fixture": {
+    "days": 128,
+    "reads_per_day": 32,
+    "points": 4096,
+    "intervals": 4095,
+    "counters": 1,
+    "format": "pdf"
+  },
+  "in_progress": null,
+  "navigation_clicks": 130,
+  "validation": "PDF header and non-empty output; visual pagination not audited here",
+  "pdf_for_visual_check": "qa\\v5.2.12\\issue-19\\evidence-128-pdf.pdf",
+  "output_bytes": 1046731,
+  "temporary_copy_cleaned": true
+}

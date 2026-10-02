@@ -53,8 +53,8 @@ def test_windows_shortcuts_use_canonical_cmd_launchers(tmp_path, monkeypatch):
     root = _project(tmp_path)
     calls = []
 
-    def fake_link(link, launcher, icon, working_dir):
-        calls.append((link, launcher, icon, working_dir))
+    def fake_link(link, launcher, icon, working_dir, arguments=""):
+        calls.append((link, launcher, icon, working_dir, arguments))
         link.write_text("synthetic link", encoding="utf-8")
 
     monkeypatch.setattr(desktop_shortcuts, "_write_windows_link", fake_link)
@@ -64,5 +64,21 @@ def test_windows_shortcuts_use_canonical_cmd_launchers(tmp_path, monkeypatch):
 
     assert [path.name for path in result.created_paths] == ["KOMI Report V5.lnk", "KOMI Report Web.lnk"]
     assert calls[0][1] == root / "START_KOMI_REPORT.cmd"
-    assert calls[1][1] == root / "START_KOMI_REPORT_WEB.cmd"
+    assert calls[1][1] == root / "START_KOMI_REPORT.cmd"
+    assert calls[1][4] == "web"
     assert all(call[3] == root for call in calls)
+
+
+def test_installed_windows_shortcuts_use_bundled_runtime_without_cmd_files(tmp_path, monkeypatch):
+    root = tmp_path / "installed"
+    (root / "runtime").mkdir(parents=True)
+    (root / "runtime" / "pythonw.exe").touch()
+    (root / "source").mkdir()
+    (root / "source" / "app.py").touch()
+    calls = []
+    monkeypatch.setattr(desktop_shortcuts, "_write_windows_link", lambda *args: calls.append(args))
+    desktop_shortcuts.create_desktop_shortcuts(root, desktop=tmp_path / "Desktop", platform_name="win32")
+    assert all(call[1] == root / "runtime" / "pythonw.exe" for call in calls)
+    assert "--open-web" not in calls[0][4]
+    assert calls[1][4].endswith(" --open-web")
+    assert str(root / "source" / "app.py") in calls[1][4]

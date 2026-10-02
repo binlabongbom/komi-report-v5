@@ -4,6 +4,7 @@ from collections import deque
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from threading import RLock
+from services.computer_names import local_computer_name
 
 
 @dataclass(frozen=True)
@@ -19,6 +20,9 @@ class PipelineEvent:
     value: str
     detail: str
     status: str
+    computer_name: str = ''
+    reader_name: str = ''
+    diagnostic: str = ''
 
     def to_dict(self) -> dict[str, object]:
         return asdict(self)
@@ -50,21 +54,35 @@ class PipelineLogStore:
         detail: str = "",
         status: str = "info",
         at: datetime | None = None,
+        reader_name: str | None = None,
     ) -> PipelineEvent:
         with self._lock:
             self._sequence += 1
+            from services.support_diagnostics import diagnostic_report, safe_text
+            computer = local_computer_name()
+            timestamp = (at or datetime.now().astimezone()).isoformat(timespec="seconds")
+            diagnostic = ''
+            if isinstance(value, BaseException):
+                diagnostic = diagnostic_report(value, stage=stage + ' / ' + action, target=target or host,
+                                               device=device_name, computer=computer, at=timestamp)
+            elif 'KOMI Diagnostic v1\n' in str(value):
+                diagnostic = safe_text(value)
             event = PipelineEvent(
                 sequence=self._sequence,
-                at=(at or datetime.now().astimezone()).isoformat(timespec="seconds"),
+                at=timestamp,
                 device_slot=device_slot,
                 device_name=device_name,
                 host=host,
                 stage=stage.upper(),
                 action=action,
                 target=target,
-                value=str(value),
-                detail=detail,
+                value=safe_text(value),
+                detail=safe_text(detail),
                 status=status,
+                computer_name=computer,
+                reader_name=(local_computer_name() if stage.upper() in {'SNMP', 'WEB'} else '')
+                    if reader_name is None else reader_name,
+                diagnostic=diagnostic,
             )
             self._events.append(event)
             return event

@@ -18,6 +18,7 @@ PUBLIC_FACTORY_ADMIN_PASSWORDS = (
 
 class CredentialStoreError(RuntimeError):
     """Raised when a credential store cannot be used."""
+    diagnostic_code = 'vault_unavailable'
 
 
 @dataclass(frozen=True)

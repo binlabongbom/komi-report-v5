@@ -93,7 +93,8 @@ def _customer_candidates(tmp_path: Path, commit: str) -> tuple[Path, Path]:
 
 
 def test_windows_customer_profile_is_not_labelled_pilot_or_lab():
-    assert CUSTOMER_INSTALLER_NAME == "KOMI_Report_V5_2_5_Windows_x64_Installer.exe"
+    from komi_version import APP_VERSION
+    assert CUSTOMER_INSTALLER_NAME == f"KOMI_Report_V{APP_VERSION.replace('.', '_')}_Windows_x64_Online_Installer.exe"
     assert "customer release package" in CUSTOMER_README.casefold()
     assert "production Desktop" in CUSTOMER_README
     assert "Unsigned Pilot Candidate" not in CUSTOMER_README
@@ -114,10 +115,15 @@ def test_customer_delivery_holds_unsigned_arm_vm_artifacts(
         "CUSTOMER_RELEASE_NOTES.md",
         "CUSTOMER_INSTALL_GUIDE.md",
         "CUSTOMER_GUIDE_V5_2.md",
+        f"CUSTOMER_GUIDE_V{APP_VERSION.replace('.', '_')}_DRAFT.md",
         "RELEASE_SUPPORT_AND_RECOVERY.md",
         "REGISTRATION_DATA_NOTICE.md",
     ):
         (docs / name).write_text(f"# {name}\n", encoding="utf-8")
+    guide_root = docs / "customer-guide"
+    guide_root.mkdir()
+    (guide_root / f"KOMI_Report_{APP_VERSION}_Source_Guide.pdf").write_bytes(b"%PDF-1.4\nQA fixture\n")
+    (guide_root / f"assets-v{APP_VERSION}-source").mkdir()
     monkeypatch.setattr("tools.build_customer_delivery.PROJECT_ROOT", tmp_path)
 
     archive, manifest = build_delivery(

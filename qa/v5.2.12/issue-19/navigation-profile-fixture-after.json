@@ -1,0 +1,3175 @@
+{
+  "source": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5",
+  "fixture": "C:\\Users\\User\\AppData\\Local\\Temp\\komi-five-year-299c6c6c88b44a69bb0503e207bacd20\\synthetic-history.sqlite3",
+  "scope": "real fonts/QSS/images; source only",
+  "steps": [
+    {
+      "name": "main",
+      "seconds": 2.6930372000006173,
+      "top_cumulative": [
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\tools\\profile_navigation_v5.py",
+          "line": 67,
+          "function": "create",
+          "calls": 1,
+          "own": 4.11e-05,
+          "cumulative": 2.5311752000000003
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\app.py",
+          "line": 380,
+          "function": "__init__",
+          "calls": 1,
+          "own": 0.0016373000000000002,
+          "cumulative": 2.4755176000000003
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\app.py",
+          "line": 556,
+          "function": "_build_ui",
+          "calls": 1,
+          "own": 0.0425602,
+          "cumulative": 1.0305334000000002
+        },
+        {
+          "file": "<frozen importlib._bootstrap>",
+          "line": 1360,
+          "function": "_find_and_load",
+          "calls": 98,
+          "own": 0.0012698000000000002,
+          "cumulative": 0.7303988
+        },
+        {
+          "file": "<frozen importlib._bootstrap>",
+          "line": 1308,
+          "function": "_find_and_load_unlocked",
+          "calls": 98,
+          "own": 0.0013717,
+          "cumulative": 0.7291805
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\services\\v5_2_runtime.py",
+          "line": 479,
+          "function": "__init__",
+          "calls": 1,
+          "own": 0.0004063,
+          "cumulative": 0.7179114000000001
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\services\\device_config.py",
+          "line": 58,
+          "function": "__init__",
+          "calls": 3,
+          "own": 2.2000000000000003e-05,
+          "cumulative": 0.7174752000000001
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\komi_snmp_profiler\\credential_store.py",
+          "line": 113,
+          "function": "platform_credential_store",
+          "calls": 3,
+          "own": 3.93e-05,
+          "cumulative": 0.7174532
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\komi_snmp_profiler\\credential_store.py",
+          "line": 68,
+          "function": "__init__",
+          "calls": 3,
+          "own": 7.37e-05,
+          "cumulative": 0.7174139
+        },
+        {
+          "file": "<frozen importlib._bootstrap>",
+          "line": 914,
+          "function": "_load_unlocked",
+          "calls": 92,
+          "own": 0.0008404,
+          "cumulative": 0.7169407000000001
+        },
+        {
+          "file": "<frozen importlib._bootstrap_external>",
+          "line": 753,
+          "function": "exec_module",
+          "calls": 84,
+          "own": 0.000577,
+          "cumulative": 0.7155962
+        },
+        {
+          "file": "<frozen importlib._bootstrap>",
+          "line": 483,
+          "function": "_call_with_frames_removed",
+          "calls": 242,
+          "own": 0.0004223,
+          "cumulative": 0.6984089
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method builtins.exec>",
+          "calls": 94,
+          "own": 0.014546600000000002,
+          "cumulative": 0.6945992000000001
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method builtins.__import__>",
+          "calls": 57,
+          "own": 0.00032300000000000004,
+          "cumulative": 0.5727611
+        },
+        {
+          "file": "<frozen importlib._bootstrap>",
+          "line": 1409,
+          "function": "_handle_fromlist",
+          "calls": 61,
+          "own": 0.0002547,
+          "cumulative": 0.5661108
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\app.py",
+          "line": 963,
+          "function": "_install_network_recovery_monitor",
+          "calls": 1,
+          "own": 0.0003234,
+          "cumulative": 0.4340698
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method loadDefaultBackend>",
+          "calls": 1,
+          "own": 0.4306149,
+          "cumulative": 0.4306149
+        },
+        {
+          "file": "C:\\Users\\User\\Documents\\KOMI Report V5\\.venv\\Lib\\site-packages\\keyring\\core.py",
+          "line": 32,
+          "function": "get_keyring",
+          "calls": 3,
+          "own": 7.88e-05,
+          "cumulative": 0.3786378
+        },
+        {
+          "file": "C:\\Users\\User\\Documents\\KOMI Report V5\\.venv\\Lib\\site-packages\\keyring\\core.py",
+          "line": 89,
+          "function": "init_backend",
+          "calls": 1,
+          "own": 8.400000000000001e-06,
+          "cumulative": 0.3785565
+        },
+        {
+          "file": "C:\\Users\\User\\Documents\\KOMI Report V5\\.venv\\Lib\\site-packages\\keyring\\core.py",
+          "line": 96,
+          "function": "_detect_backend",
+          "calls": 1,
+          "own": 3.0500000000000003e-05,
+          "cumulative": 0.3785394
+        },
+        {
+          "file": "C:\\Users\\User\\Documents\\KOMI Report V5\\.venv\\Lib\\site-packages\\keyring\\__init__.py",
+          "line": 1,
+          "function": "<module>",
+          "calls": 1,
+          "own": 1.69e-05,
+          "cumulative": 0.33432140000000005
+        },
+        {
+          "file": "C:\\Users\\User\\Documents\\KOMI Report V5\\.venv\\Lib\\site-packages\\keyring\\core.py",
+          "line": 1,
+          "function": "<module>",
+          "calls": 1,
+          "own": 0.0001133,
+          "cumulative": 0.3313834
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\v5_pages.py",
+          "line": 6134,
+          "function": "__init__",
+          "calls": 1,
+          "own": 0.0003237,
+          "cumulative": 0.3142819
+        },
+        {
+          "file": "C:\\Users\\User\\Documents\\KOMI Report V5\\.venv\\Lib\\site-packages\\jaraco\\functools\\__init__.py",
+          "line": 81,
+          "function": "wrapper",
+          "calls": 2,
+          "own": 1.2600000000000001e-05,
+          "cumulative": 0.3137797
+        },
+        {
+          "file": "C:\\Users\\User\\Documents\\KOMI Report V5\\.venv\\Lib\\site-packages\\keyring\\backend.py",
+          "line": 251,
+          "function": "get_all_keyring",
+          "calls": 1,
+          "own": 2.57e-05,
+          "cumulative": 0.3137648
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\v5_pages.py",
+          "line": 6150,
+          "function": "_build",
+          "calls": 1,
+          "own": 0.0005882,
+          "cumulative": 0.31370750000000003
+        },
+        {
+          "file": "C:\\Users\\User\\Documents\\KOMI Report V5\\.venv\\Lib\\site-packages\\keyring\\backend.py",
+          "line": 225,
+          "function": "_load_plugins",
+          "calls": 1,
+          "own": 7.04e-05,
+          "cumulative": 0.3120367
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\v5_pages.py",
+          "line": 6741,
+          "function": "refresh",
+          "calls": 1,
+          "own": 0.0001689,
+          "cumulative": 0.31008260000000004
+        },
+        {
+          "file": "C:\\Users\\User\\Documents\\KOMI Report V5\\.venv\\Lib\\site-packages\\keyring\\backend.py",
+          "line": 1,
+          "function": "<module>",
+          "calls": 1,
+          "own": 0.00011430000000000001,
+          "cumulative": 0.3074346
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method addWidget>",
+          "calls": 160,
+          "own": 0.26081940000000003,
+          "cumulative": 0.29059680000000004
+        },
+        {
+          "file": "C:\\Users\\User\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\importlib\\metadata\\__init__.py",
+          "line": 173,
+          "function": "load",
+          "calls": 6,
+          "own": 6.38e-05,
+          "cumulative": 0.2727197
+        },
+        {
+          "file": "C:\\Users\\User\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\importlib\\__init__.py",
+          "line": 71,
+          "function": "import_module",
+          "calls": 12,
+          "own": 4.58e-05,
+          "cumulative": 0.2725941
+        },
+        {
+          "file": "<frozen importlib._bootstrap>",
+          "line": 1394,
+          "function": "_gcd_import",
+          "calls": 13,
+          "own": 6.280000000000001e-05,
+          "cumulative": 0.2725693
+        },
+        {
+          "file": "C:\\Users\\User\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\platform.py",
+          "line": 338,
+          "function": "_wmi_query",
+          "calls": 3,
+          "own": 0.0001722,
+          "cumulative": 0.2679992
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method _wmi.exec_query>",
+          "calls": 3,
+          "own": 0.2677539,
+          "cumulative": 0.2677539
+        },
+        {
+          "file": "C:\\Users\\User\\Documents\\KOMI Report V5\\.venv\\Lib\\site-packages\\keyring\\backends\\Windows.py",
+          "line": 1,
+          "function": "<module>",
+          "calls": 1,
+          "own": 5.5700000000000005e-05,
+          "cumulative": 0.2395613
+        },
+        {
+          "file": "C:\\Users\\User\\Documents\\KOMI Report V5\\.venv\\Lib\\site-packages\\win32ctypes\\pywin32\\__init__.py",
+          "line": 1,
+          "function": "<module>",
+          "calls": 1,
+          "own": 1.58e-05,
+          "cumulative": 0.23082560000000002
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\v5_pages.py",
+          "line": 6583,
+          "function": "_device_card",
+          "calls": 3,
+          "own": 0.0046712,
+          "cumulative": 0.2303358
+        },
+        {
+          "file": "C:\\Users\\User\\Documents\\KOMI Report V5\\.venv\\Lib\\site-packages\\jaraco\\context\\__init__.py",
+          "line": 1,
+          "function": "<module>",
+          "calls": 1,
+          "own": 0.00013800000000000002,
+          "cumulative": 0.21799390000000002
+        },
+        {
+          "file": "<frozen importlib._bootstrap>",
+          "line": 809,
+          "function": "module_from_spec",
+          "calls": 92,
+          "own": 0.0004582,
+          "cumulative": 0.2115258
+        },
+        {
+          "file": "C:\\Users\\User\\Documents\\KOMI Report V5\\.venv\\Lib\\site-packages\\jaraco\\context\\__init__.py",
+          "line": 200,
+          "function": "robust_remover",
+          "calls": 1,
+          "own": 2.51e-05,
+          "cumulative": 0.2056635
+        },
+        {
+          "file": "C:\\Users\\User\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\platform.py",
+          "line": 1083,
+          "function": "system",
+          "calls": 4,
+          "own": 2.5600000000000002e-05,
+          "cumulative": 0.2056495
+        },
+        {
+          "file": "C:\\Users\\User\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\platform.py",
+          "line": 985,
+          "function": "uname",
+          "calls": 4,
+          "own": 8.86e-05,
+          "cumulative": 0.20562390000000003
+        },
+        {
+          "file": "C:\\Users\\User\\Documents\\KOMI Report V5\\.venv\\Lib\\site-packages\\win32ctypes\\core\\__init__.py",
+          "line": 29,
+          "function": "create_module",
+          "calls": 6,
+          "own": 1.4200000000000001e-05,
+          "cumulative": 0.20139600000000002
+        },
+        {
+          "file": "C:\\Users\\User\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\platform.py",
+          "line": 464,
+          "function": "win32_ver",
+          "calls": 2,
+          "own": 8.180000000000001e-05,
+          "cumulative": 0.2012828
+        }
+      ],
+      "top_own": [
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method loadDefaultBackend>",
+          "calls": 1,
+          "own": 0.4306149,
+          "cumulative": 0.4306149
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method _wmi.exec_query>",
+          "calls": 3,
+          "own": 0.2677539,
+          "cumulative": 0.2677539
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method addWidget>",
+          "calls": 160,
+          "own": 0.26081940000000003,
+          "cumulative": 0.29059680000000004
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method setWidget>",
+          "calls": 2,
+          "own": 0.10648250000000001,
+          "cumulative": 0.11715710000000001
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method qWait>",
+          "calls": 1,
+          "own": 0.1043245,
+          "cumulative": 0.1141939
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method nt.stat>",
+          "calls": 481,
+          "own": 0.0869232,
+          "cumulative": 0.0869232
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method _io.open_code>",
+          "calls": 84,
+          "own": 0.0761608,
+          "cumulative": 0.0761608
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method setStyleSheet>",
+          "calls": 117,
+          "own": 0.0689167,
+          "cumulative": 0.0716143
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<method 'execute' of 'sqlite3.Connection' objects>",
+          "calls": 152,
+          "own": 0.06860720000000001,
+          "cumulative": 0.06860720000000001
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\ui_consistency.py",
+          "line": 128,
+          "function": "eventFilter",
+          "calls": 10286,
+          "own": 0.052236700000000004,
+          "cumulative": 0.10098320000000001
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method show>",
+          "calls": 1,
+          "own": 0.045200500000000005,
+          "cumulative": 0.055616500000000006
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\app.py",
+          "line": 556,
+          "function": "_build_ui",
+          "calls": 1,
+          "own": 0.0425602,
+          "cumulative": 1.0305334000000002
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method addLayout>",
+          "calls": 32,
+          "own": 0.038686500000000006,
+          "cumulative": 0.0463085
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method builtins.isinstance>",
+          "calls": 31464,
+          "own": 0.0286573,
+          "cumulative": 0.028888200000000003
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\services\\application_identity.py",
+          "line": 32,
+          "function": "load_application_icon",
+          "calls": 1,
+          "own": 0.0273919,
+          "cumulative": 0.037584200000000005
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method marshal.loads>",
+          "calls": 84,
+          "own": 0.0225166,
+          "cumulative": 0.0225166
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method _ssl.enum_certificates>",
+          "calls": 2,
+          "own": 0.0222072,
+          "cumulative": 0.0222072
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method __new__ of type object at 0x00007FFB5375CD90>",
+          "calls": 1327,
+          "own": 0.0216754,
+          "cumulative": 0.057684200000000005
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<method 'close' of 'sqlite3.Connection' objects>",
+          "calls": 10,
+          "own": 0.020748000000000003,
+          "cumulative": 0.020748000000000003
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<function ButtonSystem.eventFilter at 0x0000016573552FB0>",
+          "calls": 10286,
+          "own": 0.0195336,
+          "cumulative": 0.0195336
+        }
+      ]
+    },
+    {
+      "name": "devices",
+      "seconds": 0.5524230999999418,
+      "top_cumulative": [
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\tools\\profile_navigation_v5.py",
+          "line": 75,
+          "function": "<lambda>",
+          "calls": 1,
+          "own": 2.2000000000000003e-05,
+          "cumulative": 0.42752520000000005
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\app.py",
+          "line": 1188,
+          "function": "_nav",
+          "calls": 1,
+          "own": 0.00012570000000000002,
+          "cumulative": 0.4275032
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\app.py",
+          "line": 1234,
+          "function": "_refresh_visible_page",
+          "calls": 1,
+          "own": 0.0001587,
+          "cumulative": 0.3973025
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\v5_pages.py",
+          "line": 6741,
+          "function": "refresh",
+          "calls": 1,
+          "own": 0.0002816,
+          "cumulative": 0.38143960000000005
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\v5_pages.py",
+          "line": 6583,
+          "function": "_device_card",
+          "calls": 3,
+          "own": 0.0039497,
+          "cumulative": 0.1954428
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method qWait>",
+          "calls": 1,
+          "own": 0.1065949,
+          "cumulative": 0.1205162
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\v5_pages.py",
+          "line": 6723,
+          "function": "_reflow_device_cards",
+          "calls": 3,
+          "own": 0.0001644,
+          "cumulative": 0.1012552
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\v5_pages.py",
+          "line": 6279,
+          "function": "_snapshot",
+          "calls": 3,
+          "own": 0.008453200000000001,
+          "cumulative": 0.0848715
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method builtins.next>",
+          "calls": 20,
+          "own": 9.59e-05,
+          "cumulative": 0.0818529
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\database.py",
+          "line": 297,
+          "function": "_open",
+          "calls": 14,
+          "own": 6.340000000000001e-05,
+          "cumulative": 0.0815708
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\services\\usage.py",
+          "line": 143,
+          "function": "latest_counters",
+          "calls": 3,
+          "own": 0.0002816,
+          "cumulative": 0.07385370000000001
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method setParent>",
+          "calls": 9,
+          "own": 0.0648131,
+          "cumulative": 0.07336870000000001
+        },
+        {
+          "file": "C:\\Users\\User\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\contextlib.py",
+          "line": 136,
+          "function": "__enter__",
+          "calls": 7,
+          "own": 5.0700000000000006e-05,
+          "cumulative": 0.0714666
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\database.py",
+          "line": 283,
+          "function": "_conn",
+          "calls": 7,
+          "own": 0.0003775,
+          "cumulative": 0.071357
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<method 'execute' of 'sqlite3.Connection' objects>",
+          "calls": 35,
+          "own": 0.0558256,
+          "cumulative": 0.0558256
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\ui_consistency.py",
+          "line": 128,
+          "function": "eventFilter",
+          "calls": 5742,
+          "own": 0.028253300000000002,
+          "cumulative": 0.050732700000000006
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\services\\usage.py",
+          "line": 47,
+          "function": "current_device_identity",
+          "calls": 3,
+          "own": 0.0001121,
+          "cumulative": 0.042868300000000005
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method addWidget>",
+          "calls": 69,
+          "own": 0.0361153,
+          "cumulative": 0.040015100000000005
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\v5_pages.py",
+          "line": 6312,
+          "function": "_web_table",
+          "calls": 3,
+          "own": 0.0119358,
+          "cumulative": 0.034423100000000005
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method setStyleSheet>",
+          "calls": 60,
+          "own": 0.0226205,
+          "cumulative": 0.0246157
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method setCurrentIndex>",
+          "calls": 1,
+          "own": 0.0198301,
+          "cumulative": 0.023820900000000002
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\i18n.py",
+          "line": 1046,
+          "function": "apply_language",
+          "calls": 1,
+          "own": 0.0041696,
+          "cumulative": 0.015600300000000001
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\services\\device_config.py",
+          "line": 124,
+          "function": "list",
+          "calls": 1,
+          "own": 6.48e-05,
+          "cumulative": 0.0128842
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method builtins.isinstance>",
+          "calls": 6719,
+          "own": 0.0113145,
+          "cumulative": 0.0113145
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<function ButtonSystem.eventFilter at 0x0000016573552FB0>",
+          "calls": 5742,
+          "own": 0.010673700000000001,
+          "cumulative": 0.010673700000000001
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method _sqlite3.connect>",
+          "calls": 7,
+          "own": 0.0099098,
+          "cumulative": 0.010539000000000001
+        },
+        {
+          "file": "C:\\Users\\User\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\contextlib.py",
+          "line": 145,
+          "function": "__exit__",
+          "calls": 7,
+          "own": 6.09e-05,
+          "cumulative": 0.010292
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<method 'close' of 'sqlite3.Connection' objects>",
+          "calls": 7,
+          "own": 0.0101504,
+          "cumulative": 0.0101504
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method addLayout>",
+          "calls": 15,
+          "own": 0.0073236,
+          "cumulative": 0.008670500000000001
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\v5_pages.py",
+          "line": 6427,
+          "function": "_toner_row",
+          "calls": 3,
+          "own": 0.0005830000000000001,
+          "cumulative": 0.0077488
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\app.py",
+          "line": 338,
+          "function": "set_active",
+          "calls": 6,
+          "own": 0.0001821,
+          "cumulative": 0.0062379
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\v5_pages.py",
+          "line": 6255,
+          "function": "_value_row",
+          "calls": 12,
+          "own": 0.0025535,
+          "cumulative": 0.0062099
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method setProperty>",
+          "calls": 190,
+          "own": 0.0034577,
+          "cumulative": 0.005470200000000001
+        },
+        {
+          "file": "C:\\Users\\User\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\pathlib\\__init__.py",
+          "line": 1006,
+          "function": "mkdir",
+          "calls": 7,
+          "own": 0.0001225,
+          "cumulative": 0.005419
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method nt.mkdir>",
+          "calls": 7,
+          "own": 0.0045296,
+          "cumulative": 0.0045684
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\v5_pages.py",
+          "line": 6028,
+          "function": "__init__",
+          "calls": 12,
+          "own": 0.0016940000000000002,
+          "cumulative": 0.0030959000000000004
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method polish>",
+          "calls": 6,
+          "own": 0.0025432000000000002,
+          "cumulative": 0.0030598
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\i18n.py",
+          "line": 1014,
+          "function": "_property_source",
+          "calls": 86,
+          "own": 0.0006048000000000001,
+          "cumulative": 0.0030158000000000003
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\v5_pages.py",
+          "line": 6238,
+          "function": "_section_title",
+          "calls": 6,
+          "own": 0.0007484000000000001,
+          "cumulative": 0.0029708
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\i18n.py",
+          "line": 1037,
+          "function": "_source",
+          "calls": 80,
+          "own": 0.00016370000000000002,
+          "cumulative": 0.0029381000000000003
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\services\\daily_cache.py",
+          "line": 106,
+          "function": "load",
+          "calls": 6,
+          "own": 9.300000000000001e-05,
+          "cumulative": 0.0024226
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method unpolish>",
+          "calls": 6,
+          "own": 0.0016419000000000002,
+          "cumulative": 0.0020808000000000003
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method setColumnCount>",
+          "calls": 3,
+          "own": 0.0016821000000000002,
+          "cumulative": 0.0019248000000000002
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\v5_pages.py",
+          "line": 6248,
+          "function": "_divider",
+          "calls": 6,
+          "own": 0.0006331,
+          "cumulative": 0.0018622
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method findChildren>",
+          "calls": 1,
+          "own": 0.0018602000000000002,
+          "cumulative": 0.0018602000000000002
+        }
+      ],
+      "top_own": [
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method qWait>",
+          "calls": 1,
+          "own": 0.1065949,
+          "cumulative": 0.1205162
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method setParent>",
+          "calls": 9,
+          "own": 0.0648131,
+          "cumulative": 0.07336870000000001
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<method 'execute' of 'sqlite3.Connection' objects>",
+          "calls": 35,
+          "own": 0.0558256,
+          "cumulative": 0.0558256
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method addWidget>",
+          "calls": 69,
+          "own": 0.0361153,
+          "cumulative": 0.040015100000000005
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\ui_consistency.py",
+          "line": 128,
+          "function": "eventFilter",
+          "calls": 5742,
+          "own": 0.028253300000000002,
+          "cumulative": 0.050732700000000006
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method setStyleSheet>",
+          "calls": 60,
+          "own": 0.0226205,
+          "cumulative": 0.0246157
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method setCurrentIndex>",
+          "calls": 1,
+          "own": 0.0198301,
+          "cumulative": 0.023820900000000002
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\v5_pages.py",
+          "line": 6312,
+          "function": "_web_table",
+          "calls": 3,
+          "own": 0.0119358,
+          "cumulative": 0.034423100000000005
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method builtins.isinstance>",
+          "calls": 6719,
+          "own": 0.0113145,
+          "cumulative": 0.0113145
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<function ButtonSystem.eventFilter at 0x0000016573552FB0>",
+          "calls": 5742,
+          "own": 0.010673700000000001,
+          "cumulative": 0.010673700000000001
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<method 'close' of 'sqlite3.Connection' objects>",
+          "calls": 7,
+          "own": 0.0101504,
+          "cumulative": 0.0101504
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method _sqlite3.connect>",
+          "calls": 7,
+          "own": 0.0099098,
+          "cumulative": 0.010539000000000001
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\v5_pages.py",
+          "line": 6279,
+          "function": "_snapshot",
+          "calls": 3,
+          "own": 0.008453200000000001,
+          "cumulative": 0.0848715
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method addLayout>",
+          "calls": 15,
+          "own": 0.0073236,
+          "cumulative": 0.008670500000000001
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method nt.mkdir>",
+          "calls": 7,
+          "own": 0.0045296,
+          "cumulative": 0.0045684
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\i18n.py",
+          "line": 1046,
+          "function": "apply_language",
+          "calls": 1,
+          "own": 0.0041696,
+          "cumulative": 0.015600300000000001
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\v5_pages.py",
+          "line": 6583,
+          "function": "_device_card",
+          "calls": 3,
+          "own": 0.0039497,
+          "cumulative": 0.1954428
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method setProperty>",
+          "calls": 190,
+          "own": 0.0034577,
+          "cumulative": 0.005470200000000001
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\v5_pages.py",
+          "line": 6255,
+          "function": "_value_row",
+          "calls": 12,
+          "own": 0.0025535,
+          "cumulative": 0.0062099
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method polish>",
+          "calls": 6,
+          "own": 0.0025432000000000002,
+          "cumulative": 0.0030598
+        }
+      ]
+    },
+    {
+      "name": "settings",
+      "seconds": 2.9950115000010555,
+      "top_cumulative": [
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method qWait>",
+          "calls": 1,
+          "own": 0.024775400000000003,
+          "cumulative": 2.9675783
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\app.py",
+          "line": 1210,
+          "function": "<lambda>",
+          "calls": 1,
+          "own": 1.23e-05,
+          "cumulative": 2.9398592000000003
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\app.py",
+          "line": 1219,
+          "function": "_finish_deferred_navigation",
+          "calls": 1,
+          "own": 3.5600000000000005e-05,
+          "cumulative": 2.9398469
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\app.py",
+          "line": 742,
+          "function": "_load_deferred_page",
+          "calls": 1,
+          "own": 0.0001888,
+          "cumulative": 2.7602404000000003
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\app.py",
+          "line": 362,
+          "function": "load",
+          "calls": 1,
+          "own": 0.00011460000000000001,
+          "cumulative": 2.7133682
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\app.py",
+          "line": 670,
+          "function": "<lambda>",
+          "calls": 1,
+          "own": 7.280000000000001e-05,
+          "cumulative": 2.2051137
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\v5_pages.py",
+          "line": 12859,
+          "function": "__init__",
+          "calls": 1,
+          "own": 0.001175,
+          "cumulative": 1.9982806000000002
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\v5_pages.py",
+          "line": 12951,
+          "function": "_build_section_tabs",
+          "calls": 1,
+          "own": 0.0007398000000000001,
+          "cumulative": 1.0313938
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method addWidget>",
+          "calls": 335,
+          "own": 0.8487037000000001,
+          "cumulative": 0.9370918
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\v5_pages.py",
+          "line": 10539,
+          "function": "__init__",
+          "calls": 1,
+          "own": 0.0093678,
+          "cumulative": 0.4214162
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\v5_pages.py",
+          "line": 4753,
+          "function": "__init__",
+          "calls": 1,
+          "own": 0.0003911,
+          "cumulative": 0.3544359
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\v5_pages.py",
+          "line": 11302,
+          "function": "refresh_from_config",
+          "calls": 2,
+          "own": 0.0007957000000000001,
+          "cumulative": 0.326817
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\v5_pages.py",
+          "line": 4771,
+          "function": "_build",
+          "calls": 1,
+          "own": 0.0009318000000000001,
+          "cumulative": 0.308049
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method addTab>",
+          "calls": 9,
+          "own": 0.2692375,
+          "cumulative": 0.2925996
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\v5_pages.py",
+          "line": 12333,
+          "function": "_replace_schedule_windows",
+          "calls": 2,
+          "own": 0.00017800000000000002,
+          "cumulative": 0.2484937
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\v5_pages.py",
+          "line": 12340,
+          "function": "_append_schedule_window",
+          "calls": 10,
+          "own": 0.0063079,
+          "cumulative": 0.24568820000000002
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\ui_consistency.py",
+          "line": 128,
+          "function": "eventFilter",
+          "calls": 29217,
+          "own": 0.1283217,
+          "cumulative": 0.24212350000000002
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method setStyleSheet>",
+          "calls": 265,
+          "own": 0.2177958,
+          "cumulative": 0.23903090000000002
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\pages.py",
+          "line": 5013,
+          "function": "__init__",
+          "calls": 1,
+          "own": 0.0003844,
+          "cumulative": 0.2067603
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\pages.py",
+          "line": 5055,
+          "function": "_build",
+          "calls": 1,
+          "own": 0.010642200000000001,
+          "cumulative": 0.2063662
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\v5_pages.py",
+          "line": 12960,
+          "function": "section",
+          "calls": 2,
+          "own": 0.0003907,
+          "cumulative": 0.1910601
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\app.py",
+          "line": 1234,
+          "function": "_refresh_visible_page",
+          "calls": 1,
+          "own": 0.0001387,
+          "cumulative": 0.1795671
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\i18n.py",
+          "line": 1046,
+          "function": "apply_language",
+          "calls": 4,
+          "own": 0.0389137,
+          "cumulative": 0.15877100000000002
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method setCellWidget>",
+          "calls": 60,
+          "own": 0.1251592,
+          "cumulative": 0.13967970000000002
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\v5_pages.py",
+          "line": 13140,
+          "function": "refresh",
+          "calls": 1,
+          "own": 1.55e-05,
+          "cumulative": 0.1345435
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method builtins.next>",
+          "calls": 35,
+          "own": 0.0002545,
+          "cumulative": 0.1317039
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\database.py",
+          "line": 297,
+          "function": "_open",
+          "calls": 26,
+          "own": 0.0001342,
+          "cumulative": 0.1314361
+        },
+        {
+          "file": "C:\\Users\\User\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\contextlib.py",
+          "line": 136,
+          "function": "__enter__",
+          "calls": 13,
+          "own": 8.72e-05,
+          "cumulative": 0.10337260000000001
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\database.py",
+          "line": 283,
+          "function": "_conn",
+          "calls": 13,
+          "own": 0.0005024000000000001,
+          "cumulative": 0.1031669
+        },
+        {
+          "file": "C:\\Users\\User\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\enum.py",
+          "line": 677,
+          "function": "__call__",
+          "calls": 2846,
+          "own": 0.0071085,
+          "cumulative": 0.0996871
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\ui\\numeric_inputs.py",
+          "line": 27,
+          "function": "__init__",
+          "calls": 14,
+          "own": 0.008289300000000001,
+          "cumulative": 0.08847400000000001
+        },
+        {
+          "file": "C:\\Users\\User\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\enum.py",
+          "line": 825,
+          "function": "_create_",
+          "calls": 27,
+          "own": 0.0027131,
+          "cumulative": 0.087451
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\ui\\network_settings.py",
+          "line": 12,
+          "function": "build_network_settings",
+          "calls": 1,
+          "own": 0.0026853000000000003,
+          "cumulative": 0.0858358
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method setParent>",
+          "calls": 3,
+          "own": 0.0763456,
+          "cumulative": 0.08489390000000001
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<method 'execute' of 'sqlite3.Connection' objects>",
+          "calls": 65,
+          "own": 0.0801448,
+          "cumulative": 0.0801448
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\services\\device_config.py",
+          "line": 124,
+          "function": "list",
+          "calls": 5,
+          "own": 0.0002278,
+          "cumulative": 0.07723870000000001
+        },
+        {
+          "file": "C:\\Users\\User\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\enum.py",
+          "line": 480,
+          "function": "__new__",
+          "calls": 27,
+          "own": 0.0044482,
+          "cumulative": 0.0546895
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method builtins.isinstance>",
+          "calls": 45705,
+          "own": 0.0546292,
+          "cumulative": 0.0546292
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method setWidget>",
+          "calls": 8,
+          "own": 0.047055400000000004,
+          "cumulative": 0.0509331
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\ui\\counter_review.py",
+          "line": 96,
+          "function": "__init__",
+          "calls": 1,
+          "own": 0.0008482,
+          "cumulative": 0.0497131
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\pages.py",
+          "line": 5450,
+          "function": "set_v5_embed_mode",
+          "calls": 1,
+          "own": 0.00010140000000000001,
+          "cumulative": 0.047714700000000006
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<function ButtonSystem.eventFilter at 0x0000016573552FB0>",
+          "calls": 29258,
+          "own": 0.0471567,
+          "cumulative": 0.0471567
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method __new__ of type object at 0x00007FFB5375CD90>",
+          "calls": 1036,
+          "own": 0.0038444000000000004,
+          "cumulative": 0.046581500000000005
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\v5_pages.py",
+          "line": 5077,
+          "function": "refresh",
+          "calls": 1,
+          "own": 6.620000000000001e-05,
+          "cumulative": 0.045608800000000005
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\v5_pages.py",
+          "line": 5205,
+          "function": "refresh_status",
+          "calls": 1,
+          "own": 0.0018444000000000002,
+          "cumulative": 0.0455092
+        }
+      ],
+      "top_own": [
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method addWidget>",
+          "calls": 335,
+          "own": 0.8487037000000001,
+          "cumulative": 0.9370918
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method addTab>",
+          "calls": 9,
+          "own": 0.2692375,
+          "cumulative": 0.2925996
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method setStyleSheet>",
+          "calls": 265,
+          "own": 0.2177958,
+          "cumulative": 0.23903090000000002
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\ui_consistency.py",
+          "line": 128,
+          "function": "eventFilter",
+          "calls": 29217,
+          "own": 0.1283217,
+          "cumulative": 0.24212350000000002
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method setCellWidget>",
+          "calls": 60,
+          "own": 0.1251592,
+          "cumulative": 0.13967970000000002
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<method 'execute' of 'sqlite3.Connection' objects>",
+          "calls": 65,
+          "own": 0.0801448,
+          "cumulative": 0.0801448
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method setParent>",
+          "calls": 3,
+          "own": 0.0763456,
+          "cumulative": 0.08489390000000001
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method builtins.isinstance>",
+          "calls": 45705,
+          "own": 0.0546292,
+          "cumulative": 0.0546292
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<function ButtonSystem.eventFilter at 0x0000016573552FB0>",
+          "calls": 29258,
+          "own": 0.0471567,
+          "cumulative": 0.0471567
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method setWidget>",
+          "calls": 8,
+          "own": 0.047055400000000004,
+          "cumulative": 0.0509331
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\i18n.py",
+          "line": 1046,
+          "function": "apply_language",
+          "calls": 4,
+          "own": 0.0389137,
+          "cumulative": 0.15877100000000002
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method addLayout>",
+          "calls": 65,
+          "own": 0.031205300000000002,
+          "cumulative": 0.038209200000000006
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<method 'close' of 'sqlite3.Connection' objects>",
+          "calls": 13,
+          "own": 0.028135,
+          "cumulative": 0.028135
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method qWait>",
+          "calls": 1,
+          "own": 0.024775400000000003,
+          "cumulative": 2.9675783
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method setProperty>",
+          "calls": 2842,
+          "own": 0.0233592,
+          "cumulative": 0.030877900000000003
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method findChildren>",
+          "calls": 4,
+          "own": 0.0208582,
+          "cumulative": 0.0214758
+        },
+        {
+          "file": "C:\\Users\\User\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\enum.py",
+          "line": 239,
+          "function": "__set_name__",
+          "calls": 893,
+          "own": 0.0198818,
+          "cumulative": 0.0435066
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method property>",
+          "calls": 4800,
+          "own": 0.0160737,
+          "cumulative": 0.0160737
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method takeWidget>",
+          "calls": 1,
+          "own": 0.014362000000000002,
+          "cumulative": 0.0157343
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\ui\\numeric_inputs.py",
+          "line": 43,
+          "function": "__init__",
+          "calls": 20,
+          "own": 0.0138148,
+          "cumulative": 0.017095700000000002
+        }
+      ]
+    },
+    {
+      "name": "manual",
+      "seconds": 2.4119613000002573,
+      "top_cumulative": [
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method qWait>",
+          "calls": 1,
+          "own": 0.1273382,
+          "cumulative": 2.3979225
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\app.py",
+          "line": 1210,
+          "function": "<lambda>",
+          "calls": 1,
+          "own": 1.18e-05,
+          "cumulative": 2.2547438
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\app.py",
+          "line": 1219,
+          "function": "_finish_deferred_navigation",
+          "calls": 1,
+          "own": 3.2500000000000004e-05,
+          "cumulative": 2.254732
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\app.py",
+          "line": 742,
+          "function": "_load_deferred_page",
+          "calls": 1,
+          "own": 8.54e-05,
+          "cumulative": 2.2318224
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\app.py",
+          "line": 362,
+          "function": "load",
+          "calls": 1,
+          "own": 0.00013220000000000001,
+          "cumulative": 2.1990728
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\pages.py",
+          "line": 6408,
+          "function": "__init__",
+          "calls": 1,
+          "own": 0.0003171,
+          "cumulative": 1.8448833000000002
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\pages.py",
+          "line": 6624,
+          "function": "_build",
+          "calls": 1,
+          "own": 0.0028435,
+          "cumulative": 1.8444468
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\pages.py",
+          "line": 6727,
+          "function": "_ensure_manual_language",
+          "calls": 4,
+          "own": 0.0002731,
+          "cumulative": 0.6921254
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method setWidget>",
+          "calls": 1,
+          "own": 0.5924480000000001,
+          "cumulative": 0.6271009000000001
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method addWidget>",
+          "calls": 323,
+          "own": 0.42149040000000004,
+          "cumulative": 0.45256690000000005
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method addLayout>",
+          "calls": 4,
+          "own": 0.3704328,
+          "cumulative": 0.38699310000000003
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\pages.py",
+          "line": 6944,
+          "function": "_tab_v5_system",
+          "calls": 1,
+          "own": 0.0035029,
+          "cumulative": 0.2487283
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\pages.py",
+          "line": 6586,
+          "function": "_diagram_card",
+          "calls": 2,
+          "own": 0.1875783,
+          "cumulative": 0.2107293
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\ui_consistency.py",
+          "line": 128,
+          "function": "eventFilter",
+          "calls": 20727,
+          "own": 0.07843900000000001,
+          "cumulative": 0.14115540000000001
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\pages.py",
+          "line": 6771,
+          "function": "_apply_i18n_visibility",
+          "calls": 3,
+          "own": 0.0003098,
+          "cumulative": 0.1295161
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method setVisible>",
+          "calls": 17,
+          "own": 0.1282613,
+          "cumulative": 0.1288227
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method insertWidget>",
+          "calls": 21,
+          "own": 0.1120291,
+          "cumulative": 0.1286905
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method setLayout>",
+          "calls": 86,
+          "own": 0.1088533,
+          "cumulative": 0.12550240000000001
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\pages.py",
+          "line": 6452,
+          "function": "_card",
+          "calls": 25,
+          "own": 0.0051357,
+          "cumulative": 0.10272210000000001
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\pages.py",
+          "line": 6426,
+          "function": "_step",
+          "calls": 61,
+          "own": 0.014308000000000001,
+          "cumulative": 0.0832383
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\pages.py",
+          "line": 7138,
+          "function": "_tab_history",
+          "calls": 1,
+          "own": 0.00024680000000000004,
+          "cumulative": 0.06995280000000001
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\pages.py",
+          "line": 6533,
+          "function": "_insert_customer_guide_screenshots",
+          "calls": 1,
+          "own": 0.0002972,
+          "cumulative": 0.0643359
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\pages.py",
+          "line": 7016,
+          "function": "_tab_workflow",
+          "calls": 1,
+          "own": 0.00027330000000000003,
+          "cumulative": 0.06399880000000001
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\pages.py",
+          "line": 7082,
+          "function": "_tab_firstrun",
+          "calls": 1,
+          "own": 0.00023260000000000002,
+          "cumulative": 0.062325000000000005
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\pages.py",
+          "line": 7187,
+          "function": "_tab_settings",
+          "calls": 1,
+          "own": 0.00020140000000000002,
+          "cumulative": 0.0560929
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\i18n.py",
+          "line": 1046,
+          "function": "apply_language",
+          "calls": 2,
+          "own": 0.0156962,
+          "cumulative": 0.055347900000000005
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\pages.py",
+          "line": 6499,
+          "function": "_guide_screenshot",
+          "calls": 13,
+          "own": 0.0031006000000000002,
+          "cumulative": 0.0523484
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method setStyleSheet>",
+          "calls": 352,
+          "own": 0.043157,
+          "cumulative": 0.0460566
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\pages.py",
+          "line": 6569,
+          "function": "_manual_asset",
+          "calls": 18,
+          "own": 0.0008753000000000001,
+          "cumulative": 0.0338012
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method builtins.isinstance>",
+          "calls": 24595,
+          "own": 0.031433,
+          "cumulative": 0.031433
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<function ButtonSystem.eventFilter at 0x0000016573552FB0>",
+          "calls": 20733,
+          "own": 0.030473800000000002,
+          "cumulative": 0.030473800000000002
+        },
+        {
+          "file": "C:\\Users\\User\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\pathlib\\__init__.py",
+          "line": 932,
+          "function": "resolve",
+          "calls": 36,
+          "own": 0.0002569,
+          "cumulative": 0.0241027
+        },
+        {
+          "file": "<frozen ntpath>",
+          "line": 663,
+          "function": "realpath",
+          "calls": 36,
+          "own": 0.0007951000000000001,
+          "cumulative": 0.0230921
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\app.py",
+          "line": 1234,
+          "function": "_refresh_visible_page",
+          "calls": 1,
+          "own": 8.75e-05,
+          "cumulative": 0.0228723
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method nt._getfinalpathname>",
+          "calls": 72,
+          "own": 0.019656700000000003,
+          "cumulative": 0.019656700000000003
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\i18n.py",
+          "line": 1037,
+          "function": "_source",
+          "calls": 472,
+          "own": 0.0008127000000000001,
+          "cumulative": 0.0164537
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method setProperty>",
+          "calls": 897,
+          "own": 0.012898300000000001,
+          "cumulative": 0.016361
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\i18n.py",
+          "line": 1014,
+          "function": "_property_source",
+          "calls": 484,
+          "own": 0.0029874000000000003,
+          "cumulative": 0.0160726
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\pages.py",
+          "line": 6743,
+          "function": "_insert_updated_guide",
+          "calls": 1,
+          "own": 0.00026250000000000004,
+          "cumulative": 0.0135972
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\pages.py",
+          "line": 208,
+          "function": "__init__",
+          "calls": 13,
+          "own": 0.002261,
+          "cumulative": 0.0100426
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method scaled>",
+          "calls": 2,
+          "own": 0.0080794,
+          "cumulative": 0.0081017
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\pages.py",
+          "line": 6477,
+          "function": "_txt",
+          "calls": 27,
+          "own": 0.0024652000000000003,
+          "cumulative": 0.00787
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method setFont>",
+          "calls": 159,
+          "own": 0.0058993000000000006,
+          "cumulative": 0.0075392
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\tools\\profile_navigation_v5.py",
+          "line": 75,
+          "function": "<lambda>",
+          "calls": 1,
+          "own": 1.13e-05,
+          "cumulative": 0.007018300000000001
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\app.py",
+          "line": 1188,
+          "function": "_nav",
+          "calls": 1,
+          "own": 8.620000000000001e-05,
+          "cumulative": 0.007007
+        }
+      ],
+      "top_own": [
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method setWidget>",
+          "calls": 1,
+          "own": 0.5924480000000001,
+          "cumulative": 0.6271009000000001
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method addWidget>",
+          "calls": 323,
+          "own": 0.42149040000000004,
+          "cumulative": 0.45256690000000005
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method addLayout>",
+          "calls": 4,
+          "own": 0.3704328,
+          "cumulative": 0.38699310000000003
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\pages.py",
+          "line": 6586,
+          "function": "_diagram_card",
+          "calls": 2,
+          "own": 0.1875783,
+          "cumulative": 0.2107293
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method setVisible>",
+          "calls": 17,
+          "own": 0.1282613,
+          "cumulative": 0.1288227
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method qWait>",
+          "calls": 1,
+          "own": 0.1273382,
+          "cumulative": 2.3979225
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method insertWidget>",
+          "calls": 21,
+          "own": 0.1120291,
+          "cumulative": 0.1286905
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method setLayout>",
+          "calls": 86,
+          "own": 0.1088533,
+          "cumulative": 0.12550240000000001
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\ui_consistency.py",
+          "line": 128,
+          "function": "eventFilter",
+          "calls": 20727,
+          "own": 0.07843900000000001,
+          "cumulative": 0.14115540000000001
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method setStyleSheet>",
+          "calls": 352,
+          "own": 0.043157,
+          "cumulative": 0.0460566
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method builtins.isinstance>",
+          "calls": 24595,
+          "own": 0.031433,
+          "cumulative": 0.031433
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<function ButtonSystem.eventFilter at 0x0000016573552FB0>",
+          "calls": 20733,
+          "own": 0.030473800000000002,
+          "cumulative": 0.030473800000000002
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method nt._getfinalpathname>",
+          "calls": 72,
+          "own": 0.019656700000000003,
+          "cumulative": 0.019656700000000003
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\i18n.py",
+          "line": 1046,
+          "function": "apply_language",
+          "calls": 2,
+          "own": 0.0156962,
+          "cumulative": 0.055347900000000005
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\pages.py",
+          "line": 6426,
+          "function": "_step",
+          "calls": 61,
+          "own": 0.014308000000000001,
+          "cumulative": 0.0832383
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method setProperty>",
+          "calls": 897,
+          "own": 0.012898300000000001,
+          "cumulative": 0.016361
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method scaled>",
+          "calls": 2,
+          "own": 0.0080794,
+          "cumulative": 0.0081017
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method setFont>",
+          "calls": 159,
+          "own": 0.0058993000000000006,
+          "cumulative": 0.0075392
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method property>",
+          "calls": 1508,
+          "own": 0.005713200000000001,
+          "cumulative": 0.005713200000000001
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\pages.py",
+          "line": 6452,
+          "function": "_card",
+          "calls": 25,
+          "own": 0.0051357,
+          "cumulative": 0.10272210000000001
+        }
+      ]
+    },
+    {
+      "name": "warm_devices",
+      "seconds": 0.5014261999986047,
+      "top_cumulative": [
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method qWait>",
+          "calls": 1,
+          "own": 0.4638044,
+          "cumulative": 0.4911534
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\ui_consistency.py",
+          "line": 128,
+          "function": "eventFilter",
+          "calls": 3253,
+          "own": 0.009545900000000001,
+          "cumulative": 0.0184096
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\tools\\profile_navigation_v5.py",
+          "line": 76,
+          "function": "<lambda>",
+          "calls": 1,
+          "own": 1.5100000000000001e-05,
+          "cumulative": 0.008077
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\app.py",
+          "line": 1188,
+          "function": "_nav",
+          "calls": 1,
+          "own": 5e-05,
+          "cumulative": 0.0080619
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\v5_pages.py",
+          "line": 6051,
+          "function": "paintEvent",
+          "calls": 12,
+          "own": 0.002585,
+          "cumulative": 0.0077876
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method setCurrentIndex>",
+          "calls": 1,
+          "own": 0.004628500000000001,
+          "cumulative": 0.0052654
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<function ButtonSystem.eventFilter at 0x0000016573552FB0>",
+          "calls": 3255,
+          "own": 0.0038212000000000003,
+          "cumulative": 0.0038212000000000003
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method builtins.isinstance>",
+          "calls": 3293,
+          "own": 0.0032889000000000004,
+          "cumulative": 0.0032889000000000004
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\app.py",
+          "line": 338,
+          "function": "set_active",
+          "calls": 6,
+          "own": 7.19e-05,
+          "cumulative": 0.0027254000000000002
+        },
+        {
+          "file": "C:\\Users\\User\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\enum.py",
+          "line": 677,
+          "function": "__call__",
+          "calls": 294,
+          "own": 0.000571,
+          "cumulative": 0.0019799
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method drawText>",
+          "calls": 12,
+          "own": 0.0018961000000000002,
+          "cumulative": 0.0018961000000000002
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method type>",
+          "calls": 292,
+          "own": 0.0008364000000000001,
+          "cumulative": 0.0017657
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\v5_pages.py",
+          "line": 6109,
+          "function": "paintEvent",
+          "calls": 3,
+          "own": 0.0005708,
+          "cumulative": 0.0012731
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method polish>",
+          "calls": 6,
+          "own": 0.0009575,
+          "cumulative": 0.0011742
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method unpolish>",
+          "calls": 6,
+          "own": 0.0008894,
+          "cumulative": 0.0011268
+        },
+        {
+          "file": "C:\\Users\\User\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\enum.py",
+          "line": 825,
+          "function": "_create_",
+          "calls": 1,
+          "own": 4.11e-05,
+          "cumulative": 0.0010285000000000001
+        },
+        {
+          "file": "C:\\Users\\User\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\enum.py",
+          "line": 480,
+          "function": "__new__",
+          "calls": 1,
+          "own": 0.0001421,
+          "cumulative": 0.0006447
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method drawPath>",
+          "calls": 12,
+          "own": 0.0006247000000000001,
+          "cumulative": 0.0006247000000000001
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method fillPath>",
+          "calls": 12,
+          "own": 0.0005487000000000001,
+          "cumulative": 0.0005487000000000001
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\pages.py",
+          "line": 231,
+          "function": "heightForWidth",
+          "calls": 104,
+          "own": 0.00031820000000000004,
+          "cumulative": 0.0005225000000000001
+        },
+        {
+          "file": "C:\\Users\\User\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\enum.py",
+          "line": 1147,
+          "function": "__new__",
+          "calls": 293,
+          "own": 0.00038040000000000003,
+          "cumulative": 0.00038040000000000003
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method __new__ of type object at 0x00007FFB5375CD90>",
+          "calls": 5,
+          "own": 8.27e-05,
+          "cumulative": 0.0003732
+        },
+        {
+          "file": "C:\\Users\\User\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\enum.py",
+          "line": 239,
+          "function": "__set_name__",
+          "calls": 4,
+          "own": 0.00013900000000000002,
+          "cumulative": 0.0002973
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method drawEllipse>",
+          "calls": 6,
+          "own": 0.0002952,
+          "cumulative": 0.0002952
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\pages.py",
+          "line": 234,
+          "function": "sizeHint",
+          "calls": 13,
+          "own": 0.00016690000000000002,
+          "cumulative": 0.00025550000000000003
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method fillRect>",
+          "calls": 12,
+          "own": 0.0002553,
+          "cumulative": 0.0002553
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method setPen>",
+          "calls": 27,
+          "own": 0.0002287,
+          "cumulative": 0.00024050000000000002
+        },
+        {
+          "file": "C:\\Users\\User\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\enum.py",
+          "line": 342,
+          "function": "__setitem__",
+          "calls": 7,
+          "own": 0.00011180000000000001,
+          "cumulative": 0.0002403
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method rect>",
+          "calls": 15,
+          "own": 0.00022140000000000001,
+          "cumulative": 0.00022140000000000001
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method addRoundedRect>",
+          "calls": 12,
+          "own": 0.0002009,
+          "cumulative": 0.0002009
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method style>",
+          "calls": 12,
+          "own": 0.00019720000000000002,
+          "cumulative": 0.00019720000000000002
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method setRenderHint>",
+          "calls": 15,
+          "own": 0.0001194,
+          "cumulative": 0.0001907
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method setProperty>",
+          "calls": 6,
+          "own": 0.0001317,
+          "cumulative": 0.0001553
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method builtins.max>",
+          "calls": 245,
+          "own": 0.0001426,
+          "cumulative": 0.0001426
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\pages.py",
+          "line": 6998,
+          "function": "resizeEvent",
+          "calls": 1,
+          "own": 6.21e-05,
+          "cumulative": 0.000141
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<method 'disable' of '_lsprof.Profiler' objects>",
+          "calls": 1,
+          "own": 0.00010920000000000001,
+          "cumulative": 0.00010920000000000001
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method setFont>",
+          "calls": 12,
+          "own": 9.960000000000001e-05,
+          "cumulative": 9.960000000000001e-05
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method builtins.round>",
+          "calls": 104,
+          "own": 9.7e-05,
+          "cumulative": 9.7e-05
+        },
+        {
+          "file": "C:\\Users\\User\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\enum.py",
+          "line": 466,
+          "function": "__prepare__",
+          "calls": 1,
+          "own": 2.11e-05,
+          "cumulative": 9.66e-05
+        },
+        {
+          "file": "C:\\Users\\User\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\enum.py",
+          "line": 1042,
+          "function": "_add_member_",
+          "calls": 4,
+          "own": 3.97e-05,
+          "cumulative": 8.950000000000001e-05
+        },
+        {
+          "file": "C:\\Users\\User\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\enum.py",
+          "line": 187,
+          "function": "__get__",
+          "calls": 18,
+          "own": 5.89e-05,
+          "cumulative": 8.31e-05
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\pages.py",
+          "line": 246,
+          "function": "minimumSizeHint",
+          "calls": 13,
+          "own": 4.0300000000000004e-05,
+          "cumulative": 7.55e-05
+        },
+        {
+          "file": "C:\\Users\\User\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\enum.py",
+          "line": 929,
+          "function": "_get_mixins_",
+          "calls": 3,
+          "own": 1.73e-05,
+          "cumulative": 7.44e-05
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method builtins.delattr>",
+          "calls": 10,
+          "own": 2.4e-05,
+          "cumulative": 6.65e-05
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method setBrush>",
+          "calls": 6,
+          "own": 6.6e-05,
+          "cumulative": 6.6e-05
+        }
+      ],
+      "top_own": [
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method qWait>",
+          "calls": 1,
+          "own": 0.4638044,
+          "cumulative": 0.4911534
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\ui_consistency.py",
+          "line": 128,
+          "function": "eventFilter",
+          "calls": 3253,
+          "own": 0.009545900000000001,
+          "cumulative": 0.0184096
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method setCurrentIndex>",
+          "calls": 1,
+          "own": 0.004628500000000001,
+          "cumulative": 0.0052654
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<function ButtonSystem.eventFilter at 0x0000016573552FB0>",
+          "calls": 3255,
+          "own": 0.0038212000000000003,
+          "cumulative": 0.0038212000000000003
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method builtins.isinstance>",
+          "calls": 3293,
+          "own": 0.0032889000000000004,
+          "cumulative": 0.0032889000000000004
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\v5_pages.py",
+          "line": 6051,
+          "function": "paintEvent",
+          "calls": 12,
+          "own": 0.002585,
+          "cumulative": 0.0077876
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method drawText>",
+          "calls": 12,
+          "own": 0.0018961000000000002,
+          "cumulative": 0.0018961000000000002
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method polish>",
+          "calls": 6,
+          "own": 0.0009575,
+          "cumulative": 0.0011742
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method unpolish>",
+          "calls": 6,
+          "own": 0.0008894,
+          "cumulative": 0.0011268
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method type>",
+          "calls": 292,
+          "own": 0.0008364000000000001,
+          "cumulative": 0.0017657
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method drawPath>",
+          "calls": 12,
+          "own": 0.0006247000000000001,
+          "cumulative": 0.0006247000000000001
+        },
+        {
+          "file": "C:\\Users\\User\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\enum.py",
+          "line": 677,
+          "function": "__call__",
+          "calls": 294,
+          "own": 0.000571,
+          "cumulative": 0.0019799
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\v5_pages.py",
+          "line": 6109,
+          "function": "paintEvent",
+          "calls": 3,
+          "own": 0.0005708,
+          "cumulative": 0.0012731
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method fillPath>",
+          "calls": 12,
+          "own": 0.0005487000000000001,
+          "cumulative": 0.0005487000000000001
+        },
+        {
+          "file": "C:\\Users\\User\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\enum.py",
+          "line": 1147,
+          "function": "__new__",
+          "calls": 293,
+          "own": 0.00038040000000000003,
+          "cumulative": 0.00038040000000000003
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\pages.py",
+          "line": 231,
+          "function": "heightForWidth",
+          "calls": 104,
+          "own": 0.00031820000000000004,
+          "cumulative": 0.0005225000000000001
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method drawEllipse>",
+          "calls": 6,
+          "own": 0.0002952,
+          "cumulative": 0.0002952
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method fillRect>",
+          "calls": 12,
+          "own": 0.0002553,
+          "cumulative": 0.0002553
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method setPen>",
+          "calls": 27,
+          "own": 0.0002287,
+          "cumulative": 0.00024050000000000002
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method rect>",
+          "calls": 15,
+          "own": 0.00022140000000000001,
+          "cumulative": 0.00022140000000000001
+        }
+      ]
+    },
+    {
+      "name": "warm_manual",
+      "seconds": 0.5368946999988111,
+      "top_cumulative": [
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method qWait>",
+          "calls": 1,
+          "own": 0.39022310000000004,
+          "cumulative": 0.3985846
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\tools\\profile_navigation_v5.py",
+          "line": 77,
+          "function": "<lambda>",
+          "calls": 1,
+          "own": 7.5e-06,
+          "cumulative": 0.1351426
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\app.py",
+          "line": 1188,
+          "function": "_nav",
+          "calls": 1,
+          "own": 4.5100000000000005e-05,
+          "cumulative": 0.1351351
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method setCurrentIndex>",
+          "calls": 1,
+          "own": 0.1233612,
+          "cumulative": 0.1324002
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\ui_consistency.py",
+          "line": 128,
+          "function": "eventFilter",
+          "calls": 2384,
+          "own": 0.0062383000000000004,
+          "cumulative": 0.016052900000000002
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\ui_consistency.py",
+          "line": 56,
+          "function": "polish",
+          "calls": 8,
+          "own": 0.00047190000000000003,
+          "cumulative": 0.0049816
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\app.py",
+          "line": 338,
+          "function": "set_active",
+          "calls": 6,
+          "own": 6.950000000000001e-05,
+          "cumulative": 0.0026696000000000003
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method setStyleSheet>",
+          "calls": 7,
+          "own": 0.0021501000000000003,
+          "cumulative": 0.0025443
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<function ButtonSystem.eventFilter at 0x0000016573552FB0>",
+          "calls": 2384,
+          "own": 0.0025087,
+          "cumulative": 0.0025087
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method builtins.isinstance>",
+          "calls": 2454,
+          "own": 0.0020974,
+          "cumulative": 0.0020974
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\pages.py",
+          "line": 231,
+          "function": "heightForWidth",
+          "calls": 182,
+          "own": 0.0008473,
+          "cumulative": 0.0013125
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method polish>",
+          "calls": 6,
+          "own": 0.0010102000000000002,
+          "cumulative": 0.0012180000000000001
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method unpolish>",
+          "calls": 6,
+          "own": 0.000862,
+          "cumulative": 0.0010910000000000002
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method type>",
+          "calls": 156,
+          "own": 0.0005392,
+          "cumulative": 0.00098
+        },
+        {
+          "file": "C:\\Users\\User\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\re\\__init__.py",
+          "line": 183,
+          "function": "sub",
+          "calls": 7,
+          "own": 2.3e-05,
+          "cumulative": 0.0008319
+        },
+        {
+          "file": "C:\\Users\\User\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\re\\__init__.py",
+          "line": 330,
+          "function": "_compile",
+          "calls": 7,
+          "own": 4.6e-05,
+          "cumulative": 0.0007646
+        },
+        {
+          "file": "C:\\Users\\User\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\re\\_compiler.py",
+          "line": 757,
+          "function": "compile",
+          "calls": 1,
+          "own": 2.08e-05,
+          "cumulative": 0.0007051000000000001
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method setProperty>",
+          "calls": 22,
+          "own": 0.00030520000000000005,
+          "cumulative": 0.0004774
+        },
+        {
+          "file": "C:\\Users\\User\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\enum.py",
+          "line": 677,
+          "function": "__call__",
+          "calls": 157,
+          "own": 0.00027100000000000003,
+          "cumulative": 0.0004469
+        },
+        {
+          "file": "C:\\Users\\User\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\re\\_parser.py",
+          "line": 963,
+          "function": "parse",
+          "calls": 1,
+          "own": 1.7800000000000002e-05,
+          "cumulative": 0.00039190000000000004
+        },
+        {
+          "file": "C:\\Users\\User\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\re\\_parser.py",
+          "line": 452,
+          "function": "_parse_sub",
+          "calls": 2,
+          "own": 1.5700000000000002e-05,
+          "cumulative": 0.00036320000000000005
+        },
+        {
+          "file": "C:\\Users\\User\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\re\\_parser.py",
+          "line": 512,
+          "function": "_parse",
+          "calls": 2,
+          "own": 0.0001515,
+          "cumulative": 0.0003485
+        },
+        {
+          "file": "C:\\Users\\User\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\re\\_compiler.py",
+          "line": 590,
+          "function": "_code",
+          "calls": 1,
+          "own": 6.8e-06,
+          "cumulative": 0.0002841
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method builtins.max>",
+          "calls": 364,
+          "own": 0.0002414,
+          "cumulative": 0.0002414
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\ui_consistency.py",
+          "line": 33,
+          "function": "_role",
+          "calls": 8,
+          "own": 0.0001265,
+          "cumulative": 0.00023510000000000002
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method builtins.round>",
+          "calls": 182,
+          "own": 0.00022380000000000002,
+          "cumulative": 0.00022380000000000002
+        },
+        {
+          "file": "C:\\Users\\User\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\re\\_compiler.py",
+          "line": 39,
+          "function": "_compile",
+          "calls": 6,
+          "own": 8.060000000000001e-05,
+          "cumulative": 0.0001901
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\pages.py",
+          "line": 228,
+          "function": "hasHeightForWidth",
+          "calls": 338,
+          "own": 0.000189,
+          "cumulative": 0.000189
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method setFixedHeight>",
+          "calls": 8,
+          "own": 0.00011240000000000001,
+          "cumulative": 0.0001866
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\pages.py",
+          "line": 6998,
+          "function": "resizeEvent",
+          "calls": 1,
+          "own": 5.7700000000000007e-05,
+          "cumulative": 0.0001822
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method style>",
+          "calls": 12,
+          "own": 0.00017600000000000002,
+          "cumulative": 0.00017600000000000002
+        },
+        {
+          "file": "C:\\Users\\User\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\enum.py",
+          "line": 1147,
+          "function": "__new__",
+          "calls": 157,
+          "own": 0.00017590000000000002,
+          "cumulative": 0.00017590000000000002
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\pages.py",
+          "line": 7233,
+          "function": "minimumSizeHint",
+          "calls": 3,
+          "own": 9.130000000000001e-05,
+          "cumulative": 0.0001348
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<method 'disable' of '_lsprof.Profiler' objects>",
+          "calls": 1,
+          "own": 0.0001015,
+          "cumulative": 0.0001015
+        },
+        {
+          "file": "C:\\Users\\User\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\re\\_compiler.py",
+          "line": 525,
+          "function": "_compile_info",
+          "calls": 1,
+          "own": 2e-05,
+          "cumulative": 8.48e-05
+        },
+        {
+          "file": "C:\\Users\\User\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\re\\_parser.py",
+          "line": 168,
+          "function": "__getitem__",
+          "calls": 58,
+          "own": 5.2400000000000007e-05,
+          "cumulative": 7.010000000000001e-05
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method property>",
+          "calls": 16,
+          "own": 6.2e-05,
+          "cumulative": 6.2e-05
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\pages.py",
+          "line": 6857,
+          "function": "_update_manual_responsive_layout",
+          "calls": 1,
+          "own": 8.400000000000001e-06,
+          "cumulative": 5.44e-05
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<method 'append' of 'list' objects>",
+          "calls": 128,
+          "own": 4.7300000000000005e-05,
+          "cumulative": 4.7300000000000005e-05
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method setVisible>",
+          "calls": 2,
+          "own": 3.5000000000000004e-05,
+          "cumulative": 4.6e-05
+        },
+        {
+          "file": "C:\\Users\\User\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\re\\_parser.py",
+          "line": 261,
+          "function": "get",
+          "calls": 28,
+          "own": 2.09e-05,
+          "cumulative": 4.5e-05
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<method 'sub' of 're.Pattern' objects>",
+          "calls": 7,
+          "own": 4.43e-05,
+          "cumulative": 4.43e-05
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method setGraphicsEffect>",
+          "calls": 8,
+          "own": 4.32e-05,
+          "cumulative": 4.32e-05
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method setVerticalPolicy>",
+          "calls": 8,
+          "own": 2.43e-05,
+          "cumulative": 4.1500000000000006e-05
+        },
+        {
+          "file": "C:\\Users\\User\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\re\\_parser.py",
+          "line": 178,
+          "function": "getwidth",
+          "calls": 6,
+          "own": 3.16e-05,
+          "cumulative": 3.5600000000000005e-05
+        }
+      ],
+      "top_own": [
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method qWait>",
+          "calls": 1,
+          "own": 0.39022310000000004,
+          "cumulative": 0.3985846
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method setCurrentIndex>",
+          "calls": 1,
+          "own": 0.1233612,
+          "cumulative": 0.1324002
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\ui_consistency.py",
+          "line": 128,
+          "function": "eventFilter",
+          "calls": 2384,
+          "own": 0.0062383000000000004,
+          "cumulative": 0.016052900000000002
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<function ButtonSystem.eventFilter at 0x0000016573552FB0>",
+          "calls": 2384,
+          "own": 0.0025087,
+          "cumulative": 0.0025087
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method setStyleSheet>",
+          "calls": 7,
+          "own": 0.0021501000000000003,
+          "cumulative": 0.0025443
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method builtins.isinstance>",
+          "calls": 2454,
+          "own": 0.0020974,
+          "cumulative": 0.0020974
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method polish>",
+          "calls": 6,
+          "own": 0.0010102000000000002,
+          "cumulative": 0.0012180000000000001
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method unpolish>",
+          "calls": 6,
+          "own": 0.000862,
+          "cumulative": 0.0010910000000000002
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\pages.py",
+          "line": 231,
+          "function": "heightForWidth",
+          "calls": 182,
+          "own": 0.0008473,
+          "cumulative": 0.0013125
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method type>",
+          "calls": 156,
+          "own": 0.0005392,
+          "cumulative": 0.00098
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\ui_consistency.py",
+          "line": 56,
+          "function": "polish",
+          "calls": 8,
+          "own": 0.00047190000000000003,
+          "cumulative": 0.0049816
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method setProperty>",
+          "calls": 22,
+          "own": 0.00030520000000000005,
+          "cumulative": 0.0004774
+        },
+        {
+          "file": "C:\\Users\\User\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\enum.py",
+          "line": 677,
+          "function": "__call__",
+          "calls": 157,
+          "own": 0.00027100000000000003,
+          "cumulative": 0.0004469
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method builtins.max>",
+          "calls": 364,
+          "own": 0.0002414,
+          "cumulative": 0.0002414
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method builtins.round>",
+          "calls": 182,
+          "own": 0.00022380000000000002,
+          "cumulative": 0.00022380000000000002
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\pages.py",
+          "line": 228,
+          "function": "hasHeightForWidth",
+          "calls": 338,
+          "own": 0.000189,
+          "cumulative": 0.000189
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method style>",
+          "calls": 12,
+          "own": 0.00017600000000000002,
+          "cumulative": 0.00017600000000000002
+        },
+        {
+          "file": "C:\\Users\\User\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\enum.py",
+          "line": 1147,
+          "function": "__new__",
+          "calls": 157,
+          "own": 0.00017590000000000002,
+          "cumulative": 0.00017590000000000002
+        },
+        {
+          "file": "C:\\Users\\User\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\re\\_parser.py",
+          "line": 512,
+          "function": "_parse",
+          "calls": 2,
+          "own": 0.0001515,
+          "cumulative": 0.0003485
+        },
+        {
+          "file": "C:\\Users\\User\\.codex\\worktrees\\4897\\KOMI Report V5\\source\\ui_consistency.py",
+          "line": 33,
+          "function": "_role",
+          "calls": 8,
+          "own": 0.0001265,
+          "cumulative": 0.00023510000000000002
+        }
+      ]
+    }
+  ]
+}

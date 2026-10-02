@@ -23,9 +23,13 @@ PACKAGE_VERSION = tomllib.loads(
 RELEASE_DIR = PROJECT_ROOT / "release"
 ARCHIVE_NAME = f"KOMI_Report_V{PACKAGE_VERSION.replace('.', '_')}_Source.zip"
 INCLUDE_ROOTS = (
+    PROJECT_ROOT / "LICENSE",
     PROJECT_ROOT / "Open KOMI Report Web.command",
     PROJECT_ROOT / "packaging" / "windows" / "KOMI_Report_V5.iss",
     PROJECT_ROOT / "docs" / "CUSTOMER_GUIDE_V5_2.md",
+    PROJECT_ROOT / "docs" / "CUSTOMER_GUIDE_V5_2_12_DRAFT.md",
+    PROJECT_ROOT / "docs" / "customer-guide" / "KOMI_Report_5.2.12_Source_Guide.pdf",
+    PROJECT_ROOT / "docs" / "customer-guide" / "assets-v5.2.12-source",
     PROJECT_ROOT / "docs" / "CUSTOMER_INSTALL_GUIDE.md",
     PROJECT_ROOT / "docs" / "CUSTOMER_RELEASE_NOTES.md",
     PROJECT_ROOT / "docs" / "V5_2_HOST_API_IMPLEMENTATION_REQUEST.md",
