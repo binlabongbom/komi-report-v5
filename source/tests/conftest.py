@@ -35,12 +35,14 @@ def native_offscreen_application():
 
 
 @pytest.fixture(autouse=True)
-def cleanup_qt_widgets():
+def cleanup_qt_widgets(isolated_database):
     """Keep one QApplication alive and close top-level widgets between tests.
 
     Individual UI tests commonly create ``QApplication([])`` in a local
     variable.  On Windows the wrapper can otherwise be destroyed between
     tests, making the next QApplication reuse stale Qt chart/table state.
+    Depend on the database fixture so closeEvent still sees its initialized
+    test database; restoring the bootstrap path first can abort inside Qt.
     Native deferred-delete dispatch is intentionally left to Qt: forcing it
     from fixture teardown can abort while accessibility/chart events still
     reference a window that was just closed.

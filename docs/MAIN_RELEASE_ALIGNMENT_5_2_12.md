@@ -41,9 +41,25 @@ No release workflow is dispatched by this task.
 
 ## Validation
 
-Validation is in progress on the isolated Mac checkout using Python 3.14.7 and
-the repository's locked dependencies, plus Node 24.21.0/npm 12.1.0 for Web.
-Exact results and CI links will be recorded before merge.
+Validation uses an isolated Mac checkout with Python 3.14.7 and the repository's
+locked dependencies, plus Node 24.21.0/npm 12.1.0 for Web. Runtime/CI Ruff,
+the 5.2.12 version gate, Web typecheck, all 19 Web tests and the production Web
+build passed. The actual source startup smoke exited successfully with a
+temporary database and no Host transport calls.
+
+Cross-platform test setup needed three corrections: retain a QApplication on
+every offscreen platform; close widgets before the isolated database fixture
+restores its bootstrap path; and compare path components instead of assuming
+Windows separators in the macOS autostart assertion. The affected five suites
+passed all 37 tests. Application/runtime and Web contents remain byte-identical
+to the shipped macOS source; no assertion is skipped or weakened.
+
+The initial full Mac run was interrupted by a host disconnection after 250
+completed batches and preserved its failure evidence. A fresh full run is
+required after the fixture corrections. Final Mac results and Windows CI links
+are recorded in [PR 41](https://github.com/binlabongbom/komi-report-v5/pull/41)
+before merge. The desktop runner deliberately excludes the five release-assembly
+suites documented in `DESKTOP_CI.md`; installers are not rebuilt in this task.
 
 Existing release evidence retains its documented signing, Host staging E2E,
 live-printer and tray/autostart limitations. This source merge does not change
