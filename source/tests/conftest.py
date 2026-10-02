@@ -21,15 +21,17 @@ def isolated_ui_language():
 
 
 @pytest.fixture(scope="session", autouse=True)
-def native_offscreen_fonts():
-    """Avoid tofu glyphs and false layout failures in Windows offscreen tests."""
+def native_offscreen_application():
+    """Provide QApplication before any offscreen widget test on every platform."""
     global _qt_app_keepalive
-    if sys.platform == "win32" and os.environ.get("QT_QPA_PLATFORM") == "offscreen":
+    if os.environ.get("QT_QPA_PLATFORM") == "offscreen":
         from PyQt6.QtWidgets import QApplication
-        from qt_render_environment import configure_offscreen_fonts
 
         _qt_app_keepalive = QApplication.instance() or QApplication([])
-        configure_offscreen_fonts(_qt_app_keepalive)
+        if sys.platform == "win32":
+            from qt_render_environment import configure_offscreen_fonts
+
+            configure_offscreen_fonts(_qt_app_keepalive)
 
 
 @pytest.fixture(autouse=True)
