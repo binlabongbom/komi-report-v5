@@ -31,8 +31,8 @@ def projection_pdf(path, projection, *, title, cancelled=None, progress=None):
             review_labels(item.holds))) + "</tr>")
     if progress: progress(15, tr("จัดหน้ารายงาน PDF…", "Laying out PDF…"))
     # Bound each rich-text layout pass: one 4,000-row document holds Qt's
-    # text/font work too long even on a worker, delaying the GUI. Separate
-    # documents also provide cancellation points during layout and printing.
+    # text/font work too long even on a worker, delaying the GUI. Replace the
+    # document content per chunk and keep cancellation points between chunks.
     header = (
         "<style>body{font-family:'Tahoma';font-size:9pt}td,th{padding:5px}th{background:#eaf2f8}</style>"
         f"<h2>{html.escape(title)}</h2><p>เริ่มนับจากจุด Web แรกในช่วงที่เลือก · รายงานหลักฐาน ไม่ใช่ยอดเรียกเก็บ</p>"
@@ -59,13 +59,14 @@ def projection_pdf(path, projection, *, title, cancelled=None, progress=None):
     if not painter.isActive():
         raise OSError("Cannot open PDF output")
     first_page = True
+    # Keep one worker-owned document/layout alive for this export.
+    document = QTextDocument()
     try:
+        document.setDefaultFont(QFont("Tahoma", 9))
+        document.documentLayout().setPaintDevice(writer)
+        document.setPageSize(QSizeF(writer.width(), writer.height()))
         for index, (chunk, heading, columns) in enumerate(chunks):
             check(cancelled)
-            document = QTextDocument()
-            document.setDefaultFont(QFont("Tahoma", 9))
-            document.documentLayout().setPaintDevice(writer)
-            document.setPageSize(QSizeF(writer.width(), writer.height()))
             document.setHtml(header + f"<h3>{heading}</h3><table border='1' cellspacing='0' width='100%'><thead><tr>"
                 + "".join(f"<th>{column}</th>" for column in columns) + "</tr></thead>"
                 + "".join(chunk) + "</table>")
@@ -78,12 +79,12 @@ def projection_pdf(path, projection, *, title, cancelled=None, progress=None):
                 painter.translate(0, -page * writer.height())
                 document.drawContents(painter, QRectF(0, page * writer.height(), writer.width(), writer.height()))
                 painter.restore()
-            del document
             if progress:
                 progress(20 + int(70 * (index + 1) / len(chunks)),
                     tr("เขียน PDF ชุด {part}/{parts}", "Writing PDF section {part}/{parts}").format(part=index+1, parts=len(chunks)))
     finally:
         painter.end()
+        del document
         del writer
     check(cancelled)
 

@@ -1,7 +1,6 @@
 from concurrent.futures import CancelledError
 from datetime import datetime, timedelta, timezone
 from fractions import Fraction
-from functools import partial
 from threading import Event
 from time import monotonic
 
@@ -57,16 +56,26 @@ def test_web_export_worker_keeps_ui_responsive(tmp_path, kind, count):
     controller.failed.connect(failures.append)
     timer = QTimer(parent)
     timer.setInterval(10)
-    timer.timeout.connect(lambda: ticks.append(monotonic()))
+    heartbeat_sampled = Event()
+    def record_tick():
+        ticks.append(monotonic())
+        if len(ticks) > 5:
+            heartbeat_sampled.set()
+    timer.timeout.connect(record_tick)
     timer.start()
     destination = tmp_path / ("evidence." + kind)
     def job(*, cancelled, progress):
         def update(percent, text):
             stages.append(percent)
             progress(percent, text)
-        return export_web_evidence(destination, projection(count), kind=kind, printer="เครื่องทดสอบ <script>",
-                                   serial="FIXTURE", counter_label="Total", cancelled=cancelled, progress=update)
+        result = export_web_evidence(destination, projection(count), kind=kind, printer="เครื่องทดสอบ <script>",
+                                     serial="FIXTURE", counter_label="Total", cancelled=cancelled, progress=update)
+        # Fast exports must leave time to measure the same GUI heartbeat as
+        # large exports. Waiting in the worker never pumps GUI events itself.
+        assert heartbeat_sampled.wait(2), "GUI heartbeat did not advance"
+        return result
     try:
+        started = monotonic()
         assert controller.start(job, title="Web evidence " + kind)
         assert not controller.start(job)
         deadline = monotonic() + 90
@@ -75,7 +84,8 @@ def test_web_export_worker_keeps_ui_responsive(tmp_path, kind, count):
             QTest.qWait(10)
         assert not controller.busy and not failures and results == [destination]
         assert len(ticks) > 5
-        assert max(b-a for a, b in zip(ticks, ticks[1:])) < 2
+        timeline = [started, *ticks, monotonic()]
+        assert max(b-a for a, b in zip(timeline, timeline[1:])) < 2
         assert stages == sorted(stages)
         if kind == "xlsx":
             book = load_workbook(destination, read_only=True, data_only=True)

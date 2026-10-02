@@ -39,50 +39,56 @@ manual jobs are preserved. Desktop regression remains enabled for PRs into main
 and main pushes. Free Security Audit remains enabled for relevant main changes.
 No release workflow is dispatched by this task.
 
+## Approved PDF lifetime repair
+
+After the source-alignment checks exposed an intermittent macOS PDF export
+failure, the owner approved the minimal runtime repair before merge. A Web
+evidence export now retains one worker-owned QTextDocument, replaces its HTML
+for each existing 48-row chunk, and releases it before QPdfWriter in the final
+cleanup. Pagination, cancellation points, progress reporting, error propagation
+and atomic destination replacement remain in place.
+
+This is the only application/runtime change beyond shipped `0e8b07d`; Web
+contents are unchanged. It addresses the observed deleted
+QAbstractTextDocumentLayout failure without rebuilding or replacing installers.
+The underlying Qt/PyQt defect is not claimed to be proven.
+
 ## Validation
 
-Validation uses an isolated Mac checkout with Python 3.14.7 and the repository's
-locked dependencies, plus Node 24.21.0/npm 12.1.0 for Web. Runtime/CI Ruff,
-the 5.2.12 version gate, Web typecheck, all 19 Web tests and the production Web
-build passed. The actual source startup smoke exited successfully with a
-temporary database and no Host transport calls.
+Validation uses an isolated Mac checkout with Python 3.14.7 and locked Qt 6.11.2
+packages, plus Node 24.21.0/npm 12.1.0. Runtime/CI Ruff, the 5.2.12 version gate,
+Web typecheck, all 19 Web tests and the production Web build passed.
+Comparing exports of 128 and 4,096 synthetic points before and after the PDF
+repair produced respectively 9 and 264 pages, with identical extracted text on
+every page.
 
-Cross-platform test setup needed three corrections: retain a QApplication on
-every offscreen platform; close widgets before the isolated database fixture
-restores its bootstrap path; and compare path components instead of assuming
-Windows separators in the macOS autostart assertion. The affected five suites
-passed all 37 tests. Application/runtime and Web contents remain byte-identical
-to the shipped macOS source; no assertion is skipped or weakened.
+Cross-platform test fixtures retain a QApplication on every offscreen platform,
+close widgets before restoring the isolated database, avoid lifecycle test
+doubles during cleanup, compare autostart path components portably, and use an
+explicit +07:00 reference timestamp with +07:00 device records. The summary
+suite was reproduced under UTC and Asia/Bangkok; after the timestamp correction
+both zones passed 9/9. The export responsiveness test waits in its worker until
+six GUI heartbeat samples exist, so very fast XLSX exports can be measured;
+the original heartbeat-count and two-second limit remain, and the measured
+interval now also covers startup and completion.
 
-The initial full Mac run was interrupted by a host disconnection after 250
-completed batches and preserved its failure evidence. A fresh full run is
-required after the fixture corrections. Final Mac results and Windows CI links
-are recorded in [PR 41](https://github.com/binlabongbom/komi-report-v5/pull/41)
-before merge. The desktop runner deliberately excludes the five release-assembly
-suites documented in `DESKTOP_CI.md`; installers are not rebuilt in this task.
+The earlier full Mac run on `6732990` executed all 2,134 cases: 2,133 passed,
+one PDF failure and three teardown errors. Those results are preserved as
+failure evidence. Windows CI on `2ca2473` passed all 2,134 cases before the
+approved PDF repair. Fresh repeated export checks, full Mac results and Windows
+CI for the final candidate are recorded in
+[PR 41](https://github.com/binlabongbom/komi-report-v5/pull/41); merge is gated on
+the final checks, not the earlier passing Windows run.
 
-### Current validation blocker
+Mac dependency files acquired native hidden flags, which caused Qt to skip its
+platform plugins before tests could start. Local validation uses byte-identical
+plugin copies in an isolated temporary directory via QT_PLUGIN_PATH and
+QT_QPA_PLATFORM_PLUGIN_PATH. Installed wheel-record hashes were checked; no
+package versions or application plugin-loading code were changed for this
+local environment repair.
 
-The full Mac run on `6732990` completed all 2,134 planned cases with no missing
-cases: 2,133 passed, one failed and three teardown errors (the latter accompany
-otherwise passing cases). The teardown errors came from lifecycle tests mocking
-`QApplication.instance()`; cleanup now retains the real session application.
-The affected tray/UI suites passed 19/19 after that correction.
-
-The remaining failure is intermittent:
-`test_web_export_worker_keeps_ui_responsive[4096-pdf]` raises
-`RuntimeError: wrapped C/C++ object of type QAbstractTextDocumentLayout has been deleted`
-at `services/web_evidence_export.py:67`, while setting the PDF layout paint device.
-Three fresh repetitions of the exact eight-case batch passed twice and failed
-once; a diagnostic run independently captured the same source traceback. This
-is not resolved by the validated fixture changes, and the suite is not green.
-
-Keep the PR draft pending diagnosis and a validated resolution consistent with
-the source-alignment scope. No runtime workaround, skip, weakened assertion or
-merge bypass has been applied. These results concern source tests on Python
-3.14.7/Qt 6.11.2; they are not an installed-package reproduction. The published
-Mac verification records Python 3.14.3.
-
-Existing release evidence retains its documented signing, Host staging E2E,
-live-printer and tray/autostart limitations. This source merge does not change
-those results or claim a new production acceptance.
+The desktop runner excludes the five release-assembly suites documented in
+`DESKTOP_CI.md`. Native installers, live Host/printer UAT, signing and
+notarization are not repeated. The published Mac receipt used Python 3.14.3;
+these source checks do not claim installed-package acceptance. Existing release
+limitations remain unchanged.
