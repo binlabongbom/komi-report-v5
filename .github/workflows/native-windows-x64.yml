@@ -1,12 +1,7 @@
 name: Native Windows x64
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - '.github/workflows/native-windows-x64.yml'
-      - 'source/**'
-      - 'web/**'
+  # Legacy V5.2.6 installer assembly is separate from desktop regression CI.
   workflow_dispatch:
 
 permissions:
