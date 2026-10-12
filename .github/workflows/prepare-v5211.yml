@@ -117,7 +117,7 @@ jobs:
           print('PRIVATE_SOURCE_STAGED', branch, metadata['source_archive_sha256'])
           '@ | python -
           if ($LASTEXITCODE -ne 0) { throw 'Private source staging failed' }
-      - uses: actions/upload-artifact@v7.0.1
+      - uses: actions/upload-artifact@v7.0.2
         if: always()
         with:
           name: KOMI-v5.2.11-source-validation

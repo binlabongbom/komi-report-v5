@@ -55,7 +55,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Desktop regression failed; see results.json and batch logs' }
       - name: Upload regression evidence
         if: always()
-        uses: actions/upload-artifact@v7.0.1
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: desktop-regression-${{ github.run_id }}-${{ github.run_attempt }}
           retention-days: 14
