@@ -10,5 +10,5 @@ pyqtgraph~=0.14.0
 pysnmp>=7.1.29,<8
 fastapi>=0.141.1,<1
 keyring>=25.7,<26
-truststore==0.10.4
+truststore==0.10.5
 uvicorn>=0.53,<1
