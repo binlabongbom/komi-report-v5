@@ -9,6 +9,10 @@ Normal PR/push runs and default manual runs only test. A manual dispatch may
 explicitly set `build_installer=true` to run the artifact-only candidate workflow
 after regression passes; see `CLOUD_DEVELOPMENT.md`. This optional job never
 publishes a release, signs, installs the generated application or deploys.
+Manual `diagnostic_files` accepts space-separated test filenames for failure
+investigation; combining it with `build_installer=true` fails before testing.
+Failed batch tracebacks are also printed in the ordinary job log, so an artifact
+download is not required to identify a failing test.
 
 Python comes from `.python-version` (currently 3.14.7). Runtime and development
 packages use the existing Windows and development lockfiles with hash checking

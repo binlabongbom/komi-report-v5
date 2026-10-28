@@ -16,6 +16,10 @@ name: Desktop regression
         type: choice
         options: [normal, offline]
         default: normal
+      diagnostic_files:
+        description: Optional space-separated test filenames; incompatible with installer builds
+        type: string
+        default: ''
 
 permissions:
   contents: read
@@ -66,8 +70,17 @@ jobs:
           python -m ruff check tools/ci --select F401,F811,F821,F822,F823,F841 --output-format json --output-file desktop-ci/runner-lint.json
           if ($LASTEXITCODE -ne 0) { throw 'CI runner lint failed; see runner-lint.json' }
       - name: Run isolated desktop regressions from this checkout
+        env:
+          DIAGNOSTIC_FILES: ${{ inputs.diagnostic_files }}
+          BUILD_INSTALLER: ${{ inputs.build_installer }}
         run: |
-          python tools/ci/run_desktop_tests.py --output-dir desktop-ci
+          $pytestArguments = @('tools/ci/run_desktop_tests.py', '--output-dir', 'desktop-ci')
+          if ($env:DIAGNOSTIC_FILES) {
+            if ($env:BUILD_INSTALLER -eq 'true') { throw 'Installer builds require the full regression selection' }
+            $pytestArguments += '--files'
+            $pytestArguments += ($env:DIAGNOSTIC_FILES.Trim() -split '\s+')
+          }
+          python @pytestArguments
           if ($LASTEXITCODE -ne 0) { throw 'Desktop regression failed; see results.json and batch logs' }
       - name: Upload regression evidence
         if: always()

@@ -235,6 +235,11 @@ def main(argv: list[str] | None = None) -> int:
         state["results"].append(result)
         save()
         print(f"{index}/{len(plan)}: exit={result['exit_code']}; {outcomes.get('counts', {})}", flush=True)
+        if not result["successful"]:
+            # Keep diagnosis available through ordinary job logs even when an
+            # artifact download is unavailable. These tests use synthetic data.
+            detail = (output / f"{prefix}.log").read_text(encoding="utf8", errors="replace")
+            print(f"--- Failed {prefix} log (last 16000 characters) ---\n{detail[-16000:]}", flush=True)
     executed = {node for row in state["results"] for node in row["outcomes"].get("executed_nodeids", [])}
     state["missing_nodeids"] = sorted(set(nodeids) - executed)
     state["unexpected_nodeids"] = sorted(executed - set(nodeids))
