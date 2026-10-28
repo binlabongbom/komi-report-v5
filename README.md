@@ -1,5 +1,8 @@
 # KOMI REPORT V5.1 — เริ่มที่นี่
 
+พัฒนาจาก Cloud โดยไม่ใช้ Mac: [`docs/CLOUD_DEVELOPMENT.md`](docs/CLOUD_DEVELOPMENT.md)
+มี setup แยก, tests ด้วยข้อมูลจำลอง และแนวทาง Windows installer candidate ผ่าน GitHub Actions
+
 Canonical development source อยู่ที่ `~/Projects/dev/komi-report-v5` และไม่อยู่ใน OneDrive
 แต่ละระบบเก็บ Python, dependency, build และ runtime ไว้เฉพาะเครื่องนั้น ไม่ sync ข้ามระบบ
 

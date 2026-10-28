@@ -3,8 +3,12 @@
 `.github/workflows/desktop-regression.yml` validates normal pull requests into
 `main`, pushes to `main`, and manually requested runs. Checkout has no fixed
 branch or commit override: GitHub tests the pull request merge commit or the
-commit that triggered the main push. The job uses a hosted Windows runner,
-read-only repository permissions, and no secrets, installer or deployment step.
+commit that triggered the main push. The regression job uses a hosted Windows
+runner, read-only repository permissions, and no secrets or deployment step.
+Normal PR/push runs and default manual runs only test. A manual dispatch may
+explicitly set `build_installer=true` to run the artifact-only candidate workflow
+after regression passes; see `CLOUD_DEVELOPMENT.md`. This optional job never
+publishes a release, signs, installs the generated application or deploys.
 
 Python comes from `.python-version` (currently 3.14.7). Runtime and development
 packages use the existing Windows and development lockfiles with hash checking

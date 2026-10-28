@@ -396,8 +396,7 @@ class _Handler(BaseHTTPRequestHandler):
                 raise ValueError('Invalid peer request length')
             fingerprint = hashlib.sha256(self.connection.getpeercert(binary_form=True)).hexdigest()
             member = self.server.resolve_member(fingerprint)
-            if not isinstance(member, str) or not member.strip() or len(member) > 256:
-                raise PermissionError('Unrecognized peer certificate')
+            authorized = isinstance(member, str) and bool(member.strip()) and len(member) <= 256
             remaining, chunks = int(lengths[0]), []
             deadline = monotonic() + self.server.peer_timeout
             while remaining:
@@ -408,8 +407,14 @@ class _Handler(BaseHTTPRequestHandler):
                 chunk = self.rfile.read1(min(65536, remaining))
                 if not chunk:
                     raise ValueError('Truncated peer request')
-                chunks.append(chunk)
+                # Drain a correctly framed, bounded request before closing TLS.
+                # Closing with unread body bytes can reset the TCP connection on
+                # Linux and discard our 403. Never retain/decode unauthorized data.
+                if authorized:
+                    chunks.append(chunk)
                 remaining -= len(chunk)
+            if not authorized:
+                raise PermissionError('Unrecognized peer certificate')
             document = _decode(b''.join(chunks))
             if (not isinstance(document, dict) or set(document) != {'operation', 'data'}
                     or not isinstance(document['operation'], str) or len(document['operation']) > 64

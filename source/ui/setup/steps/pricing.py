@@ -73,7 +73,9 @@ class PricingStep(QWidget):
         self.edit_mode = edit_mode
         page = self
         page_layout = QVBoxLayout(page)
-        page_layout.setContentsMargins(0, 12, 0, 0)
+        # Keep the 980x620 wizard usable with taller platform font metrics;
+        # reclaim whitespace rather than shrinking controls or hiding overflow.
+        page_layout.setContentsMargins(0, 4, 0, 0)
         self.price_scroll = QScrollArea()
         self.price_scroll.setObjectName("wizard_price_scroll")
         self.price_scroll.setWidgetResizable(True)
@@ -97,7 +99,7 @@ class PricingStep(QWidget):
         self.price_content = content
         layout = QVBoxLayout(content)
         layout.setContentsMargins(12, 2, 12, 6)
-        layout.setSpacing(10)
+        layout.setSpacing(6)
 
         self.price_intro = QLabel("กำหนดราคาต่อหน้าสำหรับ A4/A3 สีและขาวดำ · ราคา 0.00 หมายถึงไม่คิดค่าใช้จ่าย")
         self.price_intro.setWordWrap(True)

@@ -1,0 +1,100 @@
+name: Windows installer candidate (artifact only)
+
+"on":
+  workflow_call:
+    inputs:
+      edition:
+        type: string
+        default: normal
+  workflow_dispatch:
+    inputs:
+      edition:
+        description: Candidate edition
+        type: choice
+        options: [normal, offline]
+        default: normal
+
+permissions:
+  contents: read
+
+jobs:
+  candidate:
+    runs-on: windows-latest
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      PYTHONDONTWRITEBYTECODE: '1'
+      NEXT_TELEMETRY_DISABLED: '1'
+      KOMI_DISCOVERY_DISABLED: '1'
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7.0.0
+        with:
+          python-version-file: .python-version
+      - name: Install locked build dependencies
+        run: |
+          python -m pip install --disable-pip-version-check --require-hashes --only-binary=:all: -r source/requirements-windows-x64.lock.txt -r source/requirements-dev.lock.txt
+          if ($LASTEXITCODE -ne 0) { throw 'Locked dependency installation failed' }
+          python source/tools/version_gate.py
+          if ($LASTEXITCODE -ne 0) { throw 'Source version gate failed' }
+      - name: Prepare isolated Inno Setup compiler
+        run: |
+          $setup = Join-Path $env:RUNNER_TEMP 'innosetup-7.0.2-x64.exe'
+          $root = Join-Path $env:RUNNER_TEMP 'komi-inno'
+          Invoke-WebRequest -Uri 'https://github.com/jrsoftware/issrc/releases/download/is-7_0_2/innosetup-7.0.2-x64.exe' -OutFile $setup
+          $process = Start-Process -FilePath $setup -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/SP-','/CURRENTUSER','/PORTABLE=1',"/DIR=$root") -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw 'Inno Setup preparation failed' }
+          $iscc = Get-ChildItem $root -Filter ISCC.exe -Recurse | Select-Object -First 1 -ExpandProperty FullName
+          if (-not $iscc) { throw 'Compiler missing' }
+          "KOMI_CANDIDATE_ISCC=$iscc" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+      - name: Build unsigned HOLD candidate from selected workflow ref
+        env:
+          CANDIDATE_EDITION: ${{ inputs.edition }}
+        run: |
+          $env:PYTHONPATH = Join-Path $env:GITHUB_WORKSPACE 'source'
+          $out = Join-Path $env:RUNNER_TEMP 'komi-candidate'
+          python -m tools.build_windows_rc --customer-release --virtualized --edition $env:CANDIDATE_EDITION --iscc $env:KOMI_CANDIDATE_ISCC --output $out
+          if ($LASTEXITCODE -ne 0) { throw 'Candidate build failed' }
+          $manifest = Get-Content (Join-Path $out 'WINDOWS_MANIFEST.json') -Raw | ConvertFrom-Json
+          if ($manifest.source_commit -ne $env:GITHUB_SHA) { throw 'Source identity mismatch' }
+          if ($manifest.production_go -ne $false -or $manifest.release_decision -ne 'HOLD') { throw 'Candidate must remain HOLD' }
+      - name: Verify installer hash and bundled runtimes without installing the app
+        run: |
+          $out = Join-Path $env:RUNNER_TEMP 'komi-candidate'
+          $manifest = Get-Content (Join-Path $out 'WINDOWS_MANIFEST.json') -Raw | ConvertFrom-Json
+          $installer = Join-Path $out $manifest.artifact
+          $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $installer).Hash.ToLowerInvariant()
+          if ($hash -ne $manifest.artifact_sha256) { throw 'Installer hash mismatch' }
+          $expectedLine = "$hash  $($manifest.artifact)"
+          if ((Get-Content (Join-Path $out 'CHECKSUMS.sha256') -Raw).Trim() -ne $expectedLine) { throw 'Checksum sidecar mismatch' }
+          $payload = Join-Path $out "payload/KOMI Report V$($manifest.version)"
+          $python = Join-Path $payload 'runtime/python.exe'
+          $runtimeVersion = (& $python -c "import sys,cryptography,PyQt6.QtCore,PyQt6.QtWidgets,pydantic_core; print('.'.join(map(str,sys.version_info[:3])))").Trim()
+          if ($LASTEXITCODE -ne 0 -or $runtimeVersion -ne (Get-Content .python-version -Raw).Trim()) { throw 'Bundled Python smoke failed' }
+          $nodeVersion = (& (Join-Path $payload 'node-runtime/node.exe') --version).Trim()
+          if ($LASTEXITCODE -ne 0 -or $nodeVersion -ne ('v' + (Get-Content .node-version -Raw).Trim())) { throw 'Bundled Node smoke failed' }
+          [ordered]@{
+            source_commit = $env:GITHUB_SHA
+            installer = $manifest.artifact
+            installer_sha256 = $hash
+            installer_bytes = (Get-Item $installer).Length
+            python = $runtimeVersion
+            node = $nodeVersion
+            authenticode = [string](Get-AuthenticodeSignature -FilePath $installer).Status
+            installed_application = $false
+            production_go = $false
+          } | ConvertTo-Json | Set-Content (Join-Path $out 'BUILD_SMOKE.json') -Encoding utf8
+      - uses: actions/upload-artifact@v7.0.1
+        with:
+          name: windows-candidate-${{ inputs.edition }}-${{ github.sha }}
+          retention-days: 14
+          if-no-files-found: error
+          compression-level: 0
+          path: |
+            ${{ runner.temp }}/komi-candidate/*.exe
+            ${{ runner.temp }}/komi-candidate/*.json
+            ${{ runner.temp }}/komi-candidate/*.sha256

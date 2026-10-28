@@ -1,6 +1,7 @@
 from contextlib import contextmanager
 from datetime import datetime, timedelta, UTC
 import hashlib
+import http.client
 import ipaddress
 import ssl
 import threading
@@ -110,6 +111,28 @@ def test_valid_ca_but_wrong_membership_does_not_dispatch(certificates):
         with pytest.raises(PermissionError):
             client(certificates, url).call('ping', {})
     assert calls == []
+
+
+@pytest.mark.parametrize('body', [b'not JSON', b'x' * (256 * 1024)], ids=['invalid-json', 'large-body'])
+def test_unauthorized_body_is_drained_without_decoding_or_dispatch(certificates, monkeypatch, body):
+    import services.peer_https as transport
+
+    def forbidden(*_):
+        pytest.fail('Unauthorized request must not be decoded or dispatched')
+
+    monkeypatch.setattr(transport, '_decode', forbidden)
+    with server(certificates, forbidden, allow=False) as url:
+        from urllib.parse import urlsplit
+        parsed = urlsplit(url)
+        connection = http.client.HTTPSConnection(parsed.hostname, parsed.port,
+            context=context(certificates, 'A'), timeout=2)
+        try:
+            connection.request('POST', transport.PATH, body, {'Content-Type': 'application/json'})
+            response = connection.getresponse()
+            assert response.status == 403
+            assert response.read() == b'{"error":"unauthorized"}'
+        finally:
+            connection.close()
 
 
 def test_certificate_and_hostname_validation_cannot_fallback(certificates):

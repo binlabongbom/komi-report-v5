@@ -6,6 +6,16 @@ name: Desktop regression
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      build_installer:
+        description: Build an unsigned HOLD installer artifact after tests pass
+        type: boolean
+        default: false
+      installer_edition:
+        description: Candidate edition (used only when build_installer is true)
+        type: choice
+        options: [normal, offline]
+        default: normal
 
 permissions:
   contents: read
@@ -15,6 +25,12 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  installer-candidate:
+    if: github.event_name == 'workflow_dispatch' && inputs.build_installer
+    needs: windows-desktop
+    uses: ./.github/workflows/windows-installer-candidate.yml
+    with:
+      edition: ${{ inputs.installer_edition }}
   windows-desktop:
     runs-on: windows-latest
     timeout-minutes: 60

@@ -1,6 +1,7 @@
 """Contracts for the centralized presentation layer."""
 import ast
 import importlib
+import os
 from pathlib import Path
 
 import pytest
@@ -86,11 +87,31 @@ def test_style_modules_do_not_depend_on_pages_services_or_storage():
                 assert not any(name.startswith('PyQt6') for name in names), path.name
 
 
+def runtime_source_files(root):
+    """Scan application code, not installed packages in a local virtualenv."""
+    for directory, children, files in os.walk(root):
+        folder = Path(directory)
+        children[:] = [name for name in children
+                       if name not in {'tests', 'tools', 'styles'}
+                       and not (folder / name / 'pyvenv.cfg').is_file()]
+        for name in files:
+            if name.endswith('.py'):
+                yield folder / name
+
+
+def test_runtime_source_scan_excludes_virtualenv_but_keeps_application_files(tmp_path):
+    environment = tmp_path / '.venv'
+    environment.mkdir()
+    (environment / 'pyvenv.cfg').write_text('home = synthetic\n')
+    (environment / 'third_party.py').write_text('widget.setStyleSheet("external")\n')
+    app = tmp_path / 'app.py'
+    app.write_text('widget.setStyleSheet("application")\n')
+    assert list(runtime_source_files(tmp_path)) == [app]
+
+
 def test_runtime_pages_do_not_duplicate_inline_styles():
     root = Path(tokens.__file__).parents[2]
-    for path in root.rglob('*.py'):
-        if {'tests', 'tools', 'styles'}.intersection(path.relative_to(root).parts):
-            continue
+    for path in runtime_source_files(root):
         for node in ast.walk(ast.parse(path.read_text(encoding='utf-8-sig'))):
             if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
                     and node.func.attr == 'setStyleSheet' and node.args):
@@ -105,9 +126,7 @@ def test_runtime_pages_do_not_duplicate_inline_styles():
 
 def test_all_runtime_style_references_resolve():
     root = Path(tokens.__file__).parents[2]
-    for path in root.rglob('*.py'):
-        if {'tests', 'tools', 'styles'}.intersection(path.relative_to(root).parts):
-            continue
+    for path in runtime_source_files(root):
         tree = ast.parse(path.read_text(encoding='utf-8-sig'))
         aliases = {}
         for node in ast.walk(tree):
