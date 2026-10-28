@@ -77,6 +77,8 @@ jobs:
           $pytestArguments = @('tools/ci/run_desktop_tests.py', '--output-dir', 'desktop-ci')
           if ($env:DIAGNOSTIC_FILES) {
             if ($env:BUILD_INSTALLER -eq 'true') { throw 'Installer builds require the full regression selection' }
+            # Reproduce cold-process timing without earlier cases warming Qt.
+            $pytestArguments += @('--batch-size', '1')
             $pytestArguments += '--files'
             $pytestArguments += ($env:DIAGNOSTIC_FILES.Trim() -split '\s+')
           }

@@ -11,6 +11,7 @@ after regression passes; see `CLOUD_DEVELOPMENT.md`. This optional job never
 publishes a release, signs, installs the generated application or deploys.
 Manual `diagnostic_files` accepts space-separated test filenames for failure
 investigation; combining it with `build_installer=true` fails before testing.
+Diagnostic cases each use a fresh process to expose cold-start timing.
 Failed batch tracebacks are also printed in the ordinary job log, so an artifact
 download is not required to identify a failing test.
 
