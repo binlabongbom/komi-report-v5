@@ -1,4 +1,14 @@
-# KOMI Report V5.2.13 — Customer Release Notes
+# KOMI Report V5.2.14 — Customer Release Notes
+
+## รุ่น 5.2.14 — เลือก Administrator XML Counter สำหรับ bizhub 287
+
+- เลือกรุ่น bizhub 287 จริงให้ใช้ legacy Administrator XML connector เดิมที่อ่าน `a_system_counter.xml` ไม่ต้องตั้งเป็น C368/C458
+- ใช้เฉพาะบัญชี Administrator ที่ผู้ใช้กำหนดในแอป; ถ้าไม่มีบัญชี หยุดให้กรอกผ่านช่องเดิมโดยไม่ลองรหัสโรงงานหรือ Public fallback
+- เมื่อผู้ใช้กำหนดบัญชีไว้แล้ว อ่านผ่าน Admin session แบบจำกัดหนึ่งครั้ง; ไม่เพิ่มการลองรหัสเมื่อถูกปฏิเสธ
+- คง HTTPS/TLS policy เดิมของ 287 ไม่ยืม legacy TLS compatibility หรือ SNMP OID ของรุ่นอื่น
+- หลักฐานยืนยันเส้นทางหน้า Counter ในโหมด Administrator; การยอมรับ login/XML payload และยอดจริงยังรอผู้ใช้ทดสอบ candidate
+- ตัวติดตั้ง Windows เป็น unsigned HOLD candidate ไม่ใช่ production approval
+
 
 ## รุ่น 5.2.13 — แก้การอ่าน Public Counter หลัง JSON endpoint ตอบ 404
 

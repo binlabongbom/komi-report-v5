@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
+import re
 
 
 class SnmpWalkPolicy(StrEnum):
@@ -29,16 +30,33 @@ class DeviceMeterProfile:
     web_protocol: WebMeterProtocol = WebMeterProtocol.MODERN_JSON
     web_scheme: str = "https"
     tls_compatibility: TlsCompatibility = TlsCompatibility.DEFAULT
+    model_pattern: str = ""
+    allow_factory_admin_credentials: bool = True
 
     def matches(self, model: str) -> bool:
         normalized = " ".join(model.casefold().split())
-        return bool(normalized) and all(token in normalized for token in self.model_tokens)
+        return (
+            bool(normalized)
+            and all(token in normalized for token in self.model_tokens)
+            and (not self.model_pattern or re.search(self.model_pattern, normalized) is not None)
+        )
 
 
 PRINTER_MIB_TOTAL_OID = "1.3.6.1.2.1.43.10.2.1.4.1.1"
 KM_PRIVATE_TOTAL_OID = "1.3.6.1.4.1.18334.1.1.1.5.7.2.1.1.0"
 
 CONFIRMED_DEVICE_PROFILES = (
+    DeviceMeterProfile(
+        profile_id="bizhub-287-admin-legacy-xml",
+        model_tokens=("bizhub", "287"),
+        model_pattern=r"\bbizhub\s*287\b",
+        # The device UI confirms Administrator /wcd/a_system_counter.xml.
+        # Reuse the existing XML connector; payload/login acceptance remains
+        # a candidate test. Do not inherit another model's legacy TLS or OID.
+        web_protocol=WebMeterProtocol.LEGACY_XML_ADMIN,
+        web_scheme="https",
+        allow_factory_admin_credentials=False,
+    ),
     DeviceMeterProfile(
         profile_id="accuriopress-c84hc-public-legacy-xml",
         model_tokens=("accuriopress", "c84hc"),

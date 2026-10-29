@@ -1,6 +1,6 @@
 """Canonical runtime version authority for new KOMI Report builds."""
 
-APP_VERSION = "5.2.13"
+APP_VERSION = "5.2.14"
 
 
 def require_v5_2(version: str = APP_VERSION) -> str:

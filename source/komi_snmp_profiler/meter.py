@@ -117,6 +117,12 @@ class MeterReader:
                 legacy_warnings,
             )
         if profile.web_protocol == WebMeterProtocol.LEGACY_XML_ADMIN:
+            if credential is None and not profile.allow_factory_admin_credentials:
+                raise WebConnectionAuthenticationError(
+                    "รุ่นนี้ใช้ Counter XML แบบ Administrator; กรอกบัญชีในตั้งค่าเครื่องพิมพ์ก่อนทดสอบ "
+                    "ยังไม่ได้ลองเข้าสู่ระบบหรือใช้รหัสเริ่มต้น",
+                    diagnostic_code="admin_required",
+                )
             connector = self.legacy_admin_connector or LegacyAuthenticatedWebConnectionCounterConnector(
                 tls_policy=tls_policy,
                 scheme=profile.web_scheme,

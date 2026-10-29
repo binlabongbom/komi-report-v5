@@ -1363,8 +1363,14 @@ class SetupWizardV5(QDialog):
         form.addRow("Username", username)
         form.addRow("Password", password)
         layout.addLayout(form)
+        profile = resolve_device_meter_profile(str(entry.get("model") or entry.get("name") or ""))
         hint = QLabel(
             tr(
+                "เครื่องรุ่นนี้อ่าน Counter XML แบบ Administrator · กรอกบัญชีที่ผู้ดูแลอนุญาต "
+                "แล้วกดทดสอบใน KOMI; ไม่ลองรหัสเริ่มต้นอัตโนมัติ",
+                "This model reads Administrator XML counters. Enter an authorized account, "
+                "then test in KOMI; factory passwords are not tried automatically.",
+            ) if not profile.allow_factory_admin_credentials else tr(
                 f"Username: {DEFAULT_ADMIN_USERNAME} · ระบบลองรหัสเริ่มต้น 2 แบบอัตโนมัติแล้ว "
                 "กรอกเฉพาะเมื่อเครื่องถูกเปลี่ยนรหัส",
                 f"Username: {DEFAULT_ADMIN_USERNAME} · Two public defaults are tested automatically; "

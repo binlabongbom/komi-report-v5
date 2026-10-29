@@ -1,7 +1,7 @@
-# KOMI Report V5.2.13 — Unsigned Pilot Checklist
+# KOMI Report V5.2.14 — Unsigned Pilot Checklist
 
 **WAIT BUILD:** checklist นี้ยังไม่ใช่ผลทดสอบแพ็กเกจรุ่นนี้ ตรวจสถานะ source ล่าสุดจาก
-`V5_2_13_WORK_PLAN.md` และทดสอบเครื่องนี้ + Proxmox VM 105 หลังได้รับอนุมัติ build เท่านั้น
+`V5_2_14_WORK_PLAN.md` และทดสอบเครื่องนี้ + Proxmox VM 105 หลังได้รับอนุมัติ build เท่านั้น
 
 เอกสารนี้ใช้กับ Pilot แบบจำกัดวงเท่านั้น ไม่ใช่ Production GO. Windows code signing และ Windows 10/11 native x64 UAT
 ยังเป็น **Deferred / ยังไม่ผ่าน** และห้ามใช้ผลจาก Windows ARM VM แทนหลักฐาน native x64.
