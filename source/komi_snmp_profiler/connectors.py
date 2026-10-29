@@ -10,6 +10,7 @@ import warnings
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from http.cookiejar import Cookie, CookieJar
+from html.parser import HTMLParser
 from typing import Protocol
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode, urlsplit
@@ -50,7 +51,7 @@ class WebConnectionSessionBusyError(WebConnectionError):
 
 
 class WebConnectionUnsupportedError(WebConnectionError):
-    """Raised when the selected read-only Meter endpoint is not supported by the firmware."""
+    """Raised when the selected endpoint is missing, not proof of firmware incompatibility."""
     diagnostic_code = 'endpoint_missing'
 
 
@@ -172,6 +173,25 @@ def _nested(payload: dict[str, object], path: str, default: object = None) -> ob
     return value
 
 
+class _PublicCounterLinkParser(HTMLParser):
+    """Recognize only fixed same-origin public Counter links advertised by the UI."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.found = False
+        self.has_base = False
+
+    def handle_starttag(self, tag, attrs):
+        if tag == "base":
+            self.has_base = True
+        attribute = "href" if tag == "a" else "src" if tag in {"frame", "iframe"} else None
+        for name, value in attrs:
+            if attribute and name == attribute and value in {
+                "system_counter.xml", "./system_counter.xml", "/wcd/system_counter.xml",
+            }:
+                self.found = True
+
+
 class ReadOnlyWebConnectionSession:
     """Cookie session with strict read and temporary Meter-export allowlists."""
 
@@ -239,6 +259,10 @@ class ReadOnlyWebConnectionSession:
         if path not in self.GET_PATHS:
             raise WebConnectionError(f"endpoint ไม่อยู่ใน read-only allowlist: {path}")
         raw = self._request(path, method="GET")
+        if path == "index.html" and not expect_json:
+            parser = _PublicCounterLinkParser()
+            parser.feed(raw.decode("utf-8", errors="replace"))
+            self.public_counter_advertised = parser.found and not parser.has_base
         return json.loads(raw) if expect_json else {}
 
     def get_bytes(self, path: str) -> bytes:
@@ -504,7 +528,21 @@ class WebConnectionCounterConnector:
         )
         try:
             session.get("index.html", expect_json=False)
-            common = session.get("api/AppReqGetCustomData/_A-00-00001")
+            try:
+                common = session.get("api/AppReqGetCustomData/_A-00-00001")
+            except WebConnectionUnsupportedError:
+                # No guessed model/path, scheme downgrade, login or settings writes.
+                # Reuse this public session only if the entry page advertised the
+                # existing allowlisted legacy endpoint, and require a valid Total.
+                if getattr(session, "public_counter_advertised", False) is not True:
+                    raise
+                counters = LegacyWebConnectionCounterConnector.parse_xml(
+                    session.get_bytes("system_counter.xml")
+                )
+                return WebCounterCollection(
+                    tuple(counters), "web_connection_legacy_xml_public", WebAuthState.PUBLIC,
+                    ("อ่าน Public Counter XML ที่หน้า Web Connection ระบุ หลัง JSON endpoint ตอบ 404",),
+                )
             if _nested(common, "MFP.LoginMode") != "PublicUser":
                 raise WebConnectionAuthenticationError(
                     "Web Connection ปิด PublicUser และต้องใช้ Administrator", diagnostic_code='admin_required'

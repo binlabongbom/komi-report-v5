@@ -179,9 +179,14 @@ class DeviceTestWorker(QObject):
                     ),
                     allow_implicit_name_export=True,
                 )
-                if profile.profile_id == "generic":
-                    return reader.read(web_host)
-                return reader.read(web_host, model=meter_model)
+                try:
+                    if profile.profile_id == "generic":
+                        return reader.read(web_host)
+                    return reader.read(web_host, model=meter_model)
+                except Exception as error:
+                    error.diagnostic_profile = profile.profile_id
+                    error.diagnostic_protocol = profile.web_protocol.value
+                    raise
 
             try:
                 reading = read_with_policy(tls_policy)

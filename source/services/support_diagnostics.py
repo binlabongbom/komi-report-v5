@@ -113,6 +113,12 @@ class Diagnostic:
 
     def report(self, *, stage='', target='', device='', computer='', at='') -> str:
         title, cause, action = CATALOG[self.code]
+        if self.code == 'endpoint_missing' and stage.strip().upper().startswith('WEB'):
+            action = (
+                'เปิด Web Connection ของเครื่องพิมพ์จากคอมเดียวกัน แล้วเปิดหน้า Counter ผ่านเมนูปกติ; '
+                'ส่งเฉพาะรุ่น/firmware และ path, method, HTTP status ของหน้า Counter ให้ผู้ดูแล KOMI ตรวจโปรไฟล์ '
+                '(ไม่ส่งรหัสผ่านหรือ Cookie); ไม่เปลี่ยนรหัสหรือปิด TLS และไม่แก้ route ของ Host จาก 404 นี้'
+            )
         return '\n'.join((
             'KOMI Diagnostic v1', f'App: {APP_VERSION}',
             f'Time: {at or datetime.now().astimezone().isoformat(timespec="seconds")}',
@@ -160,6 +166,12 @@ def diagnose(error: BaseException | str) -> Diagnostic:
         mode = getattr(item, 'diagnostic_mode', '')
         if mode in {'User/Public', 'Admin'}:
             evidence.append('request_mode=' + mode)
+        profile = getattr(item, 'diagnostic_profile', '')
+        if profile:
+            evidence.append('profile=' + safe_text(profile))
+        protocol = getattr(item, 'diagnostic_protocol', '')
+        if protocol:
+            evidence.append('protocol=' + safe_text(protocol))
         declared = getattr(item, 'diagnostic_code', '')
         if declared in CATALOG:
             code = declared

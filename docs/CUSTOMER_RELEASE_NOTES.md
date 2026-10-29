@@ -1,4 +1,14 @@
-# KOMI Report V5.2.12 — Customer Release Notes
+# KOMI Report V5.2.13 — Customer Release Notes
+
+## รุ่น 5.2.13 — แก้การอ่าน Public Counter หลัง JSON endpoint ตอบ 404
+
+- เมื่อ JSON endpoint ตอบ 404 จะใช้ Public Counter XML เดิมได้เฉพาะเมื่อหน้า Web Connection ระบุลิงก์ endpoint นั้นเอง และต้องตรวจพบ aggregate Total Meter ที่ถูกต้อง
+- ใช้ session, scheme และ TLS policy เดิม ไม่เดา model profile, ลองรหัสเพิ่ม, ลดระดับ TLS หรือเขียน settings ของเครื่องพิมพ์
+- แยกคำแนะนำ 404 ของเครื่องพิมพ์ออกจาก Host API พร้อมแสดง profile/protocol ใน Setup diagnostic
+- หากหน้าเครื่องไม่ระบุ endpoint ที่รองรับ จะหยุดและขอหลักฐานจากหน้า Counter ปกติ ไม่อ้างว่า firmware ไม่รองรับ
+- ยังไม่มีผลยืนยันจากเครื่องรุ่นที่ผู้ใช้รายงาน; ต้องตรวจ Counter endpoint และยอดจริงก่อนยืนยัน compatibility
+- ชุด Windows เป็น unsigned HOLD candidate; ไม่มี production approval, clean-machine installation หรือ live-printer acceptance จากการ build นี้
+
 
 ## รุ่น 5.2.12 — ปรับปรุงวันที่ 25 กันยายน 2026
 
