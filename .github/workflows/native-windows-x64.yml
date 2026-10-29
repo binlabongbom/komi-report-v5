@@ -190,7 +190,7 @@ jobs:
           Get-ChildItem 'release/v5.2.6-installer' | Select-Object Name, Length
 
       - name: Upload V5.2.6 Windows installer
-        uses: actions/upload-artifact@v7.0.1
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: KOMI-Report-V5.2.6-Windows-x64-${{ github.sha }}
           retention-days: 30

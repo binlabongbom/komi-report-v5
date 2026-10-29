@@ -32,7 +32,7 @@ jobs:
       - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-python@v7.0.0
+      - uses: actions/setup-python@v7.1.0
         with:
           python-version-file: .python-version
       - name: Install locked build dependencies
@@ -88,7 +88,7 @@ jobs:
             installed_application = $false
             production_go = $false
           } | ConvertTo-Json | Set-Content (Join-Path $out 'BUILD_SMOKE.json') -Encoding utf8
-      - uses: actions/upload-artifact@v7.0.1
+      - uses: actions/upload-artifact@v7.0.2
         with:
           name: windows-candidate-${{ inputs.edition }}-${{ github.sha }}
           retention-days: 14
