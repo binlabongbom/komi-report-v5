@@ -18,7 +18,7 @@ jobs:
         with:
           ref: d99a0de57e3f10010d8bc4dd3c836dc31d12b510
           persist-credentials: false
-      - uses: actions/setup-python@v7.0.0
+      - uses: actions/setup-python@v7.1.0
         with:
           python-version: '3.14.7'
       - name: Install locked dependencies
@@ -35,7 +35,7 @@ jobs:
           $env:KOMI_PEER_SYNC_STATE_FILE = Join-Path $env:RUNNER_TEMP 'v5211-lifecycle-peer.json'
           python -m pytest -q source/tests/test_v5_2_runtime.py source/tests/test_v5_2_outbox.py source/tests/test_v5_2_contract.py source/tests/test_v5_2_legacy_transport_gate.py source/tests/test_v5_2_local_contract_e2e.py source/tests/test_offline_license_v52.py --junitxml=lifecycle-evidence.xml
           if ($LASTEXITCODE -ne 0) { throw 'Lifecycle regression failed' }
-      - uses: actions/upload-artifact@v7.0.1
+      - uses: actions/upload-artifact@v7.0.2
         if: always()
         with:
           name: KOMI-v5.2.11-lifecycle-regression
