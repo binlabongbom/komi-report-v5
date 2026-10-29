@@ -17,9 +17,13 @@ from decimal import ROUND_HALF_UP, Decimal
 
 from database import _open as _database_open, get_billing_day, get_waste_paper_pct
 from services.billing_periods import billing_month_range
-from services.pricing import CostCategory, PricingRepository
+from services.pricing import CostCategory, PricingRepository, quantity_first_amounts
 
-FORMULA_VERSION = "komi.billing.v1"
+LEGACY_FORMULA_VERSION = "komi.billing.v1"
+FORMULA_VERSION = "komi.billing.quantity-first.v2"
+AUTOMATIC_FORMULA_VERSIONS = {LEGACY_FORMULA_VERSION, FORMULA_VERSION,
+    "komi.billing.reprice.v1", "komi.billing.reprice.quantity-first.v2",
+    "komi.billing.web-allocation.v1", "komi.billing.web-allocation.quantity-first.v2"}
 _posting_connection = ContextVar('billing_posting_connection', default=None)
 
 
@@ -265,13 +269,13 @@ def _post_daily_record(record_id: int) -> int | None:
     try:
         prices = pricing.get_prices(slot, parsed_date)
         price_cents = {category.value: _cents(prices.price(category)) for category in CostCategory}
-        gross = sum(int(value) * price_cents.get(category, 0) for key, value in deltas.items() for category in [categories.get(key, "no_charge")])
         waste_bp = _basis_points(get_waste_paper_pct())
+        gross, net, quantity_audit = quantity_first_amounts(deltas, categories, price_cents, waste_bp)
     except (TypeError, ValueError, ArithmeticError):
         return _append_hold(record_id, slot, identity, device_name, serial, record_date, period_start, period_end, source_hash, billing_day,
                             deltas, categories, source, "invalid_price_or_waste")
-    net = (gross * (10_000 - waste_bp) + 5_000) // 10_000
-    attestation = {"billing_safe": True, "reconciliation": source["reconciliation"]}
+    attestation = {"billing_safe": True, "reconciliation": source["reconciliation"],
+                   "quantity_pricing": quantity_audit}
     # Stable per raw source + formula version. Formula inputs are captured on
     # the entry but never add wall-clock time to the retry key.
     idempotency_key = f"daily:{record_id}:{source_hash}:posting:{FORMULA_VERSION}"
@@ -599,7 +603,7 @@ def _ensure_reversal(
         raise ValueError("only a posting/replacement can be reversed")
     # Keep the original key shape across formula metadata upgrades. Changing it
     # would make a retry append a second correction to an existing database.
-    key = f"reversal:{ledger_id}:{FORMULA_VERSION}"
+    key = f"reversal:{ledger_id}:{LEGACY_FORMULA_VERSION}"
     existing = _existing_adjustment(
         conn,
         key=key,
@@ -688,7 +692,7 @@ def _replace_entry(conn, ledger_id: int, *, gross_cents: int, net_cents: int, re
     reason = reason.strip()
     if not reason:
         raise ValueError("correction reason is required")
-    key = f"replacement:{ledger_id}:{FORMULA_VERSION}"
+    key = f"replacement:{ledger_id}:{LEGACY_FORMULA_VERSION}"
     now = datetime.now().astimezone().isoformat(timespec="seconds")
     existing = _existing_adjustment(
         conn,

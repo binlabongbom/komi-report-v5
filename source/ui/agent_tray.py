@@ -11,6 +11,7 @@ from PyQt6.QtCore import QObject, QTimer
 from PyQt6.QtGui import QAction
 from PyQt6.QtWidgets import QMenu, QMessageBox, QSystemTrayIcon
 
+from ui.quit_confirmation import confirm_meter_collection_exit
 from database import get_db_path
 from i18n import tr
 from services.application_identity import load_application_icon
@@ -106,11 +107,7 @@ class AgentTray(QObject):
     def confirm_stop(self):
         if self._stopping:
             return
-        result = QMessageBox.question(None, tr("หยุดโปรแกรมทั้งหมด", "Stop everything"), tr(
-            "การอ่านมิเตอร์และรายงานผ่านเว็บบนเครื่องนี้จะหยุดจนกว่าจะเปิดโปรแกรมอีกครั้ง ต้องการหยุดทั้งหมดหรือไม่?",
-            "Meter collection and web reports on this computer will stop until the application is reopened. Stop everything?",
-        ), QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel, QMessageBox.StandardButton.Cancel)
-        if result != QMessageBox.StandardButton.Yes:
+        if not confirm_meter_collection_exit():
             return
         self._stopping = True
         self.open_action.setEnabled(False)

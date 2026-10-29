@@ -2493,3 +2493,70 @@ def test_authentication_edit_invalidates_evidence_and_rejects_inflight_old_conne
     assert wizard._meter_evidence == {}
     assert not wizard.discovered_devices[0]["result"]["web_ok"]
     wizard.close()
+
+
+def test_explicit_xml_selection_roundtrips_and_invalidates_old_evidence():
+    app = QApplication.instance() or QApplication([])
+    database.set_cfg("company_name", "Synthetic XML test")
+    wizard = SetupWizardV5(legacy_source_paths=[])
+    try:
+        _add_selected_device(wizard, "bizhub 367", "192.0.2.10")
+        _confirm_meter(wizard)
+        previous = wizard._configs()[0]
+        wizard._open_credentials(previous.host)
+        dialog = wizard._wizard_child_dialogs[-1]
+        combo = dialog.findChild(QComboBox, "web_protocol")
+        assert combo.currentData() == "auto"
+        combo.setCurrentIndex(combo.findData("legacy_xml_public"))
+        password = next(field for field in dialog.findChildren(QLineEdit)
+                        if field.echoMode() == QLineEdit.EchoMode.Password)
+        assert not password.isEnabled()
+        dialog.accept()
+        app.processEvents()
+        assert wizard._configs()[0].web_protocol == "legacy_xml_public"
+        assert wizard._meter_evidence == {}
+        assert device_test_key(previous) != device_test_key(wizard._configs()[0])
+        wizard._open_credentials(previous.host)
+        dialog = wizard._wizard_child_dialogs[-1]
+        combo = dialog.findChild(QComboBox, "web_protocol")
+        assert combo.currentData() == "legacy_xml_public"
+        combo.setCurrentIndex(combo.findData("legacy_xml_admin"))
+        password = next(field for field in dialog.findChildren(QLineEdit)
+                        if field.echoMode() == QLineEdit.EchoMode.Password)
+        assert password.isEnabled()
+        dialog.accept()
+        app.processEvents()
+        assert wizard._configs()[0].web_protocol == "legacy_xml_admin"
+    finally:
+        wizard.close()
+
+
+@pytest.mark.parametrize("protocol", ["legacy_xml_public", "legacy_xml_admin"])
+def test_setup_worker_passes_explicit_xml_choice_even_when_snmp_identifies_unknown_model(monkeypatch, protocol):
+    monkeypatch.setattr("ui.setup.workers.SnmpTotalProbe.read", lambda *_: SimpleNamespace(
+        model="bizhub 457", serial="SYNTHETIC", total=100, total_oid="1.2.3", oid_values=()))
+    calls = []
+    def read(reader, host, *, model, web_protocol):
+        calls.append((model, web_protocol))
+        return MeterReading.create(host,
+            [WebCounterValue("counter.total.total", "Total", 100, "Total", "synthetic")],
+            "xml", WebAuthState.PUBLIC if protocol == "legacy_xml_public" else WebAuthState.ADMIN)
+    monkeypatch.setattr("ui.setup.workers.MeterReader.read", read)
+    device = DeviceConfig(0, "Synthetic", "192.0.2.10", web_protocol=protocol)
+    result = DeviceTestWorker([device])._test(device)
+    assert result["web_ok"]
+    assert calls == [("bizhub 457", protocol)]
+
+
+def test_waste_hover_explains_quantity_rounding_and_preserves_zero():
+    app = QApplication.instance() or QApplication([])
+    database.set_cfg('waste_paper_pct', '0')
+    wizard = SetupWizardV5(legacy_source_paths=[])
+    try:
+        assert wizard.waste_paper_pct.value() == 0
+        assert '101' in wizard.waste_paper_pct.toolTip()
+        assert '96' in wizard.waste_paper_pct.toolTip()
+        assert '.5' in wizard.waste_paper_pct.toolTip()
+    finally:
+        wizard.close()
+        app.processEvents()

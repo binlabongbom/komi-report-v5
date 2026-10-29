@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import StrEnum
 import re
 
@@ -137,9 +137,19 @@ CONFIRMED_DEVICE_PROFILES = (
 GENERIC_DEVICE_PROFILE = DeviceMeterProfile(profile_id="generic")
 
 
-def resolve_device_meter_profile(model: str) -> DeviceMeterProfile:
-    """Return only profiles backed by captured real-device evidence."""
-    return next(
+def resolve_device_meter_profile(model: str, *, web_protocol: str = "auto") -> DeviceMeterProfile:
+    """Resolve measured model defaults or an explicit user-selected XML protocol."""
+    if web_protocol not in {"auto", "legacy_xml_public", "legacy_xml_admin"}:
+        raise ValueError("Unsupported Web Connection protocol")
+    profile = next(
         (profile for profile in CONFIRMED_DEVICE_PROFILES if profile.matches(model)),
         GENERIC_DEVICE_PROFILE,
+    )
+    if web_protocol == "auto":
+        return profile
+    return replace(
+        profile,
+        profile_id=f"explicit-{web_protocol}",
+        web_protocol=WebMeterProtocol(web_protocol),
+        allow_factory_admin_credentials=False,
     )

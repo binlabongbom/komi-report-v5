@@ -15,7 +15,7 @@ from services.billing_correction_transfer import _json
 from services.pricing import PricingRepository, PriceList
 from test_billing_ledger import _daily
 from test_billing_repricing import posting
-from test_peer_billing_amendments import peer, clone, counts, fixture_ledger_edit
+from test_peer_billing_amendments import peer, clone, counts, fixture_ledger_edit  # noqa: F401 - registers pytest fixture
 
 
 def corrected(service, target):
@@ -102,7 +102,7 @@ def test_batch_period_discount_correction_commits_all_or_none(tmp_path):
         conn.execute('DROP TRIGGER fail_second')
     b.receive('A', document)
     with b.service._connection() as conn:
-        assert conn.execute('SELECT SUM(net_cents) FROM billing_ledger').fetchone()[0] == 2160
+        assert conn.execute('SELECT SUM(net_cents) FROM billing_ledger').fetchone()[0] == 2400
         assert conn.execute("SELECT COUNT(*) FROM billing_ledger WHERE entry_kind='replacement' AND billing_day=20 AND waste_basis_points=1000").fetchone()[0] == 2
 
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import json
 import unicodedata
 import os
 import tempfile
@@ -18,9 +19,10 @@ from openpyxl import Workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 
+from database import _open, get_waste_paper_pct
 from services.device_config import DeviceConfig
 from services.monthly_history import MonthlyUsage
-from services.pricing import PricingRepository
+from services.pricing import PricingRepository, provisional_quantity_cost
 from services.raw_counter_history import RawCounterDailyRecord
 from services.report_operation_breakdown import (
     breakdown_from_raw_records,
@@ -149,61 +151,118 @@ def suggested_cloud_reports_filename(at: datetime | None = None) -> str:
     return f"KOMI_Reports_{stamp}.xlsx"
 
 
+def _allocate_category_total(target, basis):
+    """Conserve the recorded total, with the existing final-category remainder."""
+    allocated = {field: 0.0 for field, _label in CATEGORY_FIELDS}
+    total_basis = sum(basis.values())
+    if not target or total_basis <= 0:
+        return allocated, target
+    nonzero = [field for field, _label in CATEGORY_FIELDS if basis.get(field, 0) > 0]
+    remaining = target
+    for field in nonzero[:-1]:
+        amount = round(target * basis[field] / total_basis, 2)
+        allocated[field] = amount
+        remaining -= amount
+    allocated[nonzero[-1]] = round(remaining, 2)
+    return allocated, 0.0
+
+
+def _frozen_daily_category_costs(records, include_waste_adjustment):
+    """Read final ledger evidence per source, never mutable historical prices."""
+    if not records:
+        return {}
+    slots = sorted({record.device_slot for record in records})
+    first = min(record.period_start for record in records).isoformat()
+    last = max(record.period_end for record in records).isoformat()
+    placeholders = ','.join('?' for _ in slots)
+    with _open(commit=False) as conn:
+        rows = conn.execute(f"""SELECT source_daily_record_id,entry_kind,device_slot,
+            device_identity,record_date,delta_json,category_json,price_cents_json,
+            gross_cents,net_cents,attestation_json FROM billing_ledger
+            WHERE device_slot IN ({placeholders}) AND record_date BETWEEN ? AND ?
+              AND source_daily_record_id IS NOT NULL ORDER BY id""", (*slots, first, last)).fetchall()
+    latest = {}
+    for row in rows:
+        latest[row[0]] = row
+    result = {}
+    for row in latest.values():
+        _source, kind, slot, identity, day, deltas_raw, categories_raw, prices_raw, gross, net, audit_raw = row
+        if kind not in {'posting', 'replacement'}:
+            continue
+        key = (slot, identity, date.fromisoformat(day))
+        amounts = result.setdefault(key, {field: 0.0 for field, _label in CATEGORY_FIELDS})
+        amounts.setdefault('unallocated', 0.0)
+        target = (net if include_waste_adjustment else gross) / 100
+        basis = {field: 0 for field, _label in CATEGORY_FIELDS}
+        try:
+            deltas, categories, prices, audit = map(json.loads, (deltas_raw, categories_raw, prices_raw, audit_raw))
+            if audit.get('billing_safe') is not True:
+                raise ValueError('Manual amounts have no automatic price attribution')
+            for counter, quantity in deltas.items():
+                category = categories[counter]
+                if category in basis:
+                    rate = prices[category]
+                    if type(quantity) is not int or quantity < 0 or type(rate) is not int or rate < 0:
+                        raise ValueError('Invalid frozen quantity or price')
+                    basis[category] += quantity * rate
+            quantity_pricing = audit.get('quantity_pricing', {})
+            net_by_category = quantity_pricing.get('category_net_cents')
+            if include_waste_adjustment and isinstance(net_by_category, dict):
+                if (set(net_by_category) != set(basis) or
+                        any(type(v) is not int or v < 0 for v in net_by_category.values()) or
+                        sum(net_by_category.values()) != net):
+                    raise ValueError('Invalid frozen category amounts')
+                allocated = {field: value / 100 for field, value in net_by_category.items()}
+                unallocated = 0.0
+            else:
+                allocated, unallocated = _allocate_category_total(target, basis)
+        except (ValueError, TypeError, KeyError, AttributeError):
+            allocated, unallocated = {}, target
+        for field, amount in allocated.items():
+            amounts[field] += amount
+        amounts['unallocated'] += unallocated
+    return result
+
+
 def build_daily_category_costs(
     records: tuple[MonthlyUsage, ...],
     *,
     pricing: PricingRepository | None = None,
     include_waste_adjustment: bool = True,
 ) -> tuple[DailyCategoryCost, ...]:
-    """Allocate the selected frozen total using prices effective on each record day.
-
-    If no historical price basis exists, the value remains explicitly
-    unallocated instead of being guessed into a paper category.
-    """
-
-    repository = pricing or PricingRepository()
-    prices_by_day = repository.get_prices_for_days(
-        (record.device_slot, record.period_start) for record in records)
-    result: list[DailyCategoryCost] = []
+    """Use frozen ledger prices for posted costs; live prices only for provisional usage."""
+    frozen = _frozen_daily_category_costs(records, include_waste_adjustment)
+    provisional = [record for record in records if record.provisional_days]
+    prices_by_day = (pricing or PricingRepository()).get_prices_for_days(
+        (record.device_slot, record.period_start) for record in provisional) if provisional else {}
+    result = []
+    cost_field = 'net_cost' if include_waste_adjustment else 'gross_cost'
     for record in records:
-        day = record.period_start
-        prices = prices_by_day[(record.device_slot, day)]
-        usage = {field: _combined(record, field) for field, _label in CATEGORY_FIELDS}
-        basis = {
-            field: usage[field] * float(getattr(prices, field, 0.0) or 0.0)
-            for field, _label in CATEGORY_FIELDS
-        }
-        target = round(
-            _combined(
-                record,
-                "net_cost" if include_waste_adjustment else "gross_cost",
-            ),
-            2,
-        )
-        allocated = {field: 0.0 for field, _label in CATEGORY_FIELDS}
-        total_basis = sum(basis.values())
-        unallocated = 0.0
-        if target and total_basis > 0:
-            nonzero = [field for field, _label in CATEGORY_FIELDS if basis[field] > 0]
-            remaining = target
-            for field in nonzero[:-1]:
-                amount = round(target * basis[field] / total_basis, 2)
-                allocated[field] = amount
-                remaining -= amount
-            if nonzero:
-                allocated[nonzero[-1]] = round(remaining, 2)
-        elif target:
+        key = record.device_slot, _record_identity(record), record.period_start
+        captured = frozen.get(key, {})
+        target = round(float(getattr(record, cost_field)), 2)
+        allocated = {field: captured.get(field, 0.0) for field, _label in CATEGORY_FIELDS}
+        unallocated = captured.get('unallocated', 0.0)
+        # If the supplied report lacks matching immutable provenance, do not
+        # fabricate a rate from current prices or another printer's identity.
+        if round(sum(allocated.values()) + unallocated, 2) != target:
+            allocated = {field: 0.0 for field, _label in CATEGORY_FIELDS}
             unallocated = target
-        result.append(
-            DailyCategoryCost(
-                device_slot=record.device_slot,
-                device_identity=_record_identity(record),
-                record_date=day,
-                unallocated=unallocated,
-                available=_cost_available(record),
-                **allocated,
-            )
-        )
+        if record.provisional_days:
+            prices = prices_by_day[(record.device_slot, record.period_start)]
+            basis = {field: provisional_quantity_cost(
+                        {field: float(getattr(record, f'provisional_{field}'))}, {field: field}, prices,
+                        get_waste_paper_pct())[1 if include_waste_adjustment else 0]
+                     for field, _label in CATEGORY_FIELDS}
+            provisional_amounts, remainder = _allocate_category_total(
+                round(float(getattr(record, f'provisional_{cost_field}')), 2), basis)
+            for field, amount in provisional_amounts.items():
+                allocated[field] += amount
+            unallocated += remainder
+        result.append(DailyCategoryCost(
+            device_slot=record.device_slot, device_identity=_record_identity(record),
+            record_date=record.period_start, unallocated=round(unallocated, 2),
+            available=_cost_available(record), **{field: round(value, 2) for field, value in allocated.items()}))
     return tuple(result)
 
 

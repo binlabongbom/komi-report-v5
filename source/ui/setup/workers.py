@@ -36,7 +36,7 @@ from services.snmp_probe import SnmpTotalProbe
 
 def device_test_key(device: DeviceConfig) -> str:
     """Bind a test to its connection settings without retaining plaintext secrets."""
-    values = (device.host, device.username, device.password, device.tls_mode, device.tls_fingerprint)
+    values = (device.host, device.username, device.password, device.tls_mode, device.tls_fingerprint, device.web_protocol)
     return hashlib.sha256(json.dumps(values).encode("utf-8")).hexdigest()
 
 
@@ -152,7 +152,7 @@ class DeviceTestWorker(QObject):
                     fingerprint_sha256=tls_fingerprint,
                 )
             meter_model = (probe_result.model if probe_result is not None else "") or device.model
-            profile = resolve_device_meter_profile(meter_model)
+            profile = resolve_device_meter_profile(meter_model, web_protocol=device.web_protocol)
 
             def read_with_policy(policy: TlsPolicy):
                 effective_policy = replace(
@@ -180,6 +180,8 @@ class DeviceTestWorker(QObject):
                     allow_implicit_name_export=True,
                 )
                 try:
+                    if device.web_protocol != "auto":
+                        return reader.read(web_host, model=meter_model, web_protocol=device.web_protocol)
                     if profile.profile_id == "generic":
                         return reader.read(web_host)
                     return reader.read(web_host, model=meter_model)

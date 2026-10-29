@@ -1,11 +1,11 @@
-# KOMI Report V5.2.14 — คู่มือติดตั้ง ย้ายเครื่อง และกู้คืนข้อมูล
+# KOMI Report V5.2.15 — คู่มือติดตั้ง ย้ายเครื่อง และกู้คืนข้อมูล
 
 > **WAIT BUILD:** ชื่อรุ่นและชื่อไฟล์ด้านล่างเตรียมไว้สำหรับการ build ที่จะอนุมัติภายหลัง
 > ยังไม่ใช่คำรับรองว่ามีแพ็กเกจรุ่นนี้หรือผ่านติดตั้งแล้ว คู่ทดสอบเครื่องนี้ + Proxmox VM 105 รอหลัง build
 
 ## สถานะชุดติดตั้ง
 
-ชุดติดตั้ง V5.2.14 ตามคู่มือนี้เป็น **UNSIGNED INSTALLATION CANDIDATE** สำหรับการติดตั้งที่ลูกค้าและผู้ดูแลระบบยอมรับสถานะ Unknown Publisher/ไม่ notarized แล้วเท่านั้น ไม่ใช่หลักฐานว่า Microsoft หรือ Apple รับรอง Publisher
+ชุดติดตั้ง V5.2.15 ตามคู่มือนี้เป็น **UNSIGNED INSTALLATION CANDIDATE** สำหรับการติดตั้งที่ลูกค้าและผู้ดูแลระบบยอมรับสถานะ Unknown Publisher/ไม่ notarized แล้วเท่านั้น ไม่ใช่หลักฐานว่า Microsoft หรือ Apple รับรอง Publisher
 
 ค่า SHA-256 ใช้ยืนยันว่าไฟล์ที่ได้รับตรงกับไฟล์ที่ผู้ส่งมอบจัดทำและไม่เสียหายระหว่างส่ง แต่ไม่สามารถแทน Digital Signature, Authenticode, Developer ID หรือการตรวจ Malware ได้
 
@@ -30,7 +30,7 @@ Get-FileHash .\KOMI_Report_V5_2_14_Windows_x64_Installer.exe -Algorithm SHA256
 3. ชุดติดตั้ง unsigned อาจแสดง **Unknown Publisher** หรือ Microsoft Defender SmartScreen
 4. ถ้าหน้าต่างมี **More info → Run anyway** ให้ใช้ได้เฉพาะเมื่อรับไฟล์จากผู้ส่งมอบที่เชื่อถือได้และ SHA-256 ตรงเท่านั้น
 5. Smart App Control หรือ App Control Policy ขององค์กรอาจบล็อกโดยไม่มีปุ่ม Run anyway ในกรณีนี้ให้หยุดติดตั้งและให้ฝ่าย IT ตรวจ/อนุญาต Artifact ที่มี SHA-256 ตรง ห้ามปิด Defender, Smart App Control หรือแก้ Policy เพื่อหลบการตรวจ
-6. เปิด KOMI Report V5.2.14 จาก Start Menu หรือ Desktop shortcut
+6. เปิด KOMI Report V5.2.15 จาก Start Menu หรือ Desktop shortcut
 7. ทำ Setup Wizard ตามหัวข้อ Primary หรือ Secondary ใน `CUSTOMER_GUIDE_V5_2.md`
 8. ตรวจหน้าอุปกรณ์ด้วยปุ่ม **อ่านข้อมูลตอนนี้**
 9. ตรวจ Web Report จาก URL ใน Settings → การตั้งค่าขั้นสูง → รายงานผ่าน LAN
@@ -47,7 +47,7 @@ shasum -a 256 "/path/to/KOMI_Report_V5_2_14_macOS.dmg"
 ```
 
 1. ตรวจว่าค่า Hash ตรงกับ `CHECKSUMS.sha256`
-2. เปิด DMG แล้วลาก KOMI Report V5.2.14 ไป Applications
+2. เปิด DMG แล้วลาก KOMI Report V5.2.15 ไป Applications
 3. ชุดติดตั้ง unsigned/not notarized อาจถูก Gatekeeper ปฏิเสธ และไม่รับประกันว่าจะมีปุ่ม Open Anyway
 4. หาก macOS หรือนโยบายองค์กรปฏิเสธ ให้หยุดติดตั้งและส่ง Hash/ข้อความแจ้งเตือนให้ผู้ส่งมอบหรือฝ่าย IT ตรวจ ห้ามปิด Gatekeeper, ใช้คำสั่งลบ quarantine หรือแก้ Policy เพื่อหลบการตรวจ
 5. เมื่อระบบอนุญาตตามนโยบายแล้ว ให้เปิดแอปและทำ Setup Wizard
@@ -78,7 +78,7 @@ Database ที่กำลังใช้จะไม่ถูกเขีย�
 
 1. Exit โปรแกรมและ Backup Database
 2. ถอนโปรแกรม
-3. ติดตั้ง V5.2.14 ใหม่
+3. ติดตั้ง V5.2.15 ใหม่
 4. เลือก Database เดิมหรือ Import ใน Wizard
 5. ตรวจเครื่องพิมพ์ ราคา ประวัติ รายงาน Auto-start และ Web Report
 

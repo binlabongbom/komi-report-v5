@@ -119,15 +119,15 @@ def test_dialog_confirmation_applies_all_changed_rows():
 def test_discount_only_batch_preserves_issued_rows_and_periods_and_retry():
     original = postings()
     PricingRepository().set_prices(0, date(2026, 7, 1), PriceList(a4_color=1))
-    set_cfg("waste_paper_pct", "12.5")
+    set_cfg("waste_paper_pct", "50")
     service = BatchRepricingService()
     assert not service.preview(*SCOPE)["changed"]
     preview = service.preview(*SCOPE, apply_current_discount=True)
     assert len(preview["changed"]) == 2
     assert preview["skipped"] == [original[2]]
     row = preview["changed"][0]
-    assert (row["old_waste_basis_points"], row["waste_basis_points"]) == (200, 1250)
-    assert (row["old_net_cents"], row["net_cents"]) == (294, 263)
+    assert (row["old_waste_basis_points"], row["waste_basis_points"]) == (200, 5000)
+    assert (row["old_net_cents"], row["net_cents"]) == (300, 200)
     args = dict(expected_revision=preview["revision"], actor="Fixture PC", reason="Discount correction", apply_current_discount=True)
     results = service.confirm(*SCOPE, **args)
     set_cfg("waste_paper_pct", "20")
@@ -136,11 +136,11 @@ def test_discount_only_batch_preserves_issued_rows_and_periods_and_retry():
         service.confirm(*SCOPE, **{**args, "apply_current_discount": False})
     for old_id, new_id in zip(original, results):
         old, new = get_audit_row(old_id), get_audit_row(new_id)
-        assert old.net_cents == 294 and new.net_cents == 263
+        assert old.net_cents == 300 and new.net_cents == 200
         assert old.period_start == new.period_start and old.period_end == new.period_end
         assert old.delta_json == new.delta_json
     with _open(commit=False) as conn:
-        assert conn.execute("SELECT SUM(net_cents) FROM billing_ledger WHERE entry_kind!='hold'").fetchone()[0] == 526
+        assert conn.execute("SELECT SUM(net_cents) FROM billing_ledger WHERE entry_kind!='hold'").fetchone()[0] == 400
 
 
 def test_discount_change_after_preview_rejects_without_writing_anything():

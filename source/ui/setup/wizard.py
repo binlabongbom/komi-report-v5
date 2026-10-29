@@ -1132,6 +1132,7 @@ class SetupWizardV5(QDialog):
                     "password": device.password,
                     "tls_mode": device.tls_mode,
                     "tls_fingerprint": device.tls_fingerprint,
+                    "web_protocol": device.web_protocol,
                     "result": result,
                 },
                 select=device.enabled,
@@ -1203,6 +1204,7 @@ class SetupWizardV5(QDialog):
                 "password": payload.get("password") or "",
                 "tls_mode": payload.get("tls_mode") or "system",
                 "tls_fingerprint": payload.get("tls_fingerprint") or "",
+                "web_protocol": payload.get("web_protocol") or "auto",
                 "result": payload.get("result") or {"online": True, "web_ok": False},
                 "is_virtual": bool(payload.get("is_virtual", False)),
                 "found_in_registration_scan": bool(payload.get("found_in_registration_scan", False)),
@@ -1349,7 +1351,7 @@ class SetupWizardV5(QDialog):
         if entry is None:
             return
         dialog = QDialog(self)
-        dialog.setWindowTitle(f"User / Password · {host}")
+        dialog.setWindowTitle(f"Web Connection / User / Password · {host}")
         layout = QVBoxLayout(dialog)
         form = QFormLayout()
         username = QLineEdit(entry["username"])
@@ -1360,6 +1362,13 @@ class SetupWizardV5(QDialog):
         )
         password = QLineEdit(current_password)
         password.setEchoMode(QLineEdit.EchoMode.Password)
+        protocol = QComboBox()
+        protocol.setObjectName("web_protocol")
+        protocol.addItem("Auto (model profile)", "auto")
+        protocol.addItem("Legacy XML · Public", "legacy_xml_public")
+        protocol.addItem("Legacy XML · Administrator", "legacy_xml_admin")
+        protocol.setCurrentIndex(max(0, protocol.findData(entry.get("web_protocol", "auto"))))
+        form.addRow("Web Connection", protocol)
         form.addRow("Username", username)
         form.addRow("Password", password)
         layout.addLayout(form)
@@ -1377,6 +1386,21 @@ class SetupWizardV5(QDialog):
                 "enter a password only when the customer changed it",
             )
         )
+        auto_hint = hint.text()
+        def protocol_changed() -> None:
+            selected = protocol.currentData()
+            public = selected == "legacy_xml_public"
+            username.setEnabled(not public)
+            password.setEnabled(not public)
+            hint.setText(
+                "Public XML: อ่าน Counter โดยไม่เข้าสู่ระบบ แม้เคยบันทึกบัญชีไว้"
+                if public else
+                "Administrator XML: ใช้บัญชีที่คุณกรอกเท่านั้น ไม่ลองรหัสเริ่มต้น"
+                if selected == "legacy_xml_admin" else auto_hint
+            )
+        protocol.currentIndexChanged.connect(protocol_changed)
+        protocol_changed()
+        hint.setWordWrap(True)
         hint.setStyleSheet(text_styles.label(C_TEXT2))
         layout.addWidget(hint)
         actions = QHBoxLayout()
@@ -1390,6 +1414,7 @@ class SetupWizardV5(QDialog):
         layout.addLayout(actions)
         def credentials_finished(result: int) -> None:
             if result == int(QDialog.DialogCode.Accepted):
+                entry["web_protocol"] = str(protocol.currentData())
                 entry["username"] = username.text().strip() or DEFAULT_ADMIN_USERNAME
                 entry["password"] = password.text()
                 entry["credential_origin"] = "customer" if password.text() else ""
@@ -1804,6 +1829,7 @@ class SetupWizardV5(QDialog):
                     password=entry["password"],
                     tls_mode=entry.get("tls_mode", "system"),
                     tls_fingerprint=entry.get("tls_fingerprint", ""),
+                    web_protocol=entry.get("web_protocol", "auto"),
                     enabled=True,
                     model=result.get("model") or entry["model"].replace("—", ""),
                     serial=result.get("serial") or entry["serial"].replace("—", ""),

@@ -800,7 +800,7 @@ class DailyCacheStore:
 
     def repair_pending_ledger(self) -> int:
         """Recover safely after a crash between source insert and ledger post."""
-        from services.billing_ledger import FORMULA_VERSION, post_daily_record
+        from services.billing_ledger import FORMULA_VERSION, LEGACY_FORMULA_VERSION, post_daily_record
         with _open(commit=False) as conn:
             rows = conn.execute("""SELECT d.id,d.source_json FROM daily_meter_records d
                 WHERE NOT EXISTS (SELECT 1 FROM billing_ledger l WHERE l.source_daily_record_id=d.id)""").fetchall()
@@ -810,7 +810,7 @@ class DailyCacheStore:
                 source = json.loads(source_json)
             except (TypeError, json.JSONDecodeError):
                 continue
-            if not isinstance(source, dict) or source.get("billing_ledger_expected") != FORMULA_VERSION:
+            if not isinstance(source, dict) or source.get("billing_ledger_expected") not in {FORMULA_VERSION, LEGACY_FORMULA_VERSION}:
                 continue
             try:
                 repaired += int(post_daily_record(int(record_id)) is not None)

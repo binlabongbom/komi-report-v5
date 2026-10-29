@@ -227,3 +227,54 @@ def calculate_cost(deltas: dict[str, int | float], categories: dict[str, CostCat
 def apply_waste_discount(amount: float, waste_pct: float) -> float:
     pct = min(100.0, max(0.0, float(waste_pct)))
     return round(max(0.0, amount) * (100.0 - pct) / 100.0, 2)
+
+
+WASTE_QUANTITY_TOOLTIP = (
+    "หักเปอร์เซ็นต์กระดาษเสียจากจำนวนแผ่น แล้วปัดเป็นจำนวนเต็มก่อนคูณราคาต่อแผ่น "
+    "เช่น 101 แผ่น หัก 5% เหลือ 95.95 ปัดเป็น 96 แผ่น (เศษ .5 ปัดขึ้น) "
+    "คำนวณแยกตามประเภทกระดาษต่อเครื่องต่อวัน โดยไม่เปลี่ยนมิเตอร์ดิบ"
+)
+
+
+def quantity_first_amounts(deltas, categories, price_cents, waste_basis_points):
+    """Round net pages once per category/device/day, then multiply integer cents."""
+    from decimal import Decimal, ROUND_HALF_UP
+    if type(waste_basis_points) is not int or not 0 <= waste_basis_points <= 10000:
+        raise ValueError('Invalid waste percentage')
+    quantities = {category.value: Decimal(0) for category in CostCategory if category != CostCategory.NO_CHARGE}
+    for key, value in deltas.items():
+        category = categories.get(key, CostCategory.NO_CHARGE)
+        quantity = Decimal(str(value))
+        if not quantity.is_finite() or quantity < 0:
+            raise ValueError('Invalid paper quantity')
+        if category in quantities:
+            quantities[category] += quantity
+    gross = Decimal(0)
+    billable, category_net = {}, {}
+    for category, quantity in quantities.items():
+        rate = price_cents.get(category, 0)
+        if type(rate) is not int or rate < 0:
+            raise ValueError('Invalid price cents')
+        gross += quantity * rate
+        billable[category] = int((quantity * Decimal(10000 - waste_basis_points) / 10000)
+                                 .quantize(Decimal('1'), rounding=ROUND_HALF_UP))
+        category_net[category] = billable[category] * rate
+    return int(gross.quantize(Decimal('1'), rounding=ROUND_HALF_UP)), sum(category_net.values()), {
+        'policy': 'category_device_day_half_up_before_unit_price.v1',
+        'raw_category_pages': {key: str(value) for key, value in quantities.items()},
+        'billable_category_pages': billable,
+        'category_net_cents': category_net,
+    }
+
+
+def provisional_quantity_cost(deltas, categories, prices, waste_pct):
+    """Use the same cent and percentage precision as a posted ledger entry."""
+    from decimal import Decimal, ROUND_HALF_UP
+    rates = {category.value: int((Decimal(str(prices.price(category))) * 100)
+             .quantize(Decimal('1'), rounding=ROUND_HALF_UP)) for category in CostCategory}
+    percent = Decimal(str(waste_pct))
+    if not percent.is_finite() or not 0 <= percent <= 100:
+        raise ValueError('Invalid waste percentage')
+    bp = int((percent * 100).quantize(Decimal('1'), rounding=ROUND_HALF_UP))
+    gross, net, _audit = quantity_first_amounts(deltas, categories, rates, bp)
+    return gross / 100, net / 100

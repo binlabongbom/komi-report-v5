@@ -73,10 +73,13 @@ class MeterReader:
         self.credential_store.delete(self._host(host))
 
 
-    def read(self, host: str, *, model: str = "") -> MeterReading:
+    def read(self, host: str, *, model: str = "", web_protocol: str | None = None) -> MeterReading:
         host = self._host(host)
         warnings: list[str] = []
-        profile = resolve_device_meter_profile(model)
+        if web_protocol is None:
+            protocol_provider = getattr(self.credential_store, "web_protocol", None)
+            web_protocol = protocol_provider(host) if callable(protocol_provider) else "auto"
+        profile = resolve_device_meter_profile(model, web_protocol=web_protocol)
         policy_provider = getattr(self.credential_store, "tls_policy", None)
         tls_policy = policy_provider(host) if callable(policy_provider) else TlsPolicy()
         tls_policy = replace(tls_policy, compatibility=profile.tls_compatibility)

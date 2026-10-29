@@ -261,8 +261,12 @@ class PricingStep(QWidget):
         billing.setVerticalSpacing(4)
         self.waste_paper_pct = QDoubleSpinBox()
         self.waste_paper_pct.setRange(0, 100)
+        from config import DEFAULT_WASTE_PCT
+        self.waste_paper_pct.setValue(DEFAULT_WASTE_PCT)
         self.waste_paper_pct.setDecimals(1)
         self.waste_paper_pct.setSuffix(" %")
+        from services.pricing import WASTE_QUANTITY_TOOLTIP
+        self.waste_paper_pct.setToolTip(WASTE_QUANTITY_TOOLTIP)
         self.billing_end_day = WizardComboBox()
         self.billing_end_day.setProperty("i18n_items", True)
         for day in range(1, 32):
@@ -276,6 +280,7 @@ class PricingStep(QWidget):
         self.waste_paper_pct.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.NoButtons)
         style_wizard_combo(self.billing_end_day, self.palette(), popup_width=260)
         waste_label = QLabel("ส่วนลดกระดาษเสีย")
+        waste_label.setToolTip(WASTE_QUANTITY_TOOLTIP)
         waste_label.setStyleSheet(
             text_styles.label("#334155", font_weight="700", border="none", background="transparent")
         )

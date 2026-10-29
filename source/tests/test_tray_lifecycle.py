@@ -151,6 +151,7 @@ def test_close_really_exits_when_tray_is_unavailable(monkeypatch):
     window = _WindowDouble()
     event = _Event()
     monkeypatch.setattr(app.QSystemTrayIcon, "isSystemTrayAvailable", lambda: False)
+    monkeypatch.setattr(app, "confirm_meter_collection_exit", lambda *a, **kw: True)
 
     app.MainWindow.closeEvent(window, event)
 
@@ -205,6 +206,7 @@ def test_close_keeps_app_open_when_settings_draft_is_not_discarded(monkeypatch):
     window.allow_exit = False
     event = _Event()
     monkeypatch.setattr(app.QSystemTrayIcon, "isSystemTrayAvailable", lambda: False)
+    monkeypatch.setattr(app, "confirm_meter_collection_exit", lambda *a, **kw: True)
 
     app.MainWindow.closeEvent(window, event)
 
@@ -273,12 +275,12 @@ def test_tray_stop_requires_confirmation_and_preserves_unsaved_draft(monkeypatch
 
     def question(*args):
         questions.append(args)
-        return app.QMessageBox.StandardButton.Yes if confirm else app.QMessageBox.StandardButton.Cancel
+        return confirm
 
-    monkeypatch.setattr(app.QMessageBox, "question", question)
+    monkeypatch.setattr(app, "confirm_meter_collection_exit", question)
     monkeypatch.setattr(app.QApplication, "instance", lambda: type("Application", (), {"quit": lambda self: quits.append(True)})())
     app.MainWindow._exit_application(window)
-    assert questions[0][-1] == app.QMessageBox.StandardButton.Cancel
+    assert len(questions) == 1
     assert window.polling.stopped == expected
     assert window.registration.stopped == expected
     assert window.web_service.stopped == expected
@@ -288,3 +290,33 @@ def test_tray_stop_requires_confirmation_and_preserves_unsaved_draft(monkeypatch
         app.MainWindow._exit_application(window)
         assert len(questions) == 1
         assert len(quits) == 1
+
+
+def test_no_tray_cancel_keeps_visible_window_and_collectors(monkeypatch):
+    window, event = _WindowDouble(), _Event()
+    monkeypatch.setattr(app.QSystemTrayIcon, "isSystemTrayAvailable", lambda: False)
+    prompts = []
+    monkeypatch.setattr(app, "confirm_meter_collection_exit", lambda *a, **kw: prompts.append(kw) or False)
+    app.MainWindow.closeEvent(window, event)
+    assert prompts == [{"tray_unavailable": True}]
+    assert window.hidden == window.polling.stopped == 0
+    assert event.ignored and not event.accepted
+
+
+def test_os_session_close_never_prompts_or_hides(monkeypatch):
+    window, event = _WindowDouble(), _Event()
+    monkeypatch.setattr(app.QApplication, "instance", lambda: type("Session", (), {"isSavingSession": lambda self: True})())
+    monkeypatch.setattr(app, "confirm_meter_collection_exit", lambda *a, **kw: pytest.fail("OS shutdown must not prompt"))
+    app.MainWindow.closeEvent(window, event)
+    assert window.hidden == 0
+    assert window.polling.stopped == 1
+    assert event.accepted and not event.ignored
+
+
+def test_x_hides_even_when_old_close_preference_was_disabled(monkeypatch):
+    window, event = _WindowDouble(), _Event()
+    monkeypatch.setattr(app, "get_cfg", lambda *args: "0")
+    monkeypatch.setattr(app.QSystemTrayIcon, "isSystemTrayAvailable", lambda: True)
+    app.MainWindow.closeEvent(window, event)
+    assert window.hidden == 1 and window.polling.stopped == 0
+    assert event.ignored

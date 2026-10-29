@@ -19,12 +19,12 @@ def test_stop_confirmation_and_duplicate_actions(monkeypatch, approved):
     prompts = []
     def question(*args):
         prompts.append(args)
-        return QMessageBox.StandardButton.Yes if approved else QMessageBox.StandardButton.Cancel
-    monkeypatch.setattr(QMessageBox, "question", question)
+        return approved
+    monkeypatch.setattr(agent_tray, "confirm_meter_collection_exit", question)
     try:
         tray.confirm_stop()
         assert len(stopped) == int(approved)
-        assert prompts[0][-1] == QMessageBox.StandardButton.Cancel
+        assert len(prompts) == 1
         assert tray.open_action.isEnabled() != approved
         if approved:
             tray.confirm_stop()

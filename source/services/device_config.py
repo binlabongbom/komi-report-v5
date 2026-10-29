@@ -38,6 +38,7 @@ class DeviceConfig:
     credential_ref: str = ""
     tls_mode: str = "system"
     tls_fingerprint: str = ""
+    web_protocol: str = "auto"
 
     def __post_init__(self) -> None:
         if not 0 <= self.slot <= 2:
@@ -52,6 +53,8 @@ class DeviceConfig:
         except ValueError:
             if any(char.isspace() for char in host) or "." not in host or "/" in host:
                 raise ValueError("IP address หรือ hostname ไม่ถูกต้อง") from None
+        if self.web_protocol not in {"auto", "legacy_xml_public", "legacy_xml_admin"}:
+            raise ValueError("Unsupported Web Connection protocol")
         TlsPolicy(mode=self.tls_mode, fingerprint_sha256=self.tls_fingerprint)
 
 
@@ -137,7 +140,7 @@ class DeviceConfigRepository:
         with _open(commit=False) as conn:
             rows = conn.execute(
                 f"""SELECT slot,name,host,username,credential_ref,tls_mode,tls_fingerprint,enabled,model,serial,
-                           connection_status,last_checked_at,last_success_at,last_error,last_total
+                           connection_status,last_checked_at,last_success_at,last_error,last_total,web_protocol
                     FROM devices {where} ORDER BY slot"""
             ).fetchall()
         return [self._from_row(row) for row in rows]
@@ -147,7 +150,7 @@ class DeviceConfigRepository:
         with _open(commit=False) as conn:
             row = conn.execute(
                 """SELECT slot,name,host,username,credential_ref,tls_mode,tls_fingerprint,enabled,model,serial,
-                          connection_status,last_checked_at,last_success_at,last_error,last_total
+                          connection_status,last_checked_at,last_success_at,last_error,last_total,web_protocol
                    FROM devices WHERE slot=?""",
                 (slot,),
             ).fetchone()
@@ -205,8 +208,8 @@ class DeviceConfigRepository:
                     conn.execute(
                         """INSERT INTO devices(
                                slot,name,host,username,password,credential_ref,tls_mode,tls_fingerprint,enabled,model,serial,
-                               connection_status,last_checked_at,last_success_at,last_error,last_total,updated_at
-                           ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                               connection_status,last_checked_at,last_success_at,last_error,last_total,updated_at,web_protocol
+                           ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                            ON CONFLICT(slot) DO UPDATE SET
                              name=excluded.name,host=excluded.host,username=excluded.username,
                              password='',credential_ref=excluded.credential_ref,
@@ -215,7 +218,8 @@ class DeviceConfigRepository:
                              model=excluded.model,serial=excluded.serial,
                              connection_status=excluded.connection_status,
                              last_checked_at=excluded.last_checked_at,last_success_at=excluded.last_success_at,
-                             last_error=excluded.last_error,last_total=excluded.last_total,updated_at=excluded.updated_at""",
+                             last_error=excluded.last_error,last_total=excluded.last_total,updated_at=excluded.updated_at,
+                             web_protocol=excluded.web_protocol""",
                         (
                             item.slot,
                             item.name.strip(),
@@ -234,6 +238,7 @@ class DeviceConfigRepository:
                             item.last_error,
                             item.last_total,
                             now,
+                            item.web_protocol,
                         ),
                     )
                 if registration_inventory_json is not None:
@@ -323,6 +328,13 @@ class DeviceConfigRepository:
                     pass
             raise
 
+    def web_protocol(self, host: str) -> str:
+        with _open(commit=False) as connection:
+            row = connection.execute(
+                "SELECT web_protocol FROM devices WHERE host=?", (host.strip(),)
+            ).fetchone()
+        return str(row[0] or "auto") if row else "auto"
+
     def tls_policy(self, host: str) -> TlsPolicy:
         with _open(commit=False) as connection:
             row = connection.execute(
@@ -386,6 +398,7 @@ class DeviceConfigRepository:
             last_success_at=row[12],
             last_error=row[13] or "",
             last_total=row[14],
+            web_protocol=row[15] or "auto",
         )
 
 
@@ -406,3 +419,6 @@ class DatabaseCredentialStore(CredentialStore):
 
     def tls_policy(self, host: str) -> TlsPolicy:
         return self.repository.tls_policy(host)
+
+    def web_protocol(self, host: str) -> str:
+        return self.repository.web_protocol(host)

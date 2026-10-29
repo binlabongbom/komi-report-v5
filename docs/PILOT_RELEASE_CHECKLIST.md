@@ -1,4 +1,4 @@
-# KOMI Report V5.2.14 — Unsigned Pilot Checklist
+# KOMI Report V5.2.15 — Unsigned Pilot Checklist
 
 **WAIT BUILD:** checklist นี้ยังไม่ใช่ผลทดสอบแพ็กเกจรุ่นนี้ ตรวจสถานะ source ล่าสุดจาก
 `V5_2_14_WORK_PLAN.md` และทดสอบเครื่องนี้ + Proxmox VM 105 หลังได้รับอนุมัติ build เท่านั้น
