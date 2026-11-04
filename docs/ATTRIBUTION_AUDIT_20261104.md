@@ -28,3 +28,13 @@ Regression tests for the first three defects failed on the original code, then p
 Linux isolated checks: 107 collection/history/report tests, 72 setup tests, one additional warning UI test, 42 cloud smoke tests and 19 Web tests passed; focused lint, version alignment and Web production build passed. Original regression run: 45 passed, 3 failed as expected. Test evidence remains in `/workspace/komi-audit-*-20261104`.
 
 Windows full regression and artifact build must complete before accepting a Windows installer. Hosted tests and synthetic fixtures do not replace real-printer acceptance or clean-machine installation/upgrade testing. Confirm customer version, report dates and fresh Slot 2 Test/Sync diagnostics to determine the customer's remaining cause.
+
+## Full Windows gate follow-up
+
+Run 41813365325 completed with 2,206 passed and 10 failed; no installer job ran. All ten failures also reproduced in an isolated checkout of unchanged 5.2.15 (55 passed / 10 failed across the six affected suites), establishing inherited release-gate gaps.
+
+- Correct shared billing preview to use the same quantity-first pricing helper as the immutable ledger. The existing test covers atomic confirmation, idempotence, conservation and rollback; 301 pages at 2.5% waste now previews and posts 293 billable pages, not a monetary-discount result of 293.48.
+- Preserve the maintained manual asset version (5.2.12) instead of demanding or relabeling nonexistent PDFs for every application patch release.
+- Refresh version, migration and pricing fixtures for the shipped quantity-first contract while retaining their invariants and checks. No tests are skipped or removed.
+
+All 99 focused gate/pricing tests pass on Linux after these corrections, as do lint and the 5.2.16 version gate. The full Windows gate is required again on the updated source SHA.

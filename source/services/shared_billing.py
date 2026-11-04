@@ -11,7 +11,7 @@ from pathlib import Path
 
 from database import _open, get_db_path, config_write_transaction
 from services.billing_ledger import post_daily_record, _cents, _basis_points
-from services.pricing import PricingRepository, CostCategory
+from services.pricing import PricingRepository, CostCategory, quantity_first_amounts
 from services.shared_report_history import load_shared_counter_days
 from services.reconciliation import reconcile_web_counters
 from services.peer_change_events import notify_local_change
@@ -73,10 +73,10 @@ class SharedBillingService:
                 'covered_days': covered, 'remarks': sorted({s for r in items for s in r.remarks}),
                 'reconciliation': {'billing_safe': True, 'basis': 'verified_shared_web_projection'},
                 'device_identity': {'serial':first.serial, 'name':first.metadata['printer_name'], 'host':first.metadata['host']}}
-            gross = sum(value * cents[categories[key]] for key, value in delta.items())
             discount = _basis_points(float(policy['waste_paper_pct']))
+            gross, net, _audit = quantity_first_amounts(delta, categories, cents, discount)
             ready.append({'day':day.isoformat(), 'delta':delta, 'categories':categories, 'prices':cents,
-                'gross_cents':gross, 'net_cents':(gross*(10000-discount)+5000)//10000,
+                'gross_cents':gross, 'net_cents':net,
                 'source':source,
                 'opening': {r.field:int(r.opening) for r in items if r.opening is not None and r.opening.denominator == 1},
                 'closing': {r.field:int(r.closing) for r in items if r.closing is not None and r.closing.denominator == 1},

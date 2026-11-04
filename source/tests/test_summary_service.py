@@ -382,12 +382,12 @@ class SummaryServiceTests(unittest.TestCase):
         self.assertEqual(summary["metrics"]["total"], 0)
         self.assertEqual(summary["metrics"]["provisional_total"], 10)
         self.assertEqual(summary["metrics"]["display_total"], 10)
-        self.assertEqual(summary["metrics"]["provisional_cost"], 21.56)
+        self.assertEqual(summary["metrics"]["provisional_cost"], 22.0)
         self.assertEqual(summary["machine_values"], [10])
         self.assertEqual(summary["quality"]["provisional_days"], 1)
         self.assertEqual(summary["quality"]["status_counts"]["online"], 1)
         self.assertEqual(summary["devices"][0]["provisional_total"], 10)
-        self.assertEqual(summary["devices"][0]["display_cost"], 21.56)
+        self.assertEqual(summary["devices"][0]["display_cost"], 22.0)
 
 
 if __name__ == "__main__":
