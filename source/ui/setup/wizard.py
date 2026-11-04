@@ -1242,6 +1242,9 @@ class SetupWizardV5(QDialog):
             prefix = "● VIRTUAL · " if entry.get("is_virtual") else "● "
             status, color = f"{prefix}พร้อมใช้งาน · SNMP + Web ผ่าน", C_GREEN
             background = QColor("#EDF8F2") if selected else None
+            if result.get("web_warnings"):
+                status, color = f"{prefix}อ่านมิเตอร์ได้ · มีคำเตือน กรุณาตรวจรายละเอียด", C_TEXT2
+                background = QColor("#FFF4DB") if selected else None
         elif result.get("session_busy"):
             status, color = (
                 "● Web กำลังถูกใช้งาน · Logout หน้าเครื่องแล้วตรวจสอบอีกครั้ง",
@@ -1306,7 +1309,9 @@ class SetupWizardV5(QDialog):
                 and not (result.get("online") and result.get("web_ok"))
             ):
                 item.setForeground(QColor(C_RED) if column == 4 else QColor("#7F1D1D"))
-            item.setToolTip(str(result.get('error') or value) if column == 4 else str(value))
+            details = "\n\n".join(filter(None, (str(result.get('error') or ''),
+                                               *result.get('web_warnings', ()))))
+            item.setToolTip((details or str(value)) if column == 4 else str(value))
             self.device_table.setItem(row, column, item)
         if result.get("session_busy"):
             action_text = "เปิด Web"
@@ -1331,7 +1336,9 @@ class SetupWizardV5(QDialog):
     def _device_table_action(self, row: int, column: int) -> None:
         if column == 4 and 0 <= row < len(self.discovered_devices):
             entry = self.discovered_devices[row]
-            error = entry.get('result', {}).get('error')
+            result = entry.get('result', {})
+            error = "\n\n".join(filter(None, (str(result.get('error') or ''),
+                                            *result.get('web_warnings', ()))))
             if error:
                 self._show_wizard_message(f"ผลการเชื่อมต่อ · {entry['name']}", str(error))
             return

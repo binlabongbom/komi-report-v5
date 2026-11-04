@@ -173,8 +173,11 @@ class MeterReader:
                 )
             except WebConnectionError as err:
                 admin_failure = err
+                from services.support_diagnostics import diagnostic_report
+
                 warnings.append(
-                    "Administrator session ใช้งานไม่ได้หลังลองเพียงหนึ่งครั้ง; ใช้ public fallback เพื่อหลีกเลี่ยง lockout"
+                    "Administrator session ใช้งานไม่ได้หลังลองเพียงหนึ่งครั้ง; ใช้ public fallback เพื่อหลีกเลี่ยง lockout\n"
+                    + diagnostic_report(err, stage="WEB / Administrator fallback", target=host)
                 )
         try:
             result = public_connector.collect_result(host)

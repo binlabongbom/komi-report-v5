@@ -444,3 +444,25 @@ def test_midnight_rollover_defers_active_slot_until_poll_finishes(tmp_path):
     assert cache.path(0, stamp.date()).exists() is False
     saved = [event for event in pipeline_log.snapshot() if event.action == "Daily rollup saved"]
     assert len(saved) == 1
+
+
+def test_partial_web_read_warning_is_visible_in_sync_log(tmp_path):
+    from dataclasses import replace
+    class PartialReader(FakeReader):
+        def read(self, host):
+            return replace(super().read(host), warnings=("User counter response unavailable; token=private-token",))
+    QCoreApplication.instance() or QCoreApplication([])
+    set_db_path(tmp_path / "polling.db")
+    init_db()
+    repository = DeviceConfigRepository()
+    device = DeviceConfig(0, "Office", "192.0.2.10", last_total=100)
+    repository.replace_all([device])
+    pipeline_log.clear()
+    coordinator = BackgroundPollingCoordinator(repository, probe=FakeProbe(), reader=PartialReader(),
+        cache=DailyCacheStore(tmp_path / "cache"), subject_cache=SubjectDailyCacheStore(tmp_path / "subjects"))
+    assert coordinator._poll_device(device, force_web=True)
+    warnings = [event for event in pipeline_log.snapshot() if event.action == "Web read warning"]
+    assert len(warnings) == 1
+    assert "User counter response unavailable" in str(warnings[0].value)
+    assert "private-token" not in str(warnings[0].value)
+    assert warnings[0].status == "warning"

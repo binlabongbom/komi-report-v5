@@ -108,3 +108,15 @@ def test_live_reading_saves_into_existing_report_database_and_rejects_duplicate(
                 service.save(0, preview)
     finally:
         database.set_db_path(original_path)
+
+
+@pytest.mark.parametrize("kind", ["user", "track", "account"])
+def test_live_report_preserves_each_supported_subject_type(kind):
+    from dataclasses import replace
+    reading = replace(sample_reading(), counters=(
+        counter(f"counter.{kind}.total.total", 42, subject_type=kind,
+                subject_id="7", subject_name="operator-a"),
+    ))
+    accounts = meter_reading_to_report(reading)["accounts"]
+    assert accounts and accounts[0]["subject_type"] == kind
+    assert accounts[0]["total"] == 42

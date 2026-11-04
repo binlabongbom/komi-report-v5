@@ -279,6 +279,13 @@ class DeviceTestWorker(QObject):
                     )
                 except ValueError:
                     credential_default_index = None
+        from komi_snmp_profiler.models import PUBLIC_USER_DISABLED_MARKER
+        from services.support_diagnostics import safe_text
+
+        web_warnings = tuple(
+            safe_text(warning) for warning in (reading.warnings if reading is not None else ())
+            if warning != PUBLIC_USER_DISABLED_MARKER
+        )
         return {
             "online": probe_result is not None or reading is not None,
             "model": probe_result.model if probe_result else "",
@@ -290,6 +297,7 @@ class DeviceTestWorker(QObject):
             "tls_mode": tls_mode,
             "tls_fingerprint": tls_fingerprint,
             "web_auth_state": reading.auth_state.value if reading is not None else "",
+            "web_warnings": web_warnings,
             "credential_required": credential_required,
             "session_busy": session_busy,
             "credential_default_index": credential_default_index,

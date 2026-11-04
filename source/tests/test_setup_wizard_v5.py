@@ -2560,3 +2560,19 @@ def test_waste_hover_explains_quantity_rounding_and_preserves_zero():
     finally:
         wizard.close()
         app.processEvents()
+
+
+def test_device_test_worker_preserves_partial_read_warnings(monkeypatch):
+    monkeypatch.setattr("ui.setup.workers.SnmpTotalProbe.read", lambda *_args: SimpleNamespace(
+        model="bizhub 950i", serial="SYNTHETIC-950", total=100, total_oid="1.2.3", oid_values=()))
+    def read(_reader, host, **_kwargs):
+        return MeterReading.create(host, [WebCounterValue("counter.total.total", "Total", 100, "Total", "test")],
+            "web_connection_public", WebAuthState.PUBLIC_FALLBACK,
+            ["Administrator session unavailable; token=private-token"])
+    monkeypatch.setattr("ui.setup.workers.MeterReader.read", read)
+    device = DeviceConfig(0, "Synthetic", "192.0.2.10", password="fixture-password")
+    result = DeviceTestWorker([device])._test(device)
+    assert result["web_ok"] is True
+    assert result["web_auth_state"] == "public_fallback"
+    assert "Administrator session unavailable" in result["web_warnings"][0]
+    assert "private-token" not in result["web_warnings"][0]

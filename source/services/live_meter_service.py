@@ -61,7 +61,7 @@ def _color_total(index: dict[str, int], prefix: str) -> int:
 def _subject_accounts(counters: tuple[WebCounterValue, ...]) -> list[dict]:
     grouped: dict[tuple[str, str, str], dict[str, int]] = {}
     for item in counters:
-        if item.subject_type not in {"user", "track"}:
+        if item.subject_type not in {"user", "track", "account"}:
             continue
         key = (item.subject_type, item.subject_id or "", item.subject_name or item.subject_id or "Unknown")
         grouped.setdefault(key, {})[item.canonical_field] = _number(item.count)
