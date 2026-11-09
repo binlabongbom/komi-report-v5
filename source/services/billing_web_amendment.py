@@ -13,14 +13,16 @@ import sqlite3
 from services.peer_change_events import notify_local_change
 from database import get_db_path
 from komi_snmp_profiler.models import Confidence
-from services.billing_ledger import FORMULA_VERSION, _source_hash, _load_correction_source, _ensure_reversal
+from services.billing_ledger import AUTOMATIC_FORMULA_VERSIONS, _source_hash, _load_correction_source, _ensure_reversal
 from services.billing_periods import billing_month_range
 from services.reconciliation import reconcile_web_counters
 from services.slot_epoch_store import SlotEpochStore
 from services.web_observations import WebObservationStore, validate_event
 from services.web_usage_projection import CounterIdentity, project_counter
 
-WEB_AMENDMENT_VERSION = "komi.billing.web-allocation.v1"
+WEB_AMENDMENT_VERSION = "komi.billing.web-allocation.quantity-first.v2"
+
+from services.pricing import quantity_first_amounts
 MAX_EVENTS = 4096
 MAX_BYTES = 32 * 1024 * 1024
 
@@ -113,7 +115,7 @@ def _preview(conn, slot, epoch_id, start, end, zone, today):
         formula = conn.execute("SELECT formula_version FROM billing_ledger WHERE id=?", (ledger_id,)).fetchone()[0]
         attestation = json.loads(source[18])
         if (source[0] not in {"posting", "replacement"} or source[4] != serial
-                or formula not in {FORMULA_VERSION, "komi.billing.reprice.v1", WEB_AMENDMENT_VERSION}
+                or formula not in AUTOMATIC_FORMULA_VERSIONS
                 or attestation.get("billing_safe") is not True):
             raise ValueError("มีรายการรอตรวจ แก้ด้วยมือ หรือ Serial ต่างกัน ต้องตรวจแยกก่อน")
         # Repricing wraps the original proof; do not permit a smaller window to
@@ -177,7 +179,7 @@ def _preview(conn, slot, epoch_id, start, end, zone, today):
         delta = allocations.get(day, {k: 0 for k in categories})
         if (old and delta == old["delta"]) or (not old and not any(delta.values())):
             continue
-        gross = sum(value * prices[categories[key]] for key, value in delta.items())
+        gross, net, quantity_audit = quantity_first_amounts(delta, categories, prices, discount)
         if gross > 2**63 - 1:
             raise ValueError("ยอดเงินเกินขนาดที่รองรับ")
         period = tuple(d.isoformat() for d in billing_month_range(date.fromisoformat(day), billing_day))
@@ -186,7 +188,7 @@ def _preview(conn, slot, epoch_id, start, end, zone, today):
             raise ValueError("รอบบิลเดิมไม่ตรงนโยบายที่บันทึก ต้องตรวจรายการเดิมก่อน")
         changed.append({"day": day, "ledger_id": old["ledger_id"] if old else None,
             "source": old["source"] if old else None, "delta": delta, "period": period,
-            "gross_cents": gross, "net_cents": (gross * (10000 - discount) + 5000) // 10000,
+            "gross_cents": gross, "net_cents": net, "quantity_pricing": quantity_audit,
             "old_net_cents": old["source"][15] if old else 0,
             "intervals": list(intervals.get(day, {}).values())})
     revision = _source_hash({"database": str(path), "scope": scope, "rows": rows, "sources": sources,
@@ -273,7 +275,8 @@ class BillingWebAmendmentService:
                     "first_success": None, "last_success": None, "sample_count": 0, "error_count": 0, "incomplete": False})
                 reversal, kind = None, "posting"
             key = f"web-allocation:{expected_revision}:{item['day']}"
-            attestation = {"billing_safe": True, "calculation_mode": "reviewed_web_redistribution",
+            attestation = {"billing_safe": True, "quantity_pricing": item["quantity_pricing"],
+                           "calculation_mode": "reviewed_web_redistribution",
                            "web_allocation": proof}
             cursor = conn.execute("""INSERT INTO billing_ledger
                 (entry_kind,device_slot,device_identity,device_name_snapshot,device_serial_snapshot,

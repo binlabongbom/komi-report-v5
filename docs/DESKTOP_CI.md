@@ -15,7 +15,7 @@ Diagnostic cases each use a fresh process to expose cold-start timing.
 Failed batch tracebacks are also printed in the ordinary job log, so an artifact
 download is not required to identify a failing test.
 
-Python comes from `.python-version` (currently 3.14.7). Runtime and development
+Python comes from `.python-version` (currently 3.14.10). Runtime and development
 packages use the existing Windows and development lockfiles with hash checking
 and binary wheels. The job fails on the focused runtime import/unused-code lint
 rules already used for this repository; it does not suppress test failures.
@@ -71,3 +71,25 @@ real top-level outcome counts, separate subtest counts, missing/unexpected cases
 exits and timeouts. Failed subtests also fail the batch. A run left
 with `complete: false` was interrupted or could not collect its tests; it is
 never treated as successful.
+
+
+## Installer validation gates
+
+The optional installer requires three successful jobs in the same workflow:
+
+- `windows-desktop`: the existing complete isolated desktop selection.
+- `web-validation`: pinned Node/npm, `npm ci`, security/numeric/report-user tests,
+  TypeScript, a production Web build and a dependency audit. Every test/build
+  command is attempted after dependency setup; a failure makes the job fail.
+- `release-validation`: source version checks and all five release/build contract
+  suites through `run_desktop_tests.py --suite release`, followed by an audit of
+  the exact Windows runtime lock. The release suite reuses the desktop runner's
+  synthetic home/database, loopback network guard, per-batch process isolation
+  and complete-case evidence. Missing suite files are errors.
+
+Audit findings or audit service errors fail their jobs; they are not ignored.
+Each job uploads its available logs and JSON evidence even on failure. Native
+customer installation and printer UAT remain separate from these automated gates.
+The candidate verifies the pinned official Inno Setup 7.0.2 SHA-256 and a valid
+Authenticode signature before preparing the compiler on its hosted runner.
+No new workflow triggers, custom secrets or write permissions are introduced.

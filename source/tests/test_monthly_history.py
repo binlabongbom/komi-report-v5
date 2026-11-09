@@ -410,7 +410,7 @@ def test_usage_history_shows_safe_current_cache_as_provisional_without_posting(t
         assert record.provisional_copy_color == 0
         assert record.provisional_copy_bw == 0
         assert record.provisional_gross_cost == 22
-        assert record.provisional_net_cost == 21.56
+        assert record.provisional_net_cost == 22
         assert record.provisional_days == 1
         assert record.provisional_cost_available is True
         with database._open(commit=False) as conn:
@@ -560,7 +560,7 @@ def test_history_remains_from_ledger_after_daily_source_is_changed_or_deleted(tm
         post_daily_record(record_id)
 
         baseline = load_monthly_usage([0], today=date(2026, 7, 16))[0]
-        assert (baseline.total, baseline.gross_cost, baseline.net_cost) == (30, 60, 58.8)
+        assert (baseline.total, baseline.gross_cost, baseline.net_cost) == (30, 60, 58)
 
         with database._open() as conn:
             conn.execute(

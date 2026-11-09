@@ -52,17 +52,19 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Bootstrap persistent CPython 3.14.7
+      - name: Bootstrap persistent CPython 3.14.10
         run: |
           $ErrorActionPreference = 'Stop'
           [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-          $pythonRoot = 'C:\actions-runner\_komi_tools\python-3.14.7'
+          $pythonRoot = 'C:\actions-runner\_komi_tools\python-3.14.10'
           $pythonExe = Join-Path $pythonRoot 'python.exe'
           if (-not (Test-Path $pythonExe)) {
             Remove-Item $pythonRoot -Recurse -Force -ErrorAction SilentlyContinue
             New-Item -ItemType Directory -Path $pythonRoot -Force | Out-Null
-            $zip = Join-Path $env:RUNNER_TEMP 'python-3.14.7-embed-amd64.zip'
-            Invoke-WebRequest -UseBasicParsing -Uri 'https://www.python.org/ftp/python/3.14.7/python-3.14.7-embed-amd64.zip' -OutFile $zip
+            $zip = Join-Path $env:RUNNER_TEMP 'python-3.14.10-embed-amd64.zip'
+            Invoke-WebRequest -UseBasicParsing -Uri 'https://www.python.org/ftp/python/3.14.10/python-3.14.10-embed-amd64.zip' -OutFile $zip
+            $expectedPythonHash = '90905e64a840557d8c1bc4f5b74db3d7ee85e3ffb217611cac1c7813acea4159'
+            if ((Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant() -ne $expectedPythonHash) { throw 'Official Python archive checksum verification failed' }
             Expand-Archive -LiteralPath $zip -DestinationPath $pythonRoot -Force
             $pth = Join-Path $pythonRoot 'python314._pth'
             $pthText = (Get-Content $pth -Raw) -replace '#import site', 'import site'
@@ -70,30 +72,30 @@ jobs:
             $getPip = Join-Path $env:RUNNER_TEMP 'get-pip.py'
             Invoke-WebRequest -UseBasicParsing -Uri 'https://bootstrap.pypa.io/get-pip.py' -OutFile $getPip
             & $pythonExe $getPip --disable-pip-version-check
-            if ($LASTEXITCODE -ne 0) { throw 'get-pip failed for Python 3.14.7.' }
+            if ($LASTEXITCODE -ne 0) { throw 'get-pip failed for Python 3.14.10.' }
           }
           $pythonRoot | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
           (Join-Path $pythonRoot 'Scripts') | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
           & $pythonExe --version
-          if ($LASTEXITCODE -ne 0) { throw 'Python 3.14.7 failed to start.' }
+          if ($LASTEXITCODE -ne 0) { throw 'Python 3.14.10 failed to start.' }
           & $pythonExe -m pip install --disable-pip-version-check pytest
           if ($LASTEXITCODE -ne 0) { throw 'pytest install failed.' }
 
       - name: Verify V5.2.6 source contract
         run: |
           $ErrorActionPreference = 'Stop'
-          $pythonExe = 'C:\actions-runner\_komi_tools\python-3.14.7\python.exe'
+          $pythonExe = 'C:\actions-runner\_komi_tools\python-3.14.10\python.exe'
           & $pythonExe source/tools/version_gate.py
-          if ($LASTEXITCODE -ne 0) { throw 'version gate failed on Python 3.14.7.' }
+          if ($LASTEXITCODE -ne 0) { throw 'version gate failed on Python 3.14.10.' }
           & $pythonExe -m pytest -q source/tests/test_v526_performance_contract.py
-          if ($LASTEXITCODE -ne 0) { throw 'V5.2.6 performance contract tests failed on Python 3.14.7.' }
+          if ($LASTEXITCODE -ne 0) { throw 'V5.2.6 performance contract tests failed on Python 3.14.10.' }
           git status --short
           git rev-parse HEAD
 
       - name: Build native Windows x64 application payload
         run: |
           $ErrorActionPreference = 'Stop'
-          $pythonExe = 'C:\actions-runner\_komi_tools\python-3.14.7\python.exe'
+          $pythonExe = 'C:\actions-runner\_komi_tools\python-3.14.10\python.exe'
           $script = Join-Path $env:RUNNER_TEMP 'komi-native-build.py'
           $scriptLines = @(
             'import json',
@@ -112,7 +114,7 @@ jobs:
           & $pythonExe $script
           if ($LASTEXITCODE -ne 0) { throw 'native payload build failed.' }
 
-      - name: Smoke test bundled Python 3.14.7 runtime
+      - name: Smoke test bundled Python 3.14.10 runtime
         run: |
           $ErrorActionPreference = 'Stop'
           $evidence = Get-Content 'release/native-windows-x64/NATIVE_PAYLOAD_BUILD.json' -Raw | ConvertFrom-Json
@@ -123,7 +125,7 @@ jobs:
           $smokeCode = "import sys,numpy,cryptography,PyQt6.QtCore,PyQt6.QtWidgets,pydantic_core; print('.'.join(map(str,sys.version_info[:3])))"
           $runtimeVersion = (& $runtime -c $smokeCode).Trim()
           if ($LASTEXITCODE -ne 0) { throw 'Bundled dependency smoke test failed.' }
-          if ($runtimeVersion -ne '3.14.7') { throw "Expected Python 3.14.7, got $runtimeVersion" }
+          if ($runtimeVersion -ne '3.14.10') { throw "Expected Python 3.14.10, got $runtimeVersion" }
 
       - name: Bootstrap Inno Setup compiler
         run: |
@@ -149,7 +151,7 @@ jobs:
       - name: Compile V5.2.6 Windows installer from validated payload
         run: |
           $ErrorActionPreference = 'Stop'
-          $pythonExe = 'C:\actions-runner\_komi_tools\python-3.14.7\python.exe'
+          $pythonExe = 'C:\actions-runner\_komi_tools\python-3.14.10\python.exe'
           $iscc = (Get-Content -LiteralPath (Join-Path $env:RUNNER_TEMP 'komi-iscc-path.txt') -Raw).Trim()
           $buildEvidence = Get-Content -LiteralPath 'release/native-windows-x64/NATIVE_PAYLOAD_BUILD.json' -Raw | ConvertFrom-Json
           $env:KOMI_PAYLOAD = [string]$buildEvidence.payload
@@ -179,7 +181,7 @@ jobs:
           $releaseInfo = [ordered]@{
             version = '5.2.6'
             source_commit = $env:KOMI_COMMIT
-            python_runtime = '3.14.7'
+            python_runtime = '3.14.10'
             target = 'Windows x64'
             installer = $installer.Name
             installer_bytes = $installer.Length

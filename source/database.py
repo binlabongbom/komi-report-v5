@@ -513,6 +513,7 @@ def init_db():
             credential_ref    TEXT NOT NULL DEFAULT '',
             tls_mode          TEXT NOT NULL DEFAULT 'system',
             tls_fingerprint   TEXT NOT NULL DEFAULT '',
+            web_protocol      TEXT NOT NULL DEFAULT 'auto',
             enabled           INTEGER NOT NULL DEFAULT 1,
             model             TEXT NOT NULL DEFAULT '',
             serial            TEXT NOT NULL DEFAULT '',

@@ -108,3 +108,74 @@ def test_live_reading_saves_into_existing_report_database_and_rejects_duplicate(
                 service.save(0, preview)
     finally:
         database.set_db_path(original_path)
+
+
+@pytest.mark.parametrize("kind", ["user", "track", "account"])
+def test_live_report_preserves_each_supported_subject_type(kind):
+    from dataclasses import replace
+    reading = replace(sample_reading(), counters=(
+        counter(f"counter.{kind}.total.total", 42, subject_type=kind,
+                subject_id="7", subject_name="operator-a"),
+    ))
+    accounts = meter_reading_to_report(reading)["accounts"]
+    assert accounts and accounts[0]["subject_type"] == kind
+    assert accounts[0]["total"] == 42
+
+
+@pytest.mark.parametrize("value", [0, 123])
+def test_missing_user_total_is_unknown_and_manual_save_is_blocked_before_database(monkeypatch, value):
+    from dataclasses import replace
+
+    from services import live_meter_service
+    from services.live_meter_service import LiveMeterPreview
+
+    reading = replace(sample_reading(), counters=(
+        counter("counter.total.total", 900),
+        counter("counter.user.total.bw", value, subject_type="user", subject_id="1", subject_name="Synthetic"),
+        counter("counter.user.total.paper", value + 10, subject_type="user", subject_id="1", subject_name="Synthetic"),
+    ))
+    parsed = meter_reading_to_report(reading)
+    account, = parsed["accounts"]
+    assert account["total"] is None and not account["total_available"]
+    assert account["color_a4"] is None and account["bw_a4"] is None
+    assert any("ไม่แทนค่าที่ขาดด้วย 0" in warning for warning in parsed["warnings"])
+    assert parsed["counter_evidence"][1]["count"] == value
+    monkeypatch.setattr(live_meter_service, "check_duplicate", lambda *_args: pytest.fail("must not reach DB"))
+    monkeypatch.setattr(live_meter_service, "save_reading", lambda *_args: pytest.fail("must not save unknown totals"))
+    with pytest.raises(ValueError, match="ไม่มี Total"):
+        LiveMeterService(FakeReader()).save(0, LiveMeterPreview(reading, parsed))
+
+
+def test_explicit_zero_subject_total_is_still_available():
+    from dataclasses import replace
+
+    reading = replace(sample_reading(), counters=(
+        counter("counter.user.total.total", 0, subject_type="user", subject_id="1", subject_name="Synthetic"),
+        counter("counter.user.total.bw", 90, subject_type="user", subject_id="1", subject_name="Synthetic"),
+    ))
+    account, = meter_reading_to_report(reading)["accounts"]
+    assert account["total"] == 0 and account["total_available"]
+
+
+@pytest.mark.parametrize("value", [0, 17])
+def test_verified_950i_total_does_not_invent_legacy_size_breakdown_or_save(monkeypatch, value):
+    from dataclasses import replace
+
+    from komi_snmp_profiler.mono_950i import SCHEMA_VERSION
+    from services import live_meter_service
+    from services.live_meter_service import LiveMeterPreview
+
+    reading = replace(sample_reading(), schema_version=SCHEMA_VERSION, counters=(
+        counter("counter.total.total", 900),
+        counter("counter.user.total.total", value, subject_type="user", subject_id="1", subject_name="Synthetic"),
+        counter("counter.user.total.bw", value, subject_type="user", subject_id="1", subject_name="Synthetic"),
+    ))
+    parsed = meter_reading_to_report(reading)
+    account, = parsed["accounts"]
+    assert account["total"] == value and account["total_available"]
+    assert all(account[field] is None for field in ("color_a4", "bw_a4", "color_a3", "bw_a3"))
+    assert any("ยังไม่มี A3/A4" in warning for warning in parsed["warnings"])
+    monkeypatch.setattr(live_meter_service, "check_duplicate", lambda *_args: pytest.fail("must not reach DB"))
+    monkeypatch.setattr(live_meter_service, "save_reading", lambda *_args: pytest.fail("must not invent sizes"))
+    with pytest.raises(ValueError, match="A3/A4"):
+        LiveMeterService(FakeReader()).save(0, LiveMeterPreview(reading, parsed))

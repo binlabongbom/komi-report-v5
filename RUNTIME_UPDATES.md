@@ -1,3 +1,44 @@
+# Runtime maintenance — 6 November 2026
+
+KOMI Report 5.2.17 keeps the existing Python 3.14 and Node 24 LTS lines and the
+existing Qt/product dependency set except for the targeted pyasn1 decoder security
+patch (0.6.5). The current pins are Python **3.14.10**,
+Node **24.22.2** and npm **12.2.2**. Development tooling is updated only for the
+CA security advisory: certifi **2026.10.19**, pip **26.2.2**, uv **0.13.6**.
+
+Python 3.14.10 rejects compromised eMudhra intermediate certificate keys.
+The Python security team also recommends updating the separate CA tooling;
+updating the interpreter alone is not a reason to retain older pip/CA locks.
+Qt 6.11.2, PyQt 6.11.0 and all application/database code are unchanged. A follow-up
+security check updates pyasn1 from 0.6.4 to 0.6.5 across all four Python locks;
+other product libraries remain unchanged.
+
+The Windows builders verify reviewed Python and Node SHA-256 pins before
+extraction. Cloud setup verifies its Node archive against both the official
+manifest and the reviewed checksum. Current validation workflows and their
+bundled-runtime assertions are aligned. The historical 3.11-to-3.14 migration
+workflow and 5.2.6 publication text remain historical, not current build paths.
+The current candidate and desktop workflows read `.python-version`.
+
+Lock generation uses uv 0.13.6 with targeted upgrades only:
+
+```bash
+uv lock --project source --python 3.14.10 \
+  --upgrade-package certifi==2026.10.19 \
+  --upgrade-package pip==26.2.2 --upgrade-package uv==0.13.6 \
+  --upgrade-package pyasn1==0.6.5
+uv export --project source --extra dev --group dev --no-emit-project \
+  --format requirements-txt --output-file source/requirements-dev.lock.txt
+```
+
+Official sources:
+- [Python 3.14.10 and archive checksums](https://www.python.org/downloads/release/python-31410/)
+- [Python CA advisory and minimum secure tooling](https://discuss.python.org/t/information-for-python-users-regarding-emudhra-emsign-ca-certificate-security-incident/109576)
+- [Node 24.22.2 and SHA-256 manifest](https://nodejs.org/en/blog/release/v24.22.2)
+- [npm 12.2.2 release](https://github.com/npm/cli/releases/tag/v12.2.2)
+
+The earlier report below describes September validation and does not represent the November runtime.
+
 # Runtime and development toolchain — 24 September 2026
 
 This update targets stable releases compatible with KOMI Report V5.2.12. Node

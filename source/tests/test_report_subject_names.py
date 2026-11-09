@@ -318,3 +318,29 @@ def test_merged_positive_usage_without_raw_keeps_total_cost_unavailable(tmp_path
     assert rows[0]["usage"] == exported[0][26] == exported[0][-2] == 2
     assert not rows[0]["by_slot"][0]["cost_available"]
     assert exported[0][27] is None
+
+
+@pytest.mark.parametrize("name", ["Alice", " บอม ", "00123", "123", "", "²"])
+def test_repeated_same_name_keeps_latest_rank(name):
+    from services.report_subject_names import _keep_name
+    key = (0, "serial:A", "user", "00123")
+    names = {}
+    for day in (1, 3, 2):
+        _keep_name(names, key, name, (f"2026-08-{day:02}", 1))
+    assert names[key][1] == ("2026-08-03", 1)
+    if name.strip() == "Alice":
+        _keep_name(names, key, "Older rename", ("2026-08-02", 1))
+        assert names[key][0] == "Alice"
+
+
+def test_same_name_fast_path_skips_redundant_classification(monkeypatch):
+    from services import report_subject_names as names_module
+    key = (0, "serial:A", "user", "00123")
+    names = {key: ("Alice", ("2026-08-01", 0))}
+    def unexpected(*args):
+        raise AssertionError("An unchanged normalized name needs no reclassification")
+    monkeypatch.setattr(names_module, "subject_name_is_placeholder", unexpected)
+    monkeypatch.setattr(names_module, "prefer_subject_name", unexpected)
+    names_module._keep_name(names, key, " Alice ", ("2026-08-03", 1))
+    names_module._keep_name(names, key, "Alice", ("2026-08-02", 1))
+    assert names[key] == ("Alice", ("2026-08-03", 1))

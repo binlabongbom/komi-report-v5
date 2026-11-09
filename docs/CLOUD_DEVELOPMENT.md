@@ -27,11 +27,11 @@ source /workspace/komi-development/activate.sh
   --output /workspace/komi-check-001
 ```
 
-Prerequisites: Git, Bash, Python 3.12+ for safe archive extraction, uv, tar,
+Prerequisites: Git, Bash, Python 3.12+ for safe archive extraction, uv 0.13.6+, tar,
 Linux Qt runtime libraries, writable storage and access to official Python/uv,
 Node and package registries. No application credentials are needed. The script
 uses `.python-version`, `.node-version`, the existing uv lock and npm lock;
-it installs npm 12.1.0 in a scoped Node directory when necessary. It never
+it installs npm 12.2.2 in a scoped Node directory when necessary. It never
 starts the app or changes system binaries. `activate.sh` selects these tools
 without loading the old application environment.
 

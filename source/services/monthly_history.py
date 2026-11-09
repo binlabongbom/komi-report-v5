@@ -11,8 +11,7 @@ from services.billing_periods import billing_month_range
 from services.daily_cache import DailyCacheStore
 from services.pricing import (
     PricingRepository,
-    apply_waste_discount,
-    calculate_cost,
+    provisional_quantity_cost,
 )
 from services.usage import default_usage_groups
 
@@ -222,8 +221,8 @@ def _provisional_cost(
             str(evidence.get("source_path") or ""),
         )
     categories = pricing.get_categories(slot, day, counter_metadata)
-    gross = calculate_cost(deltas, categories, pricing.get_prices(slot, day))
-    return gross, apply_waste_discount(gross, get_waste_paper_pct()), True
+    gross, net = provisional_quantity_cost(deltas, categories, pricing.get_prices(slot, day), get_waste_paper_pct())
+    return gross, net, True
 
 
 def _ledger_period_range(day: date, ledger: _LedgerDay, granularity: HistoryGranularity) -> tuple[date, date]:

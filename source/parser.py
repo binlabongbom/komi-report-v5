@@ -25,6 +25,7 @@ from parser_profiles import (
 )
 
 import json as _json
+import re as _re
 from pathlib import Path as _Path
 
 _USER_PROFILES_JSON = _Path.home() / "konica_parser_user_profiles.json"
@@ -698,6 +699,74 @@ def _parse_production(lines: list, machine: str, serial: str, date_s: str) -> di
 # PARSE: USER MODE — User/Account
 # ══════════════════════════════════════════════════════════
 
+def _parse_950i_account(lines: list, machine: str, serial: str, date_s: str) -> dict:
+    """Read the verified compact monochrome TXT layout, not color positions.
+
+    The three header rows are part of the schema. Large Size and physical
+    print counts are not A3/A4 operation counts, and Scan/Fax is not color.
+    This parser does not change the independent live Web/JSON reader.
+    """
+    expected_headers = {
+        3: {0: "user name", 1: "total counter", 3: "no. of originals counter",
+            8: "papersizecounter", 18: "nin1", 22: "copy", 25: "printer", 28: "scan / fax"},
+        4: {8: "a3", 9: "a4", 10: "b4", 11: "b5", 22: "total", 23: "large size",
+            24: "no. of prints counter", 25: "total", 26: "large size", 27: "no. of prints counter"},
+        5: {22: "total", 23: "total", 25: "total", 26: "total", 28: "print", 29: "scans", 30: "fax tx"},
+    }
+    for row_index, headings in expected_headers.items():
+        row = lines[row_index] if row_index < len(lines) else []
+        if any(index >= len(row) or " ".join(row[index].casefold().split()) != heading
+               for index, heading in headings.items()):
+            raise ValueError("โครงสร้างไฟล์ User ของ 950i ไม่ตรงกับรูปแบบขาวดำที่รองรับ; ไม่ใช้ตำแหน่งคอลัมน์เครื่องสีแทน")
+
+    columns = {"total": 1, "originals": 3, "a3": 8, "a4": 9, "b4": 10, "b5": 11,
+               "copy_total": 22, "print_total": 25}
+    accounts = []
+    for row_index, row in enumerate(lines[7:], start=8):
+        if not any(row):
+            continue
+        if not row[0].strip():
+            raise ValueError(f"950i: แถว {row_index} ไม่มีชื่อ User; ไม่ข้ามข้อมูลโดยไม่แจ้ง")
+        values = {}
+        for field, column in columns.items():
+            value = row[column].strip() if column < len(row) else ""
+            if not value.isdecimal():
+                raise ValueError(f"950i: แถว {row_index} คอลัมน์ {column + 1} ({field}) ไม่มีจำนวนเต็มที่ถูกต้อง")
+            values[field] = int(value)
+        accounts.append({
+            "name": row[0].strip(), **values,
+            "copy_color": 0, "copy_bw": 0, "copy_a3_color": 0, "copy_a3_bw": 0,
+            "print_color": 0, "print_bw": 0, "print_a3_color": 0, "print_a3_bw": 0,
+            "color_a4": 0, "bw_a4": values["a4"], "color_a3": 0, "bw_a3": values["a3"],
+        })
+    if not accounts:
+        raise ValueError("950i: ไม่พบแถวข้อมูลผู้ใช้ในไฟล์")
+
+    def total(field):
+        return sum(account[field] for account in accounts)
+
+    warnings = [
+        "⚠ ไฟล์ User ขาวดำของ 950i ไม่มี A3/A4 แยกตาม Copy/Printer; "
+        "ช่องย่อยดังกล่าวใช้ 0 เป็นค่าที่ไม่พร้อมใช้งาน ไม่ใช่ยอดที่วัดได้ และไม่ควรใช้คำนวณค่าใช้จ่ายแยกขนาด"
+    ]
+    if any(account["total"] != account["copy_total"] + account["print_total"] for account in accounts):
+        warnings.append("⚠ 950i: พบ Total ของผู้ใช้ไม่เท่ากับ Copy + Printer; คงค่าตามไฟล์ ไม่จัดสรรส่วนต่างเอง")
+    return {
+        "mode": "account", "machine_name": machine, "serial": serial, "date": date_s,
+        "counter_layout": "950i-monochrome-user",
+        "total_counter": total("total"),
+        "summary": {"total_color": 0, "total_bw": total("total"), "total": total("total")},
+        "paper_size": {key: total(key) for key in ("a3", "a4", "b4", "b5")},
+        "paper_color": {"a4_color": 0, "a4_bw": total("a4"), "a3_color": 0, "a3_bw": total("a3")},
+        "detail": {
+            operation: {"total": total(f"{operation}_total"), "color": 0, "bw": total(f"{operation}_total"),
+                        "a4_color": 0, "a4_bw": 0, "a3_color": 0, "a3_bw": 0}
+            for operation in ("copy", "print")
+        } | {"originals": total("originals")},
+        "accounts": accounts, "warnings": warnings,
+    }
+
+
 def _parse_account(lines: list, machine: str, serial: str, date_s: str) -> dict:
     """
     แปลงไฟล์ User mode — แยกข้อมูลรายบุคคล
@@ -713,6 +782,8 @@ def _parse_account(lines: list, machine: str, serial: str, date_s: str) -> dict:
       Col 48: Color A4 (Full)            Col 49: Color A4 BW
       Col 52: Color A3 (Full)            Col 53: Color A3 BW
     """
+    if _re.search(r"\b950i\b", machine, flags=_re.IGNORECASE):
+        return _parse_950i_account(lines, machine, serial, date_s)
     c = COLS_ACCOUNT
 
     drs = [r for i, r in enumerate(lines)
@@ -829,7 +900,9 @@ def _load_export_file(filepath: str) -> tuple[list[list[str]], str, str, str, li
         for row in lines:
             if not row:
                 continue
-            label = row[0].strip().lower().rstrip(":")
+            # Firmware uses both "Serial No" and "Serial No.". Normalize
+            # only terminal label punctuation, retaining exact-key matching.
+            label = row[0].strip().lower().rstrip(":.")
             if label == kw_low:
                 for v in row[1:]:
                     if v:

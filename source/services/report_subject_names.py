@@ -29,6 +29,10 @@ def _keep_name(names, key, name, rank):
         names[key] = (prefer_subject_name(subject_id, "", name), rank)
         return
     current, current_rank = previous
+    if name == current:
+        if rank > current_rank:
+            names[key] = (current, rank)
+        return
     placeholder = subject_name_is_placeholder(subject_id, name)
     current_placeholder = subject_name_is_placeholder(subject_id, current)
     if (current_placeholder and not placeholder) or (

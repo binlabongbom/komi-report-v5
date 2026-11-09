@@ -46,6 +46,11 @@ jobs:
           $setup = Join-Path $env:RUNNER_TEMP 'innosetup-7.0.2-x64.exe'
           $root = Join-Path $env:RUNNER_TEMP 'komi-inno'
           Invoke-WebRequest -Uri 'https://github.com/jrsoftware/issrc/releases/download/is-7_0_2/innosetup-7.0.2-x64.exe' -OutFile $setup
+          $expected = '5ad54ca3def786f8f4212552e54cc6d8d61329e2d24a1cfee0571d42c2684ff1'
+          $actual = (Get-FileHash -LiteralPath $setup -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actual -ne $expected) { throw 'Inno Setup official release checksum mismatch' }
+          $signature = Get-AuthenticodeSignature -LiteralPath $setup
+          if ($signature.Status -ne 'Valid') { throw 'Inno Setup Authenticode signature is not valid' }
           $process = Start-Process -FilePath $setup -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/SP-','/CURRENTUSER','/PORTABLE=1',"/DIR=$root") -Wait -PassThru
           if ($process.ExitCode -ne 0) { throw 'Inno Setup preparation failed' }
           $iscc = Get-ChildItem $root -Filter ISCC.exe -Recurse | Select-Object -First 1 -ExpandProperty FullName

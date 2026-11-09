@@ -35,7 +35,7 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-          $pythonVersion = '3.14.7'
+          $pythonVersion = '3.14.10'
           $pythonRoot = "C:\actions-runner\_komi_tools\security-python-$pythonVersion"
           $pythonExe = Join-Path $pythonRoot 'python.exe'
 
@@ -44,6 +44,8 @@ jobs:
             New-Item -ItemType Directory -Path $pythonRoot -Force | Out-Null
             $zip = Join-Path $env:RUNNER_TEMP "python-$pythonVersion-embed-amd64.zip"
             Invoke-WebRequest -UseBasicParsing -TimeoutSec 180 -Uri "https://www.python.org/ftp/python/$pythonVersion/python-$pythonVersion-embed-amd64.zip" -OutFile $zip
+            $expectedPythonHash = '90905e64a840557d8c1bc4f5b74db3d7ee85e3ffb217611cac1c7813acea4159'
+            if ((Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant() -ne $expectedPythonHash) { throw 'Official Python archive checksum verification failed' }
             Expand-Archive -LiteralPath $zip -DestinationPath $pythonRoot -Force
 
             $pth = Join-Path $pythonRoot 'python314._pth'
@@ -66,7 +68,7 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-          $nodeVersion = '24.21.0'
+          $nodeVersion = '24.22.2'
           $nodeRoot = 'C:\actions-runner\_komi_tools\node-24-security'
           $nodeExe = Join-Path $nodeRoot 'node.exe'
           $npmCmd = Join-Path $nodeRoot 'npm.cmd'
@@ -112,7 +114,7 @@ jobs:
 
           $nodeRoot | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
           $env:PATH = "$nodeRoot;$env:PATH"
-          & $npmCmd install --global npm@12.1.0 --prefix $nodeRoot
+          & $npmCmd install --global npm@12.2.2 --prefix $nodeRoot
           if ($LASTEXITCODE -ne 0) { throw 'npm 12 toolchain upgrade failed.' }
           & $nodeExe --version
           & $npmCmd --version

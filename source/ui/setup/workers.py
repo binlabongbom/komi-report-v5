@@ -36,7 +36,7 @@ from services.snmp_probe import SnmpTotalProbe
 
 def device_test_key(device: DeviceConfig) -> str:
     """Bind a test to its connection settings without retaining plaintext secrets."""
-    values = (device.host, device.username, device.password, device.tls_mode, device.tls_fingerprint)
+    values = (device.host, device.username, device.password, device.tls_mode, device.tls_fingerprint, device.web_protocol)
     return hashlib.sha256(json.dumps(values).encode("utf-8")).hexdigest()
 
 
@@ -152,7 +152,7 @@ class DeviceTestWorker(QObject):
                     fingerprint_sha256=tls_fingerprint,
                 )
             meter_model = (probe_result.model if probe_result is not None else "") or device.model
-            profile = resolve_device_meter_profile(meter_model)
+            profile = resolve_device_meter_profile(meter_model, web_protocol=device.web_protocol)
 
             def read_with_policy(policy: TlsPolicy):
                 effective_policy = replace(
@@ -179,9 +179,16 @@ class DeviceTestWorker(QObject):
                     ),
                     allow_implicit_name_export=True,
                 )
-                if profile.profile_id == "generic":
-                    return reader.read(web_host)
-                return reader.read(web_host, model=meter_model)
+                try:
+                    if device.web_protocol != "auto":
+                        return reader.read(web_host, model=meter_model, web_protocol=device.web_protocol)
+                    if profile.profile_id == "generic":
+                        return reader.read(web_host)
+                    return reader.read(web_host, model=meter_model)
+                except Exception as error:
+                    error.diagnostic_profile = profile.profile_id
+                    error.diagnostic_protocol = profile.web_protocol.value
+                    raise
 
             try:
                 reading = read_with_policy(tls_policy)
@@ -272,6 +279,13 @@ class DeviceTestWorker(QObject):
                     )
                 except ValueError:
                     credential_default_index = None
+        from komi_snmp_profiler.models import PUBLIC_USER_DISABLED_MARKER
+        from services.support_diagnostics import safe_text
+
+        web_warnings = tuple(
+            safe_text(warning) for warning in (reading.warnings if reading is not None else ())
+            if warning != PUBLIC_USER_DISABLED_MARKER
+        )
         return {
             "online": probe_result is not None or reading is not None,
             "model": probe_result.model if probe_result else "",
@@ -283,6 +297,7 @@ class DeviceTestWorker(QObject):
             "tls_mode": tls_mode,
             "tls_fingerprint": tls_fingerprint,
             "web_auth_state": reading.auth_state.value if reading is not None else "",
+            "web_warnings": web_warnings,
             "credential_required": credential_required,
             "session_busy": session_busy,
             "credential_default_index": credential_default_index,

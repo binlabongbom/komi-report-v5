@@ -818,6 +818,18 @@ class BackgroundPollingCoordinator(QObject):
             if observed_at.tzinfo is None:
                 raise ValueError("Web observation requires an explicit timezone")
             now = observed_at.astimezone(round_started_at.tzinfo)
+            from komi_snmp_profiler.models import PUBLIC_USER_DISABLED_MARKER
+            from services.support_diagnostics import safe_text
+
+            for warning in reading.warnings:
+                if warning == PUBLIC_USER_DISABLED_MARKER:
+                    continue  # A confirmed disabled mode is evidence, not a read failure.
+                pipeline_log.append(
+                    stage="WEB", action="Web read warning", device_slot=device.slot,
+                    device_name=device.name, host=device.host, target=reading.source,
+                    value=safe_text(warning), detail=f"auth={reading.auth_state.value}",
+                    status="warning", at=now,
+                )
             raw_reconciliation = reconcile_web_counters(
                 {
                     counter.canonical_field: counter.count

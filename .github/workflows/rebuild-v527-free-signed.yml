@@ -34,8 +34,8 @@ jobs:
       - name: Verify V5.2.7 source and regression
         run: |
           $ErrorActionPreference = 'Stop'
-          $py = 'C:\actions-runner\_komi_tools\python-3.14.7\python.exe'
-          if (-not (Test-Path $py)) { throw 'Python 3.14.7 runtime missing.' }
+          $py = 'C:\actions-runner\_komi_tools\python-3.14.10\python.exe'
+          if (-not (Test-Path $py)) { throw 'Python 3.14.10 runtime missing.' }
           & $py source/tools/version_gate.py
           if ($LASTEXITCODE -ne 0) { throw 'Version gate failed.' }
           & $py -m pytest -q source/tests/profiler/test_meter_reader_public_name_enrichment.py
@@ -46,7 +46,7 @@ jobs:
       - name: Build native Windows x64 payload
         run: |
           $ErrorActionPreference = 'Stop'
-          $py = 'C:\actions-runner\_komi_tools\python-3.14.7\python.exe'
+          $py = 'C:\actions-runner\_komi_tools\python-3.14.10\python.exe'
           $script = Join-Path $env:RUNNER_TEMP 'komi-v527-security-rebuild.py'
           @'
           import json, sys
@@ -70,7 +70,7 @@ jobs:
           $runtime = Join-Path ([string]$info.payload) 'runtime\python.exe'
           if (-not (Test-Path $runtime)) { throw 'Bundled Python missing.' }
           $v = (& $runtime -c "import sys,numpy,cryptography,PyQt6.QtCore,PyQt6.QtWidgets,pydantic_core; print('.'.join(map(str,sys.version_info[:3])))").Trim()
-          if ($LASTEXITCODE -ne 0 -or $v -ne '3.14.7') { throw "Bundled runtime smoke failed: $v" }
+          if ($LASTEXITCODE -ne 0 -or $v -ne '3.14.10') { throw "Bundled runtime smoke failed: $v" }
 
       - name: Locate Inno Setup
         run: |
@@ -83,7 +83,7 @@ jobs:
       - name: Compile V5.2.7 installer with personal publisher and EULA
         run: |
           $ErrorActionPreference = 'Stop'
-          $py = 'C:\actions-runner\_komi_tools\python-3.14.7\python.exe'
+          $py = 'C:\actions-runner\_komi_tools\python-3.14.10\python.exe'
           $info = Get-Content 'release/v5.2.7-security-native/NATIVE_PAYLOAD_BUILD.json' -Raw | ConvertFrom-Json
           $env:KOMI_PAYLOAD = [string]$info.payload
           $env:KOMI_ISCC = (Get-Content (Join-Path $env:RUNNER_TEMP 'komi-iscc-v527-security.txt') -Raw).Trim()
@@ -116,7 +116,7 @@ jobs:
           [ordered]@{
             version = '5.2.7'
             source_commit = $env:KOMI_COMMIT
-            python_runtime = '3.14.7'
+            python_runtime = '3.14.10'
             target = 'Windows x64'
             installer = $installer.Name
             installer_bytes = $installer.Length

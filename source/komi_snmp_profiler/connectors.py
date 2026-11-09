@@ -8,7 +8,8 @@ import socket
 import ssl
 import warnings
 import xml.etree.ElementTree as ET
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+from html.parser import HTMLParser
 from http.cookiejar import Cookie, CookieJar
 from typing import Protocol
 from urllib.error import HTTPError, URLError
@@ -18,6 +19,9 @@ from urllib.request import HTTPCookieProcessor, HTTPSHandler, Request, build_ope
 from .credential_store import AdminCredential
 from .device_profiles import TlsCompatibility
 from .models import PUBLIC_USER_DISABLED_MARKER, WebAuthState, WebCounterValue
+from .mono_950i import SCHEMA_VERSION as MONO_950I_SCHEMA_VERSION
+from .mono_950i import TEMPLATE_PATH as MONO_950I_TEMPLATE_PATH
+from .mono_950i import is_950i_model, map_950i_user_totals
 
 
 class WebConnectionError(RuntimeError):
@@ -50,7 +54,7 @@ class WebConnectionSessionBusyError(WebConnectionError):
 
 
 class WebConnectionUnsupportedError(WebConnectionError):
-    """Raised when the selected read-only Meter endpoint is not supported by the firmware."""
+    """Raised when the selected endpoint is missing, not proof of firmware incompatibility."""
     diagnostic_code = 'endpoint_missing'
 
 
@@ -115,6 +119,7 @@ class WebCounterCollection:
     source: str
     auth_state: WebAuthState
     warnings: tuple[str, ...] = ()
+    schema_version: str = "komi.meter.reading.v1"
 
 
 def server_certificate_fingerprint(
@@ -172,6 +177,25 @@ def _nested(payload: dict[str, object], path: str, default: object = None) -> ob
     return value
 
 
+class _PublicCounterLinkParser(HTMLParser):
+    """Recognize only fixed same-origin public Counter links advertised by the UI."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.found = False
+        self.has_base = False
+
+    def handle_starttag(self, tag, attrs):
+        if tag == "base":
+            self.has_base = True
+        attribute = "href" if tag == "a" else "src" if tag in {"frame", "iframe"} else None
+        for name, value in attrs:
+            if attribute and name == attribute and value in {
+                "system_counter.xml", "./system_counter.xml", "/wcd/system_counter.xml",
+            }:
+                self.found = True
+
+
 class ReadOnlyWebConnectionSession:
     """Cookie session with strict read and temporary Meter-export allowlists."""
 
@@ -189,10 +213,12 @@ class ReadOnlyWebConnectionSession:
         "a_system_impexp.json",
         "api/AppReqGetCustomData/_A-00-00001",
         "api/AppReqGetCustomData/_000_002_IMP000",
+        MONO_950I_TEMPLATE_PATH,
     }
     JSON_POST_PATHS = {
         "api/AppReqGetCounterInfo/_Total",
         "api/AppReqGetAuthCounter",
+        "api/AppReqGetUserAuthSetting",
         "api/AppReqGetTrackCounterInfo",
     }
     SESSION_FORM_PATHS = {"ulogin.cgi", "login.cgi", "a_user.cgi"}
@@ -239,6 +265,10 @@ class ReadOnlyWebConnectionSession:
         if path not in self.GET_PATHS:
             raise WebConnectionError(f"endpoint ไม่อยู่ใน read-only allowlist: {path}")
         raw = self._request(path, method="GET")
+        if path == "index.html" and not expect_json:
+            parser = _PublicCounterLinkParser()
+            parser.feed(raw.decode("utf-8", errors="replace"))
+            self.public_counter_advertised = parser.found and not parser.has_base
         return json.loads(raw) if expect_json else {}
 
     def get_bytes(self, path: str) -> bytes:
@@ -504,7 +534,21 @@ class WebConnectionCounterConnector:
         )
         try:
             session.get("index.html", expect_json=False)
-            common = session.get("api/AppReqGetCustomData/_A-00-00001")
+            try:
+                common = session.get("api/AppReqGetCustomData/_A-00-00001")
+            except WebConnectionUnsupportedError:
+                # No guessed model/path, scheme downgrade, login or settings writes.
+                # Reuse this public session only if the entry page advertised the
+                # existing allowlisted legacy endpoint, and require a valid Total.
+                if getattr(session, "public_counter_advertised", False) is not True:
+                    raise
+                counters = LegacyWebConnectionCounterConnector.parse_xml(
+                    session.get_bytes("system_counter.xml")
+                )
+                return WebCounterCollection(
+                    tuple(counters), "web_connection_legacy_xml_public", WebAuthState.PUBLIC,
+                    ("อ่าน Public Counter XML ที่หน้า Web Connection ระบุ หลัง JSON endpoint ตอบ 404",),
+                )
             if _nested(common, "MFP.LoginMode") != "PublicUser":
                 raise WebConnectionAuthenticationError(
                     "Web Connection ปิด PublicUser และต้องใช้ Administrator", diagnostic_code='admin_required'
@@ -849,6 +893,11 @@ class LegacyAuthenticatedWebConnectionCounterConnector(LegacyWebConnectionCounte
 class AuthenticatedWebConnectionCounterConnector(WebConnectionCounterConnector):
     """Open one Administrator session, read counters, and always log out and clear cookies."""
 
+    def __init__(self, *, read_user_registration: bool = False, mono_950i_model: str = "", **kwargs) -> None:
+        super().__init__(**kwargs)
+        self.read_user_registration = read_user_registration
+        self.mono_950i_model = mono_950i_model
+
     def collect_with_credential(self, host: str, credential: AdminCredential) -> WebCounterCollection:
         session = self.session_factory(
             host,
@@ -873,11 +922,19 @@ class AuthenticatedWebConnectionCounterConnector(WebConnectionCounterConnector):
             counters = self._parse_total_payload(total_payload)
             attributed, warnings = self._collect_attributed(session, common)
             counters.extend(attributed)
+            schema_version = "komi.meter.reading.v1"
+            if is_950i_model(self.mono_950i_model) and attributed:
+                mapped, mapping_warnings, changed = self._map_mono_user_totals(session, counters, common)
+                counters = mapped
+                warnings.extend(mapping_warnings)
+                if changed:
+                    schema_version = MONO_950I_SCHEMA_VERSION
             result = WebCounterCollection(
                 tuple(counters),
                 "web_connection_admin_read_only",
                 WebAuthState.ADMIN,
                 tuple(warnings),
+                schema_version=schema_version,
             )
         except Exception as err:
             failure = err
@@ -896,6 +953,22 @@ class AuthenticatedWebConnectionCounterConnector(WebConnectionCounterConnector):
         if result is None:  # pragma: no cover - defensive guard
             raise WebConnectionError("ไม่ได้ผลลัพธ์จาก Administrator session")
         return result
+
+    def _map_mono_user_totals(
+        self, session: ReadOnlyWebConnectionSession, counters: list[WebCounterValue], common: dict[str, object],
+    ) -> tuple[list[WebCounterValue], list[str], bool]:
+        is_color = _nested(common, "MFP.isColor", None)
+        if not (is_color is False or (type(is_color) is str and is_color == "False")):
+            return counters, ["950i: ยังไม่ยืนยัน isColor=False; ไม่แทน Total ผู้ใช้ด้วย BW"], False
+        try:
+            template = session.get_bytes(MONO_950I_TEMPLATE_PATH)
+            template_hash = hashlib.sha256(template).hexdigest()
+            del template
+        except (TypeError, ValueError, WebConnectionError) as error:
+            return counters, [f"950i: ตรวจหลักฐาน Counter template ไม่สำเร็จ ({type(error).__name__}); คง Total ที่ยังไม่ยืนยัน"], False
+        mapped = map_950i_user_totals(counters, model=self.mono_950i_model,
+                                      is_color=is_color, template_sha256=template_hash)
+        return list(mapped.counters), list(mapped.warnings), mapped.changed
 
     @staticmethod
     def _login_fields(common: dict[str, object], credential: AdminCredential) -> dict[str, str]:
@@ -952,6 +1025,11 @@ class AuthenticatedWebConnectionCounterConnector(WebConnectionCounterConnector):
                 )
                 stage = "User counter response"
                 user_counters = self._parse_attributed_payload(payload, "user")
+                if self.read_user_registration and user_counters:
+                    user_counters, identity_warnings = self._attach_registered_user_names(
+                        session, user_counters, token=token, max_user=max_user, auth_type=auth_type,
+                    )
+                    warnings.extend(identity_warnings)
                 counters.extend(user_counters)
                 if not user_counters:
                     warnings.append(
@@ -992,6 +1070,88 @@ class AuthenticatedWebConnectionCounterConnector(WebConnectionCounterConnector):
             else:
                 warnings.append("อ่าน Total Meter สำเร็จ แต่ยังยืนยันสถานะ User Authentication และ Account Track ไม่ได้")
         return counters, warnings
+
+    @staticmethod
+    def _registered_user_names(payload: dict[str, object]) -> dict[str, str]:
+        """Project only the directly paired identity fields; never retain auth settings."""
+        if not isinstance(payload, dict) or not isinstance(payload.get("MFP"), dict):
+            raise ValueError("User Registration response ไม่มี MFP object")
+        if _nested(payload, "MFP.Result.ResultInfo") != "Ack":
+            raise WebConnectionAttributionRejectedError("User Registration response ไม่ยืนยัน Ack")
+        raw = _nested(payload, "MFP.AuthUserSettingList.AuthUserSetting", None)
+        if isinstance(raw, dict):
+            raw = [raw]
+        if not isinstance(raw, list) or any(not isinstance(item, dict) for item in raw):
+            raise ValueError("User Registration response ไม่มีรายการที่รองรับ")
+        names: dict[str, str] = {}
+        for item in raw:
+            sid, name = item.get("AuthNo"), item.get("UserName")
+            if (not isinstance(sid, str) or not re.fullmatch(r"[0-9]{1,12}", sid)
+                    or not isinstance(name, str) or not name.strip()
+                    or item.get("UserType") != "User"):
+                raise ValueError("User Registration identity ไม่ครบหรือชนิดไม่ตรง")
+            if sid in names:
+                raise ValueError("User Registration มีเลขบัญชีซ้ำ; ไม่เลือกชื่อแทนกัน")
+            names[sid] = name.strip()
+        return names
+
+    def _attach_registered_user_names(
+        self, session: ReadOnlyWebConnectionSession, counters: list[WebCounterValue],
+        *, token: str, max_user: int, auth_type: str,
+    ) -> tuple[list[WebCounterValue], list[str]]:
+        from .subject_identity import subject_name_is_placeholder
+
+        needed = {str(item.subject_id) for item in counters
+                  if item.subject_type == "user" and item.subject_id
+                  and subject_name_is_placeholder(item.subject_id, item.subject_name)}
+        if not needed:
+            return counters, []
+        if auth_type != "Device":
+            return counters, ["User Registration: ยังไม่ยืนยันการจับคู่ชื่อใน AuthType นี้; คงเลขบัญชีจากเครื่อง"]
+        if any(not re.fullmatch(r"[0-9]{1,12}", sid) or not 1 <= int(sid) <= max_user for sid in needed):
+            return counters, ["User Registration: เลขบัญชีอยู่นอกช่วงที่ยืนยัน; คงเลขบัญชี ไม่เดาช่วงค้นหา"]
+        start, end = min(map(int, needed)), max(map(int, needed))
+        # This request/response shape is verified in the device's normal
+        # User Registration UI and an authorized 950i/Device read. Only names
+        # for already observed identities are used. No positional fallback,
+        # authentication backup or persistent name cache is involved.
+        endpoint = "api/AppReqGetUserAuthSetting"
+        try:
+            payload = session.post_json(endpoint, {
+                "UserListCondition": {
+                    "UserType": "User",
+                    "ObtainCondition": {"Type": "IndexList", "IndexRange": {"Start": start, "End": end}},
+                    "BackUp": "false",
+                },
+                "Token": token,
+            })
+            names = self._registered_user_names(payload)
+            # Drop the full registration response promptly; it may contain
+            # unrelated authentication fields that must not reach diagnostics.
+            del payload
+        except (TypeError, ValueError, WebConnectionError) as error:
+            # Never log an exception message or response from a registration
+            # request: retain only the safe error classification and endpoint.
+            return counters, [
+                "User Registration: อ่านคู่เลขบัญชี/ชื่อไม่สำเร็จ; คงเลขบัญชีจากเครื่อง "
+                f"({type(error).__name__}; POST {endpoint})"
+            ]
+        conflicts = {str(item.subject_id) for item in counters
+                     if item.subject_type == "user" and str(item.subject_id) in needed
+                     and str(item.subject_id) in names
+                     and not subject_name_is_placeholder(item.subject_id, item.subject_name)
+                     and str(item.subject_name).strip() != names[str(item.subject_id)]}
+        enriched = [replace(item, subject_name=names[str(item.subject_id)])
+                    if item.subject_type == "user" and str(item.subject_id) in needed
+                    and str(item.subject_id) in names and str(item.subject_id) not in conflicts
+                    and subject_name_is_placeholder(item.subject_id, item.subject_name)
+                    else item for item in counters]
+        warnings = []
+        if conflicts:
+            warnings.append("User Registration: ชื่อบางเลขบัญชีขัดแย้งกับข้อมูล Counter; คงชื่อจาก Counter ไม่แก้ทับ")
+        if needed - names.keys():
+            warnings.append("User Registration: บางเลขบัญชีไม่มีชื่อที่ยืนยัน; คงเลขบัญชี ไม่ใช้ลำดับแถวแทน")
+        return enriched, warnings
 
     @staticmethod
     def _attribution_warning(

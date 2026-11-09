@@ -886,3 +886,13 @@ def test_meter_count_export_reports_device_rejection_detail_and_cleans_up() -> N
     assert ("POST_TEMP", "api/AppReqSetCustomMessage/_000_002_IMP014") in session.calls
     assert session.calls[-1] == ("POST_FORM", "a_user.cgi")
     assert session.cleared is True
+
+
+def test_public_fallback_retains_classified_admin_failure():
+    from services.error_codes import ERROR_CODES
+    reader = MeterReader(MemoryStore(AdminCredential(password="test-password")),
+                         public_connector=PublicConnector(), admin_connector=FailingAdminConnector())
+    reading = reader.read("192.0.2.10")
+    assert reading.auth_state == WebAuthState.PUBLIC_FALLBACK
+    assert ERROR_CODES["auth_rejected"] in "\n".join(reading.warnings)
+    assert "test-password" not in "\n".join(reading.warnings)

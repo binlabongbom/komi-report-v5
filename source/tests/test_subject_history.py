@@ -96,6 +96,32 @@ def test_extract_subject_totals_keeps_only_exact_total_counter(tmp_path):
         database.set_db_path(original)
 
 
+@pytest.mark.parametrize("value", [0, 123])
+def test_monochrome_observations_without_explicit_total_never_create_inferred_usage(tmp_path, value):
+    from services.raw_counter_history import RawCounterHistoryStore
+    from test_subject_preview import monochrome_preview_counters
+
+    original = database.get_db_path()
+    try:
+        _setup_database(tmp_path)
+        DeviceConfigRepository().replace_all([
+            DeviceConfig(0, "Synthetic monochrome", "192.0.2.10", serial="SYNTHETIC-MONO-ONLY")
+        ])
+        at = datetime(2026, 7, 16, 8, tzinfo=UTC)
+        raw = monochrome_preview_counters(value)
+        counters = tuple(WebCounterValue(row.canonical_field, row.label, row.count, "Total", row.source_path,
+                                        subject_type=row.subject_type, subject_id=row.subject_id,
+                                        subject_name=row.subject_name) for row in raw)
+        reading = MeterReading("192.0.2.10", at.isoformat(), counters, "synthetic-admin", WebAuthState.ADMIN)
+        assert extract_subject_totals(reading) == ()
+        state = SubjectDailyCacheStore(tmp_path / "subjects").update_reading(0, reading, at=at)
+        assert state.get("subjects", {}) == {}
+        raw_cache = RawCounterHistoryStore()
+        assert raw_cache.update_reading(0, reading, at=at) == 95
+    finally:
+        database.set_db_path(original)
+
+
 def test_subject_daily_cache_accumulates_every_delta_in_the_day(tmp_path):
     original = database.get_db_path()
     try:

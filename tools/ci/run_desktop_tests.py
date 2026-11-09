@@ -32,12 +32,20 @@ EXCLUDED_FILES = {
 OUTCOME_NAMES = ("passed", "failed", "skipped", "error", "xfailed", "xpassed")
 
 
-def discover_files(selected: list[str] | None = None) -> list[Path]:
+def discover_files(selected: list[str] | None = None, suite: str = "desktop") -> list[Path]:
     available = {
         path.relative_to(TESTS).as_posix(): path
         for path in sorted(TESTS.rglob("test_*.py"))
-        if path.name not in EXCLUDED_FILES
     }
+    if suite == "desktop":
+        available = {name: path for name, path in available.items() if path.name not in EXCLUDED_FILES}
+    elif suite == "release":
+        missing = sorted(set(EXCLUDED_FILES) - set(available))
+        if missing:
+            raise ValueError(f"Missing release test files: {missing}")
+        available = {name: available[name] for name in EXCLUDED_FILES}
+    else:
+        raise ValueError(f"Unknown test suite: {suite}")
     if not selected:
         return list(available.values())
     found = []
@@ -50,7 +58,7 @@ def discover_files(selected: list[str] | None = None) -> list[Path]:
         if not normalized.endswith(".py"):
             normalized += ".py"
         if normalized not in available:
-            raise ValueError(f"Unknown desktop test file: {name}")
+            raise ValueError(f"Unknown {suite} test file: {name}")
         found.append(available[normalized])
     if len(found) != len(set(found)):
         raise ValueError("Select each test file only once")
@@ -158,6 +166,8 @@ def batch_complete(planned: list[str], result: dict, outcomes: dict) -> bool:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--suite", choices=("desktop", "release"), default="desktop",
+                        help="Desktop behavior or the isolated release/build contract suites")
     parser.add_argument("--files", nargs="+", help="Specific names under source/tests, with or without .py")
     parser.add_argument("--batch-size", type=int, default=8, help="Maximum cases per fresh pytest process (default: 8)")
     parser.add_argument("--timeout", type=int, default=240, help="Seconds allowed per collection/batch process")
@@ -168,7 +178,7 @@ def main(argv: list[str] | None = None) -> int:
     if not 1 <= args.batch_size <= 100 or args.timeout < 1:
         parser.error("Use a batch size from 1 to 100 and a positive timeout")
     try:
-        files = discover_files(args.files)
+        files = discover_files(args.files, args.suite)
     except ValueError as error:
         parser.error(str(error))
     output = args.output_dir.resolve()
@@ -184,7 +194,8 @@ def main(argv: list[str] | None = None) -> int:
         "source_commit": revision.stdout.strip(),
         "python": sys.version,
         "files": [path.relative_to(ROOT).as_posix() for path in files],
-        "excluded_release_files": EXCLUDED_FILES,
+        "suite": args.suite,
+        "excluded_release_files": EXCLUDED_FILES if args.suite == "desktop" else {},
         "batch_size": args.batch_size,
         "runtime_directory": str(runtime),
         "network_policy": "Python loopback only; discovery disabled",

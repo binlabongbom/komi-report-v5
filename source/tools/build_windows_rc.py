@@ -64,8 +64,10 @@ VERSION_TAG = VERSION.replace(".", "_")
 INSTALLER_NAME = f"KOMI_Report_V{VERSION_TAG}_Windows_x64_RC.exe"
 CUSTOMER_INSTALLER_NAME = f"KOMI_Report_V{VERSION_TAG}_Windows_x64_Online_Installer.exe"
 INNO_SCRIPT = PROJECT_ROOT / "packaging" / "windows" / "KOMI_Report_V5.iss"
-NODE_VERSION = "24.21.0"
-NPM_VERSION = "12.1.0"
+NODE_VERSION = "24.22.2"
+# Published in the official Node.js v24.22.2 SHASUMS256.txt.
+NODE_ARCHIVE_SHA256 = "ca1bff5d8ead13c9f2ea404a176db46bd430704d5b5113734049fa365e7799e2"
+NPM_VERSION = "12.2.2"
 NODE_ARCHIVE = f"node-v{NODE_VERSION}-win-x64.zip"
 NODE_DIST_ROOT = f"https://nodejs.org/dist/v{NODE_VERSION}"
 NODE_ARCHIVE_URL = f"{NODE_DIST_ROOT}/{NODE_ARCHIVE}"
@@ -170,7 +172,7 @@ exit /b %KOMI_EXIT_CODE%
 README = f"""KOMI Report V{VERSION} â€” Windows x64 Unsigned Pilot Candidate
 
 Target: Windows 10/11 x64
-Runtime: bundled CPython 3.14.7 x64 and Node.js {{node_version}} LTS x64
+Runtime: bundled CPython 3.14.10 x64 and Node.js {{node_version}} LTS x64
 
 This RC includes Desktop, local SQLite, OS-vault integration and LAN Web HTTPS.
 It does not include an Update client, updater, remote update command or Update telemetry.
@@ -191,7 +193,7 @@ CUSTOMER_README = f"""KOMI Report V{VERSION} â€” Windows Customer Release P
 
 Target runtime: Windows 10/11 x64
 Build evidence: {{build_evidence}}
-Runtime: bundled CPython 3.14.7 x64 and Node.js {{node_version}} LTS x64
+Runtime: bundled CPython 3.14.10 x64 and Node.js {{node_version}} LTS x64
 
 This package runs the production Desktop, local SQLite, OS-vault integration
 and LAN Web HTTPS behavior. It contains no Lab/test/demo/Virtual Printer auto-
@@ -216,7 +218,7 @@ OFFLINE_CUSTOMER_README = f"""KOMI Report V{VERSION} â€” Windows Offline In
 
 Target runtime: Windows 10/11 x64
 Build evidence: {{build_evidence}}
-Runtime: bundled CPython 3.14.7 x64 and Node.js {{node_version}} LTS x64
+Runtime: bundled CPython 3.14.10 x64 and Node.js {{node_version}} LTS x64
 
 This air-gapped package can be installed and configured without Internet
 access. It never contacts the KOMI Host and does not require an Online
@@ -259,7 +261,7 @@ def install_node_runtime(destination: Path) -> str:
                 expected = fields[0].casefold()
                 break
         actual = _sha256(archive)
-        if not expected or actual != expected:
+        if expected != NODE_ARCHIVE_SHA256 or actual != expected:
             raise ReleaseContractError("Official Node.js archive checksum verification failed")
         extracted = temp_root / "extracted"
         with zipfile.ZipFile(archive) as zipped:

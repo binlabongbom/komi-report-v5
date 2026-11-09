@@ -208,3 +208,47 @@ class Cases(unittest.TestCase):
     assert runner.batch_complete(
         evidence["executed_nodeids"], {"exit_code": result.returncode}, evidence,
     ) is not fail
+
+
+def test_release_suite_is_explicit_complete_and_separate_from_desktop():
+    desktop = runner.discover_files()
+    release = runner.discover_files(suite="release")
+    assert {path.name for path in release} == set(runner.EXCLUDED_FILES)
+    assert len(release) == 5
+    assert not set(desktop) & set(release)
+    assert runner.discover_files(["test_release_builder"], suite="release")[0].name == "test_release_builder.py"
+    for selection in ("../../app", "test_report_models", "missing_test"):
+        with pytest.raises(ValueError):
+            runner.discover_files([selection], suite="release")
+    with pytest.raises(ValueError):
+        runner.discover_files(suite="unrecognized")
+
+
+def test_release_suite_cannot_silently_omit_missing_contract_file(tmp_path, monkeypatch):
+    monkeypatch.setattr(runner, "TESTS", tmp_path)
+    for name in list(runner.EXCLUDED_FILES)[1:]:
+        (tmp_path / name).write_text("def test_contract(): pass\n", encoding="utf8")
+    with pytest.raises(ValueError, match="Missing release test files"):
+        runner.discover_files(suite="release")
+
+
+def test_candidate_requires_desktop_web_and_release_validation():
+    workflow = (ROOT / ".github/workflows/desktop-regression.yml").read_text(encoding="utf8")
+    assert "needs: [windows-desktop, web-validation, release-validation]" in workflow
+    assert "contents: read" in workflow
+    assert "self-hosted" not in workflow
+    assert "--suite release" in workflow
+    assert "test:security test:numeric test:report-users lint build" in workflow
+    assert "npm --prefix web audit --json" in workflow
+    assert "pip_audit --disable-pip --no-deps" in workflow
+    assert "Installer builds require the full regression selection" in workflow
+
+
+def test_inno_checksum_and_signature_checks_precede_compiler_setup():
+    workflow = (ROOT / ".github/workflows/windows-installer-candidate.yml").read_text(encoding="utf8")
+    assert "5ad54ca3def786f8f4212552e54cc6d8d61329e2d24a1cfee0571d42c2684ff1" in workflow
+    execute = workflow.index("Start-Process -FilePath $setup")
+    assert workflow.index("if ($actual -ne $expected)") < execute
+    assert workflow.index("if ($signature.Status -ne 'Valid')") < execute
+    assert "release_decision -ne 'HOLD'" in workflow
+    assert "production_go -ne $false" in workflow
