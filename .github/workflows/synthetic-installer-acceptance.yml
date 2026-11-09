@@ -68,6 +68,13 @@ jobs:
             $p = Start-Process -FilePath $exe -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/SP-','/CURRENTUSER',('/DIR="' + $install + '"'),('/LOG="' + $log + '"')) -WindowStyle Hidden -Wait -PassThru
             if ($p.ExitCode -ne 0) { throw "Installer failed with exit code $($p.ExitCode)" }
           }
+          function Test-AppVersion($expectedVersion) {
+            $runtime = Join-Path $install 'runtime/python.exe'
+            $source = Join-Path $install 'source'
+            $actualVersion = (& $runtime -c 'import sys; sys.path.insert(0, sys.argv[1]); from komi_version import APP_VERSION; print(APP_VERSION)' $source).Trim()
+            if ($LASTEXITCODE -ne 0 -or $actualVersion -ne $expectedVersion) { throw "Installed version mismatch: expected $expectedVersion, got $actualVersion" }
+            Write-Output "Installed source version: $actualVersion"
+          }
           function Set-SyntheticHome($name) {
             $homePath = Join-Path $env:RUNNER_TEMP ('komi-synthetic-' + $name)
             New-Item -ItemType Directory -Path $homePath -Force | Out-Null
@@ -82,6 +89,7 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw "Synthetic probe $label failed" }
           }
           Install-Candidate $newExe (Join-Path $evidence 'fresh-install.log')
+          Test-AppVersion '5.2.17'
           $runtime = Join-Path $install 'runtime/python.exe'
           if (-not (Test-Path $runtime)) { throw 'Fresh install missing bundled runtime' }
           Set-SyntheticHome 'fresh'
@@ -91,6 +99,7 @@ jobs:
           $uninstall = Start-Process -FilePath $uninstaller -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART') -WindowStyle Hidden -Wait -PassThru
           if ($uninstall.ExitCode -ne 0) { throw 'Fresh uninstall failed' }
           Install-Candidate $oldExe (Join-Path $evidence 'previous-install.log')
+          Test-AppVersion '5.2.15'
           $oldRuntime = Join-Path $install 'runtime/python.exe'
           if (-not (Test-Path $oldRuntime)) { throw 'Previous install missing bundled runtime' }
           Set-SyntheticHome 'previous'
@@ -102,6 +111,7 @@ jobs:
           Probe 'seed' (Join-Path $env:GITHUB_WORKSPACE 'legacy-reference/source') $legacySnapshot 'legacy-seed'
           $legacyHash = (Get-FileHash $env:KOMI_DB_PATH -Algorithm SHA256).Hash
           Install-Candidate $newExe (Join-Path $evidence 'upgrade-install.log')
+          Test-AppVersion '5.2.17'
           if ((Get-Item (Join-Path $install 'runtime/python.exe')).Length -le 0) { throw 'Upgraded runtime missing' }
           Set-SyntheticHome 'previous'
           if ((Get-FileHash $env:KOMI_DB_PATH -Algorithm SHA256).Hash -ne $previousHash) { throw 'Installer altered previous synthetic database' }
