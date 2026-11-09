@@ -13,7 +13,7 @@ export npm_config_update_notifier=false
 export NEXT_TELEMETRY_DISABLED=1
 python_version="$(cat "$project_root/.python-version")"
 node_version="$(cat "$project_root/.node-version")"
-if [[ "$(node --version 2>/dev/null || true)" != "v$node_version" || "$(npm --version 2>/dev/null || true)" != '12.1.0' ]]; then
+if [[ "$(node --version 2>/dev/null || true)" != "v$node_version" || "$(npm --version 2>/dev/null || true)" != '12.2.2' ]]; then
   # A scoped official Linux toolchain; do not replace system binaries or read credentials.
   python3 - "$cloud_root" "$node_version" <<'PY'
 import hashlib
@@ -31,6 +31,9 @@ base = f'https://nodejs.org/dist/v{version}/'
 with urllib.request.urlopen(base + 'SHASUMS256.txt', timeout=60) as response:
     checksums = response.read().decode()
 expected = next(line.split()[0] for line in checksums.splitlines() if line.split()[-1] == name)
+# Pin the separately reviewed official release checksum, not just the fetched manifest.
+if expected != '48cc0e21e048790e54c0cf5749c2725005313d652651c40b7a21feb9697aaf75':
+    raise SystemExit('Node release checksum does not match reviewed pin')
 urllib.request.urlretrieve(base + name, root / name)
 if hashlib.sha256((root / name).read_bytes()).hexdigest() != expected:
     raise SystemExit('Node archive checksum mismatch')
@@ -38,7 +41,7 @@ with tarfile.open(root / name) as archive:
     archive.extractall(root, filter='data')
 PY
   export PATH="$cloud_root/node-v$node_version-linux-x64/bin:$PATH"
-  npm install --global npm@12.1.0 --prefix "$cloud_root/node-v$node_version-linux-x64"
+  npm install --global npm@12.2.2 --prefix "$cloud_root/node-v$node_version-linux-x64"
 fi
 node_bin="$(dirname "$(command -v node)")"
 uv sync --project "$project_root/source" --python "$python_version" --locked --extra dev --group dev

@@ -8,10 +8,11 @@ from datetime import date
 import hashlib
 import json
 
-from services.billing_ledger import (FORMULA_VERSION, MANUAL_ADJUSTMENT_VERSION,
+from services.billing_ledger import (AUTOMATIC_FORMULA_VERSIONS, MANUAL_ADJUSTMENT_VERSION,
     REVERSAL_VERSION, _load_correction_source, _manual_adjustment_attestation,
     _manual_waste_basis_points, _reversal_attestation)
 from services.billing_periods import billing_month_range
+from services.pricing import quantity_first_amounts
 
 FORMAT = 'komi.billing.correction-transfer.v1'
 MAX_BYTES = 1024 * 1024
@@ -53,6 +54,7 @@ def _operation(conn, target, result, action):
     after = {'gross': row[13], 'net': row[15]}
     if action == 'reprice':
         audit = json.loads(row[18])['repricing']
+        after['formula'] = conn.execute('SELECT formula_version FROM billing_ledger WHERE id=?', (result,)).fetchone()[0]
         after.update(prices=json.loads(row[12]), discount=row[14], billing_day=row[16],
             period=list(row[6:8]), price_effective_date=audit['price_effective_date'],
             apply_current_discount=audit['apply_current_discount'],
@@ -120,6 +122,8 @@ def validate(document):
         if action == 'reprice':
             expected |= {'prices', 'discount', 'billing_day', 'period', 'price_effective_date',
                          'apply_current_discount', 'apply_current_period'}
+        if action == 'reprice' and 'formula' in after:
+            expected.add('formula')
         if set(after) != expected:
             raise ValueError('Invalid correction result')
         _money(after['gross'], negative=action == 'reverse')
@@ -148,7 +152,13 @@ def validate(document):
             if any(type(v) is not int or v < 0 for v in before['delta'].values()):
                 raise ValueError('Invalid frozen counter evidence')
             gross = sum(value * after['prices'][before['categories'][key]] for key, value in before['delta'].items())
-            net = (gross * (10000 - after['discount']) + 5000) // 10000
+            formula = after.get('formula', 'komi.billing.reprice.v1')
+            if formula == 'komi.billing.reprice.quantity-first.v2':
+                gross, net, _proof = quantity_first_amounts(before['delta'], before['categories'], after['prices'], after['discount'])
+            elif formula == 'komi.billing.reprice.v1':
+                net = (gross * (10000 - after['discount']) + 5000) // 10000
+            else:
+                raise ValueError('Unsupported correction formula')
             if (gross, net) != (after['gross'], after['net']):
                 raise ValueError('Corrected amounts do not match the frozen formula')
     return encoded
@@ -177,8 +187,6 @@ def _resolve(conn, before, action, reason):
 def apply(conn, document):
     """Called by the authenticated receiver inside its receipt transaction."""
     from services.billing_period_amendment import prepare_archives, rebuild_archives
-    from services.billing_repricing import REPRICE_VERSION
-    from services.billing_web_amendment import WEB_AMENDMENT_VERSION
     validate(document)
     payload = document['payload']
     resolved, periods = [], []
@@ -190,7 +198,7 @@ def apply(conn, document):
         if action == 'reprice':
             proof = json.loads(source[18])
             if (proof.get('billing_safe') is not True or operation['before']['formula'] not in
-                    {FORMULA_VERSION, REPRICE_VERSION, WEB_AMENDMENT_VERSION}):
+                    AUTOMATIC_FORMULA_VERSIONS):
                 raise ValueError('Only verified automatic evidence can be repriced')
             periods.append({'device_slot': source[1], 'record_date': source[5],
                 'old_period_start': source[6], 'old_period_end': source[7],
@@ -243,10 +251,15 @@ def apply(conn, document):
                 'old_period': list(source[6:8]), 'old_discount_basis_points': source[14],
                 'discount_basis_points': after['discount'], **{k: after[k] for k in
                     ('price_effective_date', 'apply_current_discount', 'apply_current_period', 'billing_day', 'period')}}
+            quantity_proof = {}
+            if after.get('formula') == 'komi.billing.reprice.quantity-first.v2':
+                _gross, _net, quantity = quantity_first_amounts(
+                    json.loads(source[10]), json.loads(source[11]), after['prices'], after['discount'])
+                quantity_proof['quantity_pricing'] = quantity
             insert(source, kind='replacement', parent=parent, gross=after['gross'], net=after['net'],
-                discount=after['discount'], formula=REPRICE_VERSION, prices=after['prices'], period=after['period'],
+                discount=after['discount'], formula=after.get('formula', 'komi.billing.reprice.v1'), prices=after['prices'], period=after['period'],
                 billing_day=after['billing_day'], attestation={'billing_safe': True, 'calculation_mode': 'dated_price_recalculation',
-                    'original_attestation': json.loads(source[18]), 'repricing': audit})
+                    'original_attestation': json.loads(source[18]), 'repricing': audit, **quantity_proof})
     rebuild_archives(conn, archives)
     from services.report_detail_amendment import refresh_period_summaries
     refresh_period_summaries(conn, periods)

@@ -55,8 +55,8 @@ def test_v34_backfills_distinct_existing_days_without_changing_source_rows(tmp_p
             insert(conn, kind, key="u-2")
             insert(conn, kind, slot=1, day="2026-09-02")
         before = {kind: conn.execute("SELECT * FROM " + table).fetchall() for kind, table in TABLES.items()}
-        assert apply_migrations(conn) == [34]
-        assert conn.execute("PRAGMA user_version").fetchone()[0] == 34
+        assert apply_migrations(conn) == [version for version, _, _ in MIGRATIONS if version >= 34]
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == max(version for version, _, _ in MIGRATIONS)
         revisions = conn.execute("SELECT kind,device_slot,record_date,token FROM report_day_revisions").fetchall()
         assert {(kind, slot, day) for kind, slot, day, _ in revisions} == {
             (kind, slot, day) for kind in TABLES for slot, day in ((0, "2026-09-01"), (1, "2026-09-02"))}

@@ -35,17 +35,19 @@ def test_shared_accounting_is_reviewed_atomic_idempotent_and_conserves_report():
     assert p['ready'][0]['day'] == '2026-09-20'
     with database._open(commit=False) as conn:
         assert not conn.execute('SELECT 1 FROM daily_meter_records').fetchone()
+    # 301 * 97.5% = 293.475 pages -> 293 billable pages before price.
+    assert p['ready'][0]['net_cents'] == 29300
     ids = service.confirm(p, actor='tester', reason='Verified shared evidence')
     assert service.confirm(p, actor='tester', reason='Verified shared evidence') == ids
     with database._open(commit=False) as conn:
         raw = conn.execute('SELECT source_json,first_success,last_success,sample_count FROM daily_meter_records').fetchone()
         assert json.loads(raw[0])['kind'] == 'shared-web-reviewed'
         assert raw[1:] == (None,None,0)
-        assert conn.execute('SELECT gross_cents,net_cents FROM billing_ledger').fetchone() == (30100,29348)
+        assert conn.execute('SELECT gross_cents,net_cents FROM billing_ledger').fetchone() == (30100,29300)
     records = load_usage_history([0],today=date(2026,9,25))
     assert sum(r.total for r in records) == 301
     assert sum(r.provisional_total for r in records) == 0
-    assert sum(r.net_cost for r in records) == 293.48
+    assert sum(r.net_cost for r in records) == 293.00
     assert not review(service)['ready']
 
 

@@ -36,11 +36,11 @@ def test_source_release_packages_manual_assets_for_cross_platform_builds():
 
 def test_updated_guide_links_remain_available_after_copy(tmp_path):
     from tools.customer_manual import copy_updated_manual
-    from komi_version import APP_VERSION
+    from tools.customer_manual import MANUAL_VERSION
     source_root = Path(__file__).resolve().parents[1]
     copy_updated_manual(source_root.parent, tmp_path)
-    assert (tmp_path/'customer-guide'/f'KOMI_Report_{APP_VERSION}_Source_Guide.pdf').read_bytes().startswith(b'%PDF-')
-    guide = tmp_path/f'CUSTOMER_GUIDE_V{APP_VERSION.replace(".", "_")}_DRAFT.md'
+    assert (tmp_path/'customer-guide'/f'KOMI_Report_{MANUAL_VERSION}_Source_Guide.pdf').read_bytes().startswith(b'%PDF-')
+    guide = tmp_path/f'CUSTOMER_GUIDE_V{MANUAL_VERSION.replace(".", "_")}_DRAFT.md'
     import re
     images = re.findall(r'!\[[^\]]*\]\(([^)]+)\)', guide.read_text(encoding='utf-8'))
     assert images and all((tmp_path/image).is_file() for image in images)

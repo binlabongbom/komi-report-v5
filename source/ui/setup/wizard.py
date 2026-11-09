@@ -1132,6 +1132,7 @@ class SetupWizardV5(QDialog):
                     "password": device.password,
                     "tls_mode": device.tls_mode,
                     "tls_fingerprint": device.tls_fingerprint,
+                    "web_protocol": device.web_protocol,
                     "result": result,
                 },
                 select=device.enabled,
@@ -1203,6 +1204,7 @@ class SetupWizardV5(QDialog):
                 "password": payload.get("password") or "",
                 "tls_mode": payload.get("tls_mode") or "system",
                 "tls_fingerprint": payload.get("tls_fingerprint") or "",
+                "web_protocol": payload.get("web_protocol") or "auto",
                 "result": payload.get("result") or {"online": True, "web_ok": False},
                 "is_virtual": bool(payload.get("is_virtual", False)),
                 "found_in_registration_scan": bool(payload.get("found_in_registration_scan", False)),
@@ -1240,6 +1242,9 @@ class SetupWizardV5(QDialog):
             prefix = "● VIRTUAL · " if entry.get("is_virtual") else "● "
             status, color = f"{prefix}พร้อมใช้งาน · SNMP + Web ผ่าน", C_GREEN
             background = QColor("#EDF8F2") if selected else None
+            if result.get("web_warnings"):
+                status, color = f"{prefix}อ่านมิเตอร์ได้ · มีคำเตือน กรุณาตรวจรายละเอียด", C_TEXT2
+                background = QColor("#FFF4DB") if selected else None
         elif result.get("session_busy"):
             status, color = (
                 "● Web กำลังถูกใช้งาน · Logout หน้าเครื่องแล้วตรวจสอบอีกครั้ง",
@@ -1304,7 +1309,9 @@ class SetupWizardV5(QDialog):
                 and not (result.get("online") and result.get("web_ok"))
             ):
                 item.setForeground(QColor(C_RED) if column == 4 else QColor("#7F1D1D"))
-            item.setToolTip(str(result.get('error') or value) if column == 4 else str(value))
+            details = "\n\n".join(filter(None, (str(result.get('error') or ''),
+                                               *result.get('web_warnings', ()))))
+            item.setToolTip((details or str(value)) if column == 4 else str(value))
             self.device_table.setItem(row, column, item)
         if result.get("session_busy"):
             action_text = "เปิด Web"
@@ -1329,7 +1336,9 @@ class SetupWizardV5(QDialog):
     def _device_table_action(self, row: int, column: int) -> None:
         if column == 4 and 0 <= row < len(self.discovered_devices):
             entry = self.discovered_devices[row]
-            error = entry.get('result', {}).get('error')
+            result = entry.get('result', {})
+            error = "\n\n".join(filter(None, (str(result.get('error') or ''),
+                                            *result.get('web_warnings', ()))))
             if error:
                 self._show_wizard_message(f"ผลการเชื่อมต่อ · {entry['name']}", str(error))
             return
@@ -1349,7 +1358,7 @@ class SetupWizardV5(QDialog):
         if entry is None:
             return
         dialog = QDialog(self)
-        dialog.setWindowTitle(f"User / Password · {host}")
+        dialog.setWindowTitle(f"Web Connection / User / Password · {host}")
         layout = QVBoxLayout(dialog)
         form = QFormLayout()
         username = QLineEdit(entry["username"])
@@ -1360,17 +1369,45 @@ class SetupWizardV5(QDialog):
         )
         password = QLineEdit(current_password)
         password.setEchoMode(QLineEdit.EchoMode.Password)
+        protocol = QComboBox()
+        protocol.setObjectName("web_protocol")
+        protocol.addItem("Auto (model profile)", "auto")
+        protocol.addItem("Legacy XML · Public", "legacy_xml_public")
+        protocol.addItem("Legacy XML · Administrator", "legacy_xml_admin")
+        protocol.setCurrentIndex(max(0, protocol.findData(entry.get("web_protocol", "auto"))))
+        form.addRow("Web Connection", protocol)
         form.addRow("Username", username)
         form.addRow("Password", password)
         layout.addLayout(form)
+        profile = resolve_device_meter_profile(str(entry.get("model") or entry.get("name") or ""))
         hint = QLabel(
             tr(
+                "เครื่องรุ่นนี้อ่าน Counter XML แบบ Administrator · กรอกบัญชีที่ผู้ดูแลอนุญาต "
+                "แล้วกดทดสอบใน KOMI; ไม่ลองรหัสเริ่มต้นอัตโนมัติ",
+                "This model reads Administrator XML counters. Enter an authorized account, "
+                "then test in KOMI; factory passwords are not tried automatically.",
+            ) if not profile.allow_factory_admin_credentials else tr(
                 f"Username: {DEFAULT_ADMIN_USERNAME} · ระบบลองรหัสเริ่มต้น 2 แบบอัตโนมัติแล้ว "
                 "กรอกเฉพาะเมื่อเครื่องถูกเปลี่ยนรหัส",
                 f"Username: {DEFAULT_ADMIN_USERNAME} · Two public defaults are tested automatically; "
                 "enter a password only when the customer changed it",
             )
         )
+        auto_hint = hint.text()
+        def protocol_changed() -> None:
+            selected = protocol.currentData()
+            public = selected == "legacy_xml_public"
+            username.setEnabled(not public)
+            password.setEnabled(not public)
+            hint.setText(
+                "Public XML: อ่าน Counter โดยไม่เข้าสู่ระบบ แม้เคยบันทึกบัญชีไว้"
+                if public else
+                "Administrator XML: ใช้บัญชีที่คุณกรอกเท่านั้น ไม่ลองรหัสเริ่มต้น"
+                if selected == "legacy_xml_admin" else auto_hint
+            )
+        protocol.currentIndexChanged.connect(protocol_changed)
+        protocol_changed()
+        hint.setWordWrap(True)
         hint.setStyleSheet(text_styles.label(C_TEXT2))
         layout.addWidget(hint)
         actions = QHBoxLayout()
@@ -1384,6 +1421,7 @@ class SetupWizardV5(QDialog):
         layout.addLayout(actions)
         def credentials_finished(result: int) -> None:
             if result == int(QDialog.DialogCode.Accepted):
+                entry["web_protocol"] = str(protocol.currentData())
                 entry["username"] = username.text().strip() or DEFAULT_ADMIN_USERNAME
                 entry["password"] = password.text()
                 entry["credential_origin"] = "customer" if password.text() else ""
@@ -1798,6 +1836,7 @@ class SetupWizardV5(QDialog):
                     password=entry["password"],
                     tls_mode=entry.get("tls_mode", "system"),
                     tls_fingerprint=entry.get("tls_fingerprint", ""),
+                    web_protocol=entry.get("web_protocol", "auto"),
                     enabled=True,
                     model=result.get("model") or entry["model"].replace("—", ""),
                     serial=result.get("serial") or entry["serial"].replace("—", ""),

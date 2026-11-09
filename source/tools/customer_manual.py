@@ -2,15 +2,16 @@
 from pathlib import Path
 import shutil
 
-from komi_version import APP_VERSION
+# Manual assets retain their own published version; never relabel an older PDF.
+MANUAL_VERSION = "5.2.12"
 
 
 def copy_updated_manual(project_root, destination):
     source = Path(project_root) / 'docs'
     destination = Path(destination)
-    names = (f'CUSTOMER_GUIDE_V{APP_VERSION.replace(".", "_")}_DRAFT.md',
-             f'customer-guide/KOMI_Report_{APP_VERSION}_Source_Guide.pdf',
-             f'customer-guide/assets-v{APP_VERSION}-source')
+    names = (f'CUSTOMER_GUIDE_V{MANUAL_VERSION.replace(".", "_")}_DRAFT.md',
+             f'customer-guide/KOMI_Report_{MANUAL_VERSION}_Source_Guide.pdf',
+             f'customer-guide/assets-v{MANUAL_VERSION}-source')
     for name in names:
         if not (source / name).exists():
             raise FileNotFoundError(f'Updated customer guide is missing: {name}')

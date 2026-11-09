@@ -7,6 +7,9 @@ from typing import Protocol
 from database import check_duplicate, save_reading
 from komi_snmp_profiler.meter import MeterReader
 from komi_snmp_profiler.models import MeterReading, WebCounterValue
+from komi_snmp_profiler.mono_950i import SCHEMA_VERSION as MONO_950I_SCHEMA_VERSION
+from services.runtime_snapshots import RuntimeCounterRow
+from services.subject_preview import build_subject_preview_rows
 
 
 class MeterReaderLike(Protocol):
@@ -58,18 +61,15 @@ def _color_total(index: dict[str, int], prefix: str) -> int:
     return explicit + single_two
 
 
-def _subject_accounts(counters: tuple[WebCounterValue, ...]) -> list[dict]:
-    grouped: dict[tuple[str, str, str], dict[str, int]] = {}
-    for item in counters:
-        if item.subject_type not in {"user", "track"}:
-            continue
-        key = (item.subject_type, item.subject_id or "", item.subject_name or item.subject_id or "Unknown")
-        grouped.setdefault(key, {})[item.canonical_field] = _number(item.count)
-
+def _subject_accounts(counters: tuple[WebCounterValue, ...], *, legacy_size_breakdown: bool = True) -> list[dict]:
     accounts: list[dict] = []
-    for (subject_type, subject_id, name), values in sorted(grouped.items(), key=lambda item: item[0]):
+    subjects = build_subject_preview_rows(tuple(RuntimeCounterRow.from_counter(item) for item in counters))
+    for subject in subjects:
+        subject_type, subject_id, name = subject.subject_type, subject.subject_id, subject.subject_name
+        values = {item.canonical_field: _number(item.count) for item in subject.counters}
         prefix = f"counter.{subject_type}"
-        total = _first(values, f"{prefix}.total.total")
+        total = _number(subject.total) if subject.total is not None else None
+        size_available = total is not None and legacy_size_breakdown
         copy_color = _color_total(values, f"{prefix}.copy")
         print_color = _color_total(values, f"{prefix}.print")
         copy_bw = _first(values, f"{prefix}.copy.bw_total", f"{prefix}.copy.black_total")
@@ -80,10 +80,15 @@ def _subject_accounts(counters: tuple[WebCounterValue, ...]) -> list[dict]:
                 "subject_type": subject_type,
                 "subject_id": subject_id,
                 "total": total,
-                "color_a4": copy_color + print_color,
-                "bw_a4": copy_bw + print_bw,
-                "color_a3": 0,
-                "bw_a3": 0,
+                "total_available": total is not None,
+                "total_state": subject.total_state,
+                # The legacy manual-save schema cannot represent an unknown
+                # total safely. Preserve unknowns here and reject that save;
+                # the raw-counter and live-preview paths remain available.
+                "color_a4": copy_color + print_color if size_available else None,
+                "bw_a4": copy_bw + print_bw if size_available else None,
+                "color_a3": 0 if size_available else None,
+                "bw_a3": 0 if size_available else None,
                 "source_fields": sorted(values),
             }
         )
@@ -128,6 +133,19 @@ def meter_reading_to_report(reading: MeterReading, *, machine_name: str | None =
         }
         for item in reading.counters
     ]
+    mono_profile = reading.schema_version == MONO_950I_SCHEMA_VERSION
+    accounts = _subject_accounts(reading.counters, legacy_size_breakdown=not mono_profile)
+    warnings = list(reading.warnings)
+    if mono_profile and accounts:
+        warnings.append(
+            "950i: ยืนยัน Total ผู้ใช้จาก Black/BW แล้ว แต่ยังไม่มี A3/A4 รายผู้ใช้ที่ยืนยัน; "
+            "ไม่บันทึกเป็นรายงานแยกขนาดแบบเดิมหรือแทนค่าที่ขาดด้วย 0"
+        )
+    if any(account["total"] is None for account in accounts):
+        warnings.append(
+            "พบข้อมูลผู้ใช้ แต่บางรายการไม่มี Total ที่ยืนยัน; คง Counter ต้นฉบับไว้ "
+            "และยังบันทึกเป็นรายงานรวมแบบเดิมไม่ได้ ไม่แทนค่าที่ขาดด้วย 0"
+        )
 
     return {
         "mode": "live_meter",
@@ -156,9 +174,9 @@ def meter_reading_to_report(reading: MeterReading, *, machine_name: str | None =
             "copy": {"total": copy_color + copy_bw, "color": copy_color, "bw": copy_bw},
             "print": {"total": print_color + print_bw, "color": print_color, "bw": print_bw},
         },
-        "accounts": _subject_accounts(reading.counters) or None,
+        "accounts": accounts or None,
         "meters": {},
-        "warnings": list(reading.warnings),
+        "warnings": warnings,
         "parser_name": "KOMI Live Meter",
         "source_metadata": {
             "schema_version": reading.schema_version,
@@ -193,6 +211,16 @@ class LiveMeterService:
     def save(self, slot: int, preview: LiveMeterPreview) -> SavedLiveMeter:
         if not 0 <= slot <= 2:
             raise ValueError("slot ต้องอยู่ระหว่าง 0–2")
+        if preview.reading.schema_version == MONO_950I_SCHEMA_VERSION:
+            raise ValueError(
+                "ยังบันทึกรายงานแยกขนาดแบบเดิมไม่ได้: 950i ยืนยัน Total ผู้ใช้แล้ว "
+                "แต่ยังไม่มี A3/A4 รายผู้ใช้ที่ยืนยัน; ไม่แทนค่าที่ขาดด้วย 0"
+            )
+        if any(account["total"] is None for account in _subject_accounts(preview.reading.counters)):
+            raise ValueError(
+                "ยังบันทึกรายงานรวมไม่ได้: มี User / Account ที่ไม่มี Total ที่ยืนยัน; "
+                "ตรวจ Counter ต้นฉบับได้โดยไม่แทนยอดด้วย 0"
+            )
         parsed = preview.parsed
         if check_duplicate(slot, parsed["serial"], parsed["date"]):
             raise ValueError("มี Meter ของเครื่องและวันที่นี้ในช่องที่เลือกแล้ว")

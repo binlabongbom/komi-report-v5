@@ -31,7 +31,7 @@ concurrency:
 jobs:
   installer-candidate:
     if: github.event_name == 'workflow_dispatch' && inputs.build_installer
-    needs: windows-desktop
+    needs: [windows-desktop, web-validation, release-validation]
     uses: ./.github/workflows/windows-installer-candidate.yml
     with:
       edition: ${{ inputs.installer_edition }}
@@ -100,3 +100,108 @@ jobs:
             desktop-ci/batch-*.json
             desktop-ci/batch-*.xml
             desktop-ci/batch-*.log
+
+  web-validation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      NEXT_TELEMETRY_DISABLED: '1'
+      npm_config_update_notifier: 'false'
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version-file: .node-version
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Prepare the exact pinned npm version
+        shell: bash
+        run: |
+          mkdir -p web-ci
+          npm_spec=$(node -p "JSON.parse(require('fs').readFileSync('web/package.json', 'utf8')).packageManager")
+          [[ "$npm_spec" =~ ^npm@[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo 'Invalid npm pin'; exit 1; }
+          npm install --global "$npm_spec" --ignore-scripts --no-audit --no-fund
+          [[ "$(node --version)" == "v$(tr -d '\r\n' < .node-version)" ]]
+          [[ "$(npm --version)" == "${npm_spec#npm@}" ]]
+          { node --version; npm --version; git rev-parse HEAD; } > web-ci/toolchain.txt
+      - name: Install locked Web dependencies
+        id: web_dependencies
+        shell: bash
+        run: npm --prefix web ci --no-fund --audit=false 2>&1 | tee web-ci/npm-ci.log
+      - name: Run all Web tests, TypeScript and production build
+        shell: bash
+        run: |
+          status=0
+          for script in test:security test:numeric test:report-users lint build; do
+            if npm --prefix web run "$script" 2>&1 | tee "web-ci/${script//:/-}.log"; then
+              echo "$script PASS" >> web-ci/results.txt
+            else
+              echo "$script FAIL" >> web-ci/results.txt
+              status=1
+            fi
+          done
+          exit "$status"
+      - name: Audit locked Web dependencies
+        if: always() && steps.web_dependencies.outcome == 'success'
+        shell: bash
+        run: npm --prefix web audit --json > web-ci/npm-audit.json
+      - name: Upload Web evidence
+        if: always()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: web-validation-${{ github.run_id }}-${{ github.run_attempt }}
+          retention-days: 14
+          if-no-files-found: warn
+          path: web-ci/
+
+  release-validation:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      PYTHONUTF8: '1'
+      PYTHONDONTWRITEBYTECODE: '1'
+      QT_QPA_PLATFORM: offscreen
+      KOMI_DISCOVERY_DISABLED: '1'
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7.0.0
+        with:
+          python-version-file: .python-version
+          cache: pip
+          cache-dependency-path: |
+            source/requirements-windows-x64.lock.txt
+            source/requirements-dev.lock.txt
+      - name: Install hash-locked release test dependencies
+        id: release_dependencies
+        run: |
+          New-Item -ItemType Directory -Path release-ci -Force | Out-Null
+          python -m pip install --disable-pip-version-check --require-hashes --only-binary=:all: -r source/requirements-windows-x64.lock.txt -r source/requirements-dev.lock.txt
+          if ($LASTEXITCODE -ne 0) { throw 'Locked release dependencies failed' }
+      - name: Verify source version authority
+        run: |
+          python source/tools/version_gate.py 2>&1 | Tee-Object -FilePath release-ci/version-gate.log
+          if ($LASTEXITCODE -ne 0) { throw 'Source version gate failed' }
+      - name: Run all five isolated release and build contract suites
+        run: |
+          python tools/ci/run_desktop_tests.py --suite release --output-dir release-ci/contracts
+          if ($LASTEXITCODE -ne 0) { throw 'Release/build contracts failed; see results.json and batch logs' }
+      - name: Audit locked Windows runtime dependencies
+        if: always() && steps.release_dependencies.outcome == 'success'
+        run: |
+          python -m pip_audit --disable-pip --no-deps -r source/requirements-windows-x64.lock.txt --format json --output release-ci/pip-audit.json
+          if ($LASTEXITCODE -ne 0) { throw 'Runtime dependency audit failed; see pip-audit.json' }
+      - name: Upload release validation evidence
+        if: always()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: release-validation-${{ github.run_id }}-${{ github.run_attempt }}
+          retention-days: 14
+          if-no-files-found: warn
+          path: release-ci/

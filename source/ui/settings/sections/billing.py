@@ -42,16 +42,20 @@ class BillingSection:
         self.billing_day.setAccessibleName("วันสิ้นสุดรอบบิล")
         self.waste = QDoubleSpinBox()
         self.waste.setRange(0, 100)
+        from database import get_waste_paper_pct
+        self.waste.setValue(get_waste_paper_pct())
         self.waste.setDecimals(1)
         self.waste.setSuffix(" %")
         self.waste.setAccessibleName("ส่วนลดกระดาษเสีย")
+        from services.pricing import WASTE_QUANTITY_TOOLTIP
+        self.waste.setToolTip(WASTE_QUANTITY_TOOLTIP)
         billing_grid.addWidget(
             field("วันสิ้นสุดรอบบิล", self.billing_day, "ถ้าเดือนไม่มีวันที่เลือก ระบบใช้วันสุดท้ายของเดือน"),
             0,
             0,
         )
         billing_grid.addWidget(
-            field("ส่วนลดกระดาษเสีย", self.waste, "หักออกจากยอดค่าใช้จ่ายก่อนสรุปรอบบิล"),
+            field("ส่วนลดกระดาษเสีย", self.waste, "หักจากจำนวนแผ่นและปัดเป็นจำนวนเต็มก่อนคูณราคา"),
             0,
             1,
         )

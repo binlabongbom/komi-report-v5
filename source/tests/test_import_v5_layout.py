@@ -5,12 +5,13 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 import pytest
 from PyQt6.QtCore import QAbstractAnimation
 from PyQt6.QtWidgets import QApplication, QHeaderView, QLabel, QPushButton, QWidget
+from test_subject_preview import monochrome_preview_counters
 
-from ui.pages import devices as devices_page
 from i18n import tr
 from komi_snmp_profiler.models import MeterReading, WebAuthState, WebCounterValue
 from services.device_config import DeviceConfig
 from services.runtime_snapshots import runtime_snapshots
+from ui.pages import devices as devices_page
 from v5_pages import PageImportV5, _TonerLevelBar
 
 
@@ -43,6 +44,57 @@ class _Cache:
 class _LegacyImport(QWidget):
     def refresh(self):
         return None
+
+
+@pytest.mark.parametrize("all_zero", [True, False])
+def test_import_keeps_users_without_explicit_total_and_shows_raw_observations(monkeypatch, all_zero):
+    from dataclasses import replace
+
+    app = QApplication.instance() or QApplication([])
+    runtime_snapshots.clear()
+    monkeypatch.setattr(devices_page, "latest_counters", lambda _slot: {"counter.total.total": 900})
+    raw = monochrome_preview_counters()
+    if all_zero:
+        raw = tuple(replace(row, count=0) for row in raw)
+    counters = tuple(WebCounterValue(row.canonical_field, row.label, row.count, "Total", row.source_path,
+                                    subject_type=row.subject_type, subject_id=row.subject_id,
+                                    subject_name=row.subject_name) for row in raw)
+    reading = MeterReading.create("192.0.2.10", list(counters), "synthetic-admin", WebAuthState.ADMIN)
+    runtime_snapshots.update(0, reading)
+    page = PageImportV5(_LegacyImport(), repository=_Repository(1), cache=_Cache())
+    table = page._device_cards[0]._subject_table
+    assert table is not None and table.rowCount() == 5
+    assert table.item(0, 0).text() == "Synthetic 1"
+    assert table.item(0, 1).text() == "—"
+    assert "ไม่ใช่ยอด 0" in table.item(0, 1).toolTip()
+    assert "counter.user.total.bw = 0" in table.item(0, 2).toolTip()
+    assert "counter.user.total.paper" in table.item(0, 2).toolTip()
+    labels = [label.text() for label in page._device_cards[0].findChildren(QLabel)]
+    assert any("5 User/Account" in text for text in labels)
+    assert any("ไม่ใช่ 0" in text for text in labels)
+    page.close()
+    app.processEvents()
+
+
+def test_import_labels_id_only_subject_as_name_unverified(monkeypatch):
+    app = QApplication.instance() or QApplication([])
+    runtime_snapshots.clear()
+    monkeypatch.setattr(devices_page, "latest_counters", lambda _slot: {"counter.total.total": 900})
+    counter = WebCounterValue("counter.user.total.bw", "Total: BW", 0, "Total", "synthetic/AuthCounter[7]",
+                              subject_type="user", subject_id="7", subject_name="7")
+    reading = MeterReading.create("192.0.2.10", [counter], "synthetic-admin", WebAuthState.ADMIN)
+    runtime_snapshots.update(0, reading)
+    page = PageImportV5(_LegacyImport(), repository=_Repository(1), cache=_Cache())
+    app.processEvents()
+    table = page._device_cards[0]._subject_table
+    assert table.rowCount() == 1
+    assert "ID 7" in table.item(0, 0).text()
+    assert "ชื่อยังไม่ยืนยัน" in table.item(0, 0).text()
+    assert "ไม่ใช้ลำดับแถว export" in table.item(0, 0).toolTip()
+    assert table.item(0, 1).text() == "—"
+    assert "counter.user.total.bw = 0" in table.item(0, 2).toolTip()
+    page.close()
+    app.processEvents()
 
 
 @pytest.mark.parametrize("device_count", [1, 2, 3])

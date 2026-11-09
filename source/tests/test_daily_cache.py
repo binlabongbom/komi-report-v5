@@ -234,7 +234,7 @@ def test_rollover_finalizes_observed_day_without_web_success_as_zero_usage_hold(
     assert json.loads(daily[1]) == {}
     assert json.loads(daily[2]) == {}
     assert daily[4:] == (None, None, 0, 1, 1)
-    assert source["billing_ledger_expected"] == "komi.billing.v1"
+    assert source["billing_ledger_expected"] == "komi.billing.quantity-first.v2"
     assert source["missing_web_success"] is True
     assert source["heartbeat_count"] == int(with_heartbeat)
     assert source["last_error"]["message"] == "Web Connection timeout"

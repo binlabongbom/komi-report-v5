@@ -49,7 +49,7 @@ def test_safe_posting_is_integer_frozen_and_retry_idempotent(tmp_path):
     assert first == second
     with _open(commit=False) as conn:
         row = conn.execute("SELECT entry_kind,gross_cents,net_cents,device_serial_snapshot FROM billing_ledger").fetchone()
-        assert row == ("posting", 303, 295, "SERIAL-1")
+        assert row == ("posting", 303, 303, "SERIAL-1")
         with __import__("pytest").raises(sqlite3.DatabaseError):
             conn.execute("UPDATE billing_ledger SET gross_cents=0")
         with __import__("pytest").raises(sqlite3.DatabaseError):
@@ -307,3 +307,28 @@ def test_audit_coverage_separates_legacy_expected_and_effective_lifecycle(tmp_pa
     assert selected == rows[0]
     assert len(selected.source_hash) == 64
     assert list_audit_rows(limit=None, search="SERIAL-1") == rows
+
+
+def test_quantity_formula_upgrade_preserves_existing_v1_posting_and_raw_meter(tmp_path, monkeypatch):
+    import services.billing_ledger as ledger
+    from services.billing_repricing import BillingRepricingService
+    set_db_path(tmp_path / 'old-ledger.db')
+    init_db()
+    DeviceConfigRepository().replace_all([DeviceConfig(0, 'Synthetic', '192.0.2.10', serial='SYNTHETIC')])
+    PricingRepository().set_prices(0, date(2026, 7, 1), PriceList(a4_color=1.005))
+    set_cfg('waste_paper_pct', '2.5')
+    with _open() as conn:
+        record_id = _daily(conn, {'reconciliation': {'billing_safe': True}})
+    # Construct a pre-upgrade immutable posting through the real insert path.
+    with monkeypatch.context() as old:
+        old.setattr(ledger, 'FORMULA_VERSION', 'komi.billing.v1')
+        old.setattr(ledger, 'quantity_first_amounts', lambda *args: (303, 295, {}))
+        original = ledger.post_daily_record(record_id)
+    assert ledger.post_daily_record(record_id) == original
+    with _open(commit=False) as conn:
+        assert conn.execute('SELECT gross_cents,net_cents,formula_version FROM billing_ledger').fetchone() == (303, 295, 'komi.billing.v1')
+        assert json.loads(conn.execute('SELECT delta_json FROM daily_meter_records').fetchone()[0]) == {'counter.paper.full_color.a4': 3}
+    preview = BillingRepricingService().preview(original)
+    assert preview['old_net_cents'] == 295
+    assert preview['net_cents'] == 303
+    assert preview['changed']

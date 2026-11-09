@@ -22,11 +22,13 @@ from PyQt6.QtWidgets import (
 )
 
 from i18n import tr, translate_text
+from komi_snmp_profiler.subject_identity import subject_name_is_placeholder
 from services.daily_cache import DailyCacheStore
 from services.device_config import DeviceConfig, DeviceConfigRepository
 from services.reconciliation import ReconciliationReport, reconcile_web_counters
 from services.runtime_snapshots import RuntimeCounterRow, runtime_snapshots
 from services.snmp_probe import PaperTrayStatus, SnmpTotalProbe
+from services.subject_preview import SubjectPreviewRow, build_subject_preview_rows
 from services.usage import latest_counters
 from ui.components.toner_bar import TonerBar
 from ui.styles import devices as devices_styles
@@ -330,24 +332,14 @@ class PageImportV5(QWidget):
             table.setRowHidden(row, hidden and is_zero)
 
     @staticmethod
-    def _subject_total_rows(rows: tuple[RuntimeCounterRow, ...]) -> tuple[RuntimeCounterRow, ...]:
-        """Return one explicit Total counter per User/Account without guessing a sum."""
-        totals: dict[tuple[str, str], RuntimeCounterRow] = {}
-        for row in rows:
-            canonical = row.canonical_field.casefold()
-            label = row.label.strip().casefold()
-            if not (canonical.endswith(".total.total") or label in {"total", "total counter"}):
-                continue
-            identity = row.subject_id or row.subject_name or "unknown"
-            key = (row.subject_type or "subject", identity)
-            totals.setdefault(key, row)
-        return tuple(totals.values())
+    def _subject_preview_rows(rows: tuple[RuntimeCounterRow, ...]) -> tuple[SubjectPreviewRow, ...]:
+        return build_subject_preview_rows(rows)
 
-    def _subject_table(self, rows: tuple[RuntimeCounterRow, ...]) -> QTableWidget:
+    def _subject_table(self, rows: tuple[SubjectPreviewRow, ...]) -> QTableWidget:
         table = QTableWidget()
         table.setObjectName("import_subject_table")
-        table.setColumnCount(2)
-        table.setHorizontalHeaderLabels(["User / Account", "Total Counter"])
+        table.setColumnCount(3)
+        table.setHorizontalHeaderLabels(["User / Account", "Total Counter", tr("Counter จากเครื่อง", "Observed counters")])
         table.setRowCount(len(rows))
         table.setMinimumWidth(0)
         table.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
@@ -370,21 +362,51 @@ class PageImportV5(QWidget):
         horizontal_header.setFixedHeight(38)
         horizontal_header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         horizontal_header.setSectionResizeMode(1, QHeaderView.ResizeMode.Fixed)
-        horizontal_header.resizeSection(1, 120)
+        horizontal_header.resizeSection(1, 100)
+        horizontal_header.setSectionResizeMode(2, QHeaderView.ResizeMode.Interactive)
+        horizontal_header.resizeSection(2, 160)
         for index, row in enumerate(rows):
-            subject = QTableWidgetItem(row.subject_name or row.subject_id or "Unknown")
+            name_unverified = bool(row.subject_id) and subject_name_is_placeholder(
+                row.subject_id, row.subject_name,
+            )
+            subject_label = (
+                tr(f"ID {row.subject_id} · ชื่อยังไม่ยืนยัน", f"ID {row.subject_id} · name unverified")
+                if name_unverified else row.subject_name or row.subject_id or "Unknown"
+            )
+            subject = QTableWidgetItem(subject_label)
             subject.setToolTip(
-                f"type={row.subject_type or 'unknown'} · id={row.subject_id or '—'}\n{row.source_path}"
+                f"type={row.subject_type} · id={row.subject_id or '—'}"
+                + (tr("\nยังไม่มีหลักฐานจับคู่เลขบัญชีกับชื่อ; ไม่ใช้ลำดับแถว export แทน",
+                      "\nNo verified account number/name pairing; export row order is not identity.")
+                   if name_unverified else "")
             )
             subject.setTextAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-            value = QTableWidgetItem(self._format_number(row.count))
-            value.setToolTip(row.canonical_field)
+            value = QTableWidgetItem(self._format_number(row.total) if row.total is not None else "—")
+            if row.total_state == "available":
+                total_note = f"counter.{row.subject_type}.total.total"
+            elif row.total_state == "missing":
+                total_note = tr("เครื่องไม่คืน Total รวมของผู้ใช้; ไม่ใช่ยอด 0 และไม่บวก Counter อื่นแทน",
+                                "No explicit user Total returned; this is not zero and other counters are not summed.")
+            else:
+                total_note = tr("Total ที่ได้รับขัดแย้งหรือไม่ถูกต้อง; ยังไม่แสดงเป็นยอดที่ยืนยัน",
+                                "Conflicting or invalid Total observations; no confirmed total is shown.")
+            value.setToolTip(total_note)
             value.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            other_counters = tuple(counter for counter in row.counters
+                                   if counter.canonical_field != f"counter.{row.subject_type}.total.total")
+            observed = QTableWidgetItem(" · ".join(
+                f"{counter.label}: {self._format_number(counter.count)}" for counter in other_counters
+            ) or "—")
+            observed.setToolTip("\n".join(
+                f"{counter.canonical_field} = {self._format_number(counter.count)}\n{counter.source_path}"
+                for counter in row.counters
+            ))
             if index % 2:
-                for item in (subject, value):
+                for item in (subject, value, observed):
                     item.setBackground(QColor(C_TABLE_ALT))
             table.setItem(index, 0, subject)
             table.setItem(index, 1, value)
+            table.setItem(index, 2, observed)
         return table
 
     def _toner_row(self, toner: dict) -> QWidget:
@@ -636,24 +658,34 @@ class PageImportV5(QWidget):
         layout.addWidget(self._divider())
         layout.addWidget(self._section_title("User Authentication / Account Track"))
         subject_rows = snapshot["subject_rows"]
-        subject_total_rows = self._subject_total_rows(subject_rows)
-        if subject_total_rows:
+        subject_preview_rows = self._subject_preview_rows(subject_rows)
+        if subject_preview_rows:
+            missing_total_count = sum(row.total is None for row in subject_preview_rows)
             subject_detail = QLabel(
                 tr(
-                    f"RAM snapshot · {len(subject_total_rows):,} User/Account · แสดง Total Counter",
-                    f"RAM snapshot · {len(subject_total_rows):,} users/accounts · Total Counter",
+                    f"RAM snapshot · {len(subject_preview_rows):,} User/Account · Total ไม่พร้อม {missing_total_count:,} รายการ",
+                    f"RAM snapshot · {len(subject_preview_rows):,} users/accounts · {missing_total_count:,} totals unavailable",
                 )
             )
+            subject_detail.setWordWrap(True)
             subject_detail.setStyleSheet(text_styles.label(C_MUTED_TEXT, font_size='10px', background='transparent'))
             layout.addWidget(subject_detail)
-            subject_table = self._subject_table(subject_total_rows)
+            if missing_total_count:
+                total_notice = QLabel(tr(
+                    "— หมายถึงยังไม่มี Total ที่ยืนยัน ไม่ใช่ 0; แสดง Counter ที่เครื่องส่งมาแยกกัน โดยไม่บวกเป็นยอดรวม",
+                    "— means no confirmed Total, not zero. Observed counters are shown separately, never added together.",
+                ))
+                total_notice.setWordWrap(True)
+                total_notice.setStyleSheet(text_styles.label(C_MUTED_TEXT, font_size='10px', background='transparent'))
+                layout.addWidget(total_notice)
+            subject_table = self._subject_table(subject_preview_rows)
             card._subject_table = subject_table
             layout.addWidget(subject_table)
         else:
             empty = QLabel(
                 tr(
-                    "ไม่พบ User Authentication / Account Track ที่เปิดใช้งาน",
-                    "No enabled User Authentication / Account Track data",
+                    "ยังไม่พบข้อมูล User / Account ใน snapshot นี้; ไม่ได้ยืนยันว่าเครื่องปิด Authentication",
+                    "No User / Account data in this snapshot; this does not establish that authentication is disabled.",
                 )
             )
             empty.setWordWrap(True)

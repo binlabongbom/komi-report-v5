@@ -4,13 +4,12 @@ import json
 
 from database import _open
 from config import DEFAULT_WASTE_PCT
-from services.billing_ledger import FORMULA_VERSION, _basis_points, _cents, _source_hash, _load_correction_source, _ensure_reversal
-from services.pricing import CostCategory
+from services.billing_ledger import AUTOMATIC_FORMULA_VERSIONS, _basis_points, _cents, _source_hash, _load_correction_source, _ensure_reversal
+from services.pricing import CostCategory, quantity_first_amounts
 from services.billing_periods import billing_month_range, effective_billing_day
-from services.billing_web_amendment import WEB_AMENDMENT_VERSION
 from services.peer_change_events import notify_local_change
 
-REPRICE_VERSION = "komi.billing.reprice.v1"
+REPRICE_VERSION = "komi.billing.reprice.quantity-first.v2"
 
 
 def _discount_policy(conn, apply_current_discount):
@@ -37,7 +36,7 @@ def _preview(conn, ledger_id, *, apply_current_discount=False, apply_current_per
     source = _load_correction_source(conn, ledger_id)
     formula = conn.execute("SELECT formula_version FROM billing_ledger WHERE id=?", (ledger_id,)).fetchone()[0]
     attestation = json.loads(source[18])
-    if (source[0] not in {"posting", "replacement"} or formula not in {FORMULA_VERSION, REPRICE_VERSION, WEB_AMENDMENT_VERSION}
+    if (source[0] not in {"posting", "replacement"} or formula not in AUTOMATIC_FORMULA_VERSIONS
             or not isinstance(attestation, dict) or attestation.get("billing_safe") is not True):
         raise ValueError("Only a verified automatic posting can be repriced")
     latest = conn.execute("SELECT MAX(id) FROM billing_ledger WHERE source_daily_record_id=?", (source[8],)).fetchone()[0]
@@ -61,7 +60,7 @@ def _preview(conn, ledger_id, *, apply_current_discount=False, apply_current_per
     if gross > 2**63 - 1:
         raise ValueError("Recalculated amount exceeds supported storage range")
     discount = source[14] if discount is None else discount
-    net = (gross * (10000 - discount) + 5000) // 10000
+    gross, net, quantity_audit = quantity_first_amounts(deltas, categories, cents, discount)
     revision_data = {"ledger_id": ledger_id, "source": source, "formula": formula, "prices": prices}
     if apply_current_discount:
         revision_data["current_discount_basis_points"] = discount
@@ -75,7 +74,7 @@ def _preview(conn, ledger_id, *, apply_current_discount=False, apply_current_per
     return {"ledger_id": ledger_id, "revision": revision, "device_slot": source[1], "device_name": source[3], "serial": source[4],
             "record_date": source[5], "price_effective_date": prices[0], "old_gross_cents": source[13],
             "old_net_cents": source[15], "gross_cents": gross, "net_cents": net,
-            "price_cents": cents, "waste_basis_points": discount,
+            "price_cents": cents, "waste_basis_points": discount, "quantity_pricing": quantity_audit,
             "old_waste_basis_points": source[14], "apply_current_discount": apply_current_discount,
             "old_period_start": source[6], "old_period_end": source[7],
             "period_start": period[0], "period_end": period[1], "billing_day": billing_day,
@@ -125,7 +124,7 @@ def confirm_in_transaction(conn, ledger_id, *, expected_revision, actor, reason,
         raise ValueError("No price, discount or period change to apply")
     reversal = _ensure_reversal(conn, ledger_id, source, reason=reason.strip(), now=now)
     attestation = {"billing_safe": True, "calculation_mode": "dated_price_recalculation",
-        "original_attestation": json.loads(source[18]),
+        "original_attestation": json.loads(source[18]), "quantity_pricing": preview["quantity_pricing"],
         "repricing": {"actor": actor.strip(), "reason": reason.strip(), "target_ledger_id": ledger_id,
             "price_effective_date": preview["price_effective_date"], "preview_revision": expected_revision,
             "created_at": now, "source_delta_used_for_amounts": True,

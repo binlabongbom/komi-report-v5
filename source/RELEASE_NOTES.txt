@@ -1,4 +1,13 @@
 KOMI Report V5 — Local Development Release Notes
+- Runtime/security maintenance: Python 3.14.10, Node 24.22.2, npm 12.2.2, patched CA/pyasn1 and Web dependencies.
+- Preserve exact report results while avoiding repeated identical-name classification. Full installer CI remains gated on Desktop, Web and release validation.
+
+Version 5.2.17 — 2026-11-06 (Candidate; validation pending)
+
+- Live user preview: retain users without an explicit Total, preserve raw metrics, and distinguish missing values from zero without inventing usage.
+- bizhub 950i TXT: correct compact monochrome field mappings and SerialNo punctuation handling.
+- Final automated checks and build evidence are pending. No physical-printer acceptance is claimed.
+- Unsigned HOLD candidate; production_go=false. Prior release history remains below.
 
 Version 5.1.0 — 2026-08-20 (Design/Migration baseline)
 

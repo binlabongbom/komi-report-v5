@@ -12,7 +12,7 @@ from contextlib import closing
 from datetime import datetime
 from pathlib import Path
 
-CURRENT_SCHEMA_VERSION = 34
+CURRENT_SCHEMA_VERSION = 35
 
 
 class UnsupportedSchemaVersionError(RuntimeError):
@@ -61,7 +61,7 @@ _REQUIRED_SCHEMA: dict[str, frozenset[str]] = {
     "readings": frozenset({"id", "slot", "data_json", "read_date_iso", "billing_month"}),
     "settings": frozenset({"key", "value"}),
     "devices": frozenset(
-        {"slot", "host", "password", "credential_ref", "tls_mode", "tls_fingerprint", "connection_status"}
+        {"slot", "host", "password", "credential_ref", "tls_mode", "tls_fingerprint", "connection_status", "web_protocol"}
     ),
     "daily_meter_records": frozenset({"id", "device_slot", "record_date", "source_json"}),
     "billing_ledger": frozenset({"id", "entry_kind", "source_hash", "idempotency_key"}),
@@ -861,6 +861,12 @@ def _migration_034_report_day_revisions(connection):
                 AFTER {operation} ON {table} BEGIN {changes} END''')
 
 
+def _migration_035_web_protocol(connection: sqlite3.Connection) -> None:
+    columns = {row[1] for row in connection.execute("PRAGMA table_info(devices)")}
+    if columns and "web_protocol" not in columns:
+        connection.execute("ALTER TABLE devices ADD COLUMN web_protocol TEXT NOT NULL DEFAULT 'auto'")
+
+
 MIGRATIONS: tuple[tuple[int, str, object], ...] = (
     (8, "record_schema_history_and_reporting_indexes", _migration_008_record_schema_history),
     (9, "add_legacy_usage_history_import_provenance", _migration_009_legacy_history_import),
@@ -889,6 +895,7 @@ MIGRATIONS: tuple[tuple[int, str, object], ...] = (
     (32, 'add_compact_shared_report_evidence', _migration_032_shared_report_days),
     (33, 'retain_peer_evidence_origins_without_session_access', _migration_033_lan_evidence_origins),
     (34, 'track_report_day_projection_revisions', _migration_034_report_day_revisions),
+    (35, 'add_explicit_device_web_protocol', _migration_035_web_protocol),
 )
 
 

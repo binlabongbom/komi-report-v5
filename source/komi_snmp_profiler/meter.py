@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
 from dataclasses import replace
 from ipaddress import ip_address
@@ -30,7 +31,9 @@ from .meter_export import (
     subject_name_map,
 )
 from .models import MeterReading, WebAuthState
-from .subject_identity import subject_name_is_placeholder as _subject_name_is_placeholder, numeric_name_aliases
+from .mono_950i import is_950i_model
+from .subject_identity import numeric_name_aliases
+from .subject_identity import subject_name_is_placeholder as _subject_name_is_placeholder
 
 
 class MeterExportReaderLike(Protocol):
@@ -73,10 +76,17 @@ class MeterReader:
         self.credential_store.delete(self._host(host))
 
 
-    def read(self, host: str, *, model: str = "") -> MeterReading:
+    def read(self, host: str, *, model: str = "", web_protocol: str | None = None) -> MeterReading:
         host = self._host(host)
         warnings: list[str] = []
-        profile = resolve_device_meter_profile(model)
+        if web_protocol is None:
+            protocol_provider = getattr(self.credential_store, "web_protocol", None)
+            web_protocol = protocol_provider(host) if callable(protocol_provider) else "auto"
+        profile = resolve_device_meter_profile(model, web_protocol=web_protocol)
+        # A 950i counter response identifies users by AuthNo, while its Meter
+        # export has names but no registration numbers. Registration numbers
+        # can have gaps; export row positions cannot prove that identity join.
+        allow_positional_names = re.search(r"(?:\bbizhub\s*|\b)950i\b", model, re.IGNORECASE) is None
         policy_provider = getattr(self.credential_store, "tls_policy", None)
         tls_policy = policy_provider(host) if callable(policy_provider) else TlsPolicy()
         tls_policy = replace(tls_policy, compatibility=profile.tls_compatibility)
@@ -92,6 +102,8 @@ class MeterReader:
         admin_connector = self.admin_connector or AuthenticatedWebConnectionCounterConnector(
             tls_policy=tls_policy,
             scheme=profile.web_scheme,
+            read_user_registration=is_950i_model(model),
+            mono_950i_model=model if is_950i_model(model) else "",
         )
         credential: AdminCredential | None = None
         try:
@@ -117,6 +129,12 @@ class MeterReader:
                 legacy_warnings,
             )
         if profile.web_protocol == WebMeterProtocol.LEGACY_XML_ADMIN:
+            if credential is None and not profile.allow_factory_admin_credentials:
+                raise WebConnectionAuthenticationError(
+                    "รุ่นนี้ใช้ Counter XML แบบ Administrator; กรอกบัญชีในตั้งค่าเครื่องพิมพ์ก่อนทดสอบ "
+                    "ยังไม่ได้ลองเข้าสู่ระบบหรือใช้รหัสเริ่มต้น",
+                    diagnostic_code="admin_required",
+                )
             connector = self.legacy_admin_connector or LegacyAuthenticatedWebConnectionCounterConnector(
                 tls_policy=tls_policy,
                 scheme=profile.web_scheme,
@@ -154,18 +172,19 @@ class MeterReader:
             try:
                 result = admin_connector.collect_with_credential(host, credential)
                 counters = list(result.counters)
-                counters, identity_warnings = self._enrich_subject_names(host, counters, tls_policy)
-                return MeterReading.create(
-                    host,
-                    counters,
-                    result.source,
-                    result.auth_state,
-                    warnings + list(result.warnings) + identity_warnings,
+                counters, identity_warnings = self._enrich_subject_names(
+                    host, counters, tls_policy, allow_positional_names=allow_positional_names,
+                )
+                return self._reading_from_collection(
+                    host, counters, result, warnings + list(result.warnings) + identity_warnings,
                 )
             except WebConnectionError as err:
                 admin_failure = err
+                from services.support_diagnostics import diagnostic_report
+
                 warnings.append(
-                    "Administrator session ใช้งานไม่ได้หลังลองเพียงหนึ่งครั้ง; ใช้ public fallback เพื่อหลีกเลี่ยง lockout"
+                    "Administrator session ใช้งานไม่ได้หลังลองเพียงหนึ่งครั้ง; ใช้ public fallback เพื่อหลีกเลี่ยง lockout\n"
+                    + diagnostic_report(err, stage="WEB / Administrator fallback", target=host)
                 )
         try:
             result = public_connector.collect_result(host)
@@ -180,13 +199,11 @@ class MeterReader:
                 warnings,
             )
             counters = list(result.counters)
-            counters, identity_warnings = self._enrich_subject_names(host, counters, tls_policy)
-            return MeterReading.create(
-                host,
-                counters,
-                result.source,
-                result.auth_state,
-                warnings + list(result.warnings) + identity_warnings,
+            counters, identity_warnings = self._enrich_subject_names(
+                host, counters, tls_policy, allow_positional_names=allow_positional_names,
+            )
+            return self._reading_from_collection(
+                host, counters, result, warnings + list(result.warnings) + identity_warnings,
             )
         except WebConnectionError:
             if isinstance(admin_failure, WebConnectionAuthenticationError):
@@ -194,14 +211,22 @@ class MeterReader:
             raise
         auth_state = WebAuthState.PUBLIC_FALLBACK if warnings else WebAuthState.PUBLIC
         counters = list(result.counters)
-        counters, identity_warnings = self._enrich_subject_names(host, counters, tls_policy)
-        return MeterReading.create(
+        counters, identity_warnings = self._enrich_subject_names(
+            host, counters, tls_policy, allow_positional_names=allow_positional_names,
+        )
+        reading = MeterReading.create(
             host,
             counters,
             result.source,
             auth_state,
             warnings + list(result.warnings) + identity_warnings,
         )
+        return replace(reading, schema_version=result.schema_version)
+
+    @staticmethod
+    def _reading_from_collection(host: str, counters: list, result: WebCounterCollection, warnings: list[str]) -> MeterReading:
+        reading = MeterReading.create(host, counters, result.source, result.auth_state, warnings)
+        return replace(reading, schema_version=result.schema_version)
 
     def _read_with_public_factory_credentials(
         self,
@@ -235,6 +260,8 @@ class MeterReader:
         host: str,
         counters: list,
         tls_policy: TlsPolicy,
+        *,
+        allow_positional_names: bool = True,
     ) -> tuple[list, list[str]]:
         kinds: set[MeterExportKind] = set()
         for counter in counters:
@@ -248,6 +275,11 @@ class MeterReader:
                 kinds.add("Track")
         if not kinds:
             return counters, []
+        if not allow_positional_names:
+            return counters, [
+                "950i: ยังไม่ยืนยันคู่ AuthNo/Track ID กับชื่อใน Meter export; "
+                "คงเลขบัญชีจากเครื่อง ไม่ใช้ลำดับแถวแทนเลขบัญชี"
+            ]
 
         names_by_type: dict[str, dict[str, str]] = {}
         warnings: list[str] = []

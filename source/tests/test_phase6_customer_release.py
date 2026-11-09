@@ -11,6 +11,7 @@ from komi_version import APP_VERSION
 from services.v5_2_contract_metadata import CONTRACT_SHA256, CONTRACT_VERSION
 from tools.build_customer_delivery import CustomerDeliveryError, build_delivery
 from tools.build_windows_rc import CUSTOMER_INSTALLER_NAME, CUSTOMER_README
+from tools.customer_manual import MANUAL_VERSION
 
 
 def _digest(path: Path) -> str:
@@ -115,15 +116,15 @@ def test_customer_delivery_holds_unsigned_arm_vm_artifacts(
         "CUSTOMER_RELEASE_NOTES.md",
         "CUSTOMER_INSTALL_GUIDE.md",
         "CUSTOMER_GUIDE_V5_2.md",
-        f"CUSTOMER_GUIDE_V{APP_VERSION.replace('.', '_')}_DRAFT.md",
+        f"CUSTOMER_GUIDE_V{MANUAL_VERSION.replace('.', '_')}_DRAFT.md",
         "RELEASE_SUPPORT_AND_RECOVERY.md",
         "REGISTRATION_DATA_NOTICE.md",
     ):
         (docs / name).write_text(f"# {name}\n", encoding="utf-8")
     guide_root = docs / "customer-guide"
     guide_root.mkdir()
-    (guide_root / f"KOMI_Report_{APP_VERSION}_Source_Guide.pdf").write_bytes(b"%PDF-1.4\nQA fixture\n")
-    (guide_root / f"assets-v{APP_VERSION}-source").mkdir()
+    (guide_root / f"KOMI_Report_{MANUAL_VERSION}_Source_Guide.pdf").write_bytes(b"%PDF-1.4\nQA fixture\n")
+    (guide_root / f"assets-v{MANUAL_VERSION}-source").mkdir()
     monkeypatch.setattr("tools.build_customer_delivery.PROJECT_ROOT", tmp_path)
 
     archive, manifest = build_delivery(
@@ -162,6 +163,8 @@ def test_customer_delivery_holds_unsigned_arm_vm_artifacts(
     assert "windows/WINDOWS_MANIFEST.json" in names
     assert "docs/CUSTOMER_INSTALL_GUIDE.md" in names
     assert "docs/CUSTOMER_GUIDE_V5_2.md" in names
+    assert f"docs/CUSTOMER_GUIDE_V{MANUAL_VERSION.replace('.', '_')}_DRAFT.md" in names
+    assert f"docs/customer-guide/KOMI_Report_{MANUAL_VERSION}_Source_Guide.pdf" in names
     assert "CUSTOMER_RELEASE_MANIFEST.json" in names
 
 

@@ -217,6 +217,8 @@ class PageSettings(QWidget):
         wr = QHBoxLayout()
         lb_waste = QLabel("% กระดาษเสีย :"); lb_waste.setFont(fnt(F_LG)); lb_waste.setFixedWidth(140)
         self.spin_waste = QDoubleSpinBox()
+        from services.pricing import WASTE_QUANTITY_TOOLTIP
+        self.spin_waste.setToolTip(WASTE_QUANTITY_TOOLTIP)
         self.spin_waste.setRange(0, 100); self.spin_waste.setDecimals(1)
         self.spin_waste.setSuffix(" %"); self.spin_waste.setValue(get_waste_paper_pct())
         self.spin_waste.setFont(fnt(F_LG)); self.spin_waste.setFixedWidth(160)
@@ -226,6 +228,8 @@ class PageSettings(QWidget):
         waste_hint.setFont(fnt(F_XS)); waste_hint.setStyleSheet(text_styles.label(C_TEXT3))
         l_waste.addWidget(waste_hint)
         b_waste = btn("💾  บันทึก % กระดาษเสีย", "primary"); b_waste.setFixedWidth(220)
+        b_waste.setToolTip(WASTE_QUANTITY_TOOLTIP)
+        lb_waste.setToolTip(WASTE_QUANTITY_TOOLTIP)
         b_waste.clicked.connect(self._save_waste_pct)
         l_waste.addWidget(b_waste)
         lay.addWidget(c_waste)
@@ -367,9 +371,10 @@ class PageSettings(QWidget):
         self.close_to_tray = QCheckBox(
             "เมื่อกดปิดหน้าต่าง ให้โปรแกรมทำงานต่อใน System Tray"
         )
-        self.close_to_tray.setChecked(get_cfg("close_to_tray", "1") != "0")
+        self.close_to_tray.setChecked(True)
+        self.close_to_tray.setEnabled(False)
         self.close_to_tray.setToolTip(
-            "ยกเลิกตัวเลือกนี้ หากต้องการให้ปุ่มปิดหน้าต่างหยุดโปรแกรมจริง"
+            "กด X เพื่อทำงานเบื้องหลัง; หากต้องการออกจริง ให้เลือก Exit ใน System Tray"
         )
         l_runtime.addWidget(self.close_to_tray)
 
@@ -1429,7 +1434,7 @@ class PageSettings(QWidget):
         if hasattr(self, 'db_lbl'):
             self._refresh_db_path_label()
         if hasattr(self, 'close_to_tray'):
-            self.close_to_tray.setChecked(get_cfg("close_to_tray", "1") != "0")
+            self.close_to_tray.setChecked(True)
         if hasattr(self, 'log_retention_days'):
             try:
                 days = int(get_cfg("log_retention_days", "30") or "30")

@@ -130,6 +130,7 @@ def validate_parser_json(path: str) -> list:
 from PyQt6.QtCore import QSize, Qt, QTimer  # ค่าคงที่ของ Qt เช่น alignment, cursor shape
 from PyQt6.QtGui import QAction, QCloseEvent, QFont, QPixmap  # QFont = ฟอนต์, QPixmap = รูปภาพ
 from PyQt6.QtNetwork import QNetworkInformation
+from ui.quit_confirmation import confirm_meter_collection_exit
 from PyQt6.QtWidgets import (
     QApplication,
     QComboBox,
@@ -466,6 +467,7 @@ class MainWindow(QMainWindow):
         self.pg_import.sync_requested.connect(self._request_manual_poll)
         self.pg_overview.sync_requested.connect(self._request_manual_poll)
         self._build_tray()
+        QApplication.instance().commitDataRequest.connect(self._session_shutdown)
         self.registration.status_changed.connect(self._registration_status_changed)
         self._install_network_recovery_monitor()
         apply_language(self)
@@ -1152,6 +1154,14 @@ class MainWindow(QMainWindow):
         for reader in self.findChildren(LatestRead):
             reader.shutdown()
 
+    def _session_shutdown(self, *_args):
+        # OS shutdown/logoff is not a tray close. Never present a modal prompt.
+        self._quitting = True
+        self._stop_ui_work()
+        self.polling.stop()
+        self.registration.stop()
+        self.web_service.stop()
+
     def _exit_application(self):
         if self._quitting:
             return
@@ -1160,17 +1170,7 @@ class MainWindow(QMainWindow):
             pending.cancel()
             self._agent_handoff = None
             pending.deleteLater()
-        reply = QMessageBox.question(
-            self,
-            tr("หยุดโปรแกรมทั้งหมด", "Stop the application"),
-            tr(
-                "การอ่านมิเตอร์และรายงานผ่านเว็บบนคอมพิวเตอร์เครื่องนี้จะหยุดจนกว่าจะเปิดโปรแกรมอีกครั้ง ต้องการหยุดทั้งหมดหรือไม่?",
-                "Meter collection and web reports on this computer will stop until the application is opened again. Stop everything?",
-            ),
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
-            QMessageBox.StandardButton.Cancel,
-        )
-        if reply != QMessageBox.StandardButton.Yes:
+        if not confirm_meter_collection_exit(self):
             return
         if not self._confirm_discard_settings_on_exit():
             return
@@ -1217,8 +1217,19 @@ class MainWindow(QMainWindow):
         handoff.start()
 
     def closeEvent(self, event: QCloseEvent):
-        close_to_tray = get_cfg("close_to_tray", "1") != "0"
-        if self._quitting or not close_to_tray or not QSystemTrayIcon.isSystemTrayAvailable():
+        application = QApplication.instance()
+        saving_session = getattr(application, "isSavingSession", lambda: False)()
+        if saving_session:
+            self._quitting = True
+        if not self._quitting and not QSystemTrayIcon.isSystemTrayAvailable():
+            if not confirm_meter_collection_exit(self, tray_unavailable=True):
+                event.ignore()
+                return
+            if not self._confirm_discard_settings_on_exit():
+                event.ignore()
+                return
+            self._quitting = True
+        if self._quitting:
             if not self._quitting and not self._confirm_discard_settings_on_exit():
                 event.ignore()
                 return

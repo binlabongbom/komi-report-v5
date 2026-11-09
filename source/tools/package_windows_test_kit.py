@@ -1,6 +1,6 @@
 """Build a clean, self-contained Windows x64 test kit.
 
-The kit bundles the official CPython 3.14.7 embeddable runtime and Windows wheels,
+The kit bundles the official CPython 3.14.10 embeddable runtime and Windows wheels,
 so the target computer does not need Python, pip, or internet access.  This is a
 portable source/runtime bundle, not a cross-built Windows executable.
 """
@@ -31,7 +31,9 @@ RELEASE_ROOT = PROJECT_ROOT / "release"
 WINDOWS_REQUIREMENTS = SOURCE_ROOT / "requirements-windows-x64.lock.txt"
 KIT_NAME = "KOMI Report V5 Windows Portable"
 ARCHIVE_NAME = f"KOMI_Report_V{VERSION.replace('.', '_')}_Windows_x64_Portable.zip"
-PYTHON_VERSION = "3.14.7"
+PYTHON_VERSION = "3.14.10"
+# Published on the Python 3.14.10 release page. Verify before extracting.
+PYTHON_EMBED_SHA256 = "90905e64a840557d8c1bc4f5b74db3d7ee85e3ffb217611cac1c7813acea4159"
 PYTHON_EMBED_ARCHIVE = f"python-{PYTHON_VERSION}-embed-amd64.zip"
 PYTHON_EMBED_URL = (
     f"https://www.python.org/ftp/python/{PYTHON_VERSION}/{PYTHON_EMBED_ARCHIVE}"
@@ -242,6 +244,8 @@ def download_python_runtime(destination: Path) -> str:
         archive = Path(temp_dir) / PYTHON_EMBED_ARCHIVE
         urllib.request.urlretrieve(PYTHON_EMBED_URL, archive)
         runtime_sha256 = sha256(archive)
+        if runtime_sha256 != PYTHON_EMBED_SHA256:
+            raise RuntimeError("Official Python archive checksum verification failed")
         with zipfile.ZipFile(archive) as zipped:
             zipped.extractall(destination)
 
