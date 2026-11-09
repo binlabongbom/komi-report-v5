@@ -1,4 +1,4 @@
-# Runtime maintenance ÔÇö 6 November 2026
+# Runtime maintenance — 6 November 2026
 
 KOMI Report 5.2.17 keeps the existing Python 3.14 and Node 24 LTS lines and the
 existing Qt/product dependency set except for the targeted pyasn1 decoder security
@@ -39,7 +39,7 @@ Official sources:
 
 The earlier report below describes September validation and does not represent the November runtime.
 
-# Runtime and development toolchain ÔÇö 24 September 2026
+# Runtime and development toolchain — 24 September 2026
 
 This update targets stable releases compatible with KOMI Report V5.2.12. Node
 uses the supported 24 LTS line. Python prereleases and incompatible transitive
