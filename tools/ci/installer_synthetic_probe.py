@@ -19,6 +19,7 @@ with sqlite3.connect(path) as conn:
     if mode == 'seed':
         conn.execute("INSERT OR REPLACE INTO settings(key,value) VALUES('ci_synthetic_marker','synthetic-only')")
         conn.execute("INSERT INTO devices(slot,name,host,updated_at) VALUES(0,'Synthetic printer','192.0.2.10','2026-01-01T00:00:00Z')")
+        conn.execute("INSERT INTO readings(slot,machine_name,read_date_iso,billing_month,data_json) VALUES(0,'Synthetic printer','2026-01-02','2026-01','{\"total\":123}')")
         conn.commit()
     assert conn.execute('PRAGMA integrity_check').fetchone()[0] == 'ok'
     assert not conn.execute('PRAGMA foreign_key_check').fetchall()
@@ -30,6 +31,7 @@ with sqlite3.connect(path) as conn:
     if mode in ('seed', 'upgrade'):
         assert conn.execute("SELECT value FROM settings WHERE key='ci_synthetic_marker'").fetchone() == ('synthetic-only',)
         assert conn.execute("SELECT name,host FROM devices WHERE slot=0").fetchone() == ('Synthetic printer','192.0.2.10')
+        assert conn.execute("SELECT machine_name,read_date_iso,billing_month,data_json FROM readings WHERE slot=0").fetchone() == ('Synthetic printer','2026-01-02','2026-01','{\"total\":123}')
     conn.execute('PRAGMA wal_checkpoint(TRUNCATE)')
 if mode == 'seed':
     baseline = {'schema_version': version, 'counts': counts, 'sha256': hashlib.file_digest(path.open('rb'), 'sha256').hexdigest()}
