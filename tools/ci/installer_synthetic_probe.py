@@ -18,7 +18,7 @@ database.init_db()
 with sqlite3.connect(path) as conn:
     if mode == 'seed':
         conn.execute("INSERT OR REPLACE INTO settings(key,value) VALUES('ci_synthetic_marker','synthetic-only')")
-        conn.execute("INSERT INTO devices(slot,name,host) VALUES(0,'Synthetic printer','192.0.2.10')")
+        conn.execute("INSERT INTO devices(slot,name,host,updated_at) VALUES(0,'Synthetic printer','192.0.2.10','2026-01-01T00:00:00Z')")
         conn.commit()
     assert conn.execute('PRAGMA integrity_check').fetchone()[0] == 'ok'
     assert not conn.execute('PRAGMA foreign_key_check').fetchall()
