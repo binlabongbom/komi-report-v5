@@ -1,0 +1,124 @@
+name: Synthetic Windows installer acceptance
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/synthetic-installer-acceptance.yml'
+      - 'tools/ci/installer_synthetic_probe.py'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  synthetic-install-upgrade:
+    runs-on: windows-latest
+    timeout-minutes: 40
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      PYTHONDONTWRITEBYTECODE: '1'
+      KOMI_DISCOVERY_DISABLED: '1'
+      QT_QPA_PLATFORM: offscreen
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - name: Checkout the older source for a synthetic legacy database
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: b108ed10f2817c3c44a648362f3cff33d5652828
+          path: legacy-reference
+          persist-credentials: false
+      - name: Download 5.2.15 candidate
+        uses: actions/download-artifact@v8.0.1
+        with:
+          name: windows-candidate-normal-495e6d537ac0e1912e3f70a20e1847497c0d6c6b
+          run-id: 40842530272
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/previous-candidate
+      - name: Download exact 5.2.17 candidate
+        uses: actions/download-artifact@v8.0.1
+        with:
+          name: windows-candidate-normal-ac0a144e8e706d9466053ad24db1f6e9c22d4a9e
+          run-id: 42546844064
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/current-candidate
+      - name: Verify and exercise clean install and upgrade
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $evidence = Join-Path $env:RUNNER_TEMP 'synthetic-installer-evidence'
+          New-Item -ItemType Directory -Path $evidence -Force | Out-Null
+          $currentDir = Join-Path $env:RUNNER_TEMP 'current-candidate'
+          $previousDir = Join-Path $env:RUNNER_TEMP 'previous-candidate'
+          $current = Get-Content (Join-Path $currentDir 'WINDOWS_MANIFEST.json') -Raw | ConvertFrom-Json
+          $previous = Get-Content (Join-Path $previousDir 'WINDOWS_MANIFEST.json') -Raw | ConvertFrom-Json
+          if ($current.version -ne '5.2.17' -or $current.source_commit -ne 'ac0a144e8e706d9466053ad24db1f6e9c22d4a9e' -or $current.release_decision -ne 'HOLD') { throw 'Current candidate identity mismatch' }
+          if ($previous.version -ne '5.2.15' -or $previous.source_commit -ne '495e6d537ac0e1912e3f70a20e1847497c0d6c6b') { throw 'Previous candidate identity mismatch' }
+          $newExe = Join-Path $currentDir $current.artifact
+          $oldExe = Join-Path $previousDir $previous.artifact
+          $expected = '3de78288613e458dadeec6c7cbb8e6ced2d6c0e791d3b3fc29ab580d7ccaa278'
+          if ((Get-FileHash $newExe -Algorithm SHA256).Hash.ToLowerInvariant() -ne $expected -or $current.artifact_sha256 -ne $expected) { throw 'Current installer hash mismatch' }
+          if ((Get-FileHash $oldExe -Algorithm SHA256).Hash.ToLowerInvariant() -ne $previous.artifact_sha256) { throw 'Previous installer hash mismatch' }
+          $install = Join-Path $env:RUNNER_TEMP 'komi-isolated-install'
+          $probe = Join-Path $env:GITHUB_WORKSPACE 'tools/ci/installer_synthetic_probe.py'
+          function Install-Candidate($exe, $log) {
+            $p = Start-Process -FilePath $exe -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/SP-','/CURRENTUSER',('/DIR="' + $install + '"'),('/LOG="' + $log + '"')) -WindowStyle Hidden -Wait -PassThru
+            if ($p.ExitCode -ne 0) { throw "Installer failed with exit code $($p.ExitCode)" }
+          }
+          function Set-SyntheticHome($name) {
+            $homePath = Join-Path $env:RUNNER_TEMP ('komi-synthetic-' + $name)
+            New-Item -ItemType Directory -Path $homePath -Force | Out-Null
+            $env:KOMI_APP_HOME = $homePath
+            $env:KOMI_DB_PATH = Join-Path $homePath 'synthetic.sqlite3'
+            $env:KOMI_LOG_DIR = Join-Path $homePath 'logs'
+            $env:KOMI_RUNTIME_CONFIG = Join-Path $homePath 'runtime.toml'
+          }
+          function Probe($mode, $source, $snapshot, $label) {
+            $runtime = Join-Path $install 'runtime/python.exe'
+            & $runtime $probe $mode $source $env:KOMI_DB_PATH $snapshot 2>&1 | Tee-Object -FilePath (Join-Path $evidence ($label + '.log'))
+            if ($LASTEXITCODE -ne 0) { throw "Synthetic probe $label failed" }
+          }
+          Install-Candidate $newExe (Join-Path $evidence 'fresh-install.log')
+          $runtime = Join-Path $install 'runtime/python.exe'
+          if (-not (Test-Path $runtime)) { throw 'Fresh install missing bundled runtime' }
+          Set-SyntheticHome 'fresh'
+          Probe 'fresh' (Join-Path $install 'source') (Join-Path $evidence 'unused.json') 'fresh-probe'
+          $uninstaller = Join-Path $install 'unins000.exe'
+          if (-not (Test-Path $uninstaller)) { throw 'Uninstaller missing' }
+          $uninstall = Start-Process -FilePath $uninstaller -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART') -WindowStyle Hidden -Wait -PassThru
+          if ($uninstall.ExitCode -ne 0) { throw 'Fresh uninstall failed' }
+          Install-Candidate $oldExe (Join-Path $evidence 'previous-install.log')
+          $oldRuntime = Join-Path $install 'runtime/python.exe'
+          if (-not (Test-Path $oldRuntime)) { throw 'Previous install missing bundled runtime' }
+          Set-SyntheticHome 'previous'
+          $previousSnapshot = Join-Path $evidence 'previous-snapshot.json'
+          Probe 'seed' (Join-Path $install 'source') $previousSnapshot 'previous-seed'
+          $previousHash = (Get-FileHash $env:KOMI_DB_PATH -Algorithm SHA256).Hash
+          Set-SyntheticHome 'legacy'
+          $legacySnapshot = Join-Path $evidence 'legacy-snapshot.json'
+          Probe 'seed' (Join-Path $env:GITHUB_WORKSPACE 'legacy-reference/source') $legacySnapshot 'legacy-seed'
+          $legacyHash = (Get-FileHash $env:KOMI_DB_PATH -Algorithm SHA256).Hash
+          Install-Candidate $newExe (Join-Path $evidence 'upgrade-install.log')
+          if ((Get-Item (Join-Path $install 'runtime/python.exe')).Length -le 0) { throw 'Upgraded runtime missing' }
+          Set-SyntheticHome 'previous'
+          if ((Get-FileHash $env:KOMI_DB_PATH -Algorithm SHA256).Hash -ne $previousHash) { throw 'Installer altered previous synthetic database' }
+          Probe 'upgrade' (Join-Path $install 'source') $previousSnapshot 'previous-upgrade'
+          Set-SyntheticHome 'legacy'
+          if ((Get-FileHash $env:KOMI_DB_PATH -Algorithm SHA256).Hash -ne $legacyHash) { throw 'Installer altered legacy synthetic database' }
+          Probe 'upgrade' (Join-Path $install 'source') $legacySnapshot 'legacy-upgrade'
+          'Synthetic clean install and 5.2.15-to-5.2.17 upgrade passed; no real data or printer was used.' | Set-Content (Join-Path $evidence 'result.txt')
+      - name: Upload synthetic test logs only
+        if: always()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: synthetic-installer-evidence-${{ github.run_id }}
+          retention-days: 14
+          if-no-files-found: warn
+          path: |
+            ${{ runner.temp }}/synthetic-installer-evidence/*.log
+            ${{ runner.temp }}/synthetic-installer-evidence/*.json
+            ${{ runner.temp }}/synthetic-installer-evidence/result.txt
+
