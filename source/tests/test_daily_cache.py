@@ -659,3 +659,47 @@ def test_midnight_finalize_waits_for_inflight_cache_write_and_posts_once(tmp_pat
     assert counts == (1, 1)
     assert json.loads(row[0])["counter.paper.full_color.a4"] == 25
     assert row[1] == "posting"
+
+
+@pytest.mark.parametrize("last_error", [False, True], ids=["before-cutoff", "late-error"])
+def test_rollover_keeps_observed_page_count_visible_as_non_billable(tmp_path, last_error):
+    from dataclasses import replace
+    from services.monthly_history import HeldUsageEvidence, load_usage_history
+
+    set_db_path(tmp_path / "rollover-review.db")
+    init_db()
+    DeviceConfigRepository().replace_all(
+        [DeviceConfig(0, "Office", "192.0.2.10", serial="SER-A")]
+    )
+    day = date(2026, 7, 16)
+    tomorrow = date(2026, 7, 17)
+    PricingRepository().set_prices(0, day, PriceList(a4_color=1.0))
+    cache = DailyCacheStore(tmp_path / "cache")
+    proof = ReconciliationReport(checked_count=1, issues=())
+    for hour, meter in [(8, 100), (17 if last_error else 16, 272)]:
+        at = datetime(2026, 7, 16, hour, tzinfo=UTC)
+        reading = _reading(meter, at)
+        total = replace(reading.counters[0], canonical_field="counter.total.total")
+        cache.update_reading(0, replace(reading, counters=(*reading.counters, total)),
+                             at=at, reconciliation=proof)
+    if last_error:
+        cache.record_error(0, day, "fixture: printer offline after successful close",
+                           at=datetime(2026, 7, 16, 18, tzinfo=UTC))
+
+    before = load_usage_history([0], today=day, granularity="daily", cache=cache)
+    assert before[0].provisional_total == 172
+    records = cache.finalize_before(tomorrow)
+    assert len(records) == 1
+    assert records[0].incomplete
+    assert not cache.path(0, day).exists()
+
+    after = load_usage_history([0], today=tomorrow, granularity="daily", cache=cache,
+                               period_start=day, period_end=day)
+    assert len(after) == 1
+    assert after[0].held_evidence == (HeldUsageEvidence(day, "incomplete_day", 172),)
+    assert after[0].total == after[0].provisional_total == after[0].net_cost == 0
+    with _open(commit=False) as conn:
+        ledger = conn.execute(
+            "SELECT entry_kind, hold_reason, gross_cents, net_cents FROM billing_ledger"
+        ).fetchone()
+    assert ledger == ("hold", "incomplete_day", 0, 0)

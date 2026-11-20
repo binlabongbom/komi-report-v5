@@ -1858,6 +1858,28 @@ class PageHistoryV5(PageHistory):
             )
         if held:
             warnings.append(f"Hold {held:,} device-day ไม่รวมในยอด")
+            reasons = {
+                "incomplete_day": "ข้อมูลการอ่านไม่ครบวัน",
+                "missing_web_success": "ไม่มีการอ่าน Web สำเร็จ",
+                "missing_or_unsafe_attestation": "ยังยืนยันความถูกต้องของมิเตอร์ไม่ได้",
+                "unsafe_attestation_seen_during_day": "พบการอ่านที่ยังยืนยันไม่ได้ระหว่างวัน",
+                "missing_price_snapshot": "ไม่มีราคาที่มีผลในวันนั้น",
+                "not_posted": "ยังไม่ลงบัญชี",
+                "reversal": "มีรายการกลับบัญชี",
+            }
+            evidence = sorted(
+                ((entry.day, self._record_device_label(record, enabled_by_slot, include_serial=False)[0], entry)
+                 for record in records for entry in record.held_evidence),
+                key=lambda item: (item[0], item[1]),
+                reverse=True,
+            )
+            for held_day, printer_name, entry in evidence[:50]:
+                observed = (f"มิเตอร์ที่อ่านได้ {entry.observed_total:,} หน้า"
+                            if entry.observed_total is not None else "ไม่มีตัวเลขมิเตอร์ที่ใช้แสดงได้")
+                reason = reasons.get(entry.reason, entry.reason)
+                warnings.append(f"{held_day.isoformat()} · {printer_name} · {observed} · {reason}")
+            if len(evidence) > 50:
+                warnings.append(f"ยังมีอีก {len(evidence) - 50:,} รายการ · ลดช่วงวันที่เพื่อดูเพิ่มเติม")
         if incomplete:
             warnings.append(f"ข้อมูลไม่สมบูรณ์ {incomplete:,} device-day")
         if warnings:

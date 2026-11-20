@@ -17,6 +17,25 @@ from services.usage import default_usage_groups
 
 
 @dataclass(frozen=True)
+class HeldUsageEvidence:
+    day: date
+    reason: str
+    observed_total: int | None
+
+
+def _observed_total(delta_json: str) -> int | None:
+    """Use only the explicit meter total, never infer it from partial counters."""
+    try:
+        deltas = json.loads(delta_json)
+    except (TypeError, ValueError):
+        return None
+    total = deltas.get("counter.total.total") if isinstance(deltas, dict) else None
+    if isinstance(total, bool) or not isinstance(total, int) or total < 0:
+        return None
+    return total
+
+
+@dataclass(frozen=True)
 class MonthlyUsage:
     device_slot: int
     period_start: date
@@ -76,6 +95,7 @@ class MonthlyUsage:
     print_available: bool = False
     copy_available: bool = False
     remarks: tuple[str, ...] = ()
+    held_evidence: tuple[HeldUsageEvidence, ...] = ()
 
 
 HistoryGranularity = Literal["daily", "weekly", "monthly", "quarterly", "yearly"]
@@ -393,7 +413,7 @@ def load_usage_history(
             parameters.extend(slots)
         with _open(commit=False) as conn:
             rows = conn.execute(
-                f"""SELECT id,device_slot,record_date,incomplete,source_json
+                f"""SELECT id,device_slot,record_date,incomplete,source_json,delta_json
                     FROM daily_meter_records d WHERE device_slot IN ({placeholders}) {bounds} {ledger_guard}
                     ORDER BY record_date""",
                 parameters,
@@ -422,6 +442,7 @@ def load_usage_history(
                 "days": 0,
                 "incomplete": 0,
                 "held": 0,
+                "held_evidence": [],
                 "remarks": set(),
                 "device_name_snapshot": device_name,
                 "device_serial_snapshot": device_serial,
@@ -476,6 +497,8 @@ def load_usage_history(
         ledger: _LedgerDay | None = None,
         *,
         source_json: str = "{}",
+        delta_json: str = "{}",
+        reason: str = "not_posted",
         identity: tuple[str, str, str] | None = None,
     ) -> None:
         start, end = (
@@ -495,6 +518,11 @@ def load_usage_history(
         bucket = bucket_for(slot, snapshot, start, end)
         bucket["held"] += 1
         bucket["incomplete"] += int(incomplete)
+        # Reversals are intentional removals, not unposted usage to display.
+        evidence = ledger.delta_json if ledger is not None and ledger.latest_kind == "hold" else delta_json
+        bucket["held_evidence"].append(
+            HeldUsageEvidence(day, (ledger.hold_reason if ledger else None) or reason, _observed_total(evidence))
+        )
 
     # Ledger is the canonical reporting source.  A posted/replaced day remains
     # reportable even if its mutable operational daily row is later changed or
@@ -510,20 +538,20 @@ def load_usage_history(
                     raise TypeError("ledger delta is not an object")
                 deltas = {key: float(value) for key, value in raw_deltas.items()}
             except (TypeError, ValueError, json.JSONDecodeError):
-                hold_day(slot, day, incomplete, ledger)
+                hold_day(slot, day, incomplete, ledger, reason="invalid_ledger_delta")
             else:
                 add_day(slot, day, deltas, incomplete, ledger)
                 for field, amount in deltas.items():
                     posted_values[slot, day, field] = posted_values.get((slot, day, field), 0.0) + amount
         else:
-            hold_day(slot, day, incomplete, ledger)
+            hold_day(slot, day, incomplete, ledger, reason=ledger.latest_kind)
         finalized.add((slot, day))
 
-    for record_id, slot, record_date, incomplete, source_json in rows:
+    for record_id, slot, record_date, incomplete, source_json, delta_json in rows:
         if int(record_id) in ledger_days:
             continue
         day = date.fromisoformat(record_date)
-        hold_day(slot, day, bool(incomplete), source_json=source_json)
+        hold_day(slot, day, bool(incomplete), source_json=source_json, delta_json=delta_json)
         finalized.add((slot, day))
 
     closed_days = _closed_usage_days(slots) if bounded else set(finalized)
@@ -561,6 +589,8 @@ def load_usage_history(
                     slot,
                     current,
                     False,
+                    delta_json=json.dumps(state["delta"]),
+                    reason="unverified_current_read",
                     identity=_identity_snapshot(state, slot),
                 )
 
@@ -698,6 +728,7 @@ def load_usage_history(
                 day_count=bucket["days"],
                 incomplete_days=bucket["incomplete"],
                 held_days=bucket["held"],
+                held_evidence=tuple(bucket["held_evidence"]),
                 remarks=tuple(sorted(bucket["remarks"])),
                 device_identity=device_identity,
                 device_name_snapshot=bucket["device_name_snapshot"],

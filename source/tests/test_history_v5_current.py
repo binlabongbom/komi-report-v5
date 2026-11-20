@@ -12,7 +12,7 @@ from PyQt6.QtWidgets import QAbstractItemView, QApplication, QScrollArea
 import database
 from ui.reports import page as report_page
 from services.device_config import DeviceConfig
-from services.monthly_history import MonthlyUsage
+from services.monthly_history import HeldUsageEvidence, MonthlyUsage
 from ui.cloud_reports import USAGE_METRICS
 from ui.reports.page import PageHistoryV5
 from ui.reports.export_dialog import ReportExportPeriodDialog
@@ -805,6 +805,7 @@ def test_reports_show_held_days_without_claiming_current_waste_for_frozen_ledger
                 day_count=1,
                 incomplete_days=0,
                 held_days=2,
+                held_evidence=(HeldUsageEvidence(date(2026, 7, 16), "incomplete_day", 172),),
             ),
             MonthlyUsage(
                 device_slot=1,
@@ -849,6 +850,8 @@ def test_reports_show_held_days_without_claiming_current_waste_for_frozen_ledger
 
         assert "มีข้อมูลรอตรวจสอบ 3 device-day" in page.report_overview_warning.text()
         assert "Hold 2 device-day ไม่รวมในยอด" in page._report_overview_review_detail
+        assert "2026-07-16" in page._report_overview_review_detail
+        assert "มิเตอร์ที่อ่านได้ 172 หน้า · ข้อมูลการอ่านไม่ครบวัน" in page._report_overview_review_detail
         assert "ข้อมูลไม่สมบูรณ์ 1 device-day" in page._report_overview_review_detail
         assert "Pricelist/ส่วนลดตามแต่ละรายการ" in page.report_period_note.text()
         assert page.report_period_note.isHidden()
