@@ -2,6 +2,12 @@
 
 from . import tokens
 
+
+def settings_font(family: str) -> str:
+    # Keep the rest of the app on its default font; retain the Settings
+    # controls' existing font sizes and weights.
+    return f'PageSettingsV5, PageSettingsV5 QWidget {{ font-family: "{family}"; }}'
+
 SETTINGS_B_IMPORT_PARSER = (
     "QPushButton { background: #EFF6FF !important; color: #2563EB !important; border: 1.5px "
     "solid #BFDBFE !important; border-radius: 8px; padding: 8px 18px; font-weight: 600; } "

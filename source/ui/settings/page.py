@@ -15,6 +15,7 @@ from ui.styles import settings as settings_styles
 from ui.styles import surfaces as surfaces_styles
 from ui.styles import text as text_styles
 from ui.styles.tokens import F_2XL
+from ui.styles.typography import windows_settings_font_family
 from widgets import btn, fnt
 
 
@@ -32,6 +33,8 @@ class PageSettingsV5(QWidget):
         offline_license_public_keys: dict[str, str] | None = None,
     ) -> None:
         super().__init__(parent)
+        if family := windows_settings_font_family():
+            self.setStyleSheet(settings_styles.settings_font(family))
         self.stack = QStackedWidget()
         self.fleet_content = PageFleetSettings(
             registration_runtime=registration_runtime,

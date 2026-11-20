@@ -130,3 +130,54 @@ def test_settings_and_report_tabs_start_at_the_left_edge(settings, width):
         assert tab.tabBar().mapTo(tab, QPoint(0, 0)).x() <= 2
         assert tab.tabBar().tabRect(0).left() == 0
     reports.close()
+
+
+
+def test_windows_settings_use_thai_font_without_changing_the_rest_of_the_app(monkeypatch, tmp_path):
+    from PyQt6.QtGui import QFontDatabase, QFontInfo
+    from PyQt6.QtWidgets import QLabel, QVBoxLayout, QWidget
+
+    from ui.styles import tokens, typography
+    from ui.styles.application import build_qss
+
+    app = QApplication.instance() or QApplication([])
+    thai_fonts = QFontDatabase.families(QFontDatabase.WritingSystem.Thai)
+    family = next((font for font in ("Leelawadee UI", "Noto Sans Thai", "Tahoma") if font in thai_fonts), None)
+    if not family:
+        pytest.skip("No supported Thai UI font installed on this runner")
+    monkeypatch.setattr(tokens, "IS_WINDOWS", True)
+    monkeypatch.setattr(fleet_page, "web_service_manager", lambda: _WebServiceDouble(tmp_path))
+    monkeypatch.setattr(fleet_page, "configure_autostart", lambda *a, **kw: tmp_path / "autostart")
+
+    host = QWidget()
+    host.setStyleSheet(build_qss())
+    layout = QVBoxLayout(host)
+    outside = QLabel("ข้อมูลทั่วไป")
+    layout.addWidget(outside)
+    outside.ensurePolished()
+    original = outside.font()
+
+    page = PageSettingsV5(PageSettings(), host)
+    layout.addWidget(page)
+    host.resize(1060, 900)
+    host.show()
+
+    content = page.fleet_content
+    app.processEvents()
+    for widget in (content.autostart, content.autostart_status, page.section_tabs.tabBar()):
+        assert widget.font().family() == family
+        assert QFontInfo(widget.font()).family() == family
+    assert outside.font() == original
+    assert typography.windows_settings_font_family() == family
+
+    # Tabs mounted lazily still receive the font, including labels with
+    # stacked combining marks, without changing translation or text.
+    page.section_tabs.setCurrentIndex(3)
+    app.processEvents()
+    label = QLabel("พื้นที่ ตั้งค่า ผู้ใช้", page.network_page.widget())
+    label.ensurePolished()
+    assert label.font().family() == family
+    assert label.text() == "พื้นที่ ตั้งค่า ผู้ใช้"
+    assert label.sizeHint().height() >= label.fontMetrics().height()
+    host.close()
+    app.processEvents()

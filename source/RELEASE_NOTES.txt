@@ -2,6 +2,12 @@ KOMI Report V5 — Local Development Release Notes
 - Runtime/security maintenance: Python 3.14.10, Node 24.22.2, npm 12.2.2, patched CA/pyasn1 and Web dependencies.
 - Preserve exact report results while avoiding repeated identical-name classification. Full installer CI remains gated on Desktop, Web and release validation.
 
+Version 5.2.18 — 2026-11-20 (UAT candidate)
+
+- Windows Settings prefers an installed UI font with Thai support for text with vowels and tone marks.
+- Reports History preserves visibility of earlier billing periods and distinguishes finalized periods from entries that still need review. This does not finalize a bill or recalculate a finalized ledger.
+- Candidate only: unsigned, HOLD, production_go=false. Windows target-device acceptance remains separate.
+
 Version 5.2.17 — 2026-11-06 (Candidate; validation pending)
 
 - Live user preview: retain users without an explicit Total, preserve raw metrics, and distinguish missing values from zero without inventing usage.

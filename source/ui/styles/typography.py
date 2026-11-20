@@ -1,6 +1,6 @@
 """Qt font construction using the shared platform-aware tokens."""
 
-from PyQt6.QtGui import QFont
+from PyQt6.QtGui import QFont, QFontDatabase
 
 from . import tokens
 
@@ -15,3 +15,14 @@ def fnt(size: int = tokens.F_LG, bold: bool = False, mono: bool = False) -> QFon
     if bold:
         f.setBold(True)
     return f
+
+
+def windows_settings_font_family() -> str | None:
+    """Prefer one installed Thai UI font for whole Settings text runs on Windows."""
+    if not tokens.IS_WINDOWS:
+        return None
+    installed = {name.casefold() for name in QFontDatabase.families(QFontDatabase.WritingSystem.Thai)}
+    return next(
+        (family for family in ("Leelawadee UI", "Noto Sans Thai", "Tahoma") if family.casefold() in installed),
+        None,
+    )
