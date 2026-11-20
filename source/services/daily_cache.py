@@ -173,6 +173,30 @@ class DailyCacheStore:
         with cls._path_locks_guard:
             return cls._path_locks.setdefault(key, threading.RLock())
 
+    def read_pending_review(self, slot: int, day: date, *, identity: dict[str, str]) -> dict | None:
+        """Read a recent dated snapshot without quarantining or updating it."""
+        path = self.path(slot, day)
+        try:
+            if path.is_symlink() or path.parent.is_symlink() or not path.is_file():
+                return None
+            with path.open("rb") as stream:
+                raw = stream.read(1024 * 1024 + 1)
+            if len(raw) > 1024 * 1024:
+                return None
+            state = json.loads(raw)
+            self._validate_state(state, slot=slot, day=day)
+            captured = state.get("device_identity")
+            # A matching host alone cannot establish that the printer is the
+            # same one after replacement or a database switch.
+            current_serial = str(identity.get("serial") or "").strip()
+            if not isinstance(captured, dict) or not current_serial:
+                return None
+            if str(captured.get("serial") or "").strip() != current_serial:
+                return None
+        except (OSError, TypeError, ValueError):
+            return None
+        return state
+
     def _load_unlocked(self, slot: int, day: date, path: Path) -> dict | None:
         if not path.exists():
             return None

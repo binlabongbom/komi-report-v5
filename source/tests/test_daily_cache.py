@@ -678,6 +678,7 @@ def test_rollover_keeps_observed_page_count_visible_as_non_billable(tmp_path, la
     proof = ReconciliationReport(checked_count=1, issues=())
     for hour, meter in [(8, 100), (17 if last_error else 16, 272)]:
         at = datetime(2026, 7, 16, hour, tzinfo=UTC)
+        cache.record_heartbeat(0, total=meter, at=at)
         reading = _reading(meter, at)
         total = replace(reading.counters[0], canonical_field="counter.total.total")
         cache.update_reading(0, replace(reading, counters=(*reading.counters, total)),
@@ -703,3 +704,53 @@ def test_rollover_keeps_observed_page_count_visible_as_non_billable(tmp_path, la
             "SELECT entry_kind, hold_reason, gross_cents, net_cents FROM billing_ledger"
         ).fetchone()
     assert ledger == ("hold", "incomplete_day", 0, 0)
+
+
+def test_pending_yesterday_cache_visible_without_write_or_double_counting(tmp_path):
+    from dataclasses import replace
+    from services.monthly_history import HeldUsageEvidence, load_usage_history
+
+    set_db_path(tmp_path / "pending-review.db")
+    init_db()
+    DeviceConfigRepository().replace_all(
+        [DeviceConfig(0, "Office", "192.0.2.10", serial="SER-A")]
+    )
+    day = date(2026, 7, 16)
+    tomorrow = date(2026, 7, 17)
+    cache = DailyCacheStore(tmp_path / "cache")
+    proof = ReconciliationReport(checked_count=1, issues=())
+    for hour, meter in [(8, 500), (16, 672)]:
+        at = datetime(2026, 7, 16, hour, tzinfo=UTC)
+        reading = _reading(meter, at)
+        total = replace(reading.counters[0], canonical_field="counter.total.total")
+        cache.update_reading(0, replace(reading, counters=(*reading.counters, total)),
+                             at=at, reconciliation=proof)
+
+    def history():
+        return load_usage_history([0], today=tomorrow, granularity="daily", cache=cache,
+                                  period_start=day, period_end=day)
+
+    path = cache.path(0, day)
+    original = path.read_bytes()
+    result, = history()
+    assert result.held_evidence == (HeldUsageEvidence(day, "pending_rollover", 172),)
+    assert result.total == result.provisional_total == result.net_cost == result.held_days == 0
+    assert path.read_bytes() == original
+    with _open(commit=False) as conn:
+        assert conn.execute("SELECT count(*) FROM daily_meter_records").fetchone()[0] == 0
+        assert conn.execute("SELECT count(*) FROM billing_ledger").fetchone()[0] == 0
+
+    # A different printer at the same IP does not inherit the older pending day.
+    DeviceConfigRepository().replace_all(
+        [DeviceConfig(0, "Office", "192.0.2.10", serial="SER-B")]
+    )
+    assert not history()
+    DeviceConfigRepository().replace_all(
+        [DeviceConfig(0, "Office", "192.0.2.10", serial="SER-A")]
+    )
+    cache.finalize_before(tomorrow)
+    # Even if a stale copy returns, never duplicate an already finalized day.
+    path.write_bytes(original)
+    result, = history()
+    assert len(result.held_evidence) == 1
+    assert result.held_evidence[0].reason != "pending_rollover"

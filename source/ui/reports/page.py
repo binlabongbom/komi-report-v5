@@ -1856,8 +1856,13 @@ class PageHistoryV5(PageHistory):
                 f"พบข้อมูลเครื่องเดิม {len(historical_identities)} identity · "
                 "ยอดรวมใช้ frozen name/Serial snapshot"
             )
+        pending = sum(entry.reason == "pending_rollover" for record in records
+                      for entry in record.held_evidence)
         if held:
             warnings.append(f"Hold {held:,} device-day ไม่รวมในยอด")
+        if pending:
+            warnings.append(f"ยังไม่ปิดยอด {pending:,} device-day · ไม่รวมในยอด")
+        if held or pending:
             reasons = {
                 "incomplete_day": "ข้อมูลการอ่านไม่ครบวัน",
                 "missing_web_success": "ไม่มีการอ่าน Web สำเร็จ",
@@ -1865,6 +1870,7 @@ class PageHistoryV5(PageHistory):
                 "unsafe_attestation_seen_during_day": "พบการอ่านที่ยังยืนยันไม่ได้ระหว่างวัน",
                 "missing_price_snapshot": "ไม่มีราคาที่มีผลในวันนั้น",
                 "not_posted": "ยังไม่ลงบัญชี",
+                "pending_rollover": "ยังไม่ปิดยอด",
                 "reversal": "มีรายการกลับบัญชี",
             }
             evidence = sorted(
@@ -1874,7 +1880,7 @@ class PageHistoryV5(PageHistory):
                 reverse=True,
             )
             for held_day, printer_name, entry in evidence[:50]:
-                observed = (f"มิเตอร์ที่อ่านได้ {entry.observed_total:,} หน้า"
+                observed = (f"ยอดใช้งานที่อ่านได้ {entry.observed_total:,} หน้า"
                             if entry.observed_total is not None else "ไม่มีตัวเลขมิเตอร์ที่ใช้แสดงได้")
                 reason = reasons.get(entry.reason, entry.reason)
                 warnings.append(f"{held_day.isoformat()} · {printer_name} · {observed} · {reason}")
@@ -1887,7 +1893,7 @@ class PageHistoryV5(PageHistory):
                 "\n".join(warnings)
                 + "\n\nตรวจรายละเอียดเพิ่มเติมได้ที่ Settings → ตรวจสอบรอบบิล และสถานะการอ่าน"
             )
-            review_count = held + incomplete
+            review_count = held + incomplete + pending
             review_label = (
                 f"มีข้อมูลรอตรวจสอบ {review_count:,} device-day"
                 if review_count

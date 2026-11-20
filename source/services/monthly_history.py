@@ -516,7 +516,7 @@ def load_usage_history(
             else identity or _source_identity(source_json, slot)
         )
         bucket = bucket_for(slot, snapshot, start, end)
-        bucket["held"] += 1
+        bucket["held"] += int(reason != "pending_rollover")
         bucket["incomplete"] += int(incomplete)
         # Reversals are intentional removals, not unposted usage to display.
         evidence = ledger.delta_json if ledger is not None and ledger.latest_kind == "hold" else delta_json
@@ -641,6 +641,46 @@ def load_usage_history(
             bucket['remarks'].add(review_labels(flags))
         if any(r.estimated for r in values):
             bucket['remarks'].add('ค่าเฉลี่ยประมาณการเฉพาะวันที่ไม่มีข้อมูล Web')
+
+    # Historical cache evidence is read-only and kept outside all totals/exports.
+    # Limit the exact date lookup so callbacks never scan an arbitrary cache tree.
+    if not graph and isinstance(cache_store, DailyCacheStore) and slots and cache_store.root.is_dir():
+        oldest = max(period_start or date.min, current - timedelta(days=31))
+        newest = min(period_end or date.max, current - timedelta(days=1))
+        if oldest <= newest:
+            placeholders = ", ".join("?" for _ in slots)
+            with _open(commit=False) as conn:
+                identities = {
+                    int(slot): {"serial": serial}
+                    for slot, serial in conn.execute(
+                        f"SELECT slot,serial FROM devices WHERE slot IN ({placeholders})", slots)
+                    if serial
+                }
+                # Exclude mutable local days even if a frozen ledger has moved.
+                local_closed = {
+                    (int(slot), date.fromisoformat(day)) for slot, day in conn.execute(
+                        f"SELECT device_slot,record_date FROM daily_meter_records "
+                        f"WHERE device_slot IN ({placeholders}) AND record_date BETWEEN ? AND ?",
+                        (*slots, oldest.isoformat(), newest.isoformat()),
+                    )
+                }
+                shared_covered = {(row.slot, day) for row in shared for day in row.covered_days}
+                occupied = finalized | local_closed | shared_covered
+                for slot, identity in identities.items():
+                    for offset in range((newest - oldest).days + 1):
+                        day = oldest + timedelta(days=offset)
+                        if (slot, day) in occupied:
+                            continue
+                        state = cache_store.read_pending_review(slot, day, identity=identity)
+                        if not state or not _cache_meter_is_safe(state):
+                            continue
+                        if state.get("finalization_conflict") or group_epoch_covers_day(conn, slot, day):
+                            continue
+                        total = state["delta"].get("counter.total.total")
+                        if isinstance(total, bool) or not isinstance(total, int) or total < 0:
+                            continue
+                        hold_day(slot, day, False, identity=_identity_snapshot(state, slot),
+                                 delta_json=json.dumps({"counter.total.total": total}), reason="pending_rollover")
 
     result: list[MonthlyUsage] = []
     for (slot, device_identity, start, end), bucket in buckets.items():

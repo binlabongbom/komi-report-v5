@@ -851,7 +851,7 @@ def test_reports_show_held_days_without_claiming_current_waste_for_frozen_ledger
         assert "มีข้อมูลรอตรวจสอบ 3 device-day" in page.report_overview_warning.text()
         assert "Hold 2 device-day ไม่รวมในยอด" in page._report_overview_review_detail
         assert "2026-07-16" in page._report_overview_review_detail
-        assert "มิเตอร์ที่อ่านได้ 172 หน้า · ข้อมูลการอ่านไม่ครบวัน" in page._report_overview_review_detail
+        assert "ยอดใช้งานที่อ่านได้ 172 หน้า · ข้อมูลการอ่านไม่ครบวัน" in page._report_overview_review_detail
         assert "ข้อมูลไม่สมบูรณ์ 1 device-day" in page._report_overview_review_detail
         assert "Pricelist/ส่วนลดตามแต่ละรายการ" in page.report_period_note.text()
         assert page.report_period_note.isHidden()
