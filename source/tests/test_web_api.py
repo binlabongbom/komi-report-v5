@@ -1,12 +1,13 @@
 from dataclasses import replace
 from datetime import date
 
+import pytest
 from fastapi.testclient import TestClient
 
 import web_api
 from services import peer_sync_authorization
 from services.device_config import DeviceConfig
-from services.monthly_history import MonthlyUsage
+from services.monthly_history import HeldUsageEvidence, MonthlyUsage
 from services.subject_history import SubjectPeriodUsage
 
 
@@ -269,7 +270,8 @@ def test_history_api_filters_to_the_selected_period_and_device(monkeypatch):
     assert body["items"][0]["device_identities"] == ["serial:SER-A"]
 
 
-def test_report_api_exposes_current_cache_as_separate_provisional_totals(monkeypatch):
+@pytest.mark.parametrize(("held_days", "quality"), [(0, "provisional"), (1, "needs_review")])
+def test_report_api_exposes_current_cache_as_separate_provisional_totals(monkeypatch, held_days, quality):
     record = replace(
         _monthly_identity("serial:SER-A", "Printer A", "SER-A", 50),
         gross_cost=100,
@@ -278,6 +280,8 @@ def test_report_api_exposes_current_cache_as_separate_provisional_totals(monkeyp
         print_bw=20,
         print_available=True,
         copy_available=True,
+        held_days=held_days,
+        held_evidence=(HeldUsageEvidence(date(2026, 7, 19), "incomplete_day", 137),) if held_days else (),
         provisional_total=10,
         provisional_a4_color=10,
         provisional_print_color=7,
@@ -299,7 +303,9 @@ def test_report_api_exposes_current_cache_as_separate_provisional_totals(monkeyp
     monkeypatch.setattr(web_api, "load_subject_history", lambda *_args, **_kwargs: ())
     monkeypatch.setattr(web_api, "current_device_identity", lambda _slot: "serial:SER-A")
 
-    body = TestClient(web_api.app).get("/api/reports/overview").json()
+    response = TestClient(web_api.app).get("/api/reports/overview")
+    assert response.status_code == 200
+    body = response.json()
 
     assert body["totals"]["usage"] == 60
     assert body["totals"]["confirmed_usage"] == 50
@@ -314,7 +320,9 @@ def test_report_api_exposes_current_cache_as_separate_provisional_totals(monkeyp
     assert body["totals"]["copy_bw"] == 0
     assert body["totals"]["print_available"] is True
     assert body["totals"]["copy_available"] is True
-    assert body["data_quality"]["status"] == "provisional"
+    assert body["data_quality"]["status"] == quality
+    assert body["devices"][0]["usage"]["held_days"] == held_days
+    assert "held_evidence" not in body["devices"][0]["usage"]
     assert body["devices"][0]["usage"]["total"] == 60
     assert body["devices"][0]["usage"]["confirmed_total"] == 50
     assert body["devices"][0]["usage"]["provisional_total"] == 10

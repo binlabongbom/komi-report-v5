@@ -599,7 +599,9 @@ def _device_payload(device) -> dict:
 
 def _usage_payload(record) -> dict:
     result = asdict(record)
-    for internal_field in ("print_color", "print_bw", "copy_color", "copy_bw"):
+    # Review-only detail belongs to the desktop History screen, not the
+    # strict Web usage contract. Keep the existing aggregate held_days.
+    for internal_field in ("print_color", "print_bw", "copy_color", "copy_bw", "held_evidence"):
         result.pop(internal_field, None)
     result["period_start"] = record.period_start.isoformat()
     result["period_end"] = record.period_end.isoformat()
